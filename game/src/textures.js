@@ -173,13 +173,12 @@ function groundCanvas() {
 function outsideGroundCanvas() {
   const S = 1024;
   const [c, ctx] = makeCanvas(S, S);
-  ctx.fillStyle = '#5f7546';
+  ctx.fillStyle = '#5a7a3e';
   ctx.fillRect(0, 0, S, S);
-  // seamless: every blotch is also drawn wrapped across all edges so the
-  // texture tiles with no visible seam
-  const cols = ['rgba(40,60,28,0.40)', 'rgba(120,140,80,0.28)', 'rgba(96,80,50,0.30)', 'rgba(70,98,46,0.34)'];
+  // soft seamless colour patches (each drawn wrapped across edges, no seam)
+  const cols = ['rgba(58,84,36,0.40)', 'rgba(108,140,72,0.34)', 'rgba(78,108,50,0.40)', 'rgba(132,156,86,0.22)'];
   for (let i = 0; i < 150; i++) {
-    const x = rand(0, S), y = rand(0, S), r = rand(28, 120);
+    const x = rand(0, S), y = rand(0, S), r = rand(40, 150);
     const col = cols[(Math.random() * cols.length) | 0];
     for (const dx of [-S, 0, S]) {
       for (const dy of [-S, 0, S]) {
@@ -192,7 +191,23 @@ function outsideGroundCanvas() {
       }
     }
   }
-  speckle(ctx, S, S, 2600, 0.06);
+  // fine short blade strokes give it a grassy, hand-painted texture
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 5200; i++) {
+    const x = rand(0, S), y = rand(0, S);
+    const len = rand(4, 9);
+    const lean = rand(-2.5, 2.5);
+    const g = (110 + rand(0, 70)) | 0;
+    const light = Math.random() < 0.5;
+    ctx.strokeStyle = light
+      ? `rgba(${(70 + rand(0, 40)) | 0},${g},${(45 + rand(0, 30)) | 0},${rand(0.18, 0.4)})`
+      : `rgba(${(34 + rand(0, 24)) | 0},${(58 + rand(0, 30)) | 0},${(28 + rand(0, 20)) | 0},${rand(0.18, 0.38)})`;
+    ctx.lineWidth = rand(1, 2);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + lean, y - len);
+    ctx.stroke();
+  }
   return c;
 }
 

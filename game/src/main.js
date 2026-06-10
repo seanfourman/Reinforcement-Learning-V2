@@ -140,24 +140,6 @@ renderer.setAnimationLoop(() => {
       d.group.position.set(d.x, d.baseY + Math.sin(t * 1.6 + d.bob) * 0.015, d.z);
       d.group.rotation.y = -d.heading;
     }
-    for (const fl of current.animated.floaters) {
-      fl.mesh.rotation.y += fl.spin * dt;
-      fl.mesh.position.y = fl.baseY + Math.sin(t * 1.2 + fl.bob) * 0.12;
-      fl.mat.emissiveIntensity = 0.85 + 0.25 * Math.sin(t * 1.8 + fl.bob);
-      if (fl.light) fl.light.intensity = 5 + 1.5 * Math.sin(t * 1.8 + fl.bob);
-    }
-    for (const b of current.animated.birds) {
-      b.ang += b.spd * dt;
-      b.group.position.set(
-        b.cx + Math.cos(b.ang) * b.radius,
-        b.height + Math.sin(t * 0.6 + b.flap) * 0.6,
-        b.cz + Math.sin(b.ang) * b.radius
-      );
-      b.group.rotation.y = -b.ang - Math.PI / 2 + (b.spd > 0 ? 0 : Math.PI);
-      const f = Math.sin(t * 8 + b.flap) * 0.6;
-      b.rw.rotation.z = f;
-      b.lw.rotation.z = -f;
-    }
   }
 
   fx.composer.render();

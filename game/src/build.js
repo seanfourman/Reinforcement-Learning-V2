@@ -14,7 +14,7 @@ export function buildWorld(world, T) {
   // must look the same every time, so it runs off a fixed seed instead of the
   // per-regeneration world seed. Only the interior puzzle reshuffles.
   const nrng = mulberry32(0x5eed1ace);
-  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [], water: [], birds: [], ducks: [], floaters: [] };
+  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [], water: [], ducks: [] };
   const disposables = [];
 
   const track = (obj) => {
@@ -184,22 +184,7 @@ export function buildWorld(world, T) {
   instanced(wallGeo, wallMats, wallCells);
   instanced(capGeo, wallTopM, caps);
 
-  // moss tufts poking through tile cracks
-  for (let x = 1; x < size; x++) {
-    for (let z = 1; z < size; z++) {
-      if (rng() < 0.085) {
-        mossItems.push({
-          x: x + (rng() - 0.5) * 0.15,
-          y: 0.07,
-          z: z + (rng() - 0.5) * 0.15,
-          sx: 0.09 + rng() * 0.14,
-          sy: 0.05 + rng() * 0.07,
-          sz: 0.09 + rng() * 0.14,
-          color: new THREE.Color(PALETTE.moss).lerp(new THREE.Color(PALETTE.mossDark), rng()),
-        });
-      }
-    }
-  }
+  // (no loose moss on the open courtyard floor — keep the inside clean)
   const mossGeo = geo(new THREE.SphereGeometry(1, 6, 5));
   const mossMat = mat({ color: 0xffffff, roughness: 1 });
   instanced(mossGeo, mossMat, mossItems, { cast: false });
@@ -485,7 +470,7 @@ export function buildWorld(world, T) {
       (rng() - 0.5) * 0.08
     );
 
-  const trunks = [], canopies = [], pines = [], rocks = [], shrubs = [], grass = [];
+  const trunks = [], canopies = [], pines = [], rocks = [], shrubs = [];
   const logs = [], mushStems = [], mushCaps = [];
 
   // --- placement that is guaranteed OUTSIDE the walls, with spacing ---------
@@ -601,17 +586,11 @@ export function buildWorld(world, T) {
     foam.position.set(L.x, GY + 0.05, L.z);
     foam.renderOrder = 3;
     group.add(foam);
-    // muddy bank
-    const shore = new THREE.Mesh(geo(new THREE.CircleGeometry(L.r + 0.7, 48)), mat({ color: 0x6e5a3e, roughness: 1 }));
-    shore.rotation.x = -Math.PI / 2;
-    shore.position.set(L.x, GY + 0.02, L.z);
-    shore.receiveShadow = true;
-    group.add(shore);
-    // reeds + rim rocks
-    for (let i = 0; i < Math.floor(L.r * 7); i++) {
-      const a = rng() * 6.28, rr = L.r + 0.2 + rng() * 0.8;
-      const s = 0.5 + rng() * 0.7;
-      grass.push({ x: L.x + Math.cos(a) * rr, y: GY + 0.3 * s, z: L.z + Math.sin(a) * rr, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.2, s, color: pickGreen() });
+    // leafy plants right at the grassy edge (no sandy bank), + rim rocks
+    for (let i = 0, n = Math.floor(L.r * 4); i < n; i++) {
+      const a = rng() * 6.28, rr = L.r + 0.05 + rng() * 0.6;
+      const s = 0.3 + rng() * 0.45;
+      shrubs.push({ x: L.x + Math.cos(a) * rr, y: GY + s * 0.42, z: L.z + Math.sin(a) * rr, sx: s, sy: s * (0.8 + rng() * 0.4), sz: s, ry: rng() * 6.28, color: pickGreen() });
     }
     for (let i = 0, n = 4 + ((rng() * 4) | 0); i < n; i++) {
       const a = rng() * 6.28, rr = L.r + 0.3 + rng() * 0.6, rs = 0.4 + rng() * 0.8;
@@ -661,70 +640,41 @@ export function buildWorld(world, T) {
         group.add(cap);
       }
     }
-    // a stone altar in the centre
-    const altar = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.9, 1.05, 0.5, 8)), stoneMat);
-    altar.position.set(sx, GY + 0.25, sz);
-    altar.castShadow = altar.receiveShadow = true;
-    group.add(altar);
-    // a large crystal floating above it, glowing and bobbing
-    const crystalColor = 0x7c5bff;
-    const crystalMat = mat({
-      color: crystalColor, emissive: crystalColor, emissiveIntensity: 0.9,
-      roughness: 0.15, metalness: 0.05, flatShading: true, transparent: true, opacity: 0.9,
-    });
-    const crystal = new THREE.Mesh(geo(new THREE.OctahedronGeometry(0.75, 0)), crystalMat);
-    crystal.scale.set(0.7, 1.5, 0.7);
-    crystal.position.set(sx, GY + 1.9, sz);
-    crystal.castShadow = true;
-    group.add(crystal);
-    const glow = new THREE.PointLight(crystalColor, 6, 9, 2);
-    glow.position.set(sx, GY + 1.9, sz);
-    group.add(glow);
-    animated.floaters.push({ mesh: crystal, light: glow, baseY: GY + 1.9, spin: 0.5, bob: rng() * 6.28, mat: crystalMat });
+    // the centrepiece: a hero's sword driven into a low boulder (sword in the stone)
+    const boulder = new THREE.Mesh(rockGeo, mat({ color: 0x8c8278, roughness: 1, flatShading: true }));
+    boulder.position.set(sx, GY + 0.18, sz);
+    boulder.scale.set(1.6, 0.62, 1.6);
+    boulder.rotation.y = 0.6;
+    boulder.castShadow = boulder.receiveShadow = true;
+    group.add(boulder);
+
+    const rockTopY = GY + 0.6;
+    const steel = mat({ color: 0xd6dee4, roughness: 0.3, metalness: 0.55, flatShading: true });
+    const gold = mat({ color: 0xd9b24a, roughness: 0.4, metalness: 0.5 });
+    const grip = mat({ color: 0x5a3d2b, roughness: 0.85 });
+    const sword = new THREE.Group();
+    sword.position.set(sx, rockTopY, sz);
+    sword.rotation.z = 0.05; // a slight dramatic tilt
+    const addSword = (g, m, y) => {
+      const mesh = new THREE.Mesh(g, m);
+      mesh.position.y = y;
+      mesh.castShadow = true;
+      sword.add(mesh);
+    };
+    addSword(geo(new THREE.BoxGeometry(0.14, 1.4, 0.05)), steel, 0.2); // blade (lower half sunk in rock)
+    addSword(geo(new THREE.BoxGeometry(0.5, 0.1, 0.13)), gold, 0.95); // crossguard
+    addSword(geo(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 8)), grip, 1.12); // grip
+    addSword(geo(new THREE.SphereGeometry(0.08, 12, 10)), gold, 1.3); // pommel
+    group.add(sword);
+    // a soft glint at the hilt
+    const hilt = new THREE.PointLight(0xffe6a8, 0.9, 4, 2);
+    hilt.position.set(sx, rockTopY + 1.4, sz);
+    group.add(hilt);
     // a sparse ring of moss tufts just OUTSIDE the stones, framing not burying
     for (let i = 0; i < 12; i++) {
       const a = rng() * 6.28, rr = ring + 0.6 + rng() * 1.6;
       const s = 0.3 + rng() * 0.4;
       shrubs.push({ x: sx + Math.cos(a) * rr, y: GY + s * 0.42, z: sz + Math.sin(a) * rr, sx: s, sy: s * 0.8, sz: s, ry: rng() * 6.28, color: pickGreen() });
-    }
-  }
-
-  // ---- extra foliage on the west/left side, which was looking thin ---------
-  for (let i = 0; i < 20; i++) {
-    const clear = 1.6 + Math.pow(rng(), 1.5) * 13;
-    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 14);
-    if (onLake(x, z, 1.2) || !noOverlap(x, z, 1)) continue;
-    placed.push({ x, z, r: 1 });
-    const scale = 0.85 + rng() * 0.9;
-    if (rng() < 0.5) addPine(x, z, scale);
-    else addDeciduous(x, z, scale);
-  }
-  for (let i = 0; i < 60; i++) {
-    const clear = 1 + rng() * 14;
-    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 14);
-    if (onLake(x, z, 0.4)) continue;
-    const s = 0.3 + rng() * 0.55;
-    shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
-  }
-
-  // ---- a flock of birds circling overhead ----------------------------------
-  {
-    const wingMat = mat({ color: 0x33363f, roughness: 0.85, side: THREE.DoubleSide });
-    const wingR = geo(new THREE.BufferGeometry());
-    wingR.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.06, 0.55, 0, 0, 0, 0, 0.1]), 3));
-    wingR.computeVertexNormals();
-    const wingL = geo(new THREE.BufferGeometry());
-    wingL.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0.06, -0.55, 0, 0, 0, 0, -0.1]), 3));
-    wingL.computeVertexNormals();
-    for (let i = 0; i < 7; i++) {
-      const g = new THREE.Group();
-      const rw = new THREE.Mesh(wingR, wingMat);
-      const lw = new THREE.Mesh(wingL, wingMat);
-      const body = new THREE.Mesh(geo(new THREE.SphereGeometry(0.08, 8, 6)), wingMat);
-      body.scale.set(1.7, 0.7, 0.7);
-      g.add(rw, lw, body);
-      group.add(g);
-      animated.birds.push({ group: g, rw, lw, cx: cx0, cz: cz0, radius: 15 + rng() * 13, height: 8 + rng() * 6, ang: rng() * 6.28, spd: (0.12 + rng() * 0.1) * (rng() < 0.5 ? 1 : -1), flap: rng() * 6.28 });
     }
   }
 
@@ -767,6 +717,23 @@ export function buildWorld(world, T) {
     if (rng() < 0.5) addPine(spot[0], spot[1], scale);
     else addDeciduous(spot[0], spot[1], scale);
   }
+  // a modest top-up on the west, which the random spread happened to leave thin
+  for (let i = 0; i < 12; i++) {
+    const clear = 2.4 + Math.pow(rng(), 1.4) * 13;
+    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
+    if (blocked(x, z, 1.2) || !noOverlap(x, z, 1)) continue;
+    placed.push({ x, z, r: 1 });
+    const scale = 0.8 + rng() * 0.9;
+    if (rng() < 0.5) addPine(x, z, scale);
+    else addDeciduous(x, z, scale);
+  }
+  for (let i = 0; i < 34; i++) {
+    const clear = 1.4 + rng() * 13;
+    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
+    if (blocked(x, z, 0.4)) continue;
+    const s = 0.28 + rng() * 0.5;
+    shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
+  }
   // rocks, often near groves
   for (let i = 0; i < 60; i++) {
     const rs = 0.45 + rng() * 1.8;
@@ -785,17 +752,11 @@ export function buildWorld(world, T) {
     if (!spot) continue;
     logs.push({ x: spot[0], y: GY + 0.2, z: spot[1], rx: Math.PI / 2, ry: rng() * 6.28, color: tint(0x6b4a33, 0.08) });
   }
-  // bushes / shrubs as ground cover
-  for (let i = 0; i < 250; i++) {
-    const [x, z] = coverSpot(1.2, 16, 0.5, 2.2, 1.1);
-    const s = 0.3 + rng() * 0.55;
+  // bushes / shrubs as ground cover (evenly all around the castle)
+  for (let i = 0; i < 320; i++) {
+    const [x, z] = coverSpot(1.2, 16, 0.45, 2.4, 1.1);
+    const s = 0.28 + rng() * 0.55;
     shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
-  }
-  // grass tufts
-  for (let i = 0; i < 360; i++) {
-    const [x, z] = coverSpot(0.7, 16, 0.5, 2.6, 0.7);
-    const s = 0.45 + rng() * 0.5;
-    grass.push({ x, y: GY + 0.3 * s, z, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.3, s, color: pickGreen() });
   }
   // little mushroom clusters
   for (let c = 0; c < 26; c++) {
@@ -818,9 +779,6 @@ export function buildWorld(world, T) {
   instanced(logGeo, mat({ roughness: 0.95, flatShading: true }), logs);
   instanced(mushStemGeo, mat({ roughness: 0.9 }), mushStems, { cast: false });
   instanced(mushCapGeo, mat({ roughness: 0.7 }), mushCaps, { cast: false });
-  const grassGeo = geo(new THREE.PlaneGeometry(0.7, 0.6));
-  const grassMat = mat({ map: T.grass, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
-  instanced(grassGeo, grassMat, grass, { cast: false, receive: false });
 
   // ------------------------------------------------------------ drifting fog
   // a ring of soft puffs strictly OUTSIDE the walls. The castle spans ~11
