@@ -10,12 +10,15 @@ function overridable(name, canvas, { wrap = false, srgb = true } = {}) {
   if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   if (wrap) tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  const img = new Image();
-  img.onload = () => {
-    tex.image = img;
-    tex.needsUpdate = true;
-  };
-  img.src = `textures/${name}.png`;
+  // overrides need a server (file:// images can't be uploaded to WebGL)
+  if (location.protocol.startsWith('http')) {
+    const img = new Image();
+    img.onload = () => {
+      tex.image = img;
+      tex.needsUpdate = true;
+    };
+    img.src = `textures/${name}.png`;
+  }
   return tex;
 }
 

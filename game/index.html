@@ -40,6 +40,14 @@
       <b>Drag</b> / <b>WASD</b> pan &nbsp;·&nbsp; <b>Scroll</b> zoom &nbsp;·&nbsp; <b>R</b> regenerate
       <span class="seed" id="seed"></span>
     </div>
-    <script type="module" src="/src/main.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

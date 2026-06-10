@@ -6,16 +6,24 @@ castle walls with battlements and corner towers, randomly generated rooms
 with glowing (locked/open) gates, and crystal clusters.
 
 Visuals only for now — no gameplay, no rules. Generation is placeholder
-random; real rules come later.
+random; real rules come later, and a Python RL model will drive the world.
+
+**Fully self-contained.** The only requirement is Python (standard library
+only — no pip installs, no Node.js, no internet). The 3D engine (three.js)
+is bundled in `vendor/`.
 
 ## Run
 
-```sh
-npm install
-npm run dev
-```
+- **Windows:** double-click `Play.bat`
+- **Mac/Linux:** `python3 serve.py` (or double-click `Play.command` after a
+  one-time `chmod +x Play.command`)
 
-Then open the URL Vite prints (usually http://localhost:5173).
+A local server starts and the game opens in your default browser. Keep the
+console window open while playing.
+
+Why a server at all? Browsers block JavaScript modules on raw `file://`
+pages, so the folder must be served over HTTP. `serve.py` is standard
+library only, and it's also where the Python RL backend will plug in later.
 
 ## Controls
 
@@ -32,13 +40,14 @@ you can see a little past the walls but never far off the world.
 ## Swapping textures
 
 All textures are procedural placeholders. Drop a PNG with the right name
-into `public/textures/` and refresh — see `public/textures/README.md` for
-the full list of names and sizes.
+into `textures/` and refresh — see `textures/README.md` for the full list
+of names and sizes.
 
 ## Code map
 
-| File              | What it does                                              |
+| File / folder     | What it does                                              |
 | ----------------- | --------------------------------------------------------- |
+| `serve.py`        | Zero-dependency local server + browser launcher           |
 | `src/config.js`   | Grid size, palette, camera tuning constants               |
 | `src/textures.js` | Procedural placeholder textures + PNG override loading    |
 | `src/generate.js` | Random layout: rooms, walls, gates, crystals (seeded RNG) |
@@ -46,3 +55,4 @@ the full list of names and sizes.
 | `src/camera.js`   | Fixed-angle rig with smoothed, clamped pan/zoom           |
 | `src/postfx.js`   | Bloom + vignette post-processing                          |
 | `src/main.js`     | Renderer, lights, sky/fog, animation loop, regeneration   |
+| `vendor/three/`   | Bundled three.js (no package manager needed)              |
