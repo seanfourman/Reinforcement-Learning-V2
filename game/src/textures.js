@@ -171,11 +171,71 @@ function groundCanvas() {
 }
 
 function outsideGroundCanvas() {
-  const [c, ctx] = makeCanvas(512, 512);
-  ctx.fillStyle = '#5b7045';
-  ctx.fillRect(0, 0, 512, 512);
-  blotches(ctx, 512, 512, 60, ['rgba(35,55,25,0.35)', 'rgba(120,140,80,0.25)', 'rgba(80,70,45,0.25)'], 25, 90);
-  speckle(ctx, 512, 512, 900, 0.07);
+  const S = 1024;
+  const [c, ctx] = makeCanvas(S, S);
+  ctx.fillStyle = '#5f7546';
+  ctx.fillRect(0, 0, S, S);
+  // seamless: every blotch is also drawn wrapped across all edges so the
+  // texture tiles with no visible seam
+  const cols = ['rgba(40,60,28,0.40)', 'rgba(120,140,80,0.28)', 'rgba(96,80,50,0.30)', 'rgba(70,98,46,0.34)'];
+  for (let i = 0; i < 150; i++) {
+    const x = rand(0, S), y = rand(0, S), r = rand(28, 120);
+    const col = cols[(Math.random() * cols.length) | 0];
+    for (const dx of [-S, 0, S]) {
+      for (const dy of [-S, 0, S]) {
+        if (Math.abs(x + dx - S / 2) > S / 2 + r || Math.abs(y + dy - S / 2) > S / 2 + r) continue;
+        const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        g.addColorStop(0, col);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
+    }
+  }
+  speckle(ctx, S, S, 2600, 0.06);
+  return c;
+}
+
+// soft round puff for drifting ground fog (alpha fades to edge)
+function fogCanvas() {
+  const [c, ctx] = makeCanvas(256, 256);
+  ctx.clearRect(0, 0, 256, 256);
+  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0, 'rgba(255,255,255,0.85)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.4)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  // a few lighter lobes so it isn't a perfect circle
+  for (let i = 0; i < 5; i++) {
+    const x = rand(70, 186), y = rand(70, 186), r = rand(40, 80);
+    const lg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    lg.addColorStop(0, 'rgba(255,255,255,0.25)');
+    lg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  return c;
+}
+
+// a little tuft of grass blades (transparent background, light so it tints)
+function grassCanvas() {
+  const [c, ctx] = makeCanvas(128, 128);
+  ctx.clearRect(0, 0, 128, 128);
+  for (let i = 0; i < 11; i++) {
+    const x = rand(18, 110);
+    const baseW = rand(4, 8);
+    const h = rand(54, 104);
+    const lean = rand(-26, 26);
+    const g = 200 + rand(0, 40);
+    ctx.fillStyle = `rgb(${(150 + rand(0, 40)) | 0},${g | 0},${(120 + rand(0, 40)) | 0})`;
+    ctx.beginPath();
+    ctx.moveTo(x - baseW / 2, 128);
+    ctx.lineTo(x + baseW / 2, 128);
+    ctx.lineTo(x + lean, 128 - h);
+    ctx.closePath();
+    ctx.fill();
+  }
   return c;
 }
 
@@ -260,5 +320,7 @@ export function createTextures() {
     roof: overridable('roof', roofCanvas()),
     banner: overridable('banner', bannerCanvas()),
     decal: overridable('decal', decalCanvas()),
+    fog: overridable('fog', fogCanvas()),
+    grass: overridable('grass', grassCanvas()),
   };
 }

@@ -9,7 +9,7 @@ const dummy = new THREE.Object3D();
 export function buildWorld(world, T) {
   const group = new THREE.Group();
   const { size, wall, gates, crystals, decals, outerGate, rng } = world;
-  const animated = { crystalMats: [], energyMats: [], lanternLights: [] };
+  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [] };
   const disposables = [];
 
   const track = (obj) => {
@@ -39,6 +39,23 @@ export function buildWorld(world, T) {
   const tint = (hex, jitter = 0.04) =>
     new THREE.Color(hex).offsetHSL(0, 0, (rng() - 0.5) * jitter * 2);
 
+  // smooth value noise on a per-seed lattice — large-scale ground variation
+  const noiseN = 48;
+  const noiseGrid = new Float32Array(noiseN * noiseN);
+  for (let i = 0; i < noiseGrid.length; i++) noiseGrid[i] = rng();
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const gridAt = (a, b) =>
+    noiseGrid[(((a % noiseN) + noiseN) % noiseN) * noiseN + (((b % noiseN) + noiseN) % noiseN)];
+  function noise2(x, z) {
+    const x0 = Math.floor(x), z0 = Math.floor(z);
+    const tx = smooth(x - x0), tz = smooth(z - z0);
+    const a = THREE.MathUtils.lerp(gridAt(x0, z0), gridAt(x0 + 1, z0), tx);
+    const b = THREE.MathUtils.lerp(gridAt(x0, z0 + 1), gridAt(x0 + 1, z0 + 1), tx);
+    return THREE.MathUtils.lerp(a, b, tz);
+  }
+  const fbm = (x, z) =>
+    noise2(x, z) * 0.6 + noise2(x * 2.3 + 5, z * 2.3 + 5) * 0.3 + noise2(x * 4.7, z * 4.7) * 0.1;
+
   // ------------------------------------------------------------ ground
   const grout = new THREE.Mesh(
     geo(new THREE.PlaneGeometry(size, size)),
@@ -49,14 +66,39 @@ export function buildWorld(world, T) {
   grout.receiveShadow = true;
   group.add(grout);
 
+  const OUT = size + 150;
   const outsideTex = track(T.outsideGround.clone());
-  outsideTex.repeat.set(14, 14);
-  const outside = new THREE.Mesh(
-    geo(new THREE.PlaneGeometry(size + 90, size + 90)),
-    mat({ map: outsideTex, roughness: 1 })
-  );
+  outsideTex.repeat.set(OUT / 26, OUT / 26); // big tiles, hidden by vertex colors
+  const outGeo = geo(new THREE.PlaneGeometry(OUT, OUT, 90, 90));
+  {
+    const pos = outGeo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const cA = new THREE.Color(0x55683c); // base green
+    const cB = new THREE.Color(0x728a52); // lighter green
+    const cC = new THREE.Color(0x6c5a3b); // earthy brown
+    const tmp = new THREE.Color();
+    const cx = size / 2, cz = size / 2;
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i), py = pos.getY(i);
+      const wx = cx + px, wz = cz - py; // world coords after the -90° X rotation
+      const shade = fbm(wx * 0.05 + 10, wz * 0.05 + 10);
+      const dirt = fbm(wx * 0.13, wz * 0.13);
+      tmp.copy(cA).lerp(cB, smooth(shade));
+      tmp.lerp(cC, Math.max(0, dirt - 0.55) * 0.9);
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
+      // gentle rolling hills, but only well past the castle so walls stay put
+      const d = Math.hypot(px, py);
+      const amp = Math.min(Math.max(0, d - 30) * 0.13, 4.5);
+      pos.setZ(i, (fbm(wx * 0.06 + 3, wz * 0.06 + 3) - 0.5) * amp);
+    }
+    outGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    outGeo.computeVertexNormals();
+  }
+  const outside = new THREE.Mesh(outGeo, mat({ map: outsideTex, roughness: 1, vertexColors: true }));
   outside.rotation.x = -Math.PI / 2;
-  outside.position.set(size / 2, -0.05, size / 2);
+  outside.position.set(size / 2, -0.06, size / 2);
   outside.receiveShadow = true;
   group.add(outside);
 
@@ -391,54 +433,230 @@ export function buildWorld(world, T) {
   }
   instanced(bannerGeo, bannerMat, banners, { cast: false });
 
-  // ------------------------------------------------------------ outside set dressing
-  const rockGeo = geo(new THREE.IcosahedronGeometry(1, 1));
-  {
-    const pos = rockGeo.attributes.position;
+  // ------------------------------------------------------------ outside nature
+  const GY = -0.06; // outside ground level
+
+  // Deform a primitive into an organic shape. Critically the displacement is a
+  // function of the *original vertex position*, so the duplicated vertices that
+  // a non-indexed icosahedron shares all move identically — no tearing/spikes.
+  const hash3 = (x, y, z) => {
+    const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  function deform(g, amp, squashY = 1) {
+    const pos = g.attributes.position;
     const v = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
       v.fromBufferAttribute(pos, i);
-      const s = 1 + (rng() - 0.5) * 0.55;
-      pos.setXYZ(i, v.x * s, v.y * (1 + (rng() - 0.5) * 0.4), v.z * s);
+      const f = 1 + (hash3(v.x, v.y, v.z) - 0.5) * amp;
+      pos.setXYZ(i, v.x * f, v.y * f * squashY, v.z * f);
     }
-    rockGeo.computeVertexNormals();
+    pos.needsUpdate = true;
+    g.computeVertexNormals();
+    return g;
   }
-  const rocks = [];
-  const bushes = [];
-  const outsidePoint = () => {
-    const side = (rng() * 4) | 0;
-    const along = -6 + rng() * (size + 12);
-    const dist = 2.6 + rng() * 6;
-    if (side === 0) return [along, -1 - dist];
-    if (side === 1) return [along, size + 1 + dist];
-    if (side === 2) return [-1 - dist, along];
-    return [size + 1 + dist, along];
+
+  const rockGeo = deform(geo(new THREE.IcosahedronGeometry(1, 1)), 0.55, 0.82); // faceted boulder
+  const canopyGeo = deform(geo(new THREE.SphereGeometry(1, 9, 7)), 0.16); // smooth round top
+  const bushGeo = deform(geo(new THREE.IcosahedronGeometry(1, 1)), 0.5); // chunky leafy bush
+  const trunkGeo = geo(new THREE.CylinderGeometry(0.12, 0.2, 1, 6, 1));
+  const pineGeo = geo(new THREE.ConeGeometry(1, 1, 7));
+  const logGeo = geo(new THREE.CylinderGeometry(0.2, 0.24, 1.6, 8));
+  const mushStemGeo = geo(new THREE.CylinderGeometry(0.05, 0.08, 0.22, 6));
+  const mushCapGeo = geo(new THREE.SphereGeometry(0.16, 9, 6));
+
+  const greens = [0x4f7a34, 0x5d8a3c, 0x6f9a44, 0x42692c, 0x77a050];
+  const pickGreen = () =>
+    new THREE.Color(greens[(rng() * greens.length) | 0]).offsetHSL(
+      (rng() - 0.5) * 0.04,
+      (rng() - 0.5) * 0.08,
+      (rng() - 0.5) * 0.08
+    );
+
+  const trunks = [], canopies = [], pines = [], rocks = [], shrubs = [], grass = [];
+  const logs = [], mushStems = [], mushCaps = [];
+
+  // --- placement that is guaranteed OUTSIDE the walls, with spacing ---------
+  const cx0 = size / 2, cz0 = size / 2;
+  const WALL = size / 2 + 1; // outer wall distance from centre along an axis
+  const placed = []; // footprints of big objects {x,z,r}
+  const treeAnchors = []; // tree bases, used to clump nearby props
+  const isOutside = (x, z) => Math.abs(x - cx0) >= WALL + 0.6 || Math.abs(z - cz0) >= WALL + 0.6;
+  const noOverlap = (x, z, r) => {
+    for (const p of placed) {
+      const dx = x - p.x, dz = z - p.z;
+      if (dx * dx + dz * dz < (r + p.r) * (r + p.r)) return false;
+    }
+    return true;
   };
-  for (let i = 0; i < 26; i++) {
-    const [x, z] = outsidePoint();
-    const s = 0.7 + rng() * 2.1;
+  // a random point in the band outside a wall (perpendicular offset always clears)
+  const bandPoint = (minClear, maxClear, bias = 1) => {
+    const side = (rng() * 4) | 0;
+    const off = WALL + minClear + Math.pow(rng(), bias) * (maxClear - minClear);
+    const along = cx0 + (rng() - 0.5) * (size + 2 * maxClear);
+    if (side === 0) return [along, cz0 - off];
+    if (side === 1) return [along, cz0 + off];
+    if (side === 2) return [cx0 - off, along];
+    return [cx0 + off, along];
+  };
+  // spaced placement for big objects, clumping near existing trees when possible
+  const freeSpot = (r, minClear, maxClear, clumpProb = 0) => {
+    for (let t = 0; t < 22; t++) {
+      let x, z;
+      if (clumpProb && treeAnchors.length && rng() < clumpProb) {
+        const a = treeAnchors[(rng() * treeAnchors.length) | 0];
+        const ang = rng() * 6.28, dd = 1.4 + rng() * 2.6;
+        x = a[0] + Math.cos(ang) * dd;
+        z = a[1] + Math.sin(ang) * dd;
+        if (!isOutside(x, z)) continue;
+      } else {
+        [x, z] = bandPoint(minClear, maxClear, 1.5);
+      }
+      if (noOverlap(x, z, r)) {
+        placed.push({ x, z, r });
+        return [x, z];
+      }
+    }
+    return null;
+  };
+  // light placement for ground cover (may overlap, but stays outside)
+  const coverSpot = (minClear, maxClear, clumpProb = 0.5, spread = 2.2) => {
+    if (clumpProb && treeAnchors.length && rng() < clumpProb) {
+      const a = treeAnchors[(rng() * treeAnchors.length) | 0];
+      const ang = rng() * 6.28, dd = 0.6 + rng() * spread;
+      const x = a[0] + Math.cos(ang) * dd, z = a[1] + Math.sin(ang) * dd;
+      if (isOutside(x, z)) return [x, z];
+    }
+    return bandPoint(minClear, maxClear, 1.2);
+  };
+
+  function addDeciduous(x, z, scale) {
+    treeAnchors.push([x, z]);
+    const h = (1.0 + rng() * 0.7) * scale;
+    trunks.push({ x, y: GY + h * 0.5, z, sx: scale, sy: h, sz: scale, ry: rng() * 6.28, color: tint(0x6f4d34, 0.08) });
+    const top = GY + h;
+    const r = (0.75 + rng() * 0.35) * scale;
+    canopies.push({ x, y: top + r * 0.55, z, sx: r, sy: r * (0.9 + rng() * 0.2), sz: r, ry: rng() * 6.28, color: pickGreen() });
+    if (rng() < 0.6) {
+      const r2 = r * 0.68;
+      canopies.push({
+        x: x + (rng() - 0.5) * 0.5 * scale,
+        y: top + r * 0.95,
+        z: z + (rng() - 0.5) * 0.5 * scale,
+        sx: r2, sy: r2, sz: r2, ry: rng() * 6.28, color: pickGreen(),
+      });
+    }
+  }
+  function addPine(x, z, scale) {
+    treeAnchors.push([x, z]);
+    const h = (1.2 + rng() * 0.9) * scale;
+    trunks.push({ x, y: GY + h * 0.3, z, sx: scale * 0.8, sy: h * 0.6, sz: scale * 0.8, color: tint(0x5e4430, 0.08) });
+    const col = pickGreen();
+    let y = GY + h * 0.42;
+    for (let tIdx = 0; tIdx < 3; tIdx++) {
+      const r = (0.95 - tIdx * 0.22) * scale;
+      const th = (1.05 - tIdx * 0.12) * scale;
+      pines.push({ x, y: y + th * 0.5, z, sx: r, sy: th, sz: r, ry: rng() * 6.28, color: col.clone().offsetHSL(0, 0, (rng() - 0.5) * 0.05) });
+      y += th * 0.6;
+    }
+  }
+
+  // trees first, so everything else can clump around them
+  for (let i = 0; i < 72; i++) {
+    const scale = 0.8 + rng() * 0.95;
+    const spot = freeSpot(0.5 + 0.45 * scale, 0.9, 17, 0.55);
+    if (!spot) continue;
+    if (rng() < 0.5) addPine(spot[0], spot[1], scale);
+    else addDeciduous(spot[0], spot[1], scale);
+  }
+  // rocks, often near groves
+  for (let i = 0; i < 58; i++) {
+    const rs = 0.45 + rng() * 1.8;
+    const spot = freeSpot(rs * 0.6, 0.8, 17, 0.45);
+    if (!spot) continue;
     rocks.push({
-      x, z,
-      y: s * 0.35 - 0.25,
-      s,
-      sy: s * (0.7 + rng() * 0.5),
-      ry: rng() * Math.PI * 2,
-      color: tint(0x8d7f72, 0.07),
+      x: spot[0], y: GY + rs * 0.3 - 0.06, z: spot[1],
+      s: rs, sy: rs * (0.6 + rng() * 0.5),
+      rx: (rng() - 0.5) * 0.5, ry: rng() * 6.28, rz: (rng() - 0.5) * 0.5,
+      color: tint(0x887b6e, 0.08),
     });
   }
-  for (let i = 0; i < 46; i++) {
-    const [x, z] = outsidePoint();
-    bushes.push({
-      x, z,
-      y: 0.1,
-      sx: 0.35 + rng() * 0.6,
-      sy: 0.22 + rng() * 0.35,
-      sz: 0.35 + rng() * 0.6,
-      color: new THREE.Color(0x4d7a39).offsetHSL((rng() - 0.5) * 0.06, 0, (rng() - 0.5) * 0.1),
-    });
+  // a few fallen logs
+  for (let i = 0; i < 6; i++) {
+    const spot = freeSpot(1, 1, 15, 0.4);
+    if (!spot) continue;
+    logs.push({ x: spot[0], y: GY + 0.2, z: spot[1], rx: Math.PI / 2, ry: rng() * 6.28, color: tint(0x6b4a33, 0.08) });
   }
+  // bushes / shrubs as ground cover
+  for (let i = 0; i < 240; i++) {
+    const [x, z] = coverSpot(0.7, 16, 0.55);
+    const s = 0.3 + rng() * 0.55;
+    shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
+  }
+  // grass tufts
+  for (let i = 0; i < 340; i++) {
+    const [x, z] = coverSpot(0.5, 16, 0.5, 2.6);
+    const s = 0.45 + rng() * 0.5;
+    grass.push({ x, y: GY + 0.3 * s, z, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.3, s, color: pickGreen() });
+  }
+  // little mushroom clusters
+  for (let c = 0; c < 26; c++) {
+    const [bx, bz] = coverSpot(0.6, 14, 0.7, 1.6);
+    const n = 1 + ((rng() * 3) | 0);
+    const capCol = rng() < 0.5 ? 0xcc4036 : 0xd98a3c;
+    for (let k = 0; k < n; k++) {
+      const x = bx + (rng() - 0.5) * 0.6, z = bz + (rng() - 0.5) * 0.6;
+      const ms = 0.6 + rng() * 0.7;
+      mushStems.push({ x, y: GY + 0.11 * ms, z, sx: ms, sy: ms, sz: ms, color: new THREE.Color(0xf0e7d6) });
+      mushCaps.push({ x, y: GY + 0.22 * ms, z, sx: ms, sy: ms * 0.6, sz: ms, color: new THREE.Color(capCol) });
+    }
+  }
+
+  instanced(trunkGeo, mat({ roughness: 0.95, flatShading: true }), trunks);
+  instanced(canopyGeo, mat({ roughness: 0.85 }), canopies); // smooth round tops
+  instanced(pineGeo, mat({ roughness: 0.85, flatShading: true }), pines);
   instanced(rockGeo, mat({ roughness: 1, flatShading: true }), rocks);
-  instanced(mossGeo, mat({ roughness: 1 }), bushes, { cast: false });
+  instanced(bushGeo, mat({ roughness: 0.9, flatShading: true }), shrubs, { cast: false });
+  instanced(logGeo, mat({ roughness: 0.95, flatShading: true }), logs);
+  instanced(mushStemGeo, mat({ roughness: 0.9 }), mushStems, { cast: false });
+  instanced(mushCapGeo, mat({ roughness: 0.7 }), mushCaps, { cast: false });
+  const grassGeo = geo(new THREE.PlaneGeometry(0.7, 0.6));
+  const grassMat = mat({ map: T.grass, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  instanced(grassGeo, grassMat, grass, { cast: false, receive: false });
+
+  // ------------------------------------------------------------ drifting fog
+  // a ring of soft puffs strictly OUTSIDE the walls. The castle spans ~11
+  // units from centre, so we guarantee each puff's inner edge stays past that
+  // (centre radius >= 15 + its own radius), even after drifting.
+  const cx = size / 2, cz = size / 2;
+  const fogGeo = geo(new THREE.PlaneGeometry(1, 1));
+  for (let i = 0; i < 40; i++) {
+    const ang = rng() * Math.PI * 2;
+    const discR = 4 + rng() * 5; // 4..9
+    const range = 1.5 + rng() * 2.5;
+    const cr = 15 + range + discR + rng() * 16; // inner edge stays >= 15 from centre
+    const x = cx + Math.cos(ang) * cr;
+    const z = cz + Math.sin(ang) * cr;
+    const m = new THREE.Mesh(
+      fogGeo,
+      track(new THREE.MeshBasicMaterial({ map: T.fog, transparent: true, depthWrite: false, color: 0xd8d5ec }))
+    );
+    m.position.set(x, GY + 0.5 + rng() * 0.8, z);
+    m.rotation.x = -Math.PI / 2 + (rng() - 0.5) * 0.25;
+    m.rotation.z = rng() * 6.28;
+    m.scale.set(discR * 2, discR * 2 * (0.7 + rng() * 0.4), 1);
+    m.renderOrder = 5;
+    group.add(m);
+    animated.fog.push({
+      mesh: m,
+      baseX: x, baseZ: z,
+      spd: 0.07 + rng() * 0.1,
+      range,
+      spin: (rng() - 0.5) * 0.04,
+      phase: rng() * 6.28,
+      baseOp: 0.07 + rng() * 0.09,
+    });
+  }
 
   function dispose() {
     for (const d of disposables) d.dispose?.();

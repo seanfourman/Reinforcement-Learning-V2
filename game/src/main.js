@@ -114,6 +114,12 @@ renderer.setAnimationLoop(() => {
     for (const { light, phase } of current.animated.lanternLights) {
       light.intensity = 7 + Math.sin(t * 6.5 + phase) * 0.7 + Math.sin(t * 11.3 + phase * 2) * 0.4;
     }
+    for (const f of current.animated.fog) {
+      f.mesh.position.x = f.baseX + Math.sin(t * f.spd + f.phase) * f.range;
+      f.mesh.position.z = f.baseZ + Math.cos(t * f.spd * 0.8 + f.phase) * f.range;
+      f.mesh.rotation.z += f.spin * dt;
+      f.mesh.material.opacity = f.baseOp * (0.7 + 0.3 * Math.sin(t * 0.5 + f.phase));
+    }
   }
 
   fx.composer.render();
