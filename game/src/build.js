@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TILE_H, WALL_H, OUTER_WALL_H, PALETTE, BANNER_COLORS } from './config.js';
+import { mulberry32 } from './generate.js';
 
 // Turns a generated world layout into meshes. Everything repeated is
 // instanced so the whole scene stays at a few dozen draw calls.
@@ -9,6 +10,10 @@ const dummy = new THREE.Object3D();
 export function buildWorld(world, T) {
   const group = new THREE.Group();
   const { size, wall, gates, crystals, decals, outerGate, rng } = world;
+  // Everything OUTSIDE the castle (ground, trees, rocks, fog) is decoration and
+  // must look the same every time, so it runs off a fixed seed instead of the
+  // per-regeneration world seed. Only the interior puzzle reshuffles.
+  const nrng = mulberry32(0x5eed1ace);
   const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [] };
   const disposables = [];
 
@@ -39,10 +44,11 @@ export function buildWorld(world, T) {
   const tint = (hex, jitter = 0.04) =>
     new THREE.Color(hex).offsetHSL(0, 0, (rng() - 0.5) * jitter * 2);
 
-  // smooth value noise on a per-seed lattice — large-scale ground variation
+  // smooth value noise on a FIXED lattice — large-scale ground variation that
+  // is identical every regeneration
   const noiseN = 48;
   const noiseGrid = new Float32Array(noiseN * noiseN);
-  for (let i = 0; i < noiseGrid.length; i++) noiseGrid[i] = rng();
+  for (let i = 0; i < noiseGrid.length; i++) noiseGrid[i] = nrng();
   const smooth = (t) => t * t * (3 - 2 * t);
   const gridAt = (a, b) =>
     noiseGrid[(((a % noiseN) + noiseN) % noiseN) * noiseN + (((b % noiseN) + noiseN) % noiseN)];
@@ -434,6 +440,12 @@ export function buildWorld(world, T) {
   instanced(bannerGeo, bannerMat, banners, { cast: false });
 
   // ------------------------------------------------------------ outside nature
+  // Everything in this block runs off the FIXED nature seed (see nrng above),
+  // so the trees/rocks/bushes/fog look identical on every regeneration.
+  {
+  const rng = nrng;
+  const tint = (hex, jitter = 0.04) =>
+    new THREE.Color(hex).offsetHSL(0, 0, (rng() - 0.5) * jitter * 2);
   const GY = -0.06; // outside ground level
 
   // Deform a primitive into an organic shape. Critically the displacement is a
@@ -657,6 +669,7 @@ export function buildWorld(world, T) {
       baseOp: 0.07 + rng() * 0.09,
     });
   }
+  } // end fixed-seed outside decoration
 
   function dispose() {
     for (const d of disposables) d.dispose?.();
