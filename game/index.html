@@ -15,31 +15,10 @@
       }
       #app { position: fixed; inset: 0; }
       canvas { display: block; }
-      .hud {
-        position: fixed;
-        left: 14px;
-        bottom: 14px;
-        padding: 9px 14px;
-        border-radius: 10px;
-        background: rgba(20, 16, 32, 0.55);
-        color: #e8e2f4;
-        font-size: 13px;
-        letter-spacing: 0.02em;
-        backdrop-filter: blur(6px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        user-select: none;
-        pointer-events: none;
-      }
-      .hud b { color: #ffd9a0; font-weight: 600; }
-      .hud .seed { opacity: 0.55; margin-left: 10px; }
     </style>
   </head>
   <body>
     <div id="app"></div>
-    <div class="hud">
-      <b>Drag</b> / <b>WASD</b> pan &nbsp;·&nbsp; <b>Scroll</b> zoom &nbsp;·&nbsp; <b>R</b> regenerate
-      <span class="seed" id="seed"></span>
-    </div>
     <script type="importmap">
       {
         "imports": {

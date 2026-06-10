@@ -7,7 +7,6 @@ import { createCameraRig } from './camera.js';
 import { createPostFX } from './postfx.js';
 
 const app = document.getElementById('app');
-const seedLabel = document.getElementById('seed');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = true;
@@ -74,7 +73,7 @@ function regenerate(seed) {
   const world = generateWorld(seed);
   current = buildWorld(world, textures);
   scene.add(current.group);
-  seedLabel.textContent = `seed ${world.seed}`;
+  console.log(`world seed: ${world.seed}`);
 }
 regenerate();
 

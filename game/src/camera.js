@@ -11,12 +11,28 @@ export function createCameraRig(camera, dom) {
   let dist = CAMERA.startDist;
   let distGoal = dist;
 
-  const lo = -CAMERA.panMargin;
-  const hi = GRID + CAMERA.panMargin;
+  // Clamp the *visible* ground footprint, not just the look-at point: the
+  // edge of the screen may reach at most panMargin units past the outer
+  // walls, no matter the zoom level or window shape.
+  const halfFov = THREE.MathUtils.degToRad(CAMERA.fov / 2);
+  const B0 = -1 - CAMERA.panMargin; // outer walls sit at -1 and GRID+1
+  const B1 = GRID + 1 + CAMERA.panMargin;
   const clampGoal = () => {
-    goal.x = THREE.MathUtils.clamp(goal.x, lo, hi);
-    goal.z = THREE.MathUtils.clamp(goal.z, lo, hi);
     distGoal = THREE.MathUtils.clamp(distGoal, CAMERA.minDist, CAMERA.maxDist);
+    const p = CAMERA.pitch;
+    const h = distGoal * Math.sin(p);
+    const halfW = distGoal * Math.tan(halfFov) * camera.aspect;
+    const farZ = h / Math.tan(p - halfFov) - h / Math.tan(p); // ground seen above the target
+    const nearZ = h / Math.tan(p) - h / Math.tan(p + halfFov); // ground seen below it
+    const c = GRID / 2;
+    // sides: footprint clamp, but never tighter than ±minSidePan of drift
+    const loX = Math.min(B0 + halfW, c - CAMERA.minSidePan);
+    const hiX = Math.max(B1 - halfW, c + CAMERA.minSidePan);
+    // top gets a little extra reach; bottom stays exact
+    const loZ = Math.min(B0 + farZ - CAMERA.topReach, c - CAMERA.minSidePan);
+    const hiZ = Math.max(B1 - nearZ, c + CAMERA.minSidePan);
+    goal.x = THREE.MathUtils.clamp(goal.x, loX, hiX);
+    goal.z = THREE.MathUtils.clamp(goal.z, loZ, hiZ);
   };
 
   // --- mouse drag pan -------------------------------------------------------
