@@ -454,7 +454,7 @@ export function buildWorld(world, T) {
   }
 
   const rockGeo = deform(geo(new THREE.IcosahedronGeometry(1, 1)), 0.55, 0.82); // faceted boulder
-  const canopyGeo = deform(geo(new THREE.SphereGeometry(1, 9, 7)), 0.16); // smooth round top
+  const canopyGeo = deform(geo(new THREE.IcosahedronGeometry(1, 1)), 0.22); // faceted low-poly crown
   const bushGeo = deform(geo(new THREE.IcosahedronGeometry(1, 1)), 0.5); // chunky leafy bush
   const trunkGeo = geo(new THREE.CylinderGeometry(0.12, 0.2, 1, 6, 1));
   const pineGeo = geo(new THREE.ConeGeometry(1, 1, 7));
@@ -588,15 +588,23 @@ export function buildWorld(world, T) {
     water.renderOrder = 2;
     group.add(water);
     animated.water.push({ tex: waterTex, mat: waterMat });
-    // leafy plants just past the wavy waterline, + rim rocks
-    for (let i = 0, n = Math.floor(L.r * 4); i < n; i++) {
-      const a = rng() * 6.28, rr = L.r + 0.7 + rng() * 0.7;
+    // leafy plants just past the wavy waterline, + rim rocks (all spaced)
+    for (let i = 0, n = Math.floor(L.r * 5); i < n; i++) {
+      const a = rng() * 6.28, rr = L.r + 0.7 + rng() * 0.9;
+      const x = L.x + Math.cos(a) * rr, z = L.z + Math.sin(a) * rr;
       const s = 0.3 + rng() * 0.45;
-      shrubs.push({ x: L.x + Math.cos(a) * rr, y: GY + s * 0.42, z: L.z + Math.sin(a) * rr, sx: s, sy: s * (0.8 + rng() * 0.4), sz: s, ry: rng() * 6.28, color: pickGreen() });
+      const r = s * 0.95 + 0.12;
+      if (!noOverlap(x, z, r)) continue;
+      placed.push({ x, z, r });
+      shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.8 + rng() * 0.4), sz: s, ry: rng() * 6.28, color: pickGreen() });
     }
-    for (let i = 0, n = 4 + ((rng() * 4) | 0); i < n; i++) {
-      const a = rng() * 6.28, rr = L.r + 0.8 + rng() * 0.6, rs = 0.4 + rng() * 0.8;
-      rocks.push({ x: L.x + Math.cos(a) * rr, y: GY + rs * 0.3 - 0.06, z: L.z + Math.sin(a) * rr, s: rs, sy: rs * (0.6 + rng() * 0.4), rx: (rng() - 0.5) * 0.4, ry: rng() * 6.28, rz: (rng() - 0.5) * 0.4, color: tint(0x887b6e, 0.08) });
+    for (let i = 0, n = 6 + ((rng() * 4) | 0); i < n; i++) {
+      const a = rng() * 6.28, rr = L.r + 0.8 + rng() * 0.8, rs = 0.4 + rng() * 0.8;
+      const x = L.x + Math.cos(a) * rr, z = L.z + Math.sin(a) * rr;
+      const r = rs * 0.9 + 0.15;
+      if (!noOverlap(x, z, r)) continue;
+      placed.push({ x, z, r });
+      rocks.push({ x, y: GY + rs * 0.3 - 0.06, z, s: rs, sy: rs * (0.6 + rng() * 0.4), rx: (rng() - 0.5) * 0.4, ry: rng() * 6.28, rz: (rng() - 0.5) * 0.4, color: tint(0x887b6e, 0.08) });
     }
     // ducks gliding around naturally (wander handled in the main loop)
     for (let i = 0, n = 2 + ((rng() * 2) | 0); i < n; i++) {
@@ -673,29 +681,44 @@ export function buildWorld(world, T) {
     hilt.position.set(sx, rockTopY + 1.4, sz);
     group.add(hilt);
     // a sparse ring of moss tufts just OUTSIDE the stones, framing not burying
-    for (let i = 0; i < 12; i++) {
+    // (spaced against each other only — the shrine's own keep-out zone would
+    // otherwise reject them all)
+    const mossLocal = [];
+    for (let i = 0; i < 14; i++) {
       const a = rng() * 6.28, rr = ring + 0.6 + rng() * 1.6;
+      const x = sx + Math.cos(a) * rr, z = sz + Math.sin(a) * rr;
       const s = 0.3 + rng() * 0.4;
-      shrubs.push({ x: sx + Math.cos(a) * rr, y: GY + s * 0.42, z: sz + Math.sin(a) * rr, sx: s, sy: s * 0.8, sz: s, ry: rng() * 6.28, color: pickGreen() });
+      const r = s * 0.95 + 0.12;
+      if (mossLocal.some((p) => (x - p.x) ** 2 + (z - p.z) ** 2 < (r + p.r) ** 2)) continue;
+      mossLocal.push({ x, z, r });
+      placed.push({ x, z, r });
+      shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * 0.8, sz: s, ry: rng() * 6.28, color: pickGreen() });
     }
   }
 
   function addDeciduous(x, z, scale) {
     treeAnchors.push([x, z]);
-    const h = (1.0 + rng() * 0.7) * scale;
+    const h = (1.05 + rng() * 0.7) * scale;
     trunks.push({ x, y: GY + h * 0.5, z, sx: scale, sy: h, sz: scale, ry: rng() * 6.28, color: tint(0x6f4d34, 0.08) });
     const top = GY + h;
-    const r = (0.75 + rng() * 0.35) * scale;
-    canopies.push({ x, y: top + r * 0.55, z, sx: r, sy: r * (0.9 + rng() * 0.2), sz: r, ry: rng() * 6.28, color: pickGreen() });
-    if (rng() < 0.6) {
-      const r2 = r * 0.68;
-      canopies.push({
-        x: x + (rng() - 0.5) * 0.5 * scale,
-        y: top + r * 0.95,
-        z: z + (rng() - 0.5) * 0.5 * scale,
-        sx: r2, sy: r2, sz: r2, ry: rng() * 6.28, color: pickGreen(),
-      });
-    }
+    const r = (0.72 + rng() * 0.3) * scale;
+    const col = pickGreen();
+    // one clean faceted crown ball, slightly squashed, sitting on the trunk
+    canopies.push({
+      x, y: top + r * 0.62, z,
+      sx: r, sy: r * (0.82 + rng() * 0.16), sz: r,
+      ry: rng() * 6.28, color: col,
+    });
+    // a smaller blob tucked into the lower side for an organic silhouette
+    // (kept BELOW the crown centre so nothing pokes out of the top)
+    const ang = rng() * 6.28, r2 = r * 0.6;
+    canopies.push({
+      x: x + Math.cos(ang) * r * 0.5,
+      y: top + r * 0.32,
+      z: z + Math.sin(ang) * r * 0.5,
+      sx: r2, sy: r2 * 0.85, sz: r2,
+      ry: rng() * 6.28, color: col.clone().offsetHSL(0, 0, (rng() - 0.5) * 0.06),
+    });
   }
   function addPine(x, z, scale) {
     treeAnchors.push([x, z]);
@@ -715,7 +738,7 @@ export function buildWorld(world, T) {
   // footprint ~ canopy radius so no two trees' crowns overlap/touch.
   for (let i = 0; i < 88; i++) {
     const scale = 0.8 + rng() * 0.95;
-    const spot = freeSpot(0.8 * scale + 0.35, 2.4, 18, 0.45, 2.2);
+    const spot = freeSpot(1.0 * scale + 0.35, 2.4, 18, 0.45, 2.2);
     if (!spot) continue;
     if (rng() < 0.5) addPine(spot[0], spot[1], scale);
     else addDeciduous(spot[0], spot[1], scale);
@@ -725,17 +748,19 @@ export function buildWorld(world, T) {
     const clear = 2.4 + Math.pow(rng(), 1.4) * 13;
     const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
     const scale = 0.8 + rng() * 0.9;
-    const r = 0.8 * scale + 0.35;
+    const r = 1.0 * scale + 0.35;
     if (blocked(x, z, 1.2) || !noOverlap(x, z, r)) continue;
     placed.push({ x, z, r });
     if (rng() < 0.5) addPine(x, z, scale);
     else addDeciduous(x, z, scale);
   }
-  for (let i = 0; i < 34; i++) {
+  for (let i = 0; i < 40; i++) {
     const clear = 1.4 + rng() * 13;
     const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
-    if (blocked(x, z, 0.4)) continue;
     const s = 0.28 + rng() * 0.5;
+    const r = s * 0.95 + 0.12;
+    if (blocked(x, z, 0.4) || !noOverlap(x, z, r)) continue;
+    placed.push({ x, z, r });
     shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
   }
   // rocks, often near groves
@@ -756,19 +781,22 @@ export function buildWorld(world, T) {
     if (!spot) continue;
     logs.push({ x: spot[0], y: GY + 0.2, z: spot[1], rx: Math.PI / 2, ry: rng() * 6.28, color: tint(0x6b4a33, 0.08) });
   }
-  // bushes / shrubs as ground cover (evenly all around the castle)
-  for (let i = 0; i < 320; i++) {
-    const [x, z] = coverSpot(1.2, 16, 0.45, 2.4, 1.1);
+  // bushes / shrubs as ground cover — spaced like everything else (no touching)
+  for (let i = 0; i < 380; i++) {
     const s = 0.28 + rng() * 0.55;
-    shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
+    const spot = freeSpot(s * 0.95 + 0.12, 1.0, 16, 0.5, 1.0);
+    if (!spot) continue;
+    shrubs.push({ x: spot[0], y: GY + s * 0.42, z: spot[1], sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
   }
-  // little mushroom clusters
-  for (let c = 0; c < 26; c++) {
-    const [bx, bz] = coverSpot(1, 14, 0.7, 1.6, 0.9);
+  // little mushroom clusters — the cluster is spaced, mushrooms within it sit together
+  for (let c = 0; c < 24; c++) {
+    const center = freeSpot(0.7, 1.0, 14, 0.6, 1.0);
+    if (!center) continue;
+    const [bx, bz] = center;
     const n = 1 + ((rng() * 3) | 0);
     const capCol = rng() < 0.5 ? 0xcc4036 : 0xd98a3c;
     for (let k = 0; k < n; k++) {
-      const x = bx + (rng() - 0.5) * 0.6, z = bz + (rng() - 0.5) * 0.6;
+      const x = bx + (rng() - 0.5) * 0.5, z = bz + (rng() - 0.5) * 0.5;
       const ms = 0.6 + rng() * 0.7;
       mushStems.push({ x, y: GY + 0.11 * ms, z, sx: ms, sy: ms, sz: ms, color: new THREE.Color(0xf0e7d6) });
       mushCaps.push({ x, y: GY + 0.22 * ms, z, sx: ms, sy: ms * 0.6, sz: ms, color: new THREE.Color(capCol) });
@@ -776,7 +804,7 @@ export function buildWorld(world, T) {
   }
 
   instanced(trunkGeo, mat({ roughness: 0.95, flatShading: true }), trunks);
-  instanced(canopyGeo, mat({ roughness: 0.85 }), canopies); // smooth round tops
+  instanced(canopyGeo, mat({ roughness: 0.85, flatShading: true }), canopies); // faceted crowns
   instanced(pineGeo, mat({ roughness: 0.85, flatShading: true }), pines);
   instanced(rockGeo, mat({ roughness: 1, flatShading: true }), rocks);
   instanced(bushGeo, mat({ roughness: 0.9, flatShading: true }), shrubs, { cast: false });
