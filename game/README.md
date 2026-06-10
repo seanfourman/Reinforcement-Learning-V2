@@ -14,9 +14,9 @@ is bundled in `vendor/`.
 
 ## Run
 
-- **Windows:** double-click `Play.bat`
-- **Mac/Linux:** `python3 serve.py` (or double-click `Play.command` after a
-  one-time `chmod +x Play.command`)
+```sh
+python serve.py
+```
 
 A local server starts and the game opens in your default browser. Keep the
 console window open while playing.

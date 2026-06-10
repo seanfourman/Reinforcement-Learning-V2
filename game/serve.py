@@ -2,7 +2,6 @@
 """Serves the game and opens it in the browser.
 
 Run with:  python serve.py
-(or double-click Play.bat on Windows / Play.command on Mac)
 
 No dependencies — standard library only. This little server is also where
 the Python RL backend will plug in later.
