@@ -14,7 +14,7 @@ export function buildWorld(world, T) {
   // must look the same every time, so it runs off a fixed seed instead of the
   // per-regeneration world seed. Only the interior puzzle reshuffles.
   const nrng = mulberry32(0x5eed1ace);
-  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [], water: [], ducks: [] };
+  const animated = { crystalMats: [], energyMats: [], torches: [], banners: [], fog: [], water: [], ducks: [] };
   const disposables = [];
 
   const track = (obj) => {
@@ -189,8 +189,7 @@ export function buildWorld(world, T) {
   const mossMat = mat({ color: 0xffffff, roughness: 1 });
   instanced(mossGeo, mossMat, mossItems, { cast: false });
 
-  // ------------------------------------------------------------ outer walls
-  const H = OUTER_WALL_H;
+  // ============================================================ castle
   const outerTex = track(T.outerWall.clone());
   outerTex.repeat.set(5, 1.4);
   const outerMat = mat({ map: outerTex, roughness: 0.95 });
@@ -204,82 +203,88 @@ export function buildWorld(world, T) {
     return b;
   };
 
-  // full-height walls on all four sides
-  const wallNS = geo(new THREE.BoxGeometry(size + 2, H, 1));
-  const wallWE = geo(new THREE.BoxGeometry(1, H, size));
-  addBox(wallNS, outerMat, size / 2, H / 2, -0.5);
-  addBox(wallNS, outerMat, size / 2, H / 2, size + 0.5);
-  addBox(wallWE, outerMat, -0.5, H / 2, size / 2);
-  addBox(wallWE, outerMat, size + 0.5, H / 2, size / 2);
-  // wood top beams
-  const beamNS = geo(new THREE.BoxGeometry(size + 2, 0.1, 0.28));
-  const beamWE = geo(new THREE.BoxGeometry(0.28, 0.1, size));
-  addBox(beamNS, woodMat, size / 2, H + 0.05, -0.16);
-  addBox(beamNS, woodMat, size / 2, H + 0.05, size + 0.16);
-  addBox(beamWE, woodMat, -0.16, H + 0.05, size / 2);
-  addBox(beamWE, woodMat, size + 0.16, H + 0.05, size / 2);
+  // Walls are the SAME height all around. The gate is at the BACK (north) centre.
+  const H = 1.9;
+  const northZ = -0.5, southZ = size + 0.5;
+  const GAP = 2.2; // half-width of the back gate opening
+  const doorH = 1.45; // gate doorway height
+  const segW = size / 2 - GAP + 1;
+  const segLcx = (-1 + size / 2 - GAP) / 2;
+  const segRcx = (size / 2 + GAP + size + 1) / 2;
 
-  // crenellations
-  const crenGeo = geo(new THREE.BoxGeometry(0.55, 0.45, 0.55));
-  const cc = () => tint(0xcfc2ba, 0.05);
-  const crens = [];
-  for (let t = -0.7; t <= size + 0.7; t += 1.15) {
-    crens.push({ x: t, y: H + 0.22, z: -0.8, color: cc() });
-    crens.push({ x: t, y: H + 0.22, z: size + 0.8, color: cc() });
-    crens.push({ x: -0.8, y: H + 0.22, z: t, color: cc() });
-    crens.push({ x: size + 0.8, y: H + 0.22, z: t, color: cc() });
-  }
-  instanced(crenGeo, stoneTopMat, crens);
+  // --- walls (front + sides solid, back split around the gate) ---
+  addBox(geo(new THREE.BoxGeometry(size + 2, H, 1)), outerMat, size / 2, H / 2, southZ);
+  addBox(geo(new THREE.BoxGeometry(1, H, size)), outerMat, -0.5, H / 2, size / 2);
+  addBox(geo(new THREE.BoxGeometry(1, H, size)), outerMat, size + 0.5, H / 2, size / 2);
+  addBox(geo(new THREE.BoxGeometry(segW, H, 1)), outerMat, segLcx, H / 2, northZ);
+  addBox(geo(new THREE.BoxGeometry(segW, H, 1)), outerMat, segRcx, H / 2, northZ);
+  addBox(geo(new THREE.BoxGeometry(2 * GAP, H - doorH, 1)), outerMat, size / 2, doorH + (H - doorH) / 2, northZ);
 
-  // ------------------------------------------------------------ towers
+  // --- clean stone coping cap along every wall top (no battlement boxes, no beam) ---
+  const copY = H + 0.08, cd = 1.28;
+  addBox(geo(new THREE.BoxGeometry(size + 2.3, 0.16, cd)), stoneTopMat, size / 2, copY, southZ);
+  addBox(geo(new THREE.BoxGeometry(cd, 0.16, size)), stoneTopMat, -0.5, copY, size / 2);
+  addBox(geo(new THREE.BoxGeometry(cd, 0.16, size)), stoneTopMat, size + 0.5, copY, size / 2);
+  addBox(geo(new THREE.BoxGeometry(segW + 0.3, 0.16, cd)), stoneTopMat, segLcx, copY, northZ);
+  addBox(geo(new THREE.BoxGeometry(segW + 0.3, 0.16, cd)), stoneTopMat, segRcx, copY, northZ);
+  addBox(geo(new THREE.BoxGeometry(2 * GAP, 0.16, cd)), stoneTopMat, size / 2, copY, northZ);
+
+  // --- four corner towers: tall + grand, sitting OUTSIDE the grid (projecting
+  //     out from the corners) so they don't sit on the play area ---
   const roofMat = mat({ map: T.roof, roughness: 0.8 });
-  const finialMat = mat({ color: PALETTE.finial, emissive: PALETTE.finial, emissiveIntensity: 0.25, roughness: 0.4 });
-  const finialGeo = geo(new THREE.SphereGeometry(0.14, 8, 8));
-  const poleGeo = geo(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 5));
-  const flagGeo = geo(new THREE.PlaneGeometry(0.55, 0.3));
-  const merlonGeo = geo(new THREE.BoxGeometry(0.3, 0.36, 0.3));
-  const merlons = [];
-  function buildTower(cx, cz, R, hgt, flagColor) {
-    const t = addBox(geo(new THREE.CylinderGeometry(R, R * 1.28, hgt, 8)), outerMat, cx, hgt / 2, cz);
-    t.rotation.y = Math.PI / 8; // FIXED so towers don't spin on regenerate
-    const band = addBox(geo(new THREE.CylinderGeometry(R * 1.08, R * 1.08, 0.24, 8)), stoneTopMat, cx, hgt - 0.55, cz);
-    band.rotation.y = Math.PI / 8;
-    for (let k = 0; k < 8; k++) {
-      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
-      merlons.push({ x: cx + Math.cos(a) * R * 1.05, y: hgt + 0.12, z: cz + Math.sin(a) * R * 1.05, ry: a, color: cc() });
-    }
-    const roof = addBox(geo(new THREE.ConeGeometry(R * 1.5, 1.9, 8)), roofMat, cx, hgt + 1.05, cz);
-    roof.rotation.y = Math.PI / 8;
-    addBox(finialGeo, finialMat, cx, hgt + 2.05, cz).castShadow = false;
-    addBox(poleGeo, woodMat, cx, hgt + 2.45, cz).castShadow = false;
-    const flag = new THREE.Mesh(flagGeo, mat({ color: flagColor, side: THREE.DoubleSide, roughness: 0.9 }));
-    flag.position.set(cx + 0.3, hgt + 2.7, cz);
-    group.add(flag);
+  const finialMat = mat({ color: PALETTE.finial, emissive: PALETTE.finial, emissiveIntensity: 0.3, roughness: 0.4 });
+  const finialGeo = geo(new THREE.SphereGeometry(0.16, 8, 8));
+  function buildTower(cx, cz) {
+    const R = 1.18, body = 2.8;
+    addBox(geo(new THREE.CylinderGeometry(R, R * 1.2, body, 8)), outerMat, cx, body / 2, cz).rotation.y = Math.PI / 8;
+    addBox(geo(new THREE.CylinderGeometry(R * 1.12, R * 1.12, 0.26, 8)), stoneTopMat, cx, body + 0.05, cz).rotation.y = Math.PI / 8;
+    addBox(geo(new THREE.ConeGeometry(R * 1.5, 1.5, 8)), roofMat, cx, body + 0.92, cz).rotation.y = Math.PI / 8;
+    addBox(finialGeo, finialMat, cx, body + 1.82, cz).castShadow = false;
   }
-  const corners = [[-0.5, -0.5], [size + 0.5, -0.5], [-0.5, size + 0.5], [size + 0.5, size + 0.5]];
-  corners.forEach(([cx, cz], i) => buildTower(cx, cz, 1.05, 3.8, BANNER_COLORS[i % BANNER_COLORS.length]));
-  instanced(merlonGeo, stoneTopMat, merlons);
+  const TO = 2.0; // how far the towers project outward from the corners
+  buildTower(-TO, -TO);
+  buildTower(size + TO, -TO);
+  buildTower(-TO, size + TO);
+  buildTower(size + TO, size + TO);
 
-  // ------------------------------------------------------------ lanterns
-  const cageGeo = geo(new THREE.BoxGeometry(0.17, 0.24, 0.17));
-  const glowGeo = geo(new THREE.SphereGeometry(0.075, 8, 8));
-  const cageMat = mat({ color: 0x2a2024, roughness: 0.6, metalness: 0.4 });
-  const glowMat = mat({ color: PALETTE.lantern, emissive: PALETTE.lantern, emissiveIntensity: 1.7 });
-  const lanternPos = [];
-  for (const t of [2.5, 7.5, 12.5, 17.5]) {
-    lanternPos.push([t, 0.16], [t, size - 0.16], [0.16, t], [size - 0.16, t]);
+  // --- back gate: stone arch with solid wooden doors + iron bands ---
+  {
+    const doorMat = mat({ color: 0x6b4a2c, roughness: 0.85 });
+    const ironMat = mat({ color: 0x33302b, roughness: 0.6, metalness: 0.4 });
+    addBox(geo(new THREE.BoxGeometry(0.5, doorH, 0.8)), outerMat, size / 2 - GAP, doorH / 2, northZ + 0.25); // jambs
+    addBox(geo(new THREE.BoxGeometry(0.5, doorH, 0.8)), outerMat, size / 2 + GAP, doorH / 2, northZ + 0.25);
+    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.0, 0.28, 0.85)), stoneTopMat, size / 2, doorH + 0.1, northZ + 0.25); // lintel
+    addBox(geo(new THREE.BoxGeometry(0.42, 0.44, 0.9)), stoneTopMat, size / 2, doorH + 0.14, northZ + 0.22); // keystone
+    const leafW = GAP - 0.06;
+    for (const s of [-1, 1]) {
+      const lx = size / 2 + s * (leafW / 2 + 0.02);
+      addBox(geo(new THREE.BoxGeometry(leafW, doorH - 0.08, 0.14)), doorMat, lx, (doorH - 0.08) / 2, northZ + 0.06);
+      for (const by of [doorH * 0.26, doorH * 0.72]) {
+        addBox(geo(new THREE.BoxGeometry(leafW, 0.1, 0.18)), ironMat, lx, by, northZ + 0.06).castShadow = false;
+      }
+    }
   }
-  const cages = lanternPos.map(([x, z]) => ({ x, y: 1.65, z }));
-  const glows = lanternPos.map(([x, z]) => ({ x, y: 1.63, z }));
-  instanced(cageGeo, cageMat, cages, { cast: false });
-  instanced(glowGeo, glowMat, glows, { cast: false, receive: false });
-  // a few real lights for warm pools on the stone
-  [[7.5, 0.3], [12.5, size - 0.3], [0.3, 12.5], [size - 0.3, 7.5]].forEach(([x, z], i) => {
-    const l = new THREE.PointLight(0xffb070, 5, 7, 2);
-    l.position.set(x, 1.7, z);
-    group.add(l);
-    animated.lanternLights.push({ light: l, phase: i * 1.7 });
-  });
+
+  // --- torches on the inner faces: just a small flame, no glaring light ---
+  const flameGeo = geo(new THREE.ConeGeometry(0.12, 0.34, 7));
+  const flameMat = mat({ color: 0xffce86, emissive: 0xff9a3c, emissiveIntensity: 1.5 });
+  const bracketGeo = geo(new THREE.BoxGeometry(0.12, 0.16, 0.18));
+  const bracketMat = mat({ color: 0x2a2420, roughness: 0.7, metalness: 0.3 });
+  const buildTorch = (x, y, z) => {
+    addBox(bracketGeo, bracketMat, x, y, z).castShadow = false;
+    const flame = new THREE.Mesh(flameGeo, flameMat);
+    flame.position.set(x, y + 0.26, z);
+    flame.renderOrder = 4;
+    group.add(flame);
+    animated.torches.push({ flame, light: null, phase: rng() * 6.28 });
+  };
+  const torchY = H * 0.6;
+  for (const t of [4, 9, 14]) {
+    buildTorch(0.3, torchY, t);
+    buildTorch(size - 0.3, torchY, t);
+  }
+  buildTorch(4, torchY, 0.3);
+  buildTorch(size - 4, torchY, 0.3);
 
   // ------------------------------------------------------------ room gates
   const postGeo = geo(new THREE.BoxGeometry(0.26, 1.55, 0.26));
@@ -382,17 +387,46 @@ export function buildWorld(world, T) {
   );
 
   // ------------------------------------------------------------ banners
-  const bannerGeo = geo(new THREE.PlaneGeometry(0.55, 1.15));
-  const bannerMat = mat({ map: T.banner, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
-  const banners = [];
-  const bcol = () => new THREE.Color(BANNER_COLORS[(rng() * BANNER_COLORS.length) | 0]);
-  for (const t of [4.5, 10.5, 15.5]) {
-    banners.push({ x: t, y: 1.45, z: 0.1, rx: 0.07, color: bcol() });
-    banners.push({ x: t, y: 1.45, z: size - 0.1, ry: Math.PI, rx: 0.07, color: bcol() });
-    banners.push({ x: 0.1, y: 1.45, z: t, ry: Math.PI / 2, rx: 0.07, color: bcol() });
-    banners.push({ x: size - 0.1, y: 1.45, z: t, ry: -Math.PI / 2, rx: 0.07, color: bcol() });
-  }
-  instanced(bannerGeo, bannerMat, banners, { cast: false });
+  // draped cloth banners with a gold band + emblem; they sway in the loop.
+  // Positions are chosen to sit BETWEEN the torches, never on them.
+  const goldMat = mat({ color: 0xd8b25a, roughness: 0.5, metalness: 0.35 });
+  const bShape = new THREE.Shape();
+  bShape.moveTo(-0.3, 0.12);
+  bShape.lineTo(0.3, 0.12);
+  bShape.lineTo(0.3, -1.2);
+  bShape.lineTo(0, -0.95);
+  bShape.lineTo(-0.3, -1.2);
+  bShape.closePath();
+  const bannerShapeGeo = geo(new THREE.ShapeGeometry(bShape));
+  const bBandGeo = geo(new THREE.PlaneGeometry(0.62, 0.15));
+  const emblemGeo = geo(new THREE.CircleGeometry(0.12, 4));
+  const buildBanner = (x, y, z, ry, color) => {
+    const g = new THREE.Group();
+    const pivot = new THREE.Group(); // sways under wind in the loop
+    const cloth = new THREE.Mesh(bannerShapeGeo, mat({ color, side: THREE.DoubleSide, roughness: 0.9 }));
+    const band = new THREE.Mesh(bBandGeo, goldMat);
+    band.position.set(0, -0.08, 0.012);
+    const em = new THREE.Mesh(emblemGeo, goldMat);
+    em.position.set(0, -0.62, 0.012);
+    em.rotation.z = Math.PI / 4;
+    pivot.add(cloth, band, em);
+    g.add(pivot);
+    g.position.set(x, y, z);
+    g.rotation.y = ry;
+    g.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+    group.add(g);
+    animated.banners.push({ pivot, phase: rng() * 6.28 });
+  };
+  const bcol = (i) => new THREE.Color(BANNER_COLORS[i % BANNER_COLORS.length]);
+  const bTop = H - 0.12;
+  // sides: banners at z = 6.5 and 11.5 (torches are at 4, 9, 14 — no overlap)
+  buildBanner(0.12, bTop, 6.5, Math.PI / 2, bcol(0));
+  buildBanner(0.12, bTop, 11.5, Math.PI / 2, bcol(2));
+  buildBanner(size - 0.12, bTop, 6.5, -Math.PI / 2, bcol(1));
+  buildBanner(size - 0.12, bTop, 11.5, -Math.PI / 2, bcol(0));
+  // back: two flanking the gate (torches are out near the corners)
+  buildBanner(size / 2 - GAP - 1.4, bTop, northZ + 0.55, 0, bcol(1));
+  buildBanner(size / 2 + GAP + 1.4, bTop, northZ + 0.55, 0, bcol(2));
 
   // ------------------------------------------------------------ outside nature
   // Everything in this block runs off the FIXED nature seed (see nrng above),

@@ -111,8 +111,14 @@ renderer.setAnimationLoop(() => {
       mat.opacity = 0.4 + Math.sin(t * 2.4 + phase) * 0.09;
       mat.emissiveIntensity = 1.4 + Math.sin(t * 2.4 + phase) * 0.35;
     }
-    for (const { light, phase } of current.animated.lanternLights) {
-      light.intensity = 7 + Math.sin(t * 6.5 + phase) * 0.7 + Math.sin(t * 11.3 + phase * 2) * 0.4;
+    for (const to of current.animated.torches) {
+      const f = 0.82 + 0.18 * Math.sin(t * 11 + to.phase) + 0.1 * Math.sin(t * 23 + to.phase * 1.7);
+      to.flame.scale.set(0.9 + 0.2 * f, f, 0.9 + 0.2 * f);
+      if (to.light) to.light.intensity = 5 + f * 2.4;
+    }
+    for (const b of current.animated.banners) {
+      b.pivot.rotation.x = Math.sin(t * 1.4 + b.phase) * 0.11 + Math.sin(t * 3.1 + b.phase) * 0.04;
+      b.pivot.rotation.z = Math.sin(t * 1.1 + b.phase * 1.3) * 0.05;
     }
     for (const f of current.animated.fog) {
       f.mesh.position.x = f.baseX + Math.sin(t * f.spd + f.phase) * f.range;
