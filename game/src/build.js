@@ -323,8 +323,8 @@ export function buildWorld(world, T) {
     { axis: 'x', cx: size / 2, cz: southZ, L: size + 2, out: 1, m: wallMatLong, wm: walkMatX, pm: parMatLong, bt: [-7.5, -3.75, 0, 3.75, 7.5], sl: [-6.2, -2.1, 2.1, 6.2] },
     { axis: 'z', cx: -0.5, cz: size / 2, L: size, out: -1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7], sl: [-5.2, -1.8, 1.8, 5.2] },
     { axis: 'z', cx: size + 0.5, cz: size / 2, L: size, out: 1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7], sl: [-5.2, -1.8, 1.8, 5.2] },
-    { axis: 'x', cx: segLcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2] },
-    { axis: 'x', cx: segRcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2] },
+    { axis: 'x', cx: segLcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2], pio: 0.5 },
+    { axis: 'x', cx: segRcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2], pio: -0.5 },
   ];
   for (const r of runs) {
     const ax = r.axis === 'x';
@@ -332,17 +332,30 @@ export function buildWorld(world, T) {
     const at = (along, y, perp) => (ax ? [r.cx + along, y, r.cz + perp] : [r.cx + perp, y, r.cz + along]);
     const B = (len, h, th, along, y, perp, m) =>
       addBox(geo(new THREE.BoxGeometry(...dim(len, h, th))), m, ...at(along, y, perp));
-    B(r.L + 0.6, PL, TH + 0.3, 0, PL / 2 - 0.06, 0, plinthMat); // plinth footing
+    B(ax ? r.L + 0.6 : r.L - 0.3, PL, TH + 0.3, 0, PL / 2 - 0.06, 0, plinthMat); // plinth footing
     B(r.L, H, TH, 0, H / 2 + 0.02, 0, r.m); // wall body
     B(r.L, 0.09, 0.07, 0, 1.28, (TH / 2 + 0.045) * r.out, stoneMat); // string course
-    B(r.L + 0.16, 0.12, TH + 0.22, 0, H + 0.08, 0, r.wm); // walkway slab
-    B(r.L, 0.26, 0.2, 0, H + 0.27, 0.5 * r.out, r.pm); // outer parapet (brick)
-    B(r.L, 0.14, 0.13, 0, H + 0.21, -0.45 * r.out, r.wm); // inner lip
-    for (let a = -r.L / 2 + 0.35; a <= r.L / 2 - 0.35; a += 1.0) {
-      const [x, y, z] = at(a, H + 0.58, 0.5 * r.out);
-      if (nearTower(x, z, 2.1)) continue;
-      if (r.cz === northZ && Math.abs(x - size / 2) < 4.1) continue; // gatehouse zone
-      merlons.push({ x, y, z, ry: ax ? 0 : Math.PI / 2, color: tint(0xffffff, 0.05) });
+    // walkway floor strictly BETWEEN the parapets, never reaching the wall
+    // faces -> no foreign stone band shows on the side of the wall
+    B(ax ? r.L + 0.16 : r.L + 0.34, 0.12, 0.66, 0, H + 0.08, 0, r.wm);
+    // matching crenellated parapets on BOTH walkway edges, flush with the wall
+    // faces and seated directly on the wall body so the brick runs unbroken
+    // from ground to teeth. The x-walls own the corner cells and the z-walls
+    // end exactly against them, so the battlements TURN each corner instead
+    // of running through one another.
+    const gd = Math.sign(r.pio ?? 0); // which end faces the gatehouse (north runs)
+    const rows = [
+      { len: ax ? (r.cz === northZ ? r.L + 0.1 : r.L) : r.L + 1.6, off: gd * 0.05, side: 1 },
+      { len: ax ? (r.cz === northZ ? r.L - 0.7 : r.L - 1.6) : r.L, off: gd * 0.45, side: -1 },
+    ];
+    for (const row of rows) {
+      B(row.len, 0.26, 0.2, row.off, H + 0.15, row.side * 0.4 * r.out, r.pm); // parapet (brick)
+      for (let a = row.off - row.len / 2 + 0.35; a <= row.off + row.len / 2 - 0.35; a += 1.0) {
+        const [x, y, z] = at(a, H + 0.47, row.side * 0.37 * r.out);
+        if (row.side > 0 && nearTower(x, z, 2.1)) continue;
+        if (r.cz === northZ && Math.abs(x - size / 2) < 4.1) continue; // gatehouse zone
+        merlons.push({ x, y, z, ry: ax ? 0 : Math.PI / 2, color: tint(0xffffff, 0.05) });
+      }
     }
     for (const a of r.bt) {
       const ry = ax ? 0 : Math.PI / 2;
@@ -402,11 +415,13 @@ export function buildWorld(world, T) {
       if (i === 0) continue; // the banner hangs here
       addBox(geo(new THREE.BoxGeometry(0.2, 0.26, 0.2)), stoneMat, cxg + i * 0.68, 2.62, northZ + 0.66);
     }
-    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.5, 0.13, 1.5)), walkMatX, cxg, 2.815, northZ + 0.08); // walk slab
-    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.4, 0.28, 0.18)), mat({ map: brickFit(4.6, 0.22), roughness: 0.95 }), cxg, 3.02, northZ - 0.5); // outer parapet
-    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.4, 0.16, 0.13)), mat({ map: stoneFit(4.5, 1), color: 0xddd2c4, roughness: 0.95 }), cxg, 2.96, northZ + 0.6); // inner rail
-    for (let a = -2.1; a <= 2.1; a += 0.84) {
-      merlons.push({ x: cxg + a, y: 3.34, z: northZ - 0.5, ry: 0, color: tint(0xffffff, 0.05) });
+    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.5, 0.12, 1.19)), walkMatX, cxg, 2.81, northZ + 0.235); // walk floor between the parapets
+    const bridgeParMat = mat({ map: brickFit(4.6, 0.22), roughness: 0.95 });
+    for (const bz of [northZ - 0.45, northZ + 0.7]) {
+      addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.4, 0.28, 0.18)), bridgeParMat, cxg, 2.89, bz); // parapets
+      for (let a = -2.1; a <= 2.1; a += 0.84) {
+        merlons.push({ x: cxg + a, y: 3.22, z: bz, ry: 0, color: tint(0xffffff, 0.05) });
+      }
     }
     // doorway dressing: jambs, chamfered arch corners, lintel band, keystone
     for (const s of [-1, 1]) {

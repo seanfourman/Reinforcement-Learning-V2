@@ -379,7 +379,7 @@ export function createTextures() {
     floorSide: overridable('floor_side', floorSideCanvas()),
     wall: overridable('wall', brickCanvas('#dfc6a0', 'rgba(150,118,86,0.55)', 4, 0.09)),
     wallTop: overridable('wall_top', wallTopCanvas('#cdb191')),
-    outerWall: overridable('outer_wall', brickCanvas('#b6a49b', 'rgba(100,85,80,0.7)', 5, 0.1), { wrap: true }),
+    outerWall: overridable('outer_wall', brickCanvas('#b6a49b', 'rgba(75,60,55,0.85)', 5, 0.14), { wrap: true }),
     ground: overridable('ground', groundCanvas()),
     outsideGround: overridable('outside_ground', outsideGroundCanvas(), { wrap: true }),
     roof: overridable('roof', roofCanvas()),
