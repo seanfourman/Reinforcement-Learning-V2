@@ -218,6 +218,30 @@ function fogCanvas() {
   return c;
 }
 
+// soft, low-contrast water shimmer (scrolled over time = gentle moving surface)
+function waterCanvas() {
+  const S = 512;
+  const [c, ctx] = makeCanvas(S, S);
+  ctx.fillStyle = '#4f97bd';
+  ctx.fillRect(0, 0, S, S);
+  const blot = (x, y, r, col) => {
+    for (const dx of [-S, 0, S]) {
+      for (const dy of [-S, 0, S]) {
+        if (Math.abs(x + dx - S / 2) > S / 2 + r || Math.abs(y + dy - S / 2) > S / 2 + r) continue;
+        const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+        g.addColorStop(0, col);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + dx - r, y + dy - r, r * 2, r * 2);
+      }
+    }
+  };
+  // big soft light patches — calm and pastel, not busy
+  for (let i = 0; i < 28; i++) blot(rand(0, S), rand(0, S), rand(60, 140), 'rgba(170,215,235,0.22)');
+  for (let i = 0; i < 22; i++) blot(rand(0, S), rand(0, S), rand(40, 90), 'rgba(70,140,175,0.20)');
+  return c;
+}
+
 // a little tuft of grass blades (transparent background, light so it tints)
 function grassCanvas() {
   const [c, ctx] = makeCanvas(128, 128);
@@ -322,5 +346,6 @@ export function createTextures() {
     decal: overridable('decal', decalCanvas()),
     fog: overridable('fog', fogCanvas()),
     grass: overridable('grass', grassCanvas()),
+    water: overridable('water', waterCanvas(), { wrap: true }),
   };
 }

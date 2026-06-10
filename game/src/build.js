@@ -14,7 +14,7 @@ export function buildWorld(world, T) {
   // must look the same every time, so it runs off a fixed seed instead of the
   // per-regeneration world seed. Only the interior puzzle reshuffles.
   const nrng = mulberry32(0x5eed1ace);
-  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [] };
+  const animated = { crystalMats: [], energyMats: [], lanternLights: [], fog: [], water: [], birds: [], ducks: [], floaters: [] };
   const disposables = [];
 
   const track = (obj) => {
@@ -493,7 +493,16 @@ export function buildWorld(world, T) {
   const WALL = size / 2 + 1; // outer wall distance from centre along an axis
   const placed = []; // footprints of big objects {x,z,r}
   const treeAnchors = []; // tree bases, used to clump nearby props
-  const isOutside = (x, z) => Math.abs(x - cx0) >= WALL + 0.6 || Math.abs(z - cz0) >= WALL + 0.6;
+  const lakes = []; // {x, z, r} — defined just below, props avoid them
+  const clearings = []; // {x, z, r} — keep-clear spots (e.g. the shrine)
+  const outsideBy = (x, z, m) => Math.abs(x - cx0) >= WALL + m || Math.abs(z - cz0) >= WALL + m;
+  const inAny = (list, x, z, pad) =>
+    list.some((L) => {
+      const dx = x - L.x, dz = z - L.z;
+      return dx * dx + dz * dz < (L.r + pad) * (L.r + pad);
+    });
+  const onLake = (x, z, pad = 0) => inAny(lakes, x, z, pad);
+  const blocked = (x, z, pad = 0) => inAny(lakes, x, z, pad) || inAny(clearings, x, z, pad);
   const noOverlap = (x, z, r) => {
     for (const p of placed) {
       const dx = x - p.x, dz = z - p.z;
@@ -512,18 +521,19 @@ export function buildWorld(world, T) {
     return [cx0 + off, along];
   };
   // spaced placement for big objects, clumping near existing trees when possible
-  const freeSpot = (r, minClear, maxClear, clumpProb = 0) => {
-    for (let t = 0; t < 22; t++) {
+  const freeSpot = (r, minClear, maxClear, clumpProb = 0, clearM = 2) => {
+    for (let t = 0; t < 24; t++) {
       let x, z;
       if (clumpProb && treeAnchors.length && rng() < clumpProb) {
         const a = treeAnchors[(rng() * treeAnchors.length) | 0];
-        const ang = rng() * 6.28, dd = 1.4 + rng() * 2.6;
+        const ang = rng() * 6.28, dd = 1.6 + rng() * 2.6;
         x = a[0] + Math.cos(ang) * dd;
         z = a[1] + Math.sin(ang) * dd;
-        if (!isOutside(x, z)) continue;
+        if (!outsideBy(x, z, clearM)) continue;
       } else {
         [x, z] = bandPoint(minClear, maxClear, 1.5);
       }
+      if (blocked(x, z, 1.2)) continue;
       if (noOverlap(x, z, r)) {
         placed.push({ x, z, r });
         return [x, z];
@@ -532,15 +542,191 @@ export function buildWorld(world, T) {
     return null;
   };
   // light placement for ground cover (may overlap, but stays outside)
-  const coverSpot = (minClear, maxClear, clumpProb = 0.5, spread = 2.2) => {
-    if (clumpProb && treeAnchors.length && rng() < clumpProb) {
-      const a = treeAnchors[(rng() * treeAnchors.length) | 0];
-      const ang = rng() * 6.28, dd = 0.6 + rng() * spread;
-      const x = a[0] + Math.cos(ang) * dd, z = a[1] + Math.sin(ang) * dd;
-      if (isOutside(x, z)) return [x, z];
+  const coverSpot = (minClear, maxClear, clumpProb = 0.5, spread = 2.2, clearM = 0.9) => {
+    for (let t = 0; t < 8; t++) {
+      let x, z;
+      if (clumpProb && treeAnchors.length && rng() < clumpProb) {
+        const a = treeAnchors[(rng() * treeAnchors.length) | 0];
+        const ang = rng() * 6.28, dd = 0.6 + rng() * spread;
+        x = a[0] + Math.cos(ang) * dd;
+        z = a[1] + Math.sin(ang) * dd;
+        if (!outsideBy(x, z, clearM)) continue;
+      } else {
+        [x, z] = bandPoint(minClear, maxClear, 1.2);
+      }
+      if (!blocked(x, z, 0.4)) return [x, z];
     }
-    return bandPoint(minClear, maxClear, 1.2);
+    return bandPoint(maxClear * 0.6, maxClear, 1);
   };
+
+  // ---- pond (one, NW corner so it stays in view), shore, foam, reeds, ducks -
+  lakes.push({ x: cx0 - 16, z: cz0 - 16, r: 4.4 }); // north-west corner pond
+  function makeDuck() {
+    const g = new THREE.Group();
+    const cream = mat({ color: 0xf2ede2, roughness: 0.7 });
+    const body = new THREE.Mesh(geo(new THREE.SphereGeometry(0.16, 10, 8)), cream);
+    body.scale.set(1.3, 0.8, 1);
+    body.castShadow = true;
+    const head = new THREE.Mesh(geo(new THREE.SphereGeometry(0.1, 10, 8)), cream);
+    head.position.set(0.18, 0.14, 0);
+    const beak = new THREE.Mesh(geo(new THREE.ConeGeometry(0.04, 0.1, 6)), mat({ color: 0xe0a23a, roughness: 0.6 }));
+    beak.position.set(0.27, 0.12, 0);
+    beak.rotation.z = -Math.PI / 2;
+    const tail = new THREE.Mesh(geo(new THREE.ConeGeometry(0.07, 0.16, 6)), cream);
+    tail.position.set(-0.19, 0.06, 0);
+    tail.rotation.z = Math.PI / 2.2;
+    g.add(body, head, beak, tail);
+    return g;
+  }
+  for (const L of lakes) {
+    const waterTex = track(T.water.clone());
+    waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+    waterTex.repeat.set(L.r / 4, L.r / 4);
+    const waterMat = mat({
+      color: 0x6fb0cf, map: waterTex, transparent: true, opacity: 0.8,
+      roughness: 0.25, metalness: 0, emissive: 0x255b7a, emissiveIntensity: 0.12,
+    });
+    const water = new THREE.Mesh(geo(new THREE.CircleGeometry(L.r, 48)), waterMat);
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(L.x, GY + 0.04, L.z);
+    water.renderOrder = 2;
+    group.add(water);
+    animated.water.push({ tex: waterTex, mat: waterMat });
+    // pale foam ring at the waterline
+    const foam = new THREE.Mesh(
+      geo(new THREE.RingGeometry(L.r - 0.18, L.r + 0.12, 48)),
+      mat({ color: 0xcfeaf2, transparent: true, opacity: 0.55, roughness: 1 })
+    );
+    foam.rotation.x = -Math.PI / 2;
+    foam.position.set(L.x, GY + 0.05, L.z);
+    foam.renderOrder = 3;
+    group.add(foam);
+    // muddy bank
+    const shore = new THREE.Mesh(geo(new THREE.CircleGeometry(L.r + 0.7, 48)), mat({ color: 0x6e5a3e, roughness: 1 }));
+    shore.rotation.x = -Math.PI / 2;
+    shore.position.set(L.x, GY + 0.02, L.z);
+    shore.receiveShadow = true;
+    group.add(shore);
+    // reeds + rim rocks
+    for (let i = 0; i < Math.floor(L.r * 7); i++) {
+      const a = rng() * 6.28, rr = L.r + 0.2 + rng() * 0.8;
+      const s = 0.5 + rng() * 0.7;
+      grass.push({ x: L.x + Math.cos(a) * rr, y: GY + 0.3 * s, z: L.z + Math.sin(a) * rr, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.2, s, color: pickGreen() });
+    }
+    for (let i = 0, n = 4 + ((rng() * 4) | 0); i < n; i++) {
+      const a = rng() * 6.28, rr = L.r + 0.3 + rng() * 0.6, rs = 0.4 + rng() * 0.8;
+      rocks.push({ x: L.x + Math.cos(a) * rr, y: GY + rs * 0.3 - 0.06, z: L.z + Math.sin(a) * rr, s: rs, sy: rs * (0.6 + rng() * 0.4), rx: (rng() - 0.5) * 0.4, ry: rng() * 6.28, rz: (rng() - 0.5) * 0.4, color: tint(0x887b6e, 0.08) });
+    }
+    // ducks gliding around naturally (wander handled in the main loop)
+    for (let i = 0, n = 2 + ((rng() * 2) | 0); i < n; i++) {
+      const g = makeDuck();
+      group.add(g);
+      const px = L.x + (rng() - 0.5) * L.r, pz = L.z + (rng() - 0.5) * L.r;
+      animated.ducks.push({
+        group: g, cx: L.x, cz: L.z, roam: L.r * 0.6,
+        x: px, z: pz, heading: rng() * 6.28, weave: rng() * 6.28,
+        speed: 0.28 + rng() * 0.18, baseY: GY + 0.07, bob: rng() * 6.28,
+      });
+    }
+  }
+
+  // ---- a mystical standing-stone shrine where the east lake used to be ------
+  {
+    const sx = cx0 + 17, sz = cz0 - 3, ring = 3.4;
+    const stoneMat = mat({ color: 0x9a9088, roughness: 1, flatShading: true });
+    const stoneGeo = geo(new THREE.BoxGeometry(0.7, 2.6, 0.5));
+    const capGeo = geo(new THREE.BoxGeometry(1.4, 0.45, 0.7));
+    placed.push({ x: sx, z: sz, r: ring + 1.5 }); // keep trees out of the shrine
+    clearings.push({ x: sx, z: sz, r: ring + 0.6 }); // and ground cover too
+    const nStones = 6;
+    for (let i = 0; i < nStones; i++) {
+      const a = (i / nStones) * Math.PI * 2 + 0.2;
+      const fallen = rng() < 0.25;
+      const px = sx + Math.cos(a) * ring, pz = sz + Math.sin(a) * ring;
+      const h = 2.1 + rng() * 0.9;
+      const m = new THREE.Mesh(stoneGeo, stoneMat);
+      m.position.set(px, GY + (fallen ? 0.25 : h * 0.5), pz);
+      m.scale.set(0.8 + rng() * 0.5, (fallen ? 0.9 : h / 2.6), 0.8 + rng() * 0.4);
+      m.rotation.y = a + (rng() - 0.5) * 0.4;
+      if (fallen) m.rotation.z = Math.PI / 2 * (rng() < 0.5 ? 1 : -1) * (0.8 + rng() * 0.2);
+      else m.rotation.z = (rng() - 0.5) * 0.12;
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+      // a lintel across a couple of the upright pairs
+      if (!fallen && i % 2 === 0 && rng() < 0.7) {
+        const cap = new THREE.Mesh(capGeo, stoneMat);
+        cap.position.set(px, GY + h + 0.2, pz);
+        cap.rotation.y = a;
+        cap.castShadow = true;
+        group.add(cap);
+      }
+    }
+    // a stone altar in the centre
+    const altar = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.9, 1.05, 0.5, 8)), stoneMat);
+    altar.position.set(sx, GY + 0.25, sz);
+    altar.castShadow = altar.receiveShadow = true;
+    group.add(altar);
+    // a large crystal floating above it, glowing and bobbing
+    const crystalColor = 0x7c5bff;
+    const crystalMat = mat({
+      color: crystalColor, emissive: crystalColor, emissiveIntensity: 0.9,
+      roughness: 0.15, metalness: 0.05, flatShading: true, transparent: true, opacity: 0.9,
+    });
+    const crystal = new THREE.Mesh(geo(new THREE.OctahedronGeometry(0.75, 0)), crystalMat);
+    crystal.scale.set(0.7, 1.5, 0.7);
+    crystal.position.set(sx, GY + 1.9, sz);
+    crystal.castShadow = true;
+    group.add(crystal);
+    const glow = new THREE.PointLight(crystalColor, 6, 9, 2);
+    glow.position.set(sx, GY + 1.9, sz);
+    group.add(glow);
+    animated.floaters.push({ mesh: crystal, light: glow, baseY: GY + 1.9, spin: 0.5, bob: rng() * 6.28, mat: crystalMat });
+    // a sparse ring of moss tufts just OUTSIDE the stones, framing not burying
+    for (let i = 0; i < 12; i++) {
+      const a = rng() * 6.28, rr = ring + 0.6 + rng() * 1.6;
+      const s = 0.3 + rng() * 0.4;
+      shrubs.push({ x: sx + Math.cos(a) * rr, y: GY + s * 0.42, z: sz + Math.sin(a) * rr, sx: s, sy: s * 0.8, sz: s, ry: rng() * 6.28, color: pickGreen() });
+    }
+  }
+
+  // ---- extra foliage on the west/left side, which was looking thin ---------
+  for (let i = 0; i < 20; i++) {
+    const clear = 1.6 + Math.pow(rng(), 1.5) * 13;
+    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 14);
+    if (onLake(x, z, 1.2) || !noOverlap(x, z, 1)) continue;
+    placed.push({ x, z, r: 1 });
+    const scale = 0.85 + rng() * 0.9;
+    if (rng() < 0.5) addPine(x, z, scale);
+    else addDeciduous(x, z, scale);
+  }
+  for (let i = 0; i < 60; i++) {
+    const clear = 1 + rng() * 14;
+    const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 14);
+    if (onLake(x, z, 0.4)) continue;
+    const s = 0.3 + rng() * 0.55;
+    shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
+  }
+
+  // ---- a flock of birds circling overhead ----------------------------------
+  {
+    const wingMat = mat({ color: 0x33363f, roughness: 0.85, side: THREE.DoubleSide });
+    const wingR = geo(new THREE.BufferGeometry());
+    wingR.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, -0.06, 0.55, 0, 0, 0, 0, 0.1]), 3));
+    wingR.computeVertexNormals();
+    const wingL = geo(new THREE.BufferGeometry());
+    wingL.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0.06, -0.55, 0, 0, 0, 0, -0.1]), 3));
+    wingL.computeVertexNormals();
+    for (let i = 0; i < 7; i++) {
+      const g = new THREE.Group();
+      const rw = new THREE.Mesh(wingR, wingMat);
+      const lw = new THREE.Mesh(wingL, wingMat);
+      const body = new THREE.Mesh(geo(new THREE.SphereGeometry(0.08, 8, 6)), wingMat);
+      body.scale.set(1.7, 0.7, 0.7);
+      g.add(rw, lw, body);
+      group.add(g);
+      animated.birds.push({ group: g, rw, lw, cx: cx0, cz: cz0, radius: 15 + rng() * 13, height: 8 + rng() * 6, ang: rng() * 6.28, spd: (0.12 + rng() * 0.1) * (rng() < 0.5 ? 1 : -1), flap: rng() * 6.28 });
+    }
+  }
 
   function addDeciduous(x, z, scale) {
     treeAnchors.push([x, z]);
@@ -574,17 +760,17 @@ export function buildWorld(world, T) {
   }
 
   // trees first, so everything else can clump around them
-  for (let i = 0; i < 72; i++) {
+  for (let i = 0; i < 78; i++) {
     const scale = 0.8 + rng() * 0.95;
-    const spot = freeSpot(0.5 + 0.45 * scale, 0.9, 17, 0.55);
+    const spot = freeSpot(0.5 + 0.45 * scale, 2.4, 18, 0.5, 2.2);
     if (!spot) continue;
     if (rng() < 0.5) addPine(spot[0], spot[1], scale);
     else addDeciduous(spot[0], spot[1], scale);
   }
   // rocks, often near groves
-  for (let i = 0; i < 58; i++) {
+  for (let i = 0; i < 60; i++) {
     const rs = 0.45 + rng() * 1.8;
-    const spot = freeSpot(rs * 0.6, 0.8, 17, 0.45);
+    const spot = freeSpot(rs * 0.6, 2.1, 18, 0.4, 2);
     if (!spot) continue;
     rocks.push({
       x: spot[0], y: GY + rs * 0.3 - 0.06, z: spot[1],
@@ -595,25 +781,25 @@ export function buildWorld(world, T) {
   }
   // a few fallen logs
   for (let i = 0; i < 6; i++) {
-    const spot = freeSpot(1, 1, 15, 0.4);
+    const spot = freeSpot(1, 2.4, 16, 0.35, 2.2);
     if (!spot) continue;
     logs.push({ x: spot[0], y: GY + 0.2, z: spot[1], rx: Math.PI / 2, ry: rng() * 6.28, color: tint(0x6b4a33, 0.08) });
   }
   // bushes / shrubs as ground cover
-  for (let i = 0; i < 240; i++) {
-    const [x, z] = coverSpot(0.7, 16, 0.55);
+  for (let i = 0; i < 250; i++) {
+    const [x, z] = coverSpot(1.2, 16, 0.5, 2.2, 1.1);
     const s = 0.3 + rng() * 0.55;
     shrubs.push({ x, y: GY + s * 0.42, z, sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
   }
   // grass tufts
-  for (let i = 0; i < 340; i++) {
-    const [x, z] = coverSpot(0.5, 16, 0.5, 2.6);
+  for (let i = 0; i < 360; i++) {
+    const [x, z] = coverSpot(0.7, 16, 0.5, 2.6, 0.7);
     const s = 0.45 + rng() * 0.5;
     grass.push({ x, y: GY + 0.3 * s, z, ry: rng() * 6.28, rx: (rng() - 0.5) * 0.3, s, color: pickGreen() });
   }
   // little mushroom clusters
   for (let c = 0; c < 26; c++) {
-    const [bx, bz] = coverSpot(0.6, 14, 0.7, 1.6);
+    const [bx, bz] = coverSpot(1, 14, 0.7, 1.6, 0.9);
     const n = 1 + ((rng() * 3) | 0);
     const capCol = rng() < 0.5 ? 0xcc4036 : 0xd98a3c;
     for (let k = 0; k < n; k++) {

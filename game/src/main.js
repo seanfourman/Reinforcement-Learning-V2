@@ -120,6 +120,44 @@ renderer.setAnimationLoop(() => {
       f.mesh.rotation.z += f.spin * dt;
       f.mesh.material.opacity = f.baseOp * (0.7 + 0.3 * Math.sin(t * 0.5 + f.phase));
     }
+    for (const w of current.animated.water) {
+      w.tex.offset.x = t * 0.02;
+      w.tex.offset.y = t * 0.014;
+      w.mat.emissiveIntensity = 0.2 + 0.06 * Math.sin(t * 1.3);
+    }
+    for (const d of current.animated.ducks) {
+      // gentle weave, steering back toward the pond centre near the edge
+      d.heading += Math.sin(t * 0.6 + d.weave) * 0.9 * dt;
+      const dx = d.x - d.cx, dz = d.z - d.cz;
+      if (dx * dx + dz * dz > d.roam * d.roam) {
+        const toCentre = Math.atan2(d.cz - d.z, d.cx - d.x);
+        let diff = toCentre - d.heading;
+        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+        d.heading += diff * Math.min(1, dt * 2.5);
+      }
+      d.x += Math.cos(d.heading) * d.speed * dt;
+      d.z += Math.sin(d.heading) * d.speed * dt;
+      d.group.position.set(d.x, d.baseY + Math.sin(t * 1.6 + d.bob) * 0.015, d.z);
+      d.group.rotation.y = -d.heading;
+    }
+    for (const fl of current.animated.floaters) {
+      fl.mesh.rotation.y += fl.spin * dt;
+      fl.mesh.position.y = fl.baseY + Math.sin(t * 1.2 + fl.bob) * 0.12;
+      fl.mat.emissiveIntensity = 0.85 + 0.25 * Math.sin(t * 1.8 + fl.bob);
+      if (fl.light) fl.light.intensity = 5 + 1.5 * Math.sin(t * 1.8 + fl.bob);
+    }
+    for (const b of current.animated.birds) {
+      b.ang += b.spd * dt;
+      b.group.position.set(
+        b.cx + Math.cos(b.ang) * b.radius,
+        b.height + Math.sin(t * 0.6 + b.flap) * 0.6,
+        b.cz + Math.sin(b.ang) * b.radius
+      );
+      b.group.rotation.y = -b.ang - Math.PI / 2 + (b.spd > 0 ? 0 : Math.PI);
+      const f = Math.sin(t * 8 + b.flap) * 0.6;
+      b.rw.rotation.z = f;
+      b.lw.rotation.z = -f;
+    }
   }
 
   fx.composer.render();
