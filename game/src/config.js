@@ -53,5 +53,5 @@ export const CAMERA = {
   startDist: 19,
   panMargin: 2.2, // how far past the outer walls the screen edge may see
   minSidePan: 1.8, // always allow at least this much pan, even fully zoomed out
-  topReach: 1.4, // extra pan allowance toward the top wall
+  topReach: 3.0, // extra pan allowance toward the top wall
 };
