@@ -257,6 +257,32 @@ function waterCanvas() {
   return c;
 }
 
+// cobblestone path (tiles along its length)
+function pathCanvas() {
+  const S = 256;
+  const [c, ctx] = makeCanvas(S, S);
+  ctx.fillStyle = '#5f574c';
+  ctx.fillRect(0, 0, S, S);
+  const rows = 8, cell = S / rows;
+  for (let r = -1; r <= rows; r++) {
+    const off = (r % 2) * cell * 0.5;
+    for (let x = -off; x < S + cell; x += cell) {
+      const cx = x + cell * 0.5, cy = r * cell + cell * 0.5;
+      const rw = cell * (0.38 + rand(0, 0.06)), rh = cell * (0.34 + rand(0, 0.06));
+      const base = 150 + rand(-28, 28);
+      const g = ctx.createRadialGradient(cx - rw * 0.3, cy - rh * 0.3, 1, cx, cy, rw);
+      g.addColorStop(0, `rgb(${(base + 22) | 0},${(base + 16) | 0},${(base + 4) | 0})`);
+      g.addColorStop(1, `rgb(${(base - 45) | 0},${(base - 50) | 0},${(base - 58) | 0})`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rw, rh, rand(-0.3, 0.3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  speckle(ctx, S, S, 600, 0.06);
+  return c;
+}
+
 // a little tuft of grass blades (transparent background, light so it tints)
 function grassCanvas() {
   const [c, ctx] = makeCanvas(128, 128);
@@ -362,5 +388,6 @@ export function createTextures() {
     fog: overridable('fog', fogCanvas()),
     grass: overridable('grass', grassCanvas()),
     water: overridable('water', waterCanvas(), { wrap: true }),
+    path: overridable('path', pathCanvas(), { wrap: true }),
   };
 }

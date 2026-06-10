@@ -195,10 +195,7 @@ export function buildWorld(world, T) {
   outerTex.repeat.set(5, 1.4);
   const outerMat = mat({ map: outerTex, roughness: 0.95 });
   const woodMat = mat({ color: PALETTE.wood, roughness: 0.9 });
-  const wallNS = geo(new THREE.BoxGeometry(size + 2, H, 1));
-  const wallWE = geo(new THREE.BoxGeometry(1, H, size));
-  const beamNS = geo(new THREE.BoxGeometry(size + 2, 0.1, 0.28));
-  const beamWE = geo(new THREE.BoxGeometry(0.28, 0.1, size));
+  const stoneTopMat = mat({ map: T.wallTop, roughness: 0.95 });
   const addBox = (g, m, x, y, z) => {
     const b = new THREE.Mesh(g, m);
     b.position.set(x, y, z);
@@ -206,10 +203,17 @@ export function buildWorld(world, T) {
     group.add(b);
     return b;
   };
+
+  // full-height walls on all four sides
+  const wallNS = geo(new THREE.BoxGeometry(size + 2, H, 1));
+  const wallWE = geo(new THREE.BoxGeometry(1, H, size));
   addBox(wallNS, outerMat, size / 2, H / 2, -0.5);
   addBox(wallNS, outerMat, size / 2, H / 2, size + 0.5);
   addBox(wallWE, outerMat, -0.5, H / 2, size / 2);
   addBox(wallWE, outerMat, size + 0.5, H / 2, size / 2);
+  // wood top beams
+  const beamNS = geo(new THREE.BoxGeometry(size + 2, 0.1, 0.28));
+  const beamWE = geo(new THREE.BoxGeometry(0.28, 0.1, size));
   addBox(beamNS, woodMat, size / 2, H + 0.05, -0.16);
   addBox(beamNS, woodMat, size / 2, H + 0.05, size + 0.16);
   addBox(beamWE, woodMat, -0.16, H + 0.05, size / 2);
@@ -217,44 +221,44 @@ export function buildWorld(world, T) {
 
   // crenellations
   const crenGeo = geo(new THREE.BoxGeometry(0.55, 0.45, 0.55));
+  const cc = () => tint(0xcfc2ba, 0.05);
   const crens = [];
   for (let t = -0.7; t <= size + 0.7; t += 1.15) {
-    const c = () => tint(0xcfc2ba, 0.05);
-    crens.push({ x: t, y: H + 0.22, z: -0.8, color: c() });
-    crens.push({ x: t, y: H + 0.22, z: size + 0.8, color: c() });
-    crens.push({ x: -0.8, y: H + 0.22, z: t, color: c() });
-    crens.push({ x: size + 0.8, y: H + 0.22, z: t, color: c() });
+    crens.push({ x: t, y: H + 0.22, z: -0.8, color: cc() });
+    crens.push({ x: t, y: H + 0.22, z: size + 0.8, color: cc() });
+    crens.push({ x: -0.8, y: H + 0.22, z: t, color: cc() });
+    crens.push({ x: size + 0.8, y: H + 0.22, z: t, color: cc() });
   }
-  instanced(crenGeo, mat({ map: T.wallTop, roughness: 0.95 }), crens);
+  instanced(crenGeo, stoneTopMat, crens);
 
   // ------------------------------------------------------------ towers
-  const towerGeo = geo(new THREE.CylinderGeometry(1.05, 1.35, 3.6, 8));
-  const roofGeo = geo(new THREE.ConeGeometry(1.6, 1.8, 8));
   const roofMat = mat({ map: T.roof, roughness: 0.8 });
   const finialMat = mat({ color: PALETTE.finial, emissive: PALETTE.finial, emissiveIntensity: 0.25, roughness: 0.4 });
   const finialGeo = geo(new THREE.SphereGeometry(0.14, 8, 8));
   const poleGeo = geo(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 5));
   const flagGeo = geo(new THREE.PlaneGeometry(0.55, 0.3));
-  const corners = [
-    [-0.5, -0.5],
-    [size + 0.5, -0.5],
-    [-0.5, size + 0.5],
-    [size + 0.5, size + 0.5],
-  ];
-  corners.forEach(([cx, cz], i) => {
-    const t = addBox(towerGeo, outerMat, cx, 1.8, cz);
-    t.rotation.y = rng();
-    const roof = addBox(roofGeo, roofMat, cx, 3.6 + 0.9, cz);
-    roof.rotation.y = rng();
-    addBox(finialGeo, finialMat, cx, 3.6 + 1.85, cz).castShadow = false;
-    addBox(poleGeo, woodMat, cx, 3.6 + 2.2, cz).castShadow = false;
-    const flag = new THREE.Mesh(
-      flagGeo,
-      mat({ color: BANNER_COLORS[i % BANNER_COLORS.length], side: THREE.DoubleSide, roughness: 0.9 })
-    );
-    flag.position.set(cx + 0.3, 3.6 + 2.45, cz);
+  const merlonGeo = geo(new THREE.BoxGeometry(0.3, 0.36, 0.3));
+  const merlons = [];
+  function buildTower(cx, cz, R, hgt, flagColor) {
+    const t = addBox(geo(new THREE.CylinderGeometry(R, R * 1.28, hgt, 8)), outerMat, cx, hgt / 2, cz);
+    t.rotation.y = Math.PI / 8; // FIXED so towers don't spin on regenerate
+    const band = addBox(geo(new THREE.CylinderGeometry(R * 1.08, R * 1.08, 0.24, 8)), stoneTopMat, cx, hgt - 0.55, cz);
+    band.rotation.y = Math.PI / 8;
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+      merlons.push({ x: cx + Math.cos(a) * R * 1.05, y: hgt + 0.12, z: cz + Math.sin(a) * R * 1.05, ry: a, color: cc() });
+    }
+    const roof = addBox(geo(new THREE.ConeGeometry(R * 1.5, 1.9, 8)), roofMat, cx, hgt + 1.05, cz);
+    roof.rotation.y = Math.PI / 8;
+    addBox(finialGeo, finialMat, cx, hgt + 2.05, cz).castShadow = false;
+    addBox(poleGeo, woodMat, cx, hgt + 2.45, cz).castShadow = false;
+    const flag = new THREE.Mesh(flagGeo, mat({ color: flagColor, side: THREE.DoubleSide, roughness: 0.9 }));
+    flag.position.set(cx + 0.3, hgt + 2.7, cz);
     group.add(flag);
-  });
+  }
+  const corners = [[-0.5, -0.5], [size + 0.5, -0.5], [-0.5, size + 0.5], [size + 0.5, size + 0.5]];
+  corners.forEach(([cx, cz], i) => buildTower(cx, cz, 1.05, 3.8, BANNER_COLORS[i % BANNER_COLORS.length]));
+  instanced(merlonGeo, stoneTopMat, merlons);
 
   // ------------------------------------------------------------ lanterns
   const cageGeo = geo(new THREE.BoxGeometry(0.17, 0.24, 0.17));
@@ -276,40 +280,6 @@ export function buildWorld(world, T) {
     group.add(l);
     animated.lanternLights.push({ light: l, phase: i * 1.7 });
   });
-
-  // ------------------------------------------------------------ grand gate
-  {
-    const g = new THREE.Group();
-    const postGeo = geo(new THREE.BoxGeometry(0.45, 2.7, 0.4));
-    const post = (px) => {
-      const p = new THREE.Mesh(postGeo, outerMat);
-      p.position.set(px, 1.35, 0);
-      p.castShadow = p.receiveShadow = true;
-      g.add(p);
-    };
-    post(-1.05);
-    post(1.05);
-    const slab = new THREE.Mesh(geo(new THREE.BoxGeometry(1.7, 2.3, 0.14)), mat({ color: 0x18141f, roughness: 0.9 }));
-    slab.position.set(0, 1.15, 0);
-    g.add(slab);
-    const greenMat = mat({ color: PALETTE.gateGreen, emissive: PALETTE.gateGreen, emissiveIntensity: 2.2 });
-    const lintel = new THREE.Mesh(geo(new THREE.BoxGeometry(2.55, 0.3, 0.42)), greenMat);
-    lintel.position.set(0, 2.62, 0);
-    g.add(lintel);
-    const barGeo = geo(new THREE.BoxGeometry(0.08, 2.1, 0.1));
-    for (const bx of [-0.55, -0.18, 0.18, 0.55]) {
-      const bar = new THREE.Mesh(barGeo, greenMat);
-      bar.position.set(bx, 1.15, 0.06);
-      g.add(bar);
-    }
-    const { side, along } = outerGate;
-    const a = along + 0.5;
-    if (side === 0) g.position.set(a, 0, 0.2);
-    if (side === 1) (g.position.set(a, 0, size - 0.2), (g.rotation.y = Math.PI));
-    if (side === 2) (g.position.set(0.2, 0, a), (g.rotation.y = Math.PI / 2));
-    if (side === 3) (g.position.set(size - 0.2, 0, a), (g.rotation.y = -Math.PI / 2));
-    group.add(g);
-  }
 
   // ------------------------------------------------------------ room gates
   const postGeo = geo(new THREE.BoxGeometry(0.26, 1.55, 0.26));
