@@ -191,7 +191,7 @@ export function buildWorld(world, T) {
     return t;
   };
 
-  const H = 1.5; // wall-walk height (kept low so the bottom grid row stays visible)
+  const H = 1.3; // wall-walk height (kept low so the bottom grid row stays visible)
   const TH = 1.0; // curtain wall thickness
   const PL = 0.55; // plinth height
   const northZ = -0.5, southZ = size + 0.5;
@@ -203,8 +203,8 @@ export function buildWorld(world, T) {
   const segLcx = (-1 + size / 2 - GAP - 0.4) / 2;
   const segRcx = (size / 2 + GAP + 0.4 + size + 1) / 2;
 
-  const wallMatLong = mat({ map: brickFit(17, 1.2), roughness: 0.95 });
-  const wallMatShort = mat({ map: brickFit(7, 1.2), roughness: 0.95 });
+  const wallMatLong = mat({ map: brickFit(17, 1.05), roughness: 0.95 });
+  const wallMatShort = mat({ map: brickFit(7, 1.05), roughness: 0.95 });
   const towerMat = mat({ map: brickFit(6.5, 2.4), roughness: 0.95 });
   const gateTowerMat = mat({ map: brickFit(1.4, 2.1), roughness: 0.95 });
   const bridgeMat = mat({ map: brickFit(4.6, 1.1), roughness: 0.95 });
@@ -263,8 +263,9 @@ export function buildWorld(world, T) {
   const rodEndGeo = geo(new THREE.SphereGeometry(0.05, 8, 6));
   const bandGeoB = geo(new THREE.PlaneGeometry(0.56, 0.13));
   const emblemGeo = geo(new THREE.CircleGeometry(0.105, 4));
-  function buildBanner(x, y, z, ry, color) {
+  function buildBanner(x, y, z, ry, color, s = 1) {
     const g = new THREE.Group();
+    g.scale.setScalar(s);
     const rod = new THREE.Mesh(rodGeo, goldMat);
     rod.rotation.z = Math.PI / 2;
     g.add(rod);
@@ -449,7 +450,7 @@ export function buildWorld(world, T) {
     group.add(flame);
     animated.torches.push({ flame, light: null, phase: rng() * 6.28 });
   };
-  const torchY = 1.1;
+  const torchY = 1.0;
   // side walls: evenly spaced and symmetric about the wall centre (z=10),
   // with the flags sitting exactly mid-gap (z=5 and z=15)
   for (const t of [2.5, 7.5, 12.5, 17.5]) {
@@ -465,10 +466,10 @@ export function buildWorld(world, T) {
 
   // --- wall banners between the torches, then the shared detail instancing ---
   // same colors at the same position on both walls, so left/right match
-  buildBanner(0.07, 1.42, 5, Math.PI / 2, bcol(1));
-  buildBanner(0.07, 1.42, 15, Math.PI / 2, bcol(2));
-  buildBanner(size - 0.07, 1.42, 5, -Math.PI / 2, bcol(1));
-  buildBanner(size - 0.07, 1.42, 15, -Math.PI / 2, bcol(2));
+  buildBanner(0.07, 1.26, 5, Math.PI / 2, bcol(1), 0.85);
+  buildBanner(0.07, 1.26, 15, Math.PI / 2, bcol(2), 0.85);
+  buildBanner(size - 0.07, 1.26, 5, -Math.PI / 2, bcol(1), 0.85);
+  buildBanner(size - 0.07, 1.26, 15, -Math.PI / 2, bcol(2), 0.85);
 
   instanced(geo(new THREE.BoxGeometry(0.5, 0.38, 0.26)), merlonMat, merlons);
   instanced(geo(new THREE.BoxGeometry(0.64, 1.0, 0.5)), stoneMat, btLow);
@@ -784,12 +785,12 @@ export function buildWorld(world, T) {
   // ---- cobbled path from the open gatehouse out into the woods --------------
   {
     const px = size / 2; // the gate sits at the north-wall centre
-    for (let z = -1.5; z >= -14.5; z -= 2) clearings.push({ x: px, z, r: 2.8 });
+    for (let z = -1.5; z >= -14.5; z -= 2) clearings.push({ x: px, z, r: 3.2 });
     const pathTex = track(T.path.clone());
-    pathTex.repeat.set(1.52, 5.6);
+    pathTex.repeat.set(1.84, 5.6);
     // runs from under the courtyard floor (no grass gap in the gate passage)
     // out to the treeline, matching the gate opening's width
-    const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(3.8, 14.1)), mat({ map: pathTex, roughness: 1 }));
+    const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(4.6, 14.1)), mat({ map: pathTex, roughness: 1 }));
     p.rotation.x = -Math.PI / 2;
     p.position.set(px, GY + 0.035, -6.95);
     p.receiveShadow = true;
