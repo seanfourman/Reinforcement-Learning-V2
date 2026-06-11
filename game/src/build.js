@@ -196,9 +196,11 @@ export function buildWorld(world, T) {
   const PL = 0.55; // plinth height
   const northZ = -0.5, southZ = size + 0.5;
   const GAP = 2.2; // half-width of the gate opening (north-wall centre)
-  const segW = size / 2 - GAP + 1;
-  const segLcx = (-1 + size / 2 - GAP) / 2;
-  const segRcx = (size / 2 + GAP + size + 1) / 2;
+  // north wall runs end 0.4 INSIDE the gatehouse towers (never flush with the
+  // tower faces — coplanar faces z-fight)
+  const segW = size / 2 - GAP + 0.6;
+  const segLcx = (-1 + size / 2 - GAP - 0.4) / 2;
+  const segRcx = (size / 2 + GAP + 0.4 + size + 1) / 2;
 
   const wallMatLong = mat({ map: brickFit(17, 1.6), roughness: 0.95 });
   const wallMatShort = mat({ map: brickFit(7, 1.6), roughness: 0.95 });
@@ -340,7 +342,9 @@ export function buildWorld(world, T) {
 
   // --- corner towers: tapered drums, corbelled crowns, teal cone roofs ------
   function buildTower(cx, cz, pi) {
-    addBox(geo(new THREE.CylinderGeometry(1.6, 1.8, PL, 10)), plinthMat, cx, PL / 2 - 0.06, cz);
+    // plinth is a touch taller than the walls' so the two tops never share a
+    // plane where they overlap (that causes z-fighting)
+    addBox(geo(new THREE.CylinderGeometry(1.6, 1.8, PL + 0.06, 10)), plinthMat, cx, PL / 2 - 0.03, cz);
     addBox(geo(new THREE.CylinderGeometry(1.2, 1.52, 2.9, 10)), towerMat, cx, 1.94, cz); // body -> 3.39
     addBox(geo(new THREE.CylinderGeometry(1.56, 1.22, 0.45, 10)), corbelMat, cx, 3.61, cz); // corbel flare
     addBox(geo(new THREE.CylinderGeometry(1.5, 1.56, 0.62, 10)), towerMat, cx, 4.15, cz); // crown drum
@@ -363,7 +367,7 @@ export function buildWorld(world, T) {
     const cxg = size / 2;
     for (const s of [-1, 1]) {
       const x = cxg + s * (GAP + 0.85);
-      addBox(geo(new THREE.BoxGeometry(2.0, PL, 2.0)), gatePlinthMat, x, PL / 2 - 0.06, northZ);
+      addBox(geo(new THREE.BoxGeometry(2.0, PL + 0.06, 2.0)), gatePlinthMat, x, PL / 2 - 0.03, northZ);
       addBox(geo(new THREE.BoxGeometry(1.7, 2.55, 1.7)), gateTowerMat, x, 1.765, northZ); // body -> 3.04
       addBox(geo(new THREE.BoxGeometry(2.06, 0.3, 2.06)), stoneMat, x, 3.19, northZ); // corbel band
       addBox(geo(new THREE.ConeGeometry(1.52, 1.5, 4)), roofPyrMat, x, 4.09, northZ).rotation.y = Math.PI / 4;
