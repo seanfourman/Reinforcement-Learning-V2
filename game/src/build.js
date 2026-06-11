@@ -255,7 +255,6 @@ export function buildWorld(world, T) {
 
   // shared detail lists, instanced once at the end of the section
   const merlons = []; // crenellation teeth
-  const slits = []; // arrow slits
   const windows = []; // warm lit windows
   const sills = [];
   const btLow = [], btUp = [], btCap = []; // buttress stages
@@ -320,9 +319,9 @@ export function buildWorld(world, T) {
   const towerCorners = [[-1.4, -1.4], [size + 1.4, -1.4], [-1.4, size + 1.4], [size + 1.4, size + 1.4]];
   const nearTower = (x, z, d) => towerCorners.some(([tx, tz]) => (x - tx) ** 2 + (z - tz) ** 2 < d * d);
   const runs = [
-    { axis: 'x', cx: size / 2, cz: southZ, L: size + 2, out: 1, m: wallMatLong, wm: walkMatX, pm: parMatLong, bt: [-7.5, -3.75, 0, 3.75, 7.5], sl: [-6.2, -2.1, 2.1, 6.2] },
-    { axis: 'z', cx: -0.5, cz: size / 2, L: size, out: -1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7], sl: [-5.2, -1.8, 1.8, 5.2] },
-    { axis: 'z', cx: size + 0.5, cz: size / 2, L: size, out: 1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7], sl: [-5.2, -1.8, 1.8, 5.2] },
+    { axis: 'x', cx: size / 2, cz: southZ, L: size + 2, out: 1, m: wallMatLong, wm: walkMatX, pm: parMatLong, bt: [-7.5, -3.75, 0, 3.75, 7.5] },
+    { axis: 'z', cx: -0.5, cz: size / 2, L: size, out: -1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7] },
+    { axis: 'z', cx: size + 0.5, cz: size / 2, L: size, out: 1, m: wallMatLong, wm: walkMatZ, pm: parMatLong, bt: [-7, -3.5, 0, 3.5, 7] },
     { axis: 'x', cx: segLcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2], pio: 0.5 },
     { axis: 'x', cx: segRcx, cz: northZ, L: segW, out: -1, m: wallMatShort, wm: walkMatX, pm: parMatShort, bt: [-2.2, 2.2], pio: -0.5 },
   ];
@@ -334,7 +333,6 @@ export function buildWorld(world, T) {
       addBox(geo(new THREE.BoxGeometry(...dim(len, h, th))), m, ...at(along, y, perp));
     B(ax ? r.L + 0.6 : r.L - 0.3, PL, TH + 0.3, 0, PL / 2 - 0.06, 0, plinthMat); // plinth footing
     B(r.L, H, TH, 0, H / 2 + 0.02, 0, r.m); // wall body
-    B(r.L, 0.09, 0.07, 0, 1.28, (TH / 2 + 0.045) * r.out, stoneMat); // string course
     // walkway floor strictly BETWEEN the parapets, never reaching the wall
     // faces -> no foreign stone band shows on the side of the wall
     B(ax ? r.L + 0.16 : r.L + 0.34, 0.12, 0.66, 0, H + 0.08, 0, r.wm);
@@ -366,10 +364,6 @@ export function buildWorld(world, T) {
       p = at(a, 1.99, (TH / 2 + 0.02) * r.out);
       btCap.push({ x: p[0], y: p[1], z: p[2], ry });
     }
-    for (const a of r.sl ?? []) {
-      const [x, y, z] = at(a, 0.95, (TH / 2 + 0.04) * r.out);
-      slits.push({ x, y, z, ry: ax ? 0 : Math.PI / 2 });
-    }
   }
 
   // --- corner towers: tapered drums, corbelled crowns, teal cone roofs ------
@@ -382,10 +376,7 @@ export function buildWorld(world, T) {
     addBox(finialGeo, finialMat, cx, 6.64, cz).castShadow = false;
     addBox(geo(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6)), darkMat, cx, 7.0, cz).castShadow = false;
     buildPennant(cx, 7.26, cz, bcol(pi));
-    // arrow slits low on the courtyard-facing sides, lit window in the crown
-    const dx = Math.sign(size / 2 - cx), dz = Math.sign(size / 2 - cz);
-    slits.push({ x: cx + dx * 1.38, y: 1.7, z: cz, ry: dx > 0 ? Math.PI / 2 : -Math.PI / 2 });
-    slits.push({ x: cx, y: 1.7, z: cz + dz * 1.38, ry: dz > 0 ? 0 : Math.PI });
+    // lit window in the crown, facing the courtyard
     const a = Math.atan2(size / 2 - cz, size / 2 - cx);
     windows.push({ x: cx + Math.cos(a) * 1.51, y: 4.15, z: cz + Math.sin(a) * 1.51, ry: Math.PI / 2 - a });
     sills.push({ x: cx + Math.cos(a) * 1.53, y: 3.92, z: cz + Math.sin(a) * 1.53, ry: Math.PI / 2 - a });
@@ -407,7 +398,6 @@ export function buildWorld(world, T) {
       addBox(finialGeo, finialMat, x, 4.92, northZ).castShadow = false;
       windows.push({ x, y: 2.3, z: northZ + 0.88, ry: 0 }); // lit window toward the courtyard
       sills.push({ x, y: 2.05, z: northZ + 0.9, ry: 0 });
-      slits.push({ x, y: 2.0, z: northZ - 0.88, ry: Math.PI });
     }
     // bridge chamber over the doorway, corbelled overhang toward the courtyard
     addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.4, 1.3, 1.15)), bridgeMat, cxg, 2.1, northZ);
@@ -488,7 +478,6 @@ export function buildWorld(world, T) {
   instanced(geo(new THREE.BoxGeometry(0.64, 1.2, 0.5)), stoneMat, btLow);
   instanced(geo(new THREE.BoxGeometry(0.5, 0.78, 0.4)), stoneMat, btUp);
   instanced(geo(new THREE.BoxGeometry(0.74, 0.14, 0.5)), stoneMat, btCap);
-  instanced(geo(new THREE.BoxGeometry(0.14, 0.55, 0.1)), darkMat, slits, { cast: false });
   instanced(geo(new THREE.BoxGeometry(0.26, 0.4, 0.09)), winMat, windows, { cast: false });
   instanced(geo(new THREE.BoxGeometry(0.36, 0.07, 0.14)), stoneMat, sills, { cast: false });
 
