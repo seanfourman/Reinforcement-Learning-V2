@@ -225,7 +225,7 @@ export function buildWorld(world, T) {
   const finialGeo = geo(new THREE.SphereGeometry(0.16, 8, 8));
   const goldMat = mat({ color: 0xd8b25a, roughness: 0.5, metalness: 0.35 });
   const darkMat = mat({ color: 0x352f2a, roughness: 0.9 });
-  const winMat = mat({ color: 0x3a2c1e, emissive: PALETTE.lantern, emissiveIntensity: 1.1, roughness: 0.6 });
+  const winMat = mat({ color: 0x241a10, emissive: 0xc78a3e, emissiveIntensity: 0.45, roughness: 0.6 });
   const bcol = (i) => new THREE.Color(BANNER_COLORS[i % BANNER_COLORS.length]);
 
   // shared detail lists, instanced once at the end of the section
@@ -426,8 +426,11 @@ export function buildWorld(world, T) {
     const ironMat = mat({ color: 0x33302b, roughness: 0.6, metalness: 0.4 });
     for (const s of [-1, 1]) {
       const hinge = new THREE.Group();
-      hinge.position.set(cxg + s * GAP, 0.02, northZ - 0.4);
-      hinge.rotation.y = s < 0 ? 0.96 : Math.PI - 0.96; // ~55° open: a welcoming V, faces angled toward the camera
+      // hinged on the INNER (courtyard) jamb so the pivot is on the camera's
+      // side of the wall, but the leaf swings OUTWARD through the archway —
+      // its inner face stays angled toward the camera, fully visible.
+      hinge.position.set(cxg + s * GAP, 0.02, northZ + 0.35);
+      hinge.rotation.y = s < 0 ? 1.05 : Math.PI - 1.05; // ~60° open outward
       const leaf = new THREE.Mesh(leafGeo, doorMat);
       leaf.position.set(1.15, 0.73, 0);
       leaf.castShadow = leaf.receiveShadow = true;
