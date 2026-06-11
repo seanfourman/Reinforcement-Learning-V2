@@ -427,7 +427,7 @@ export function buildWorld(world, T) {
     for (const s of [-1, 1]) {
       const hinge = new THREE.Group();
       hinge.position.set(cxg + s * GAP, 0.02, northZ - 0.4);
-      hinge.rotation.y = s < 0 ? Math.PI - 1.0 : 1.0; // ~120° open, sticking out beside the path
+      hinge.rotation.y = s < 0 ? 0.96 : Math.PI - 0.96; // ~55° open: a welcoming V, faces angled toward the camera
       const leaf = new THREE.Mesh(leafGeo, doorMat);
       leaf.position.set(1.15, 0.73, 0);
       leaf.castShadow = leaf.receiveShadow = true;
