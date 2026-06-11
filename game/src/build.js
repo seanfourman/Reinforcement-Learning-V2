@@ -133,33 +133,63 @@ export function buildWorld(world, T) {
   instanced(tileGeo, tileMats, tiles, { cast: false });
 
   // ------------------------------------------------------------ inner walls
-  const wallGeo = geo(new THREE.BoxGeometry(0.98, WALL_H, 0.98));
-  const wallSide = mat({ map: T.wall, roughness: 0.95 });
-  const wallTopM = mat({ map: T.wallTop, roughness: 0.95 });
+  // Rough rocky rubble instead of clean blocks: a handful of pre-deformed
+  // low-poly chunks, then each cell picks one and gets its own rotation,
+  // scale and tint — so the maze reads as natural stone and never looks
+  // grid-perfect or repetitive, while still sitting on its cell.
+  const wallHash = (x, y, z) => {
+    const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const wallSide = mat({ map: T.wall, roughness: 1, flatShading: true });
+  const wallTopM = mat({ map: T.wallTop, roughness: 1, flatShading: true });
   const wallMats = [wallSide, wallSide, wallTopM, wallSide, wallSide, wallSide];
-  const capGeo = geo(new THREE.BoxGeometry(1.08, 0.13, 1.08));
-  const wallCells = [];
-  const caps = [];
+  function rockChunk(seed) {
+    // a subdivided box shoved around by hashed noise: irregular faceted sides
+    // and a knocked-about top, but the foot stays flat on the floor
+    const g = new THREE.BoxGeometry(0.96, WALL_H, 0.96, 3, 2, 3);
+    const pos = g.attributes.position;
+    const v = new THREE.Vector3();
+    const half = WALL_H / 2;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const onBottom = v.y < -half + 0.02;
+      const n1 = wallHash(v.x * 2.6 + seed, v.y * 2.6 + seed * 1.7, v.z * 2.6 - seed);
+      const n2 = wallHash(v.z * 4.3 - seed, v.x * 4.3 + seed * 0.6, v.y * 4.3 + seed);
+      let nx = v.x + (n1 - 0.5) * 0.22;
+      let nz = v.z + (n2 - 0.5) * 0.22;
+      let ny = v.y;
+      if (onBottom) { nx *= 0.88; nz *= 0.88; } // foot tucks in, sits flat
+      else ny += (n1 - 0.5) * 0.14; // knock the top/upper sides about
+      pos.setXYZ(i, nx, ny, nz);
+    }
+    pos.needsUpdate = true;
+    g.computeVertexNormals();
+    return geo(g);
+  }
+  const rockGeos = [];
+  for (let k = 0; k < 6; k++) rockGeos.push(rockChunk(k * 17.3 + 4));
+  const rockTint = () =>
+    new THREE.Color(0xf0e7d8).offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.16, (rng() - 0.5) * 0.16);
+  const buckets = rockGeos.map(() => []);
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
       if (!wall[x][z]) continue;
-      wallCells.push({
+      const k = (wallHash(x * 1.3, 9, z * 1.3) * rockGeos.length) | 0;
+      const sy = 0.92 + rng() * 0.2;
+      buckets[k].push({
         x: x + 0.5,
-        y: WALL_H / 2 + 0.02,
-        z: z + 0.5,
-        color: tint(0xffffff, 0.06),
-      });
-      caps.push({
-        x: x + 0.5,
-        y: WALL_H + 0.08,
+        y: (WALL_H * sy) / 2 + 0.02,
         z: z + 0.5,
         ry: ((rng() * 4) | 0) * (Math.PI / 2),
-        color: tint(PALETTE.wallCap, 0.05).multiplyScalar(1.55),
+        sx: 1 + (rng() - 0.5) * 0.12,
+        sy,
+        sz: 1 + (rng() - 0.5) * 0.12,
+        color: rockTint(),
       });
     }
   }
-  instanced(wallGeo, wallMats, wallCells);
-  instanced(capGeo, wallTopM, caps);
+  buckets.forEach((items, k) => instanced(rockGeos[k], wallMats, items));
 
   // ============================================================ castle
   // Storybook fortress: curtain walls on a stone plinth with a walkway and
