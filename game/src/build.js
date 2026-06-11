@@ -140,7 +140,6 @@ export function buildWorld(world, T) {
   const capGeo = geo(new THREE.BoxGeometry(1.08, 0.13, 1.08));
   const wallCells = [];
   const caps = [];
-  const mossItems = [];
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
       if (!wall[x][z]) continue;
@@ -157,37 +156,10 @@ export function buildWorld(world, T) {
         ry: ((rng() * 4) | 0) * (Math.PI / 2),
         color: tint(PALETTE.wallCap, 0.05).multiplyScalar(1.55),
       });
-      if (rng() < 0.22) {
-        mossItems.push({
-          x: x + 0.2 + rng() * 0.6,
-          y: WALL_H + 0.14,
-          z: z + 0.2 + rng() * 0.6,
-          sx: 0.1 + rng() * 0.12,
-          sy: 0.06 + rng() * 0.07,
-          sz: 0.1 + rng() * 0.12,
-          color: new THREE.Color(PALETTE.moss).lerp(new THREE.Color(PALETTE.mossDark), rng()),
-        });
-      }
-      if (rng() < 0.5) {
-        mossItems.push({
-          x: x + 0.1 + rng() * 0.8,
-          y: 0.1,
-          z: z + (rng() < 0.5 ? -0.02 : 1.02),
-          sx: 0.1 + rng() * 0.15,
-          sy: 0.07 + rng() * 0.08,
-          sz: 0.08 + rng() * 0.1,
-          color: new THREE.Color(PALETTE.moss).lerp(new THREE.Color(PALETTE.mossDark), rng()),
-        });
-      }
     }
   }
   instanced(wallGeo, wallMats, wallCells);
   instanced(capGeo, wallTopM, caps);
-
-  // (no loose moss on the open courtyard floor — keep the inside clean)
-  const mossGeo = geo(new THREE.SphereGeometry(1, 6, 5));
-  const mossMat = mat({ color: 0xffffff, roughness: 1 });
-  instanced(mossGeo, mossMat, mossItems, { cast: false });
 
   // ============================================================ castle
   // Storybook fortress: curtain walls on a stone plinth with a walkway and
