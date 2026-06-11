@@ -257,29 +257,39 @@ function waterCanvas() {
   return c;
 }
 
-// cobblestone path (tiles along its length)
+// cobblestone path (tiles along its length) — flat, low-contrast stones so it
+// reads as worn paving, not shiny bubbles
 function pathCanvas() {
   const S = 256;
   const [c, ctx] = makeCanvas(S, S);
-  ctx.fillStyle = '#5f574c';
+  ctx.fillStyle = '#7e7263';
   ctx.fillRect(0, 0, S, S);
-  const rows = 8, cell = S / rows;
+  speckle(ctx, S, S, 250, 0.05);
+  const rows = 5, cell = S / rows;
   for (let r = -1; r <= rows; r++) {
     const off = (r % 2) * cell * 0.5;
     for (let x = -off; x < S + cell; x += cell) {
-      const cx = x + cell * 0.5, cy = r * cell + cell * 0.5;
-      const rw = cell * (0.38 + rand(0, 0.06)), rh = cell * (0.34 + rand(0, 0.06));
-      const base = 150 + rand(-28, 28);
-      const g = ctx.createRadialGradient(cx - rw * 0.3, cy - rh * 0.3, 1, cx, cy, rw);
-      g.addColorStop(0, `rgb(${(base + 22) | 0},${(base + 16) | 0},${(base + 4) | 0})`);
-      g.addColorStop(1, `rgb(${(base - 45) | 0},${(base - 50) | 0},${(base - 58) | 0})`);
-      ctx.fillStyle = g;
+      const cx = x + cell * 0.5 + rand(-2, 2), cy = r * cell + cell * 0.5 + rand(-2, 2);
+      const rw = cell * rand(0.47, 0.53), rh = cell * rand(0.44, 0.5);
+      const rot = rand(-0.25, 0.25);
+      const tone = 152 + rand(-14, 14);
+      ctx.fillStyle = `rgb(${(tone + 8) | 0},${tone | 0},${(tone - 14) | 0})`;
       ctx.beginPath();
-      ctx.ellipse(cx, cy, rw, rh, rand(-0.3, 0.3), 0, Math.PI * 2);
+      ctx.ellipse(cx, cy, rw, rh, rot, 0, Math.PI * 2);
       ctx.fill();
+      // gentle relief: a soft shade along the lower edge, light along the top
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(52,44,36,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 1.5, rw - 1.5, rh - 1.5, rot, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,246,228,0.22)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - 1.5, rw - 1.5, rh - 1.5, rot, 1.15 * Math.PI, 1.85 * Math.PI);
+      ctx.stroke();
     }
   }
-  speckle(ctx, S, S, 600, 0.06);
+  speckle(ctx, S, S, 300, 0.05);
   return c;
 }
 

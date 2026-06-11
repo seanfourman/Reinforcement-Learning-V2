@@ -751,12 +751,14 @@ export function buildWorld(world, T) {
   // ---- cobbled path from the open gatehouse out into the woods --------------
   {
     const px = size / 2; // the gate sits at the north-wall centre
-    for (let z = -1.5; z >= -11; z -= 2) clearings.push({ x: px, z, r: 2.3 });
+    for (let z = -1.5; z >= -14.5; z -= 2) clearings.push({ x: px, z, r: 2.8 });
     const pathTex = track(T.path.clone());
-    pathTex.repeat.set(1, 4);
-    const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(2.5, 10.4)), mat({ map: pathTex, roughness: 1 }));
+    pathTex.repeat.set(1.52, 5.6);
+    // runs from under the courtyard floor (no grass gap in the gate passage)
+    // out to the treeline, matching the gate opening's width
+    const p = new THREE.Mesh(geo(new THREE.PlaneGeometry(3.8, 14.1)), mat({ map: pathTex, roughness: 1 }));
     p.rotation.x = -Math.PI / 2;
-    p.position.set(px, GY + 0.035, -5.6);
+    p.position.set(px, GY + 0.035, -6.95);
     p.receiveShadow = true;
     group.add(p);
   }
