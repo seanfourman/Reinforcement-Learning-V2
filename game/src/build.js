@@ -191,19 +191,20 @@ export function buildWorld(world, T) {
     return t;
   };
 
-  const H = 2.0; // wall-walk height
+  const H = 1.5; // wall-walk height (kept low so the bottom grid row stays visible)
   const TH = 1.0; // curtain wall thickness
   const PL = 0.55; // plinth height
   const northZ = -0.5, southZ = size + 0.5;
   const GAP = 2.2; // half-width of the gate opening (north-wall centre)
+  const doorH = 1.45; // gate opening height (arch crown)
   // north wall runs end 0.4 INSIDE the gatehouse towers (never flush with the
   // tower faces — coplanar faces z-fight)
   const segW = size / 2 - GAP + 0.6;
   const segLcx = (-1 + size / 2 - GAP - 0.4) / 2;
   const segRcx = (size / 2 + GAP + 0.4 + size + 1) / 2;
 
-  const wallMatLong = mat({ map: brickFit(17, 1.6), roughness: 0.95 });
-  const wallMatShort = mat({ map: brickFit(7, 1.6), roughness: 0.95 });
+  const wallMatLong = mat({ map: brickFit(17, 1.2), roughness: 0.95 });
+  const wallMatShort = mat({ map: brickFit(7, 1.2), roughness: 0.95 });
   const towerMat = mat({ map: brickFit(6.5, 2.4), roughness: 0.95 });
   const gateTowerMat = mat({ map: brickFit(1.4, 2.1), roughness: 0.95 });
   const bridgeMat = mat({ map: brickFit(4.6, 1.1), roughness: 0.95 });
@@ -331,11 +332,11 @@ export function buildWorld(world, T) {
     }
     for (const a of r.bt) {
       const ry = ax ? 0 : Math.PI / 2;
-      let p = at(a, 0.54, (TH / 2 + 0.19) * r.out);
+      let p = at(a, 0.44, (TH / 2 + 0.19) * r.out);
       btLow.push({ x: p[0], y: p[1], z: p[2], ry });
-      p = at(a, 1.53, (TH / 2 + 0.14) * r.out);
+      p = at(a, H - 0.41, (TH / 2 + 0.14) * r.out);
       btUp.push({ x: p[0], y: p[1], z: p[2], ry });
-      p = at(a, 1.99, (TH / 2 + 0.02) * r.out);
+      p = at(a, H - 0.01, (TH / 2 + 0.02) * r.out);
       btCap.push({ x: p[0], y: p[1], z: p[2], ry });
     }
   }
@@ -389,29 +390,44 @@ export function buildWorld(world, T) {
         merlons.push({ x: cxg + a, y: 3.22, z: bz, ry: 0, color: tint(0xffffff, 0.05) });
       }
     }
-    // doorway dressing: jambs, chamfered arch corners, lintel band, keystone
+    // doorway: stone jambs and a REAL arch — brick spandrels curve over the
+    // opening (segmental arch from springing height up to the bridge base)
     for (const s of [-1, 1]) {
       addBox(geo(new THREE.BoxGeometry(0.55, 1.8, 1.26)), stoneMat, cxg + s * (GAP + 0.21), 0.92, northZ);
-      addBox(geo(new THREE.BoxGeometry(0.72, 0.72, 1.24)), stoneMat, cxg + s * (GAP - 0.12), 1.5, northZ).rotation.z = Math.PI / 4;
     }
-    addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.1, 0.2, 1.3)), stoneMat, cxg, 1.55, northZ);
-    addBox(geo(new THREE.BoxGeometry(0.52, 0.6, 1.34)), stoneMat, cxg, 1.62, northZ);
-    // wooden doors flung open onto the path outside
-    const leafGeo = geo(new THREE.BoxGeometry(2.14, 1.36, 0.1));
-    const bandGeo = geo(new THREE.BoxGeometry(2.14, 0.1, 0.14));
+    const SPRING = 0.5; // arch springing height — low, so the curve is tall and round
+    const archShape = new THREE.Shape();
+    archShape.moveTo(-GAP - 0.3, doorH + 0.12);
+    archShape.lineTo(-GAP - 0.3, SPRING);
+    archShape.lineTo(-GAP, SPRING);
+    archShape.absellipse(0, SPRING, GAP, doorH - SPRING, Math.PI, 0, true);
+    archShape.lineTo(GAP + 0.3, SPRING);
+    archShape.lineTo(GAP + 0.3, doorH + 0.12);
+    archShape.closePath();
+    const archMesh = new THREE.Mesh(
+      geo(new THREE.ExtrudeGeometry(archShape, { depth: 1.1, bevelEnabled: false })),
+      mat({ map: brickFit(0.78, 0.8), roughness: 0.95 })
+    );
+    archMesh.position.set(cxg, 0, northZ - 0.55);
+    archMesh.castShadow = archMesh.receiveShadow = true;
+    group.add(archMesh);
+    addBox(geo(new THREE.BoxGeometry(0.5, 0.62, 1.3)), stoneMat, cxg, 1.5, northZ); // keystone at the crown
+    // two BIG wooden doors flung open toward the outside, flanking the path
+    const leafGeo = geo(new THREE.BoxGeometry(2.3, 1.42, 0.14));
+    const bandGeo = geo(new THREE.BoxGeometry(2.3, 0.12, 0.18));
     const doorMat = mat({ color: 0x6b4a2c, roughness: 0.85 });
     const ironMat = mat({ color: 0x33302b, roughness: 0.6, metalness: 0.4 });
     for (const s of [-1, 1]) {
       const hinge = new THREE.Group();
       hinge.position.set(cxg + s * GAP, 0.02, northZ - 0.4);
-      hinge.rotation.y = s < 0 ? Math.PI - 0.7 : 0.7;
+      hinge.rotation.y = s < 0 ? Math.PI - 1.0 : 1.0; // ~120° open, sticking out beside the path
       const leaf = new THREE.Mesh(leafGeo, doorMat);
-      leaf.position.set(1.07, 0.68, 0);
+      leaf.position.set(1.15, 0.73, 0);
       leaf.castShadow = leaf.receiveShadow = true;
       hinge.add(leaf);
-      for (const by of [0.36, 1.02]) {
+      for (const by of [0.4, 1.06]) {
         const band = new THREE.Mesh(bandGeo, ironMat);
-        band.position.set(1.07, by, 0.0);
+        band.position.set(1.15, by, 0.0);
         hinge.add(band);
       }
       group.add(hinge);
@@ -433,26 +449,30 @@ export function buildWorld(world, T) {
     group.add(flame);
     animated.torches.push({ flame, light: null, phase: rng() * 6.28 });
   };
-  const torchY = 1.18;
-  for (const t of [4, 9, 14]) {
+  const torchY = 1.1;
+  // side walls: evenly spaced and symmetric about the wall centre (z=10),
+  // with the flags sitting exactly mid-gap (z=5 and z=15)
+  for (const t of [2.5, 7.5, 12.5, 17.5]) {
     buildTorch(0.12, torchY, t);
     buildTorch(size - 0.12, torchY, t);
   }
-  buildTorch(4, torchY, 0.12);
-  buildTorch(size - 4, torchY, 0.12);
+  // north wall: centred on the visible stretch between corner tower and gatehouse
+  buildTorch(2.5, torchY, 0.12);
+  buildTorch(size - 2.5, torchY, 0.12);
   // a pair greeting you at the gatehouse
   buildTorch(size / 2 - GAP - 0.85, 1.3, northZ + 0.94);
   buildTorch(size / 2 + GAP + 0.85, 1.3, northZ + 0.94);
 
   // --- wall banners between the torches, then the shared detail instancing ---
-  buildBanner(0.07, 1.78, 6.5, Math.PI / 2, bcol(1));
-  buildBanner(0.07, 1.78, 11.5, Math.PI / 2, bcol(2));
-  buildBanner(size - 0.07, 1.78, 6.5, -Math.PI / 2, bcol(2));
-  buildBanner(size - 0.07, 1.78, 11.5, -Math.PI / 2, bcol(1));
+  // same colors at the same position on both walls, so left/right match
+  buildBanner(0.07, 1.42, 5, Math.PI / 2, bcol(1));
+  buildBanner(0.07, 1.42, 15, Math.PI / 2, bcol(2));
+  buildBanner(size - 0.07, 1.42, 5, -Math.PI / 2, bcol(1));
+  buildBanner(size - 0.07, 1.42, 15, -Math.PI / 2, bcol(2));
 
   instanced(geo(new THREE.BoxGeometry(0.5, 0.38, 0.26)), merlonMat, merlons);
-  instanced(geo(new THREE.BoxGeometry(0.64, 1.2, 0.5)), stoneMat, btLow);
-  instanced(geo(new THREE.BoxGeometry(0.5, 0.78, 0.4)), stoneMat, btUp);
+  instanced(geo(new THREE.BoxGeometry(0.64, 1.0, 0.5)), stoneMat, btLow);
+  instanced(geo(new THREE.BoxGeometry(0.5, 0.7, 0.4)), stoneMat, btUp);
   instanced(geo(new THREE.BoxGeometry(0.74, 0.14, 0.5)), stoneMat, btCap);
   instanced(geo(new THREE.BoxGeometry(0.26, 0.4, 0.09)), winMat, windows, { cast: false });
   instanced(geo(new THREE.BoxGeometry(0.36, 0.07, 0.14)), stoneMat, sills, { cast: false });
