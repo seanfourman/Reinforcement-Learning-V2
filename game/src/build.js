@@ -520,43 +520,82 @@ export function buildWorld(world, T) {
   instanced(geo(new THREE.BoxGeometry(0.36, 0.07, 0.14)), stoneMat, sills, { cast: false });
 
   // ------------------------------------------------------------ room gates
-  const postGeo = geo(new THREE.BoxGeometry(0.26, 1.55, 0.26));
-  const lintelGeo = geo(new THREE.BoxGeometry(0.98, 0.15, 0.3));
-  const orbGeo = geo(new THREE.SphereGeometry(0.07, 8, 8));
-  const energyGeo = geo(new THREE.PlaneGeometry(0.72, 1.3));
-  const postMat = mat({ map: T.wall, roughness: 0.9 });
+  // A rough stone archway built from the SAME rocky chunks as the maze walls
+  // (so colour + randomness match): two rubble pillars and a ring of voussoir
+  // rocks. A LOCKED gate is barred with steel and padlocked; an OPEN one is
+  // just the open arch.
+  const gateStoneMats = [];
+  for (let i = 0; i < 3; i++) {
+    gateStoneMats.push(
+      mat({
+        map: T.wall, roughness: 1, flatShading: true,
+        color: new THREE.Color(0xf0e7d8).offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.14, (rng() - 0.5) * 0.16),
+      })
+    );
+  }
+  const steelMat = mat({ color: 0xc6cad0, roughness: 0.42, metalness: 0.45 });
+  const lockMat = mat({ color: 0xacb0b6, roughness: 0.46, metalness: 0.4 });
+  const keyholeMat = mat({ color: 0x15100a, roughness: 0.6 });
+
+  const barGeo = geo(new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8));
+  const crossGeo = geo(new THREE.CylinderGeometry(0.03, 0.03, 0.56, 8));
+  const lockBodyGeo = geo(new THREE.BoxGeometry(0.2, 0.22, 0.11));
+  const shackleGeo = geo(new THREE.TorusGeometry(0.07, 0.022, 8, 16, Math.PI));
+  const keyDiscGeo = geo(new THREE.CircleGeometry(0.04, 14));
+  const keySlotGeo = geo(new THREE.PlaneGeometry(0.026, 0.06));
+
+  // drop a rocky chunk (random variant / spin / tint) with an optional lean
+  const addGateRock = (parent, x, y, sx, sy, sz, rotZ = 0) => {
+    const m = new THREE.Mesh(rockGeos[(rng() * rockGeos.length) | 0], gateStoneMats[(rng() * 3) | 0]);
+    m.position.set(x, y, 0);
+    m.scale.set(sx, sy, sz);
+    m.rotation.set((rng() - 0.5) * 0.18, rng() * Math.PI * 2, rotZ + (rng() - 0.5) * 0.3);
+    m.castShadow = m.receiveShadow = true;
+    parent.add(m);
+  };
+
   for (const gate of gates) {
     const g = new THREE.Group();
-    const color = gate.locked ? PALETTE.gateRed : PALETTE.gateGreen;
-    const glow = mat({ color, emissive: color, emissiveIntensity: 1.9 });
-    for (const px of [-0.37, 0.37]) {
-      const p = new THREE.Mesh(postGeo, postMat);
-      p.position.set(px, 0.78, 0);
-      p.castShadow = p.receiveShadow = true;
-      g.add(p);
-      const orb = new THREE.Mesh(orbGeo, glow);
-      orb.position.set(px, 1.62, 0);
-      g.add(orb);
+    // --- two rubble pillars ---
+    for (const px of [-0.46, 0.46]) addGateRock(g, px, 0.5, 0.42, 0.95, 0.46);
+    // --- ring of voussoir rocks around a semicircle, leaning along the arc ---
+    const Rarc = 0.52, n = 7;
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI;
+      addGateRock(g, Math.cos(a) * Rarc, 1.0 + Math.sin(a) * Rarc, 0.36, 0.42, 0.46, a - Math.PI / 2);
     }
-    const lintel = new THREE.Mesh(lintelGeo, glow);
-    lintel.position.set(0, 1.56, 0);
-    g.add(lintel);
+
     if (gate.locked) {
-      const energy = mat({
-        color,
-        emissive: color,
-        emissiveIntensity: 1.4,
-        transparent: true,
-        opacity: 0.42,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-      const plane = new THREE.Mesh(energyGeo, energy);
-      plane.position.set(0, 0.78, 0);
-      g.add(plane);
-      animated.energyMats.push({ mat: energy, phase: rng() * Math.PI * 2 });
+      // --- steel grille across the opening ---
+      for (const bx of [-0.21, -0.07, 0.07, 0.21]) {
+        const bar = new THREE.Mesh(barGeo, steelMat);
+        bar.position.set(bx, 0.55, 0);
+        bar.castShadow = true;
+        g.add(bar);
+      }
+      for (const by of [0.4, 0.95]) {
+        const cross = new THREE.Mesh(crossGeo, steelMat);
+        cross.rotation.z = Math.PI / 2;
+        cross.position.set(0, by, 0);
+        cross.castShadow = true;
+        g.add(cross);
+      }
+      // --- padlock hung on the bars, with a real (dark) keyhole ---
+      const lock = new THREE.Group();
+      lock.position.set(0, 0.58, 0.09);
+      const body = new THREE.Mesh(lockBodyGeo, lockMat);
+      body.castShadow = true;
+      const shackle = new THREE.Mesh(shackleGeo, steelMat);
+      shackle.position.set(0, 0.12, 0);
+      const disc = new THREE.Mesh(keyDiscGeo, keyholeMat);
+      disc.position.set(0, 0.015, 0.057);
+      const slot = new THREE.Mesh(keySlotGeo, keyholeMat);
+      slot.position.set(0, -0.035, 0.057);
+      lock.add(body, shackle, disc, slot);
+      g.add(lock);
     }
-    g.position.set(gate.x + 0.5, 0.02, gate.z + 0.5);
+
+    g.position.set(gate.x + 0.5, 0.12, gate.z + 0.5);
     if (gate.axis === 'z') g.rotation.y = Math.PI / 2;
     group.add(g);
   }
