@@ -679,6 +679,15 @@ export function buildWorld(world, T) {
 
   // ---- pond (one, NW corner so it stays in view), shore, foam, reeds, ducks -
   lakes.push({ x: cx0 - 16, z: cz0 - 16, r: 4.4 }); // north-west corner pond
+
+  // ---- keep ALL nature clear of the towers, which project past the walls ----
+  for (const [tx, tz] of [
+    [-1.4, -1.4], [size + 1.4, -1.4], [-1.4, size + 1.4], [size + 1.4, size + 1.4], // corner towers
+    [size / 2 - GAP - 0.85, northZ], [size / 2 + GAP + 0.85, northZ], // gatehouse towers
+  ]) {
+    placed.push({ x: tx, z: tz, r: 2.4 });
+    clearings.push({ x: tx, z: tz, r: 2.6 });
+  }
   function makeDuck() {
     const g = new THREE.Group();
     const cream = mat({ color: 0xf2ede2, roughness: 0.7 });
@@ -886,14 +895,14 @@ export function buildWorld(world, T) {
   // footprint ~ canopy radius so no two trees' crowns overlap/touch.
   for (let i = 0; i < 88; i++) {
     const scale = 0.8 + rng() * 0.95;
-    const spot = freeSpot(1.0 * scale + 0.35, 2.4, 18, 0.45, 2.2);
+    const spot = freeSpot(1.0 * scale + 0.35, 2.8, 18, 0.45, 2.8);
     if (!spot) continue;
     if (rng() < 0.5) addPine(spot[0], spot[1], scale);
     else addDeciduous(spot[0], spot[1], scale);
   }
   // a modest top-up on the west, which the random spread happened to leave thin
   for (let i = 0; i < 14; i++) {
-    const clear = 2.4 + Math.pow(rng(), 1.4) * 13;
+    const clear = 2.8 + Math.pow(rng(), 1.4) * 13;
     const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
     const scale = 0.8 + rng() * 0.9;
     const r = 1.0 * scale + 0.35;
@@ -903,7 +912,7 @@ export function buildWorld(world, T) {
     else addDeciduous(x, z, scale);
   }
   for (let i = 0; i < 40; i++) {
-    const clear = 1.4 + rng() * 13;
+    const clear = 1.8 + rng() * 13;
     const x = cx0 - (WALL + clear), z = cz0 + (rng() - 0.5) * (size + 10);
     const s = 0.28 + rng() * 0.5;
     const r = s * 0.95 + 0.12;
@@ -914,7 +923,7 @@ export function buildWorld(world, T) {
   // rocks, often near groves
   for (let i = 0; i < 62; i++) {
     const rs = 0.45 + rng() * 1.8;
-    const spot = freeSpot(rs * 0.9 + 0.15, 2.1, 18, 0.4, 2);
+    const spot = freeSpot(rs * 0.9 + 0.15, rs + 1.2, 18, 0.4, 2.6);
     if (!spot) continue;
     rocks.push({
       x: spot[0], y: GY + rs * 0.3 - 0.06, z: spot[1],
@@ -932,13 +941,13 @@ export function buildWorld(world, T) {
   // bushes / shrubs as ground cover — spaced like everything else (no touching)
   for (let i = 0; i < 380; i++) {
     const s = 0.28 + rng() * 0.55;
-    const spot = freeSpot(s * 0.95 + 0.12, 1.0, 16, 0.5, 1.0);
+    const spot = freeSpot(s * 0.95 + 0.12, 1.8, 16, 0.5, 1.8);
     if (!spot) continue;
     shrubs.push({ x: spot[0], y: GY + s * 0.42, z: spot[1], sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
   }
   // little mushroom clusters — the cluster is spaced, mushrooms within it sit together
   for (let c = 0; c < 24; c++) {
-    const center = freeSpot(0.7, 1.0, 14, 0.6, 1.0);
+    const center = freeSpot(0.7, 1.4, 14, 0.6, 1.4);
     if (!center) continue;
     const [bx, bz] = center;
     const n = 1 + ((rng() * 3) | 0);
