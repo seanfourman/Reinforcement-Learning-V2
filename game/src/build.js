@@ -116,7 +116,8 @@ export function buildWorld(world, T) {
   const tiles = [];
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
-      if (wall[x][z]) continue;
+      // tiles are laid under EVERY cell, walls included, so the rocky walls
+      // sit on the tiled floor instead of on a bare dirt gap
       const roll = rng();
       const base =
         roll < 0.7 ? PALETTE.tileBase : roll < 0.84 ? PALETTE.tileWarm : roll < 0.92 ? PALETTE.tileRose : PALETTE.tileCool;
@@ -146,7 +147,7 @@ export function buildWorld(world, T) {
   const wallMats = [wallSide, wallSide, wallTopM, wallSide, wallSide, wallSide];
   function rockChunk(seed) {
     // a subdivided box shoved around by hashed noise: irregular faceted sides
-    // and a knocked-about top, but the foot stays flat on the floor
+    // and a knocked-about top, but the foot stays tucked so the tile peeks out
     const g = new THREE.BoxGeometry(0.96, WALL_H, 0.96, 3, 2, 3);
     const pos = g.attributes.position;
     const v = new THREE.Vector3();
@@ -171,6 +172,7 @@ export function buildWorld(world, T) {
   for (let k = 0; k < 6; k++) rockGeos.push(rockChunk(k * 17.3 + 4));
   const rockTint = () =>
     new THREE.Color(0xf0e7d8).offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.16, (rng() - 0.5) * 0.16);
+  const baseY = 0.12; // foot rests on the tile that now stays under each wall
   const buckets = rockGeos.map(() => []);
   for (let x = 0; x < size; x++) {
     for (let z = 0; z < size; z++) {
@@ -179,7 +181,7 @@ export function buildWorld(world, T) {
       const sy = 0.92 + rng() * 0.2;
       buckets[k].push({
         x: x + 0.5,
-        y: (WALL_H * sy) / 2 + 0.02,
+        y: (WALL_H * sy) / 2 + baseY,
         z: z + 0.5,
         ry: ((rng() * 4) | 0) * (Math.PI / 2),
         sx: 1 + (rng() - 0.5) * 0.12,
