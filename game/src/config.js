@@ -50,7 +50,7 @@ export const CAMERA = {
   pitch: (58 * Math.PI) / 180, // angle above horizon, fixed like the reference
   minDist: 9,
   maxDist: 30,
-  startDist: 30, // start fully zoomed out
+  startDist: 20, // start closer so the King & Princess read as characters
   panMargin: 2.2, // how far past the outer walls the screen edge may see
   minSidePan: 1.8, // always allow at least this much pan, even fully zoomed out
   topReach: 3.0, // extra pan allowance toward the top wall

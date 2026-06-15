@@ -23,6 +23,12 @@ mimetypes.add_type("image/png", ".png")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # never cache — so reloading always shows the latest build
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        super().end_headers()
+
     def log_message(self, format, *args):
         pass  # keep the console quiet (404s for optional texture overrides are normal)
 

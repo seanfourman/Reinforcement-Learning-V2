@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { GRID, PALETTE, CAMERA } from './config.js';
 import { createTextures } from './textures.js';
-import { generateWorld } from './generate.js';
 import { buildWorld } from './build.js';
+import { buildFixedWorld } from './fixedworld.js';
+import { buildMazeWalls } from './mazewalls.js';
+import { parseLayout } from './layout.js';
+import { makeKing, makePrincess } from './characters.js';
+import { createPlayback } from './playback.js';
 import { createCameraRig } from './camera.js';
 import { createPostFX } from './postfx.js';
 
@@ -63,22 +67,33 @@ scene.add(fill);
 
 // ------------------------------------------------------------------ world
 const textures = createTextures();
-let current = null;
+let current = null;   // the static scene shell (castle, walls, nature)
+let playback = null;  // the animated game on top of it
 
-function regenerate(seed) {
-  if (current) {
-    scene.remove(current.group);
-    current.dispose();
-  }
-  const world = generateWorld(seed);
+async function init() {
+  // trajectory.json carries both the fixed map and the recorded game, so the
+  // whole scene is driven by what the two pre-trained agents actually did.
+  const res = await fetch('./rl/trajectory.json', { cache: 'no-store' });
+  const trajectory = await res.json();
+  const rows = trajectory.world;
+  const layout = parseLayout(rows);
+
+  const world = buildFixedWorld(rows);
   current = buildWorld(world, textures);
   scene.add(current.group);
-  console.log(`world seed: ${world.seed}`);
+
+  // castle maze walls (rendered here, not by buildWorld)
+  scene.add(buildMazeWalls(rows));
+
+  const walkers = { red: makeKing(), blue: makePrincess() };
+  playback = createPlayback(scene, trajectory, layout, walkers);
+
+  console.log(`playback ready: winner = ${trajectory.winner}, ${trajectory.frames.length} frames`);
 }
-regenerate();
+init();
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyR') regenerate();
+  if (e.code === 'KeyR' && playback) playback.reset(); // replay from the start
 });
 
 // ------------------------------------------------------------------ post fx
@@ -104,13 +119,6 @@ renderer.setAnimationLoop(() => {
   rig.update(dt);
 
   if (current) {
-    for (const { mat, phase } of current.animated.crystalMats) {
-      mat.emissiveIntensity = 0.65 + Math.sin(t * 1.6 + phase) * 0.22;
-    }
-    for (const { mat, phase } of current.animated.energyMats) {
-      mat.opacity = 0.4 + Math.sin(t * 2.4 + phase) * 0.09;
-      mat.emissiveIntensity = 1.4 + Math.sin(t * 2.4 + phase) * 0.35;
-    }
     for (const to of current.animated.torches) {
       const f = 0.82 + 0.18 * Math.sin(t * 11 + to.phase) + 0.1 * Math.sin(t * 23 + to.phase * 1.7);
       to.flame.scale.set(0.9 + 0.2 * f, f, 0.9 + 0.2 * f);
@@ -147,6 +155,8 @@ renderer.setAnimationLoop(() => {
       d.group.rotation.y = -d.heading;
     }
   }
+
+  if (playback) playback.update(dt, t);
 
   fx.composer.render();
 });

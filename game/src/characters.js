@@ -1,0 +1,264 @@
+import * as THREE from 'three';
+
+// Procedural royal characters built entirely from three.js primitives (no
+// downloaded models — the project stays self-contained). Each character is a
+// THREE.Group whose feet sit at local y = 0, with hip/shoulder PIVOT groups so
+// a walk cycle is just swinging those pivots. A `hand` anchor marks where the
+// carried gold key attaches.
+
+const FLOOR_Y = 0.16; // top of a floor tile — characters stand here
+
+function limb(geo, mat, y) {
+  // a limb mesh hung BELOW a pivot, so rotating the pivot about x swings it
+  const m = new THREE.Mesh(geo, mat);
+  m.position.y = y;
+  m.castShadow = true;
+  return m;
+}
+
+function pivotAt(x, y, z) {
+  const p = new THREE.Group();
+  p.position.set(x, y, z);
+  return p;
+}
+
+// Shared biped skeleton; styling (robe/gown, head, crown, extras) is layered on
+// top by the King/Princess builders.
+function buildBiped(opts) {
+  const {
+    skin = 0xf0c4a0, robe, robeTrim, legColor, armColor = skin,
+    robeTopR = 0.17, robeBotR = 0.34, robeTop = 0.7, robeBot = 0.06,
+    shoulderW = 0.19, hipW = 0.1, cadence = 12,
+    legR = 0.06, bootColor = 0x4a3526, bootScale = 1,
+  } = opts;
+
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 });
+  const robeMat = new THREE.MeshStandardMaterial({ color: robe, roughness: 0.85 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: robeTrim, roughness: 0.6, metalness: 0.2 });
+  const legMat = new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.8 });
+  const armMat = new THREE.MeshStandardMaterial({ color: armColor, roughness: 0.75 });
+
+  // --- legs on hip pivots (swing front/back) --------------------------------
+  const legGeo = new THREE.CylinderGeometry(legR, legR * 0.82, 0.42, 8);
+  const footGeo = new THREE.BoxGeometry(0.12 * bootScale, 0.08 * bootScale, 0.22 * bootScale);
+  const footMat = new THREE.MeshStandardMaterial({ color: bootColor, roughness: 0.8 });
+  const hipL = pivotAt(-hipW, 0.46, 0);
+  const hipR = pivotAt(hipW, 0.46, 0);
+  for (const hip of [hipL, hipR]) {
+    hip.add(limb(legGeo, legMat, -0.21));
+    const foot = new THREE.Mesh(footGeo, footMat);
+    foot.position.set(0, -0.42 + 0.035, 0.06);
+    foot.castShadow = true;
+    hip.add(foot);
+  }
+  group.add(hipL, hipR);
+
+  // --- robe / gown (a tapered skirt that hides the upper legs) --------------
+  const robeGeo = new THREE.CylinderGeometry(robeTopR, robeBotR, robeTop - robeBot, 14, 1, true);
+  const robeMesh = new THREE.Mesh(robeGeo, robeMat);
+  robeMesh.position.y = (robeTop + robeBot) / 2;
+  robeMesh.castShadow = true;
+  group.add(robeMesh);
+  // hem trim
+  const hem = new THREE.Mesh(new THREE.TorusGeometry(robeBotR, 0.03, 6, 16), trimMat);
+  hem.rotation.x = Math.PI / 2;
+  hem.position.y = robeBot;
+  group.add(hem);
+
+  // --- torso + belt ---------------------------------------------------------
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.16, robeTopR, 0.26, 12), robeMat);
+  torso.position.y = 0.82;
+  torso.castShadow = true;
+  group.add(torso);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(robeTopR + 0.005, 0.028, 6, 16), trimMat);
+  belt.rotation.x = Math.PI / 2;
+  belt.position.y = 0.7;
+  group.add(belt);
+
+  // --- arms on shoulder pivots ---------------------------------------------
+  const armGeo = new THREE.CylinderGeometry(0.05, 0.045, 0.38, 8);
+  const handGeo = new THREE.SphereGeometry(0.05, 8, 6);
+  const shL = pivotAt(-shoulderW, 0.92, 0);
+  const shR = pivotAt(shoulderW, 0.92, 0);
+  const handAnchors = {};
+  for (const [side, sh] of [['L', shL], ['R', shR]]) {
+    const sleeve = limb(armGeo, robeMat, -0.17);
+    sh.add(sleeve);
+    const hand = new THREE.Mesh(handGeo, skinMat);
+    hand.position.y = -0.38;
+    hand.castShadow = true;
+    sh.add(hand);
+    const anchor = new THREE.Object3D();
+    anchor.position.set(0, -0.42, 0.06);
+    sh.add(anchor);
+    handAnchors[side] = anchor;
+  }
+  group.add(shL, shR);
+
+  // --- head + neck ----------------------------------------------------------
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 8), skinMat);
+  neck.position.y = 0.97;
+  group.add(neck);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 16, 14), skinMat);
+  head.position.y = 1.08;
+  head.castShadow = true;
+  group.add(head);
+  // simple face: two dark eyes facing +z (the model's forward)
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.5 });
+  for (const ex of [-0.045, 0.045]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), eyeMat);
+    eye.position.set(ex, 1.1, 0.122);
+    group.add(eye);
+  }
+
+  group.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+
+  return {
+    group,
+    head,
+    parts: { hipL, hipR, shL, shR },
+    handAnchors,
+    materials: { skinMat, robeMat, trimMat, legMat, armMat },
+    cadence,
+    phase: Math.random() * 6.28,
+    moveAmt: 0,
+    baseY: FLOOR_Y,
+  };
+}
+
+// Advance the walk cycle. `moving` ramps the swing amplitude up/down so starts
+// and stops ease instead of snapping.
+export function updateWalker(w, dt, moving) {
+  w.moveAmt += ((moving ? 1 : 0) - w.moveAmt) * Math.min(1, dt * 10);
+  if (moving) w.phase += dt * w.cadence;
+  const amp = 0.6 * w.moveAmt;
+  const s = Math.sin(w.phase);
+  w.parts.hipL.rotation.x = s * amp;
+  w.parts.hipR.rotation.x = -s * amp;
+  w.parts.shL.rotation.x = -s * amp * 0.85;
+  w.parts.shR.rotation.x = s * amp * 0.85;
+  // a subtle bob + breathing so an idle character isn't frozen
+  const bob = Math.abs(Math.sin(w.phase)) * 0.045 * w.moveAmt;
+  const breathe = Math.sin(performance.now() * 0.002) * 0.004 * (1 - w.moveAmt);
+  w.group.position.y = w.baseY + bob + breathe;
+  if (w.cape) {
+    w.cape.rotation.x = -0.2 - s * 0.18 * w.moveAmt; // cape trails the stride
+  }
+}
+
+// ----------------------------------------------------------------- the King
+export function makeKing() {
+  // a SHORT belted tunic (not a gown) over dark trousers + big boots, with
+  // broad shoulders — clearly a king, not a dress.
+  const w = buildBiped({
+    skin: 0xe6b48c,
+    robe: 0x8f2a2a, robeTrim: 0xe8c168,
+    legColor: 0x2c2e3c, bootColor: 0x3a281a, bootScale: 1.3, legR: 0.078,
+    robeTopR: 0.2, robeBotR: 0.27, robeTop: 0.92, robeBot: 0.5,
+    shoulderW: 0.24, hipW: 0.12, cadence: 10,
+  });
+  const { group } = w;
+  const gold = new THREE.MeshStandardMaterial({ color: 0xe8c168, roughness: 0.4, metalness: 0.45 });
+  const fur = new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 0.95 });
+
+  // big crown with points
+  const crown = new THREE.Group();
+  crown.position.y = 1.2;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.08, 12, 1, true), gold);
+  crown.add(band);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 6), gold);
+    spike.position.set(Math.cos(a) * 0.12, 0.08, Math.sin(a) * 0.12);
+    crown.add(spike);
+    const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6),
+      new THREE.MeshStandardMaterial({ color: 0xc0392b, emissive: 0x5a1410, emissiveIntensity: 0.5, roughness: 0.3 }));
+    jewel.position.set(Math.cos(a) * 0.12, 0.05, Math.sin(a) * 0.12);
+    crown.add(jewel);
+  }
+  group.add(crown);
+
+  // white beard
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.22, 10), fur);
+  beard.position.set(0, 1.0, 0.07);
+  beard.rotation.x = 0.15;
+  group.add(beard);
+
+  // fur collar
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.045, 8, 16), fur);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 0.93;
+  group.add(collar);
+
+  // a cape that trails behind (sways with the stride)
+  const cape = new THREE.Group();
+  cape.position.set(0, 0.9, -0.12);
+  const capeMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.78), new THREE.MeshStandardMaterial({ color: 0x7a1f1f, side: THREE.DoubleSide, roughness: 0.9 }));
+  capeMesh.position.y = -0.34;
+  capeMesh.castShadow = true;
+  cape.add(capeMesh);
+  group.add(cape);
+  w.cape = cape;
+
+  w.name = 'king';
+  return w;
+}
+
+// -------------------------------------------------------------- the Princess
+export function makePrincess() {
+  const w = buildBiped({
+    skin: 0xf3cdab,
+    robe: 0x3f6fd6, robeTrim: 0xbfe0ff,
+    legColor: 0xf0e2ea, bootColor: 0xec8fc0, bootScale: 0.8, legR: 0.05,
+    robeTopR: 0.15, robeBotR: 0.34, robeTop: 0.66, robeBot: 0.14,
+    shoulderW: 0.16, hipW: 0.09, cadence: 12.5,
+  });
+  const { group } = w;
+  const gold = new THREE.MeshStandardMaterial({ color: 0xf0d060, roughness: 0.4, metalness: 0.45 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x6b3d1f, roughness: 0.85 });
+
+  // long flowing hair: a back panel + two side locks
+  const back = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.34, 4, 8), hairMat);
+  back.position.set(0, 0.96, -0.07);
+  back.scale.set(1, 1, 0.5);
+  back.castShadow = true;
+  group.add(back);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12, 0, Math.PI * 2, 0, Math.PI / 1.7), hairMat);
+  cap.position.y = 1.09;
+  group.add(cap);
+  for (const sx of [-0.12, 0.12]) {
+    const lock = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.3, 4, 6), hairMat);
+    lock.position.set(sx, 0.95, 0.02);
+    group.add(lock);
+  }
+
+  // dainty tiara
+  const tiara = new THREE.Group();
+  tiara.position.y = 1.16;
+  const tband = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.012, 6, 16, Math.PI), gold);
+  tband.rotation.set(Math.PI / 2, 0, 0);
+  tiara.add(tband);
+  const peak = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.07, 6), gold);
+  peak.position.set(0, 0.03, 0.12);
+  tiara.add(peak);
+  const gem = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff5ea8, emissive: 0x7a1a44, emissiveIntensity: 0.5, roughness: 0.3 }));
+  gem.position.set(0, 0.0, 0.13);
+  tiara.add(gem);
+  group.add(tiara);
+
+  // puff sleeves + bodice trim
+  for (const sx of [-0.16, 0.16]) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), w.materials.robeMat);
+    puff.position.set(sx, 0.88, 0);
+    group.add(puff);
+  }
+  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.02, 6, 16), new THREE.MeshStandardMaterial({ color: 0xbfe0ff, roughness: 0.5, metalness: 0.2 }));
+  sash.rotation.x = Math.PI / 2;
+  sash.position.y = 0.74;
+  group.add(sash);
+
+  w.name = 'princess';
+  return w;
+}
