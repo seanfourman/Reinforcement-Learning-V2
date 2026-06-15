@@ -4,8 +4,10 @@ import { updateWalker } from './characters.js';
 
 // Animates a recorded game (trajectory.json) in the 3D scene: drives the two
 // characters cell-to-cell with smooth interpolation + walk cycles, floats the
-// keys, pulses the teleporter pads, hands the gold key to whoever holds it,
-// and shows who won.
+// three keys, hands the gold key to whoever holds it, and shows who won.
+//
+// The board itself is stripped to bare tiles — no walls, gates, pads or
+// pedestal — so the only things on it are the King, the Princess and the keys.
 //
 // trajectory frames are discrete sim ticks; we interpolate between consecutive
 // ticks over STEP_DUR seconds so motion reads as continuous walking.
@@ -21,13 +23,13 @@ function keyMesh(color, _emissive, gemColor) {
   const metal = new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.8 });
   const gemMat = new THREE.MeshStandardMaterial({ color: gemColor ?? color, roughness: 0.2, metalness: 0.5 });
 
-  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.06, 12, 24), metal);
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.06, 16, 32), metal);
   bow.position.y = 0.34;
   g.add(bow);
   // four little lobes around the bow (clover look)
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2;
-    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), metal);
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), metal);
     lobe.position.set(Math.cos(a) * 0.2, 0.34 + Math.sin(a) * 0.2, 0);
     g.add(lobe);
   }
@@ -37,11 +39,11 @@ function keyMesh(color, _emissive, gemColor) {
   g.add(gem);
 
   // thick shaft
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 10), metal);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.46, 16), metal);
   shaft.position.y = -0.02;
   g.add(shaft);
   // collar where shaft meets bow
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.025, 8, 16), metal);
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.025, 12, 24), metal);
   collar.rotation.x = Math.PI / 2;
   collar.position.y = 0.18;
   g.add(collar);
@@ -56,92 +58,6 @@ function keyMesh(color, _emissive, gemColor) {
   return { group: g, mat: metal, gem: gemMat };
 }
 
-function padMesh(color) {
-  const g = new THREE.Group();
-  const ringMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.8, roughness: 0.4, transparent: true, opacity: 0.9 });
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.05, 10, 28), ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.34, 28),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35, roughness: 0.5, transparent: true, opacity: 0.45 }));
-  disc.rotation.x = -Math.PI / 2;
-  g.add(disc, ring);
-  return { group: g, mat: ringMat, disc };
-}
-
-function buildPedestal() {
-  // a carved stone plinth with a glowing rune ring; the gold key floats above
-  const g = new THREE.Group();
-  const stone = new THREE.MeshStandardMaterial({ color: 0xcfc4b0, roughness: 0.85, metalness: 0.05 });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.52, 0.16, 8), stone);
-  base.position.y = 0.08;
-  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.34, 8), stone);
-  col.position.y = 0.33;
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.26, 0.12, 8), stone);
-  top.position.y = 0.56;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.028, 8, 22),
-    new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffc24b, emissiveIntensity: 1.0, roughness: 0.4 }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.63;
-  g.add(base, col, top, ring);
-  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return g;
-}
-
-function buildPortcullis() {
-  // an iron portcullis with a keyhole. Neutral metal (NOT agent-coloured). The
-  // `bars` group slides down into the floor when the door is unlocked.
-  const g = new THREE.Group();
-  const iron = new THREE.MeshStandardMaterial({ color: 0x4b4b54, metalness: 0.7, roughness: 0.45 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x2b2b31, metalness: 0.5, roughness: 0.6 });
-  const brass = new THREE.MeshStandardMaterial({ color: 0xa8843c, metalness: 0.7, roughness: 0.4 });
-  const black = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.85 });
-
-  // stone-set frame: two jambs (sunk in the flanking walls) + a lintel
-  const postGeo = new THREE.BoxGeometry(0.14, 1.55, 0.32);
-  for (const px of [-0.5, 0.5]) {
-    const p = new THREE.Mesh(postGeo, dark);
-    p.position.set(px, 0.77, 0);
-    p.castShadow = true;
-    g.add(p);
-  }
-  const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.22, 0.36), dark);
-  lintel.position.y = 1.55;
-  lintel.castShadow = true;
-  g.add(lintel);
-
-  // brass keyhole escutcheon on the lintel
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.05), brass);
-  plate.position.set(0, 1.5, 0.2);
-  g.add(plate);
-  const holeC = new THREE.Mesh(new THREE.CircleGeometry(0.045, 14), black);
-  holeC.position.set(0, 1.53, 0.231);
-  g.add(holeC);
-  const holeS = new THREE.Mesh(new THREE.PlaneGeometry(0.035, 0.07), black);
-  holeS.position.set(0, 1.48, 0.231);
-  g.add(holeS);
-
-  // the sliding grille: vertical bars + crossbars + pointed tips
-  const bars = new THREE.Group();
-  const barGeo = new THREE.CylinderGeometry(0.035, 0.035, 1.46, 8);
-  const tipGeo = new THREE.ConeGeometry(0.045, 0.12, 6);
-  for (const bx of [-0.33, -0.11, 0.11, 0.33]) {
-    const b = new THREE.Mesh(barGeo, iron);
-    b.position.set(bx, 0.75, 0);
-    b.castShadow = true;
-    bars.add(b);
-    const tip = new THREE.Mesh(tipGeo, iron);
-    tip.position.set(bx, 0.0, 0);
-    bars.add(tip);
-  }
-  for (const cy of [0.32, 1.2]) {
-    const cr = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.06, 0.06), iron);
-    cr.position.set(0, cy, 0);
-    bars.add(cr);
-  }
-  g.add(bars);
-  return { group: g, bars };
-}
-
 export function createPlayback(scene, trajectory, layout, walkers) {
   const frames = trajectory.frames;
   const group = new THREE.Group();
@@ -154,7 +70,7 @@ export function createPlayback(scene, trajectory, layout, walkers) {
   princess.group.scale.setScalar(1.2);
   group.add(king.group, princess.group);
 
-  // --- props ---------------------------------------------------------------
+  // --- the three keys (the only props left on the board) -------------------
   const FLOAT_Y = 0.62;
   const redKey = keyMesh(0xff4d6a, 0x8a1020, 0xff9aa8);
   const blueKey = keyMesh(0x5b8dff, 0x10318a, 0xb9d2ff);
@@ -167,34 +83,6 @@ export function createPlayback(scene, trajectory, layout, walkers) {
   };
   place(redKey.group, layout.redKey, FLOAT_Y);
   place(blueKey.group, layout.blueKey, FLOAT_Y);
-
-  const pad1 = padMesh(0x9b7bff);
-  const pad2 = padMesh(0x9b7bff);
-  group.add(pad1.group, pad2.group);
-  place(pad1.group, layout.pad1, 0.18);
-  place(pad2.group, layout.pad2, 0.18);
-
-  // the pedestal under the gold key — a glowing centrepiece
-  const pedestal = buildPedestal();
-  place(pedestal, layout.gold, 0.16);
-  group.add(pedestal);
-  const gW = cellToWorld(layout.gold.r, layout.gold.c);
-  const pedestalGlow = new THREE.PointLight(0xffe6a0, 1.1, 4.5, 2);
-  pedestalGlow.position.set(gW.x, 1.3, gW.z);
-  group.add(pedestalGlow);
-
-  // bedroom doors: iron portcullises that slide down when unlocked
-  const redPort = buildPortcullis();
-  const bluePort = buildPortcullis();
-  place(redPort.group, layout.redDoor, 0.16);
-  place(bluePort.group, layout.blueDoor, 0.16);
-  group.add(redPort.group, bluePort.group);
-  const doors = [
-    { bars: redPort.bars, keyFlag: 'redKey', walker: king,
-      pos: cellToWorld(layout.redDoor.r, layout.redDoor.c), open: 0, latched: false },
-    { bars: bluePort.bars, keyFlag: 'blueKey', walker: princess,
-      pos: cellToWorld(layout.blueDoor.r, layout.blueDoor.c), open: 0, latched: false },
-  ];
 
   // a warm torch-glow at the escape gate — neutral, never tinted by who wins
   const escapeCell = layout.escape[0];
@@ -242,11 +130,6 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     t = 0;
     heading.red = Math.PI;
     heading.blue = Math.PI;
-    for (const d of doors) {
-      d.open = 0;
-      d.latched = false;
-      d.bars.position.y = 0;
-    }
     banner.style.opacity = '0';
   }
 
@@ -300,23 +183,6 @@ export function createPlayback(scene, trajectory, layout, walkers) {
       goldKey.group.rotation.y = spin;
       goldKey.group.scale.setScalar(1.0);
     }
-
-    // --- bedroom doors: open when the key-holder ARRIVES at the door, not the
-    // instant they grab the key. Latches open once reached.
-    for (const d of doors) {
-      if (!d.latched && f[d.keyFlag]) {
-        const ddx = d.walker.group.position.x - d.pos.x;
-        const ddz = d.walker.group.position.z - d.pos.z;
-        if (ddx * ddx + ddz * ddz < 1.6 * 1.6) d.latched = true;
-      }
-      d.open += ((d.latched ? 1 : 0) - d.open) * Math.min(1, dt * 5);
-      d.bars.position.y = -d.open * 1.6; // sink the grille into the floor
-    }
-
-    // --- teleporter pads pulse -----------------------------------------------
-    const pulse = 0.6 + Math.sin(elapsed * 4) * 0.25;
-    pad1.mat.emissiveIntensity = pulse;
-    pad2.mat.emissiveIntensity = pulse;
 
     // --- finale: warm flare at the gate + banner (gate stays neutral) --------
     if (i >= last && trajectory.winner) {

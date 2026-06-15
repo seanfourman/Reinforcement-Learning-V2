@@ -3,7 +3,6 @@ import { GRID, PALETTE, CAMERA } from './config.js';
 import { createTextures } from './textures.js';
 import { buildWorld } from './build.js';
 import { buildFixedWorld } from './fixedworld.js';
-import { buildMazeWalls } from './mazewalls.js';
 import { parseLayout } from './layout.js';
 import { makeKing, makePrincess } from './characters.js';
 import { createPlayback } from './playback.js';
@@ -82,8 +81,8 @@ async function init() {
   current = buildWorld(world, textures);
   scene.add(current.group);
 
-  // castle maze walls (rendered here, not by buildWorld)
-  scene.add(buildMazeWalls(rows));
+  // the board is left as bare floor tiles — no maze walls, gates or props,
+  // just the King, the Princess and the three keys on top of it
 
   const walkers = { red: makeKing(), blue: makePrincess() };
   playback = createPlayback(scene, trajectory, layout, walkers);
