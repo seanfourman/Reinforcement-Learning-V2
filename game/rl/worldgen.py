@@ -40,14 +40,16 @@ RED_DOOR_POS, BLUE_DOOR_POS = (12, 8), (12, 11)        # key-locked exits to the
 # inner wall col 5; door A<->living at (18,5); door B<->A at (16,2). Mirrored right.
 ROOM_DOORS = [(18, 5), (16, 2), (18, 14), (16, 17)]    # contact-open
 
-# left-side furniture (mirrored to the right). Logical: bed + bedside chest,
-# wardrobe against the wall (inner room); desk + chair together, bookshelf (outer).
+# left-side furniture (mirrored to the right), as (cell, type, rot). rot is a
+# quarter-turn the renderer applies: 0=faces SOUTH(+row), 1=EAST, 2=NORTH, 3=WEST.
+# Placed logically: bed + bedside chest + wardrobe against the back wall (inner
+# room, facing into it); a desk with its CHAIR facing it, and a bookshelf (outer).
 FURN_LEFT = [
-    ((13, 0), "bed"), ((13, 1), "chest"), ((13, 4), "wardrobe"),      # inner room B
-    ((18, 1), "table"), ((19, 1), "chair"), ((19, 4), "bookshelf"),   # outer room A
+    ((13, 0), "bed", 0), ((13, 1), "chest", 0), ((13, 4), "wardrobe", 0),   # inner room B
+    ((18, 1), "table", 0), ((19, 1), "chair", 2), ((19, 4), "bookshelf", 2),  # outer room A
 ]
-# a dining table with chairs in the living-room centre (off the agents' lanes)
-FURN_LIVING = [((17, 9), "table"), ((17, 10), "table"), ((16, 9), "chair"), ((16, 10), "chair")]
+# a dining table with the two chairs FACING it (chairs at row 16 face south->table)
+FURN_LIVING = [((17, 9), "table", 0), ((17, 10), "table", 0), ((16, 9), "chair", 0), ((16, 10), "chair", 0)]
 
 GOLD_POS = (5, 9)
 ESCAPE_POS = [(0, 9), (0, 10)]
@@ -95,15 +97,6 @@ class World:
         }
 
 
-def _facing(cell, grid):
-    r, c = cell
-    for i, (dr, dc) in enumerate([(1, 0), (-1, 0), (0, 1), (0, -1)]):
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < SIZE and 0 <= nc < SIZE and grid[nr][nc] == FLOOR:
-            return i
-    return 0
-
-
 def _build():
     g = [[FLOOR] * SIZE for _ in range(SIZE)]
     furniture = []
@@ -130,10 +123,10 @@ def _build():
     # furniture (left hand-placed, mirrored to the right)
     def block(r, c):
         g[r][c] = WALL
-    for (cell, t) in FURN_LEFT:
+    for (cell, t, rot) in FURN_LEFT:
         block(*cell)
         block(cell[0], 19 - cell[1])
-    for (cell, t) in FURN_LIVING:
+    for (cell, t, rot) in FURN_LIVING:
         block(*cell)
 
     # fixtures
@@ -151,12 +144,12 @@ def _build():
     for cell in [(1, 9), (1, 10), (11, 8), (11, 11), (13, 8), (13, 11)]:
         g[cell[0]][cell[1]] = FLOOR
 
-    # furniture render-list (facings computed against the final grid)
-    for (cell, t) in FURN_LEFT:
-        for cc in (cell, (cell[0], 19 - cell[1])):
-            furniture.append({"cell": [cc[0], cc[1]], "type": t, "rot": _facing(cc, g)})
-    for (cell, t) in FURN_LIVING:
-        furniture.append({"cell": [cell[0], cell[1]], "type": t, "rot": _facing(cell, g)})
+    # furniture render-list (explicit facings; mirror keeps N/S-facing pieces)
+    for (cell, t, rot) in FURN_LEFT:
+        furniture.append({"cell": [cell[0], cell[1]], "type": t, "rot": rot})
+        furniture.append({"cell": [cell[0], 19 - cell[1]], "type": t, "rot": rot})
+    for (cell, t, rot) in FURN_LIVING:
+        furniture.append({"cell": [cell[0], cell[1]], "type": t, "rot": rot})
 
     return World(g, furniture, [list(c) for c in ROOM_DOORS])
 
