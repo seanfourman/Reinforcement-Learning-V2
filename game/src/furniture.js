@@ -151,8 +151,22 @@ export function createFurniture(scene, world) {
     return g;
   }
   function block() { return new THREE.Group(); }   // invisible space-filler under a wide piece
+  function lamp() {                                  // a solid standing lamp (torchère)
+    const g = new THREE.Group();
+    const brass = M(0xc6a24a, 0.4, 0.6);
+    const flameMat = M(0xffce86, 0.4, 0, { emissive: 0xff9a3c, emissiveIntensity: 1.7 });
+    put(g, G(new THREE.CylinderGeometry(0.13, 0.2, 0.1, 12)), iron, 0, FLOOR_Y + 0.05, 0);   // base
+    put(g, G(new THREE.CylinderGeometry(0.035, 0.05, 1.15, 8)), iron, 0, FLOOR_Y + 0.68, 0); // pole
+    put(g, G(new THREE.CylinderGeometry(0.13, 0.05, 0.12, 12)), brass, 0, FLOOR_Y + 1.24, 0);// cup
+    const fl = put(g, G(new THREE.ConeGeometry(0.1, 0.32, 8)), flameMat, 0, FLOOR_Y + 1.42, 0);
+    fl.castShadow = false; fl.renderOrder = 4;
+    const light = new THREE.PointLight(0xffb060, 1.0, 5.5, 2);
+    light.position.set(0, FLOOR_Y + 1.42, 0);
+    g.add(light);
+    return g;
+  }
 
-  const BUILDERS = { bed, wardrobe, bookshelf, chest, chair, table, piano, sofa, armchair, block };
+  const BUILDERS = { bed, wardrobe, bookshelf, chest, chair, table, piano, sofa, armchair, block, lamp };
 
   // place every piece
   const pieces = [];

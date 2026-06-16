@@ -60,6 +60,10 @@ FURN_LIVING = [
     ((13, 12), "bookshelf", 0), ((13, 13), "bookshelf", 0), # library shelves (right)
     ((17, 9), "sofa", 2), ((17, 10), "sofa", 2),            # two-seat sofa facing the piano
     ((16, 6), "armchair", 1), ((16, 13), "armchair", 3),    # armchairs by the shelves
+    # standing lamps in the four corners of the hall — SOLID (real obstacle cells),
+    # tucked against the walls so they never block a door or the agents' lanes
+    ((14, 6), "lamp", 0), ((14, 13), "lamp", 0),
+    ((19, 6), "lamp", 0), ((19, 13), "lamp", 0),
 ]
 
 ESCAPE_POS = [(0, 9), (0, 10)]

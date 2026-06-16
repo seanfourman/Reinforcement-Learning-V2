@@ -30,8 +30,7 @@ export function buildArchitecture(world) {
   // materials: warm plaster body, darker stone skirting + cornice
   const plaster = new THREE.MeshStandardMaterial({ color: 0xe7dcc3, roughness: 0.96 });
   const stone = new THREE.MeshStandardMaterial({ color: 0xb6a890, roughness: 0.92 });
-  const colStone = new THREE.MeshStandardMaterial({ color: 0xcabfa6, roughness: 0.9 });
-  const disposables = [plaster, stone, colStone];
+  const disposables = [plaster, stone];
   const geos = [];
   const geo = (g) => { geos.push(g); return g; };
 
@@ -43,14 +42,13 @@ export function buildArchitecture(world) {
     return b;
   };
 
-  // --- classify cells: columns (isolated) vs wall cells ----------------------
+  // every structural cell becomes plaster wall (merged into runs below). We do
+  // NOT render lone cells as round columns any more — an isolated wall stub next
+  // to a door or furniture should read as a normal wall, not a pillar.
   const wallCells = [];
-  const colCells = [];
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
-      if (!isStruct(r, c)) continue;
-      const connected = isStruct(r - 1, c) || isStruct(r + 1, c) || isStruct(r, c - 1) || isStruct(r, c + 1);
-      (connected ? wallCells : colCells).push([r, c]);
+      if (isStruct(r, c)) wallCells.push([r, c]);
     }
   }
 
@@ -80,18 +78,6 @@ export function buildArchitecture(world) {
       addBox(1.04, 0.22, vert * 0.98 + 0.06, cx, BASE_Y + 0.11, cz, stone);
       addBox(1.06, 0.1, vert * 0.98 + 0.04, cx, BASE_Y + WALL_H, cz, stone);
     }
-  }
-
-  // --- stone columns for isolated structural cells (hall pillars) -------------
-  const shaftGeo = geo(new THREE.CylinderGeometry(0.32, 0.36, WALL_H + 0.4, 14));
-  const baseGeo = geo(new THREE.BoxGeometry(0.8, 0.22, 0.8));
-  const capGeo = geo(new THREE.BoxGeometry(0.82, 0.18, 0.82));
-  for (const [r, c] of colCells) {
-    const x = c + 0.5, z = r + 0.5;
-    const base = new THREE.Mesh(baseGeo, stone); base.position.set(x, BASE_Y + 0.11, z);
-    const shaft = new THREE.Mesh(shaftGeo, colStone); shaft.position.set(x, BASE_Y + (WALL_H + 0.4) / 2, z);
-    const cap = new THREE.Mesh(capGeo, stone); cap.position.set(x, BASE_Y + WALL_H + 0.3, z);
-    for (const m of [base, shaft, cap]) { m.castShadow = m.receiveShadow = true; group.add(m); }
   }
 
   group.userData.dispose = () => { for (const g of geos) g.dispose(); for (const m of disposables) m.dispose(); };

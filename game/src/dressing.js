@@ -292,14 +292,11 @@ export function createDressing(scene, world) {
   // ----------------------------------------------------- authored placements
   // [type, x, z, rotationY, options?]   (x = west→east, z = north→south)
   const PI = Math.PI;
-  const ITEMS = [
-    // The furnished obstacle pieces (grand piano, library shelves, sofa, armchairs)
-    // are real blockers and live in furniture.js. Here we only add the standing
-    // lamps that light the palace hall and potted topiary in the corners.
-    ['torchere', 6.6, 15.4, 0, { light: true }], ['torchere', 12.4, 15.4, 0, { light: true }],
-    ['torchere', 6.6, 18.6, 0, { light: true }], ['torchere', 12.4, 18.6, 0, { light: true }],
-    ['tree', 0.7, 15.4, 0], ['tree', 19.3, 15.4, 0], ['tree', 0.7, 17.7, 0], ['tree', 19.3, 17.7, 0],
-  ];
+  // NOTE: floor-standing props (lamps, topiary) used to live here as pure decor,
+  // but agents could walk through them and one sat on a door. Standing lamps are
+  // now SOLID obstacle cells in furniture.js (type 'lamp'); the hall is lit by
+  // those + the wall sconces below. Nothing free-standing is placed here.
+  const ITEMS = [];
 
   for (const [type, x, z, ry, opt] of ITEMS) {
     const g = new THREE.Group();
