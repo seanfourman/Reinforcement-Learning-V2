@@ -46,6 +46,10 @@ export function createFurniture(scene, world) {
   const iron = M(IRON, 0.5, 0.4);
   const sheet = M(0xe9e2d2, 0.9), pillow = M(0xf4eee2, 0.95);
   const cloth = M(0x9c4452, 0.9);
+  const lacquer = M(0x161418, 0.3, 0.15);   // piano black
+  const ivory = M(0xeee6d2, 0.5);
+  const fab = M(0x55707a, 0.95);            // upholstery
+  const cush = M(0xe7dcc6, 0.95);
 
   const put = (g, geo, material, x, y, z, sx = 1, sy = 1, sz = 1) => box(g, geo, material, x, y, z, sx, sy, sz);
 
@@ -112,7 +116,43 @@ export function createFurniture(scene, world) {
     return g;
   }
 
-  const BUILDERS = { bed, wardrobe, bookshelf, chest, chair, table };
+  // grand piano — built shifted +0.5 in x so, placed on its left cell, it spans
+  // the two centre cells (the right cell is filled by an invisible "block").
+  function piano() {
+    const g = new THREE.Group();
+    const ox = 0.5;
+    put(g, G(new THREE.BoxGeometry(1.5, 0.3, 0.95)), lacquer, ox, FLOOR_Y + 0.6, 0);          // body
+    put(g, G(new THREE.CylinderGeometry(0.475, 0.475, 0.3, 20, 1, false, 0, Math.PI)),
+      lacquer, ox - 0.75, FLOOR_Y + 0.6, 0).rotation.y = -Math.PI / 2;                        // rounded tail
+    const lid = put(g, G(new THREE.BoxGeometry(1.45, 0.05, 0.62)), lacquer, ox + 0.02, FLOOR_Y + 0.82, -0.18);
+    lid.rotation.x = -0.42;                                                                   // raised lid
+    put(g, G(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6)), iron, ox - 0.5, FLOOR_Y + 0.82, -0.34).rotation.x = 0.2;
+    for (const [lx, lz] of [[ox - 0.6, 0.4], [ox + 0.6, 0.4], [ox, -0.38]])
+      put(g, G(new THREE.CylinderGeometry(0.05, 0.06, 0.6, 8)), lacquer, lx, FLOOR_Y + 0.3, lz); // legs
+    put(g, G(new THREE.BoxGeometry(1.2, 0.08, 0.18)), ivory, ox, FLOOR_Y + 0.5, 0.52);        // keyboard
+    for (let i = -5; i <= 5; i++)
+      put(g, G(new THREE.BoxGeometry(0.03, 0.025, 0.1)), lacquer, ox + i * 0.09, FLOOR_Y + 0.55, 0.49); // black keys
+    return g;
+  }
+  function sofa() {
+    const g = new THREE.Group();
+    put(g, G(new THREE.BoxGeometry(0.86, 0.22, 0.56)), fab, 0, FLOOR_Y + 0.24, 0);            // seat
+    put(g, G(new THREE.BoxGeometry(0.86, 0.4, 0.14)), fab, 0, FLOOR_Y + 0.44, -0.22);         // back
+    for (const ax of [-0.43, 0.43]) put(g, G(new THREE.BoxGeometry(0.12, 0.34, 0.56)), fab, ax, FLOOR_Y + 0.32, 0); // arms
+    put(g, G(new THREE.BoxGeometry(0.66, 0.14, 0.46)), cush, 0, FLOOR_Y + 0.36, 0.04);        // cushion
+    return g;
+  }
+  function armchair() {
+    const g = new THREE.Group();
+    put(g, G(new THREE.BoxGeometry(0.58, 0.22, 0.54)), fab, 0, FLOOR_Y + 0.24, 0);
+    put(g, G(new THREE.BoxGeometry(0.58, 0.4, 0.13)), fab, 0, FLOOR_Y + 0.44, -0.2);
+    for (const ax of [-0.29, 0.29]) put(g, G(new THREE.BoxGeometry(0.11, 0.32, 0.54)), fab, ax, FLOOR_Y + 0.32, 0);
+    put(g, G(new THREE.BoxGeometry(0.42, 0.14, 0.44)), cush, 0, FLOOR_Y + 0.36, 0.04);
+    return g;
+  }
+  function block() { return new THREE.Group(); }   // invisible space-filler under a wide piece
+
+  const BUILDERS = { bed, wardrobe, bookshelf, chest, chair, table, piano, sofa, armchair, block };
 
   // place every piece
   const pieces = [];

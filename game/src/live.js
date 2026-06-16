@@ -149,7 +149,9 @@ export function createLiveActors(scene, walkers) {
       goldKey.group.scale.setScalar(0.7);
     } else if (frame.gold.pos) {
       const { x, z } = cwArr(frame.gold.pos);
-      goldKey.group.position.set(x, FLOAT_Y + bob, z);
+      // the on-ground gold rests in its central chamber cell (col 9); nudge it
+      // half a tile east so it sits dead-centre between the two gates (x = 10).
+      goldKey.group.position.set(x + 0.5, FLOAT_Y + bob, z);
       goldKey.group.rotation.y = spin;
       goldKey.group.scale.setScalar(1.0);
     }

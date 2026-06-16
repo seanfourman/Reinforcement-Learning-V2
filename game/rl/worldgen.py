@@ -22,6 +22,8 @@ listed (with type + facing) in ``World.furniture``; contact-open room doors in
 Coordinates are (row, col), row 0 = NORTH (escape), row 19 = SOUTH.
 """
 
+import random
+
 SIZE = 20
 
 WALL, FLOOR, ESCAPE = "#", ".", "E"
@@ -48,20 +50,26 @@ FURN_LEFT = [
     ((13, 0), "bed", 0), ((13, 1), "chest", 0), ((13, 4), "wardrobe", 0),   # inner room B
     ((18, 1), "table", 0), ((19, 1), "chair", 2), ((19, 4), "bookshelf", 2),  # outer room A
 ]
-# a dining table with the two chairs FACING it (chairs at row 16 face south->table)
-FURN_LIVING = [((17, 9), "table", 0), ((17, 10), "table", 0), ((16, 9), "chair", 0), ((16, 10), "chair", 0)]
+# The shared central hall is furnished as a SYMMETRIC obstacle room the agents
+# weave through to leave: a grand piano centrepiece, library shelves, a sofa and
+# armchairs. "block" cells are invisible space-fillers under the wide piano.
+# Everything is mirrored about col 9.5 so both sides start identically.
+FURN_LIVING = [
+    ((14, 9), "piano", 0), ((14, 10), "block", 0),          # grand piano (spans 9-10)
+    ((13, 6), "bookshelf", 0), ((13, 7), "bookshelf", 0),   # library shelves (left)
+    ((13, 12), "bookshelf", 0), ((13, 13), "bookshelf", 0), # library shelves (right)
+    ((17, 9), "sofa", 2), ((17, 10), "sofa", 2),            # two-seat sofa facing the piano
+    ((16, 6), "armchair", 1), ((16, 13), "armchair", 3),    # armchairs by the shelves
+]
 
-GOLD_POS = (5, 9)
 ESCAPE_POS = [(0, 9), (0, 10)]
-PILLARS = [(8, 5), (8, 14)]
-MIRROR_PAIR = ((3, 2), (3, 17))
-LEVER_POS = (9, 9)
-TRAP_POS = (6, 10)
-LADDER_PAIR = ((8, 4), (8, 6))
+MAZE_SEED = 5                # fixed, so the maze is identical on every load
+GOLD_TRAP = "X"             # step here holding the gold and it drops back home
+GOLD_CELL = (6, 9)          # gold hides in the central chamber (rendered dead-centre)
 
 
 class World:
-    def __init__(self, grid, furniture, room_doors, seed=1):
+    def __init__(self, grid, furniture, room_doors, gold_home, drop_traps, seed=1):
         self.grid = grid
         self.furniture = furniture
         self.room_doors = room_doors
@@ -69,13 +77,14 @@ class World:
         self.H, self.W = len(grid), len(grid[0])
         self.red_spawn, self.blue_spawn = RED_SPAWN_POS, BLUE_SPAWN_POS
         self.red_door, self.blue_door = RED_DOOR_POS, BLUE_DOOR_POS
-        self.gold_home = GOLD_POS
+        self.gold_home = gold_home
+        self.drop_traps = drop_traps
         self.escape = list(ESCAPE_POS)
         self.red_key, self.blue_key = RED_KEY_POS, BLUE_KEY_POS
-        self.mirrors = [(list(MIRROR_PAIR[0]), list(MIRROR_PAIR[1]))]
-        self.levers = [list(LEVER_POS)]
-        self.traps = [list(TRAP_POS)]
-        self.ladders = [(list(LADDER_PAIR[0]), list(LADDER_PAIR[1]))]
+        self.mirrors = []
+        self.levers = []
+        self.traps = []
+        self.ladders = []
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -88,6 +97,7 @@ class World:
             "redDoor": list(self.red_door), "blueDoor": list(self.blue_door),
             "roomDoors": [list(c) for c in self.room_doors],
             "goldHome": list(self.gold_home),
+            "dropTraps": [list(c) for c in self.drop_traps],
             "escape": [list(e) for e in self.escape],
             "furniture": self.furniture,
             "mirrors": [[list(a), list(b)] for a, b in self.mirrors],
@@ -97,30 +107,129 @@ class World:
         }
 
 
+def _carve_top_maze(g, rng):
+    """A single-thickness maze filling the upper arena (rows 1-11), MIRROR-
+    symmetric about the centre so the two agents face an identical maze. The
+    outer edge is left OPEN (a thin perimeter aisle) so the castle's own wall is
+    the boundary — no redundant inner wall ring, no thick border."""
+    # seal the top solid, then carve corridors back out of the LEFT half only
+    for r in range(0, DIVIDER_ROW):
+        for c in range(SIZE):
+            g[r][c] = WALL
+    R0, R1, C0, C1 = 1, 11, 1, 9              # left-half cells sit on the odd coords
+    for r in range(R0, R1 + 1, 2):
+        for c in range(C0, C1 + 1, 2):
+            g[r][c] = FLOOR
+    start = (R1, C0)
+    seen, stack = {start}, [start]
+    while stack:
+        r, c = stack[-1]
+        nbrs = [(r + dr, c + dc, dr, dc)
+                for dr, dc in ((-2, 0), (2, 0), (0, -2), (0, 2))
+                if R0 <= r + dr <= R1 and C0 <= c + dc <= C1 and (r + dr, c + dc) not in seen]
+        if not nbrs:
+            stack.pop()
+            continue
+        nr, nc, dr, dc = rng.choice(nbrs)
+        g[r + dr // 2][c + dc // 2] = FLOOR
+        seen.add((nr, nc))
+        stack.append((nr, nc))
+    # necks carved BEFORE mirroring, so the mirror makes the matching opposite one
+    g[1][9] = FLOOR      # escape throat -> mirrors to (1, 10)
+    g[11][8] = FLOOR     # red-door neck -> mirrors to (11, 11) for the blue door
+    # mirror the left half (cols 0-9) onto the right half (cols 10-19)
+    for r in range(0, DIVIDER_ROW):
+        for c in range(10):
+            g[r][19 - c] = g[r][c]
+    # open the whole perimeter: the CASTLE wall now bounds the maze (no extra wall)
+    for c in range(SIZE):
+        g[0][c] = FLOOR
+    for r in range(DIVIDER_ROW):
+        g[r][0] = FLOOR
+        g[r][SIZE - 1] = FLOOR
+    # a small symmetric chamber at the dead centre that hides the gold
+    for r in range(5, 8):
+        for c in range(8, 12):
+            g[r][c] = FLOOR
+    for (r, c) in ESCAPE_POS:
+        g[r][c] = ESCAPE
+
+
+def _maze_dist(g, start):
+    """BFS step-distances from `start` over the maze (rows 0-11, walls block)."""
+    from collections import deque
+    seen = {start: 0}
+    q = deque([start])
+    while q:
+        r, c = q.popleft()
+        for dr, dc in ORTHO:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < DIVIDER_ROW and 0 <= nc < SIZE and (nr, nc) not in seen and g[nr][nc] != WALL:
+                seen[(nr, nc)] = seen[(r, c)] + 1
+                q.append((nr, nc))
+    return seen
+
+
+def _maze_path(g, start, goal):
+    """Shortest cell path start..goal over the maze (inclusive), or [] if none."""
+    from collections import deque
+    prev = {start: None}
+    q = deque([start])
+    while q:
+        cur = q.popleft()
+        if cur == goal:
+            break
+        for dr, dc in ORTHO:
+            nxt = (cur[0] + dr, cur[1] + dc)
+            if 0 <= nxt[0] < DIVIDER_ROW and 0 <= nxt[1] < SIZE and nxt not in prev and g[nxt[0]][nxt[1]] != WALL:
+                prev[nxt] = cur
+                q.append(nxt)
+    if goal not in prev:
+        return []
+    path, cur = [], goal
+    while cur is not None:
+        path.append(cur)
+        cur = prev[cur]
+    return path[::-1]
+
+
+def _place_gold_and_traps(g):
+    """The gold hides in the central chamber — the maze is mirror-symmetric, so
+    that spot is equally far for both agents (rendered dead-centre between the
+    gates). A drop-trap sits mid-way on the shared gold->escape corridor, so it
+    threatens whoever is carrying the gold equally — step on it and it fumbles
+    straight back to the pedestal."""
+    gold = GOLD_CELL
+    g[gold[0]][gold[1]] = GOLD_HOME
+    p = [c for c in _maze_path(g, gold, ESCAPE_POS[0])[1:-1] if g[c[0]][c[1]] == FLOOR]
+    traps = [p[len(p) // 2]] if p else []
+    for (tr, tc) in traps:
+        g[tr][tc] = GOLD_TRAP
+    return gold, traps
+
+
 def _build():
     g = [[FLOOR] * SIZE for _ in range(SIZE)]
     furniture = []
 
-    # top wall + key-locked exit doors
+    # divider wall + the two key-locked exit doors (palace -> maze)
     for c in range(SIZE):
         g[DIVIDER_ROW][c] = WALL
     g[RED_DOOR_POS[0]][RED_DOOR_POS[1]] = RED_DOOR
     g[BLUE_DOOR_POS[0]][BLUE_DOOR_POS[1]] = BLUE_DOOR
 
-    # side walls of the two room-columns (col5 left, col14 right), full height
+    # --- the PALACE (bottom rows 13-19): a sealed bedroom maze each side + the
+    #     shared central hall where both agents start and are furnished as rooms
     for r in range(13, 20):
         g[r][5] = WALL
         g[r][14] = WALL
-    # wall between the inner & outer rooms (row 16), each side
     for c in range(0, 6):
         g[16][c] = WALL
     for c in range(14, 20):
         g[16][c] = WALL
-    # punch the contact doors back open
     for (r, c) in ROOM_DOORS:
         g[r][c] = FLOOR
 
-    # furniture (left hand-placed, mirrored to the right)
     def block(r, c):
         g[r][c] = WALL
     for (cell, t, rot) in FURN_LEFT:
@@ -129,20 +238,16 @@ def _build():
     for (cell, t, rot) in FURN_LIVING:
         block(*cell)
 
-    # fixtures
     g[RED_KEY_POS[0]][RED_KEY_POS[1]] = RED_KEY
     g[BLUE_KEY_POS[0]][BLUE_KEY_POS[1]] = BLUE_KEY
     g[RED_SPAWN_POS[0]][RED_SPAWN_POS[1]] = RED_SPAWN
     g[BLUE_SPAWN_POS[0]][BLUE_SPAWN_POS[1]] = BLUE_SPAWN
-    for (r, c) in ESCAPE_POS:
-        g[r][c] = ESCAPE
-    g[GOLD_POS[0]][GOLD_POS[1]] = GOLD_HOME
+    for (r, c) in [(13, 8), (13, 11)]:           # step up to each exit door
+        g[r][c] = FLOOR
 
-    # hall structure + open cells under the exit doors / escape throat
-    for (r, c) in PILLARS:
-        g[r][c] = WALL
-    for cell in [(1, 9), (1, 10), (11, 8), (11, 11), (13, 8), (13, 11)]:
-        g[cell[0]][cell[1]] = FLOOR
+    # --- the MAZE (upper arena) hiding the gold + the drop-trap ---
+    _carve_top_maze(g, random.Random(MAZE_SEED))
+    gold_home, drop_traps = _place_gold_and_traps(g)
 
     # furniture render-list (explicit facings; mirror keeps N/S-facing pieces)
     for (cell, t, rot) in FURN_LEFT:
@@ -151,7 +256,7 @@ def _build():
     for (cell, t, rot) in FURN_LIVING:
         furniture.append({"cell": [cell[0], cell[1]], "type": t, "rot": rot})
 
-    return World(g, furniture, [list(c) for c in ROOM_DOORS])
+    return World(g, furniture, [list(c) for c in ROOM_DOORS], gold_home, drop_traps)
 
 
 def _validate(world):

@@ -133,14 +133,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main():
     httpd = None
-    for port in range(8000, 8020):
+    for port in range(8008, 8028):          # 8000-8007 are left for other apps
         try:
             httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
             break
         except OSError:
             continue
     if httpd is None:
-        raise SystemExit("Could not find a free port between 8000 and 8019.")
+        raise SystemExit("Could not find a free port between 8008 and 8027.")
 
     t = threading.Thread(target=trainer, daemon=True)
     t.start()

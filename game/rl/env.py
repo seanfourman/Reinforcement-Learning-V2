@@ -98,6 +98,7 @@ class GridWorld(gym.Env):
             self.mirror_map[tuple(b)] = tuple(a)
         self.lever_set = {tuple(c) for c in world.levers}
         self.trap_set = {tuple(c) for c in world.traps}
+        self.drop_set = {tuple(c) for c in world.drop_traps}
         # ladders: a climb edge A<->B over an intervening wall. ladder_adj feeds
         # the shaping BFS; climb_map resolves "walk into the laddered wall -> hop
         # to the far side" during a move.
@@ -296,6 +297,13 @@ class GridWorld(gym.Env):
         elif self.gold_holder == "blue" and not self.blue_got_gold:
             self.blue_got_gold = True
             reward["blue"] += GOLD_BONUS
+
+        # 3b) drop-traps: carrying the gold onto one knocks it loose, and it
+        #     warps back to its pedestal — a real setback for a careless carrier
+        if self.gold_holder is not None and self._pos(self.gold_holder) in self.drop_set:
+            reward[self.gold_holder] += TRAP_PENALTY
+            self.gold_holder = None
+            self.gold_pos = self.world.gold_home
 
         # 4) levers: USE while standing on a lever toggles the snare trap (both
         #    agents observe trap_armed, so this is a genuinely learned interaction)

@@ -11,6 +11,7 @@ export const TILE = {
   RED_KEY: 'r', BLUE_KEY: 'b', GOLD: 'G',
   PAD1: '1', PAD2: '2', ALT_A: 'a', ALT_C: 'c',
   RED_DOOR: 'D', BLUE_DOOR: 'd', RED_SPAWN: 'R', BLUE_SPAWN: 'B',
+  GOLD_TRAP: 'X',
 };
 
 export function parseLayout(rows) {

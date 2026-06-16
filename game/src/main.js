@@ -240,7 +240,7 @@ renderer.setAnimationLoop(() => {
   }
 
   if (mechanics && latestFrame) mechanics.update(latestFrame, t);
-  if (doors && latestFrame) doors.update(latestFrame);
+  if (doors && latestFrame) doors.update(latestFrame, t);
   if (dressing) dressing.update(t);
   actors.update(dt, t);
   fx.composer.render();
