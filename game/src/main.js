@@ -3,9 +3,16 @@ import { GRID, PALETTE, CAMERA } from './config.js';
 import { createTextures } from './textures.js';
 import { buildWorld } from './build.js';
 import { buildFixedWorld } from './fixedworld.js';
+import { buildArchitecture } from './architecture.js';
+import { createFurniture } from './furniture.js';
+import { createDoors } from './doors.js';
+import { createDressing } from './dressing.js';
 import { parseLayout } from './layout.js';
 import { makeKing, makePrincess } from './characters.js';
-import { createPlayback } from './playback.js';
+import { createLiveActors } from './live.js';
+import { createMechanics } from './mechanics.js';
+import { createHeatmap } from './heatmap.js';
+import { initPanel } from './panel.js';
 import { createCameraRig } from './camera.js';
 import { createPostFX } from './postfx.js';
 
@@ -43,7 +50,6 @@ const rig = createCameraRig(camera, renderer.domElement);
 
 // ------------------------------------------------------------------ lights
 scene.add(new THREE.HemisphereLight(0xdfd8f7, 0x9a7a68, 1.15));
-
 const sun = new THREE.DirectionalLight(0xfff0dc, 1.9);
 sun.position.set(GRID / 2 - 9, 21, GRID / 2 - 5);
 sun.target.position.set(GRID / 2, 0, GRID / 2);
@@ -58,46 +64,125 @@ sun.shadow.camera.far = 60;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
 scene.add(sun, sun.target);
-
-// a faint cool fill from the opposite side so shadows stay lavender, not black
 const fill = new THREE.DirectionalLight(0xb9a8e8, 0.35);
 fill.position.set(GRID / 2 + 10, 12, GRID / 2 + 9);
 scene.add(fill);
 
-// ------------------------------------------------------------------ world
+// ------------------------------------------------------------------ world + actors
 const textures = createTextures();
-let current = null;   // the static scene shell (castle, walls, nature)
-let playback = null;  // the animated game on top of it
+const walkers = { red: makeKing(), blue: makePrincess() };
+const actors = createLiveActors(scene, walkers);
+const heatmap = createHeatmap(scene);
 
-async function init() {
-  // trajectory.json carries both the fixed map and the recorded game, so the
-  // whole scene is driven by what the two pre-trained agents actually did.
-  const res = await fetch('./rl/trajectory.json', { cache: 'no-store' });
-  const trajectory = await res.json();
-  const rows = trajectory.world;
-  const layout = parseLayout(rows);
+let current = null;     // static scene shell (castle, walls, nature)
+let archGroup = null;   // plastered architecture (walls + columns)
+let furniture = null;   // beds, wardrobes, bookshelves, tables
+let doors = null;       // arched bedroom doors
+let dressing = null;    // carpet + rugs
+let mechanics = null;   // mirrors, levers, traps
+let worldVersion = -1;  // last world we built
+let latestStats = null;
+let latestFrame = null;
 
-  const world = buildFixedWorld(rows);
+function disposeWorld() {
+  if (current) { scene.remove(current.group); current.dispose?.(); current = null; }
+  if (archGroup) { scene.remove(archGroup); archGroup.userData.dispose?.(); archGroup = null; }
+  if (furniture) { furniture.dispose(); furniture = null; }
+  if (doors) { doors.dispose(); doors = null; }
+  if (dressing) { dressing.dispose(); dressing = null; }
+  if (mechanics) { mechanics.dispose(); mechanics = null; }
+}
+
+function rebuildWorld(worldJson) {
+  disposeWorld();
+  const rows = worldJson.rows;
+  const world = buildFixedWorld(rows);   // empty wall grid: floor + castle + nature
   current = buildWorld(world, textures);
   scene.add(current.group);
-
-  // the board is left as bare floor tiles — no maze walls, gates or props,
-  // just the King, the Princess and the three keys on top of it
-
-  const walkers = { red: makeKing(), blue: makePrincess() };
-  playback = createPlayback(scene, trajectory, layout, walkers);
-
-  console.log(`playback ready: winner = ${trajectory.winner}, ${trajectory.frames.length} frames`);
+  archGroup = buildArchitecture(worldJson);  // plastered walls + stone columns
+  scene.add(archGroup);
+  furniture = createFurniture(scene, worldJson);  // beds, wardrobes, shelves, tables
+  doors = createDoors(scene, worldJson);          // arched bedroom doors
+  dressing = createDressing(scene, worldJson);    // carpet + rugs
+  mechanics = createMechanics(scene, worldJson);
+  actors.setWorld(parseLayout(rows));
 }
-init();
 
+// ------------------------------------------------------------------ live polling
+const API = '';
+async function control(body) {
+  try {
+    await fetch(`${API}/api/control`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) { /* server not up yet */ }
+}
+
+let heatAgent = null;      // 'red' | 'blue' | null — which value map to overlay
+let pollCount = 0;
+let polling = false;
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    const snap = await (await fetch(`${API}/api/snapshot`, { cache: 'no-store' })).json();
+    if (snap.worldVersion !== worldVersion) {
+      const w = await (await fetch(`${API}/api/world`, { cache: 'no-store' })).json();
+      worldVersion = w.worldVersion;
+      rebuildWorld(w.world);
+    }
+    latestStats = snap.stats;
+    latestFrame = snap.frame;
+    actors.onFrame(snap.frame);
+    window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
+    // value heatmap is heavier (whole grid) — refresh it a few times a second
+    if (heatAgent && pollCount % 5 === 0) {
+      const v = await (await fetch(`${API}/api/values?agent=${heatAgent}`, { cache: 'no-store' })).json();
+      if (v.grid) heatmap.setGrid(v.grid);
+    }
+    pollCount++;
+  } catch (e) { /* transient */ }
+  finally { polling = false; }
+}
+setInterval(poll, 33); // ~30 Hz
+poll();
+
+// ------------------------------------------------------------------ input
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyR' && playback) playback.reset(); // replay from the start
+  // fixed curated world now — R resets the two models (relearn from scratch)
+  if (e.code === 'KeyR' && !/input|select|textarea/i.test(e.target.tagName)) control({ cmd: 'reset' });
 });
+
+// click a tile while a heatmap is shown -> inspect that tile's per-action Q
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const hit = new THREE.Vector3();
+renderer.domElement.addEventListener('click', async (e) => {
+  if (!heatAgent) return;
+  ndc.x = (e.clientX / innerWidth) * 2 - 1;
+  ndc.y = -(e.clientY / innerHeight) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  if (!ray.ray.intersectPlane(groundPlane, hit)) return;
+  const c = Math.floor(hit.x), r = Math.floor(hit.z);
+  if (r < 0 || c < 0 || r >= GRID || c >= GRID) return;
+  try {
+    const q = await (await fetch(`${API}/api/values?agent=${heatAgent}&cell=${r},${c}`, { cache: 'no-store' })).json();
+    window.dispatchEvent(new CustomEvent('rl-qinspect', { detail: q }));
+  } catch (err) { /* ignore */ }
+});
+
+// expose a tiny control API for the panel
+window.RL = {
+  control,
+  getStats: () => latestStats,
+  setHeatmap: (agent) => { heatAgent = agent; if (agent) heatmap.show(); else heatmap.hide(); },
+};
+initPanel();
 
 // ------------------------------------------------------------------ post fx
 const fx = createPostFX(renderer, scene, camera);
-
 function resize() {
   const pr = Math.min(devicePixelRatio, 2);
   renderer.setPixelRatio(pr);
@@ -139,7 +224,6 @@ renderer.setAnimationLoop(() => {
       w.mat.emissiveIntensity = 0.2 + 0.06 * Math.sin(t * 1.3);
     }
     for (const d of current.animated.ducks) {
-      // gentle weave, steering back toward the pond centre near the edge
       d.heading += Math.sin(t * 0.6 + d.weave) * 0.9 * dt;
       const dx = d.x - d.cx, dz = d.z - d.cz;
       if (dx * dx + dz * dz > d.roam * d.roam) {
@@ -155,7 +239,9 @@ renderer.setAnimationLoop(() => {
     }
   }
 
-  if (playback) playback.update(dt, t);
-
+  if (mechanics && latestFrame) mechanics.update(latestFrame, t);
+  if (doors && latestFrame) doors.update(latestFrame);
+  if (dressing) dressing.update(t);
+  actors.update(dt, t);
   fx.composer.render();
 });
