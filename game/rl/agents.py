@@ -62,6 +62,15 @@ class Tabular:
         r = self.Q.get(state)
         return max(r) if r else 0.0
 
+    def state_value(self, state):
+        """V(s) = max_a Q, or None if the state was never visited (so the heatmap
+        can leave unlearned tiles blank). DP planners override with their V."""
+        r = self.Q.get(state)
+        return max(r) if r else None
+
+    def learned_count(self):
+        return len(self.Q)
+
     def q_values(self, state):
         r = self.Q.get(state)
         return list(r) if r else [0.0] * self.n_actions

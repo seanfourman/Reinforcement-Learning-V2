@@ -1,10 +1,15 @@
-// The medieval "Royal Training Grounds" panel (toggle with M). Shows live
-// learning stats, lets you switch algorithm / speed / play-pause / regenerate,
-// and overlays each model's learned value heatmap (with a per-tile Q inspector).
+// The tournament control panel (toggle with M). Per-round it shows the live
+// matchup (Red vs Blue, each running its own algorithm), lets you reassign either
+// side's algorithm, control speed/play/regenerate/reset, advance to the next
+// round, watch the learning curves, replay an episode, and overlay each model's
+// learned value heatmap (with a per-tile Q inspector).
 //
-// It talks to the backend through window.RL (set up in main.js):
+// Talks to the backend through window.RL (set up in main.js):
 //   RL.control({cmd,...})  RL.setHeatmap('red'|'blue'|null)
+//   RL.playFrame(frame)    RL.setReplay(bool)
 // and listens for 'rl-snapshot' (live stats) and 'rl-qinspect' (clicked tile Q).
+
+import { initGraphs } from './graphs.js';
 
 const STYLE = `
 #rl-panel{position:fixed;top:0;left:0;height:100%;width:330px;z-index:10;
@@ -46,24 +51,27 @@ const STYLE = `
   position:relative;border:1px solid #a98c55;}
 #rl-panel .qrow .qbar i{position:absolute;top:0;bottom:0;background:#6e4a1f;border-radius:2px;}
 #rl-panel .hint{font-size:11px;font-style:italic;color:#6e4a1f;opacity:.8;margin-top:6px;}
-#rl-tab{position:fixed;top:14px;left:14px;z-index:9;padding:8px 12px;cursor:pointer;
+#rl-tab{position:fixed;bottom:14px;left:14px;z-index:9;padding:8px 12px;cursor:pointer;
   font-family:"Palatino Linotype",Georgia,serif;font-size:13px;font-weight:700;color:#f3e2bb;
   background:linear-gradient(#5a3a1a,#3f2912);border:2px solid #b59a63;border-radius:6px;
   box-shadow:0 3px 12px rgba(0,0,0,.4);}
 #rl-panel.open ~ #rl-tab{opacity:0;pointer-events:none;}
 `;
 
+// algorithms selectable for either side (DQN variants arrive with the continuous rounds)
 const ALGOS = [
-  ['qlearning', 'Q-learning (off-policy TD)'],
+  ['value_iteration', 'Value Iteration (DP)'],
+  ['policy_iteration', 'Policy Iteration (DP)'],
+  ['qlearning', 'Q-Learning (off-policy TD)'],
   ['sarsa', 'SARSA (on-policy TD)'],
   ['expected_sarsa', 'Expected-SARSA'],
   ['monte_carlo', 'Monte-Carlo'],
 ];
 const ACTION_NAMES = ['North', 'South', 'West', 'East', 'Use'];
+const opts = () => ALGOS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 12000)
 const sliderToSpeed = (v) => Math.round(2 * Math.pow(6000, v / 100));
-const speedToSlider = (sp) => Math.round((Math.log(sp / 2) / Math.log(6000)) * 100);
 
 export function initPanel() {
   const style = document.createElement('style');
@@ -73,11 +81,14 @@ export function initPanel() {
   const panel = document.createElement('div');
   panel.id = 'rl-panel';
   panel.innerHTML = `
-    <div class="hdr"><h1>⚔ Royal Training Grounds</h1>
-      <p>Two crowns learn the same quest — first to escape wins.</p></div>
+    <div class="hdr"><h1>⚔ Tournament Control</h1>
+      <p>Five themed rounds — a different model duels each arena.</p></div>
     <section>
-      <h2>Algorithm</h2>
-      <select id="rl-algo">${ALGOS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+      <h2>This round — matchup</h2>
+      <label>Red player</label>
+      <select id="rl-algo-red">${opts()}</select>
+      <label>Blue player</label>
+      <select id="rl-algo-blue">${opts()}</select>
       <label>Speed — slow ↔ fast <span id="rl-spd-val"></span></label>
       <input type="range" id="rl-speed" min="0" max="100" value="88">
       <div class="btns">
@@ -85,6 +96,7 @@ export function initPanel() {
         <button id="rl-regen">⚑ New world</button>
         <button id="rl-reset">↺ Reset</button>
       </div>
+      <div class="btns"><button id="rl-next">⏭ Next round</button></div>
     </section>
     <section>
       <h2>Training</h2>
@@ -92,21 +104,21 @@ export function initPanel() {
       <div class="stat"><span>Total steps</span><b id="rl-steps">0</b></div>
       <div class="stat"><span>ε explore vs exploit</span><b id="rl-eps">1.00</b></div>
       <div class="stat"><span>Avg episode length</span><b id="rl-len">—</b></div>
-      <div class="stat"><span>Learned states (K/Q)</span><b id="rl-q">0 / 0</b></div>
+      <div class="stat"><span>Learned states (R/B)</span><b id="rl-q">0 / 0</b></div>
     </section>
     <section>
       <h2>Contest (recent)</h2>
       <div class="bar"><i class="r" id="rl-br"></i><i class="b" id="rl-bb"></i><i class="d" id="rl-bd"></i></div>
-      <div class="stat"><span style="color:#a3322c">👑 King wins</span><b id="rl-wr">0</b></div>
-      <div class="stat"><span style="color:#3358a8">👑 Queen wins</span><b id="rl-wb">0</b></div>
+      <div class="stat"><span style="color:#a3322c">● Red wins</span><b id="rl-wr">0</b></div>
+      <div class="stat"><span style="color:#3358a8">● Blue wins</span><b id="rl-wb">0</b></div>
       <div class="stat"><span>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section>
       <h2>Learned value map</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
-        <button id="rl-h-red">King</button>
-        <button id="rl-h-blue">Queen</button>
+        <button id="rl-h-red">Red</button>
+        <button id="rl-h-blue">Blue</button>
       </div>
       <p class="hint">Brighter = higher expected reward V(s). Click a tile to inspect Q.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
@@ -117,6 +129,9 @@ export function initPanel() {
   tab.id = 'rl-tab';
   tab.textContent = '☰ Panel (M)';
   document.body.appendChild(tab);
+
+  // learning curves + replay sections (built by graphs.js)
+  initGraphs(panel);
 
   const $ = (id) => panel.querySelector(id);
 
@@ -130,7 +145,11 @@ export function initPanel() {
 
   // ---- controls ----
   let paused = false;
-  $('#rl-algo').addEventListener('change', (e) => window.RL.control({ cmd: 'algo', value: e.target.value }));
+  $('#rl-algo-red').addEventListener('change', (e) =>
+    window.RL.control({ cmd: 'sideAlgo', side: 'red', value: e.target.value }));
+  $('#rl-algo-blue').addEventListener('change', (e) =>
+    window.RL.control({ cmd: 'sideAlgo', side: 'blue', value: e.target.value }));
+  $('#rl-next').addEventListener('click', () => window.RL.control({ cmd: 'nextRound' }));
   const speed = $('#rl-speed');
   const showSpeed = () => { $('#rl-spd-val').textContent = `(${sliderToSpeed(+speed.value)}/s)`; };
   speed.addEventListener('input', () => { showSpeed(); window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) }); });
@@ -161,8 +180,9 @@ export function initPanel() {
   window.addEventListener('rl-snapshot', (e) => {
     const s = e.detail.stats;
     if (!s) return;
-    // keep the algo dropdown in sync if the backend changed it (e.g. on reset)
-    if ($('#rl-algo').value !== s.algo) $('#rl-algo').value = s.algo;
+    // keep the dropdowns in sync if the backend changed them (round switch / reset)
+    if (s.algoRed && $('#rl-algo-red').value !== s.algoRed) $('#rl-algo-red').value = s.algoRed;
+    if (s.algoBlue && $('#rl-algo-blue').value !== s.algoBlue) $('#rl-algo-blue').value = s.algoBlue;
     $('#rl-ep').textContent = s.episode.toLocaleString();
     $('#rl-steps').textContent = s.totalSteps.toLocaleString();
     $('#rl-eps').textContent = s.epsilon.toFixed(2);
@@ -184,7 +204,7 @@ export function initPanel() {
     const lo = Math.min(...d.q, 0), hi = Math.max(...d.q, 0), span = hi - lo || 1;
     const best = d.q.indexOf(Math.max(...d.q));
     $('#rl-qinspect').innerHTML =
-      `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) — ${d.agent === 'red' ? 'King' : 'Queen'}</div>` +
+      `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) — ${d.agent === 'red' ? 'Red' : 'Blue'}</div>` +
       d.q.map((q, i) =>
         `<div class="qrow"><span>${ACTION_NAMES[i]}${i === best ? ' ★' : ''}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;

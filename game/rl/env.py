@@ -21,6 +21,8 @@ them so the agent's state signature won't change when they arrive.
 Coordinates are (row, col), row 0 = NORTH (escape), row 19 = SOUTH (bedrooms).
 """
 
+import random
+
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -33,6 +35,11 @@ from worldgen import (
 ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
 USE = 4
 N_ACTIONS = len(ACTIONS)
+MOVE_ACTIONS = (0, 1, 2, 3)
+# on a slippery tile a move may slide to a PERPENDICULAR direction: N/S slip to
+# W/E, W/E slip to N/S (Benny's slippery/windy gridworld). This is the stochastic
+# part of the otherwise-known transition model that Dynamic Programming solves.
+PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
 
 # --- coarse opponent regions ------------------------------------------------
 REGION_RED, REGION_BLUE, REGION_ARENA = 0, 1, 2
@@ -70,13 +77,15 @@ _UNREACH = 999
 class GridWorld(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, round_id=1):
         super().__init__()
         self._seed = seed
+        self.round_id = round_id
         self.world = None
+        self.rng = random.Random(seed)   # the ENVIRONMENT's own stochasticity (slips)
         self.action_space = spaces.Discrete(N_ACTIONS)
         # obs: (cell index, own-key, gold loc, opp region, opp adjacent, trap armed)
-        self._install(worldgen.generate(seed))
+        self._install(worldgen.generate(seed, round_id))
 
     # ---------------------------------------------------------------- install
     def _install(self, world):
@@ -99,6 +108,9 @@ class GridWorld(gym.Env):
         self.lever_set = {tuple(c) for c in world.levers}
         self.trap_set = {tuple(c) for c in world.traps}
         self.drop_set = {tuple(c) for c in world.drop_traps}
+        # slippery tiles + slip probability (the known stochastic transition model)
+        self.slip_set = {tuple(c) for c in world.slip_cells}
+        self.slip_prob = float(getattr(world, "slip_prob", 0.0) or 0.0)
         # ladders: a climb edge A<->B over an intervening wall. ladder_adj feeds
         # the shaping BFS; climb_map resolves "walk into the laddered wall -> hop
         # to the far side" during a move.
@@ -208,9 +220,15 @@ class GridWorld(gym.Env):
         return True
 
     # ------------------------------------------------------------------ reset
+    def set_round(self, round_id):
+        """Switch the active round and install its world (used by the tournament)."""
+        self.round_id = round_id
+        self._install(worldgen.generate(self._seed, round_id))
+
     def reset(self, *, seed=None, options=None, regenerate=False):
         if regenerate or self.world is None:
-            self._install(worldgen.generate(seed if seed is not None else self._seed))
+            self._install(worldgen.generate(seed if seed is not None else self._seed,
+                                            self.round_id))
         self.red_pos = self.world.red_spawn
         self.blue_pos = self.world.blue_spawn
         self.red_key = False
@@ -248,15 +266,47 @@ class GridWorld(gym.Env):
     def _pos(self, agent):
         return self.red_pos if agent == "red" else self.blue_pos
 
-    def _move(self, agent, pos, action):
-        dr, dc = ACTIONS[action]
+    def _resolve(self, agent, pos, direction, passable=None):
+        """Deterministic landing cell for one move DIRECTION (0..3) from pos.
+        ``passable`` defaults to the live rule; the DP planner passes
+        ``_static_passable`` so its model doesn't depend on live key state."""
+        passable = passable or self.passable
+        dr, dc = ACTIONS[direction]
         nr, nc = pos[0] + dr, pos[1] + dc
-        if self.passable(agent, nr, nc):
+        if passable(agent, nr, nc):
             npos = (nr, nc)
             # teleporter mirrors warp you to the paired pad
             return self.mirror_map.get(npos, npos)
         # blocked by a wall — but a ladder may climb over THIS wall to the far side
-        return self.climb_map.get((pos, action), pos)
+        return self.climb_map.get((pos, direction), pos)
+
+    def move_dist(self, agent, pos, action, passable=None):
+        """P(next cell | pos, action) — the KNOWN transition model. Deterministic
+        everywhere except on a slippery tile, where the move slides to a
+        perpendicular direction with probability ``slip_prob`` (split evenly).
+        Returns a list of (prob, cell). USE / non-moves stay put."""
+        if action not in MOVE_ACTIONS:
+            return [(1.0, pos)]
+        if pos not in self.slip_set or self.slip_prob <= 0.0:
+            return [(1.0, self._resolve(agent, pos, action, passable))]
+        p = self.slip_prob
+        outcomes = ((action, 1.0 - p), (PERP[action][0], p / 2.0), (PERP[action][1], p / 2.0))
+        agg = {}
+        for direction, prob in outcomes:
+            cell = self._resolve(agent, pos, direction, passable)
+            agg[cell] = agg.get(cell, 0.0) + prob
+        return [(prob, cell) for cell, prob in agg.items()]
+
+    def _move(self, agent, pos, action):
+        dist = self.move_dist(agent, pos, action)
+        if len(dist) == 1:
+            return dist[0][1]
+        roll, acc = self.rng.random(), 0.0
+        for prob, cell in dist:
+            acc += prob
+            if roll <= acc:
+                return cell
+        return dist[-1][1]
 
     def step(self, a_red, a_blue):
         if self.done:

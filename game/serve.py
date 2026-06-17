@@ -35,7 +35,7 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
 # ---------------------------------------------------------------- training loop
-match = Match(seed=None, algo="qlearning")
+match = Match(seed=None, round_id=1)
 _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
 _alive = True
@@ -97,6 +97,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 r, c = (int(x) for x in q["cell"][0].split(","))
                 return self._json(match.q_at(agent, r, c) or {})
             return self._json(match.value_grid(agent))
+        if route == "/api/history":
+            return self._json(match.history())
+        if route == "/api/replay":
+            return self._json(match.replay(q.get("which", ["last"])[0]))
         return self._json({"error": "unknown route"}, 404)
 
     # -------------------------------------------------------------------- POST
@@ -123,12 +127,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _paused = False
         elif cmd == "speed":
             _speed = max(2.0, min(12000.0, float(body.get("value", 60))))
-        elif cmd == "algo":
-            match.set_algorithm(body.get("value", "qlearning"))
+        elif cmd == "sideAlgo":
+            match.set_side_algo(body.get("side", "red"), body.get("value", "qlearning"))
+        elif cmd == "nextRound":
+            match.next_round()
+        elif cmd == "setRound":
+            match.set_round(int(body.get("value", 1)))
         else:
             return {"error": f"unknown cmd {cmd!r}"}
         return {"ok": True, "speed": _speed, "paused": _paused,
-                "worldVersion": match.world_version, "algo": match.algo}
+                "worldVersion": match.world_version, "roundId": match.round_id,
+                "algoRed": match.algo_red, "algoBlue": match.algo_blue}
 
 
 def main():

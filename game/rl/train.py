@@ -15,7 +15,9 @@ from agents import ALGORITHMS
 
 
 def run(algo, seed, episodes):
-    m = Match(seed=seed, algo=algo)
+    m = Match(seed=seed, round_id=1)
+    m.algo_red = m.algo_blue = algo      # both sides run the algorithm under test
+    m.reset_models()
     # measure a baseline window (still mostly exploring) vs a trained window
     early_lens, early_dec = [], 0
     late_lens, late_dec = [], 0

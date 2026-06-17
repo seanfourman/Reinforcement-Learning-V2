@@ -15,6 +15,9 @@ import { createHeatmap } from './heatmap.js';
 import { initPanel } from './panel.js';
 import { createCameraRig } from './camera.js';
 import { createPostFX } from './postfx.js';
+import { getTheme } from './themes/index.js';
+import { initHud } from './hud.js';
+import { createTransition } from './transition.js';
 
 const app = document.getElementById('app');
 
@@ -28,28 +31,31 @@ app.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(PALETTE.fog, 34, 78);
 
-// soft vertical sky gradient
-{
+// soft vertical sky gradient — rebuilt per theme via setSky()
+function setSky(stops) {
   const c = document.createElement('canvas');
   c.width = 2;
   c.height = 256;
   const ctx = c.getContext('2d');
   const g = ctx.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, '#8fa3cc');
-  g.addColorStop(0.55, '#b9c2dd');
-  g.addColorStop(1, '#d9cfd2');
+  g.addColorStop(0, stops[0]);
+  g.addColorStop(0.55, stops[1]);
+  g.addColorStop(1, stops[2]);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 2, 256);
   const sky = new THREE.CanvasTexture(c);
   sky.colorSpace = THREE.SRGBColorSpace;
+  if (scene.background?.dispose) scene.background.dispose();
   scene.background = sky;
 }
+setSky(['#8fa3cc', '#b9c2dd', '#d9cfd2']);
 
 const camera = new THREE.PerspectiveCamera(CAMERA.fov, innerWidth / innerHeight, 0.1, 200);
 const rig = createCameraRig(camera, renderer.domElement);
 
 // ------------------------------------------------------------------ lights
-scene.add(new THREE.HemisphereLight(0xdfd8f7, 0x9a7a68, 1.15));
+const hemi = new THREE.HemisphereLight(0xdfd8f7, 0x9a7a68, 1.15);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0dc, 1.9);
 sun.position.set(GRID / 2 - 9, 21, GRID / 2 - 5);
 sun.target.position.set(GRID / 2, 0, GRID / 2);
@@ -68,6 +74,22 @@ const fill = new THREE.DirectionalLight(0xb9a8e8, 0.35);
 fill.position.set(GRID / 2 + 10, 12, GRID / 2 + 9);
 scene.add(fill);
 
+// apply a theme's palette/sky/lighting (called on every world rebuild)
+function applyTheme(theme) {
+  setSky(theme.sky);
+  scene.fog.color.set(theme.fog);
+  scene.fog.near = theme.fogNear;
+  scene.fog.far = theme.fogFar;
+  hemi.color.set(theme.hemi[0]);
+  hemi.groundColor.set(theme.hemi[1]);
+  hemi.intensity = theme.hemi[2];
+  sun.color.set(theme.sun);
+  sun.intensity = theme.sunIntensity;
+  fill.color.set(theme.fill);
+  fill.intensity = theme.fillIntensity;
+  renderer.toneMappingExposure = theme.exposure;
+}
+
 // ------------------------------------------------------------------ world + actors
 const textures = createTextures();
 const walkers = { red: makeKing(), blue: makePrincess() };
@@ -84,6 +106,9 @@ let worldVersion = -1;  // last world we built
 let latestStats = null;
 let latestFrame = null;
 
+initHud();                          // Blue top-left / Red top-right score + round banner
+const transition = createTransition();  // video-game curtain between arenas
+
 function disposeWorld() {
   if (current) { scene.remove(current.group); current.dispose?.(); current = null; }
   if (archGroup) { scene.remove(archGroup); archGroup.userData.dispose?.(); archGroup = null; }
@@ -95,6 +120,7 @@ function disposeWorld() {
 
 function rebuildWorld(worldJson) {
   disposeWorld();
+  applyTheme(getTheme(worldJson.theme));
   const rows = worldJson.rows;
   const world = buildFixedWorld(rows);   // empty wall grid: floor + castle + nature
   current = buildWorld(world, textures);
@@ -122,6 +148,7 @@ async function control(body) {
 let heatAgent = null;      // 'red' | 'blue' | null — which value map to overlay
 let pollCount = 0;
 let polling = false;
+let replayActive = false;  // while replaying a recorded episode, ignore live frames
 async function poll() {
   if (polling) return;
   polling = true;
@@ -129,12 +156,17 @@ async function poll() {
     const snap = await (await fetch(`${API}/api/snapshot`, { cache: 'no-store' })).json();
     if (snap.worldVersion !== worldVersion) {
       const w = await (await fetch(`${API}/api/world`, { cache: 'no-store' })).json();
+      const firstBuild = worldVersion === -1;
       worldVersion = w.worldVersion;
-      rebuildWorld(w.world);
+      if (firstBuild) {
+        rebuildWorld(w.world);                 // initial load: no curtain
+      } else {
+        transition.play(w.world, snap.stats, () => rebuildWorld(w.world));
+      }
     }
     latestStats = snap.stats;
     latestFrame = snap.frame;
-    actors.onFrame(snap.frame);
+    if (!replayActive) actors.onFrame(snap.frame);
     window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
     // value heatmap is heavier (whole grid) — refresh it a few times a second
     if (heatAgent && pollCount % 5 === 0) {
@@ -178,6 +210,8 @@ window.RL = {
   control,
   getStats: () => latestStats,
   setHeatmap: (agent) => { heatAgent = agent; if (agent) heatmap.show(); else heatmap.hide(); },
+  playFrame: (frame) => { latestFrame = frame; actors.onFrame(frame); },
+  setReplay: (on) => { replayActive = !!on; },
 };
 initPanel();
 
