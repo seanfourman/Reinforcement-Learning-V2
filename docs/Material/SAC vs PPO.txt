@@ -1,0 +1,110 @@
+
+
+<h2 class="sr-only">PPO vs SAC comparison for drone navigation with position and camera input, scored across seven task-specific dimensions.</h2>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{padding:1.25rem 0 1.5rem}
+.hdr{display:grid;grid-template-columns:180px 1fr 1fr;gap:0;margin-bottom:2px}
+.hdr-cell{font-size:11px;font-weight:500;color:var(--color-text-tertiary);padding:6px 12px;text-transform:uppercase;letter-spacing:.05em}
+.hdr-cell.ppo{color:#27500A}
+.hdr-cell.sac{color:#0C447C}
+.row{display:grid;grid-template-columns:180px 1fr 1fr;gap:0;border-top:0.5px solid var(--color-border-tertiary)}
+.row:last-child{border-bottom:0.5px solid var(--color-border-tertiary)}
+.dim{padding:10px 12px;font-size:12px;font-weight:500;color:var(--color-text-primary);display:flex;flex-direction:column;gap:3px;background:var(--color-background-secondary)}
+.dim-sub{font-size:10px;font-weight:400;color:var(--color-text-tertiary)}
+.cell{padding:10px 12px;font-size:12px;line-height:1.55;color:var(--color-text-secondary)}
+.cell.win-ppo{background:#EAF3DE}
+.cell.win-sac{background:#E6F1FB}
+.cell.win-tie{background:var(--color-background-primary)}
+.badge{display:inline-block;font-size:10px;font-weight:500;padding:1px 7px;border-radius:3px;margin-bottom:4px}
+.b-ppo{background:#C0DD97;color:#27500A}
+.b-sac{background:#B5D4F4;color:#0C447C}
+.b-tie{background:var(--color-background-secondary);color:var(--color-text-tertiary);border:0.5px solid var(--color-border-tertiary)}
+.verdict{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.v-card{border-radius:var(--border-radius-lg);padding:12px 14px;border:0.5px solid}
+.v-ppo{background:#EAF3DE;border-color:#C0DD97}
+.v-sac{background:#E6F1FB;border-color:#B5D4F4}
+.v-title{font-size:12px;font-weight:500;margin-bottom:6px}
+.v-ppo .v-title{color:#27500A}
+.v-sac .v-title{color:#0C447C}
+.v-list{list-style:none;display:flex;flex-direction:column;gap:3px}
+.v-list li{font-size:11px;line-height:1.45;padding-left:12px;position:relative}
+.v-ppo .v-list li{color:#3B6D11}
+.v-sac .v-list li{color:#185FA5}
+.v-list li::before{content:"→ ";position:absolute;left:0}
+.rec{margin-top:10px;padding:11px 14px;border-radius:var(--border-radius-lg);background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);font-size:12px;color:var(--color-text-secondary);line-height:1.6}
+.rec strong{color:var(--color-text-primary);font-weight:500}
+</style>
+
+<div class="hdr">
+  <div class="hdr-cell">Dimension</div>
+  <div class="hdr-cell ppo">PPO</div>
+  <div class="hdr-cell sac">SAC</div>
+</div>
+
+<div class="row">
+  <div class="dim">Action space<span class="dim-sub">Motor commands</span></div>
+  <div class="cell win-tie"><span class="badge b-tie">Tie</span><br>Handles continuous motor commands (roll, pitch, yaw, thrust) well.</div>
+  <div class="cell win-sac"><span class="badge b-sac">SAC edge</span><br>Entropy bonus produces smoother, more exploratory motor commands. Better for high-DoF continuous control.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Camera input<span class="dim-sub">High-dim observations</span></div>
+  <div class="cell win-ppo"><span class="badge b-ppo">PPO wins</span><br>No replay buffer. Image frames are processed on-the-fly and discarded — memory stays bounded regardless of image resolution.</div>
+  <div class="cell win-tie"><span class="badge b-tie">SAC disadvantage</span><br>Storing millions of raw camera frames in a replay buffer is memory-prohibitive. Requires a pre-trained encoder (e.g. CNN frozen) to store latent vectors instead — extra complexity.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Sample efficiency<span class="dim-sub">Cost per flight</span></div>
+  <div class="cell win-tie"><span class="badge b-tie">PPO weaker</span><br>On-policy: each transition used once. In sim, this is fine. On a real drone, crash budget is limited — PPO may need too many episodes.</div>
+  <div class="cell win-sac"><span class="badge b-sac">SAC wins</span><br>Replay buffer reuses every transition many times. Critical if training on a physical drone where real flight hours are expensive and crashes are costly.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Training setting<span class="dim-sub">Sim vs real</span></div>
+  <div class="cell win-ppo"><span class="badge b-ppo">PPO wins</span><br>In simulation (e.g. AirSim, Gazebo), cheap rollouts offset poor sample efficiency. PPO's simplicity and stability shine in fast sim environments.</div>
+  <div class="cell win-sac"><span class="badge b-sac">SAC wins</span><br>On a real drone or in expensive sim, SAC's replay reuse justifies the added complexity. Dominant approach in sim-to-real transfer literature.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Exploration<span class="dim-sub">Obstacle avoidance</span></div>
+  <div class="cell win-tie"><span class="badge b-tie">PPO moderate</span><br>Stochastic policy provides some exploration but no explicit incentive to visit novel states. May get stuck avoiding risk entirely.</div>
+  <div class="cell win-sac"><span class="badge b-sac">SAC wins</span><br>Entropy maximisation actively rewards diverse behaviour. Better at discovering safe paths through complex obstacle fields from camera alone.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Reward structure<span class="dim-sub">Navigation + collision</span></div>
+  <div class="cell win-ppo"><span class="badge b-ppo">PPO edge</span><br>Dense position-based rewards (distance to goal) suit PPO well. Stable with shaped reward signals and curriculum learning.</div>
+  <div class="cell win-tie"><span class="badge b-tie">SAC fine</span><br>Handles sparse collision penalties better due to entropy exploration, but dense rewards work equally well.</div>
+</div>
+
+<div class="row">
+  <div class="dim">Implementation<span class="dim-sub">Engineering cost</span></div>
+  <div class="cell win-ppo"><span class="badge b-ppo">PPO wins</span><br>Simpler codebase. One network (actor-critic). No replay buffer management. Faster to prototype and debug.</div>
+  <div class="cell win-tie"><span class="badge b-tie">SAC harder</span><br>Three networks + replay buffer + image encoder pipeline. Significantly more engineering overhead, especially with visual input.</div>
+</div>
+
+<div class="verdict">
+  <div class="v-card v-ppo">
+    <div class="v-title"><i class="ti ti-drone" style="font-size:13px;vertical-align:-2px;margin-right:4px" aria-hidden="true"></i>Use PPO if…</div>
+    <ul class="v-list">
+      <li>Training primarily in simulation</li>
+      <li>Camera is raw pixels (memory constraint)</li>
+      <li>Fast prototyping and iteration is the priority</li>
+      <li>Reward is dense and well-shaped</li>
+      <li>Curriculum learning or domain randomisation is used</li>
+    </ul>
+  </div>
+  <div class="v-card v-sac">
+    <div class="v-title"><i class="ti ti-drone" style="font-size:13px;vertical-align:-2px;margin-right:4px" aria-hidden="true"></i>Use SAC if…</div>
+    <ul class="v-list">
+      <li>Training on a real drone (flight time is scarce)</li>
+      <li>Camera input is encoded to a latent vector first</li>
+      <li>Obstacle fields require diverse exploration</li>
+      <li>Sim-to-real transfer is the end goal</li>
+      <li>Maximum final performance matters more than simplicity</li>
+    </ul>
+  </div>
+</div>
+
+<div class="rec"><strong>Practical recommendation:</strong> start with PPO in simulation to validate your reward design and observation pipeline — it's faster to debug. Once the task is stable, switch to SAC with a pre-trained CNN encoder (freeze the vision backbone, store latent vectors in the replay buffer) for the final training run, especially if you plan any real-world fine-tuning. This two-stage approach is common in the drone RL literature.</div>

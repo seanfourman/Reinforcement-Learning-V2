@@ -27,5 +27,19 @@ if not defined PYTHON_CMD (
     exit /b 1
 )
 
+REM Make sure required Python packages are installed. We only run pip when a
+REM dependency is actually missing, so normal launches stay fast and offline.
+%PYTHON_CMD% -c "import gymnasium" >nul 2>nul
+if errorlevel 1 (
+    echo Installing required Python packages from requirements.txt ...
+    %PYTHON_CMD% -m pip install -r requirements.txt
+    if errorlevel 1 (
+        echo Failed to install the required packages.
+        echo You can try running this manually: %PYTHON_CMD% -m pip install -r requirements.txt
+        pause
+        exit /b 1
+    )
+)
+
 %PYTHON_CMD% serve.py
 pause

@@ -1,0 +1,208 @@
+
+
+<h2 class="sr-only">Comparison table of leading reinforcement learning algorithms across key characteristics</h2>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { padding: 1rem 0; }
+.wrap { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px; table-layout: fixed; }
+thead th { background: var(--color-background-secondary); color: var(--color-text-secondary); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 10px 12px; text-align: left; border-bottom: 0.5px solid var(--color-border-primary); position: sticky; top: 0; z-index: 2; }
+tbody tr { border-bottom: 0.5px solid var(--color-border-tertiary); }
+tbody tr:hover { background: var(--color-background-secondary); }
+td { padding: 11px 12px; vertical-align: middle; color: var(--color-text-primary); line-height: 1.45; }
+td:first-child { font-weight: 500; font-size: 13.5px; }
+.family { font-size: 11px; color: var(--color-text-secondary); font-weight: 400; display: block; margin-top: 2px; }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.b-green  { background: #EAF3DE; color: #3B6D11; }
+.b-amber  { background: #FAEEDA; color: #854F0B; }
+.b-red    { background: #FCEBEB; color: #A32D2D; }
+.b-teal   { background: #E1F5EE; color: #0F6E56; }
+.b-blue   { background: #E6F1FB; color: #185FA5; }
+.b-purple { background: #EEEDFE; color: #534AB7; }
+.b-gray   { background: #F1EFE8; color: #5F5E5A; }
+.b-coral  { background: #FAECE7; color: #993C1D; }
+@media (prefers-color-scheme: dark) {
+  .b-green  { background: #27500A; color: #C0DD97; }
+  .b-amber  { background: #633806; color: #FAC775; }
+  .b-red    { background: #791F1F; color: #F7C1C1; }
+  .b-teal   { background: #085041; color: #5DCAA5; }
+  .b-blue   { background: #0C447C; color: #85B7EB; }
+  .b-purple { background: #3C3489; color: #AFA9EC; }
+  .b-gray   { background: #444441; color: #D3D1C7; }
+  .b-coral  { background: #712B13; color: #F0997B; }
+}
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.dot-g { background: #639922; }
+.dot-a { background: #BA7517; }
+.dot-r { background: #A32D2D; }
+.col-algo { width: 15%; }
+.col-family { width: 11%; }
+.col-space { width: 11%; }
+.col-policy { width: 9%; }
+.col-model { width: 9%; }
+.col-complexity { width: 9%; }
+.col-sample { width: 10%; }
+.col-use { width: 26%; }
+thead th:first-child { border-radius: var(--border-radius-md) 0 0 0; }
+thead th:last-child  { border-radius: 0 var(--border-radius-md) 0 0; }
+</style>
+
+<div class="wrap">
+<table>
+<thead>
+  <tr>
+    <th class="col-algo">Algorithm</th>
+    <th class="col-family">Family</th>
+    <th class="col-space">Action space</th>
+    <th class="col-policy">Policy</th>
+    <th class="col-model">Model</th>
+    <th class="col-complexity">Complexity</th>
+    <th class="col-sample">Sample eff.</th>
+    <th class="col-use">Main use cases</th>
+  </tr>
+</thead>
+<tbody>
+
+<tr>
+  <td>Q-Table<span class="family">Tabular</span></td>
+  <td><span class="badge b-gray">Value-based</span></td>
+  <td>Discrete (small)</td>
+  <td>Implicit</td>
+  <td>Free</td>
+  <td><span class="dot dot-g"></span>Low</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Grids, mazes, toy problems, teaching RL basics</td>
+</tr>
+
+<tr>
+  <td>SARSA<span class="family">Tabular</span></td>
+  <td><span class="badge b-gray">Value-based</span></td>
+  <td>Discrete (small)</td>
+  <td>On-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-g"></span>Low</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Safe exploration, tabular on-policy tasks</td>
+</tr>
+
+<tr>
+  <td>Q-Learning<span class="family">Tabular</span></td>
+  <td><span class="badge b-gray">Value-based</span></td>
+  <td>Discrete (small)</td>
+  <td>Off-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-g"></span>Low</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Classic control, robotics experiments, teaching</td>
+</tr>
+
+<tr>
+  <td>DQN<span class="family">Deep RL</span></td>
+  <td><span class="badge b-blue">Value-based</span></td>
+  <td>Discrete</td>
+  <td>Off-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td>Atari games, discrete control, visual inputs</td>
+</tr>
+
+<tr>
+  <td>REINFORCE<span class="family">Policy gradient</span></td>
+  <td><span class="badge b-teal">Policy-based</span></td>
+  <td>Discrete / Cont.</td>
+  <td>On-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-g"></span>Low</td>
+  <td><span class="dot dot-r"></span>Low</td>
+  <td>Simple stochastic tasks, research baselines</td>
+</tr>
+
+<tr>
+  <td>A2C / A3C<span class="family">Actor-Critic</span></td>
+  <td><span class="badge b-purple">Actor-Critic</span></td>
+  <td>Discrete / Cont.</td>
+  <td>On-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td>Parallel training, continuous control, games</td>
+</tr>
+
+<tr>
+  <td>PPO<span class="family">Actor-Critic</span></td>
+  <td><span class="badge b-purple">Actor-Critic</span></td>
+  <td>Discrete / Cont.</td>
+  <td>On-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td>Robotics, RLHF (LLMs), games, general-purpose SOTA</td>
+</tr>
+
+<tr>
+  <td>SAC<span class="family">Actor-Critic</span></td>
+  <td><span class="badge b-purple">Actor-Critic</span></td>
+  <td>Continuous</td>
+  <td>Off-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Continuous control, robotics, locomotion</td>
+</tr>
+
+<tr>
+  <td>DDPG / TD3<span class="family">Actor-Critic</span></td>
+  <td><span class="badge b-purple">Actor-Critic</span></td>
+  <td>Continuous</td>
+  <td>Off-policy</td>
+  <td>Free</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Continuous control, motor tasks, simulated robots</td>
+</tr>
+
+<tr>
+  <td>Dyna-Q<span class="family">Model-Based</span></td>
+  <td><span class="badge b-amber">Model-based</span></td>
+  <td>Discrete</td>
+  <td>Off-policy</td>
+  <td>Learned</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td><span class="dot dot-g"></span>High</td>
+  <td>Low-sample settings, sim-to-real, planning tasks</td>
+</tr>
+
+<tr>
+  <td>AlphaZero<span class="family">Model-Based + MCTS</span></td>
+  <td><span class="badge b-coral">Hybrid</span></td>
+  <td>Discrete</td>
+  <td>On-policy</td>
+  <td>Known</td>
+  <td><span class="dot dot-r"></span>High</td>
+  <td><span class="dot dot-a"></span>Medium</td>
+  <td>Chess, Go, board games with known rules</td>
+</tr>
+
+<tr>
+  <td>RLHF<span class="family">Fine-tuning</span></td>
+  <td><span class="badge b-coral">Hybrid</span></td>
+  <td>Discrete (tokens)</td>
+  <td>On-policy</td>
+  <td>Reward model</td>
+  <td><span class="dot dot-r"></span>High</td>
+  <td><span class="dot dot-r"></span>Low</td>
+  <td>LLM alignment (ChatGPT, Claude, Gemini)</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<div style="display: flex; gap: 20px; margin-top: 14px; flex-wrap: wrap; padding: 0 2px;">
+  <span style="font-size: 12px; color: var(--color-text-secondary);"><span class="dot dot-g"></span>Low / High (good)</span>
+  <span style="font-size: 12px; color: var(--color-text-secondary);"><span class="dot dot-a"></span>Medium</span>
+  <span style="font-size: 12px; color: var(--color-text-secondary);"><span class="dot dot-r"></span>High / Low (costly)</span>
+  <span style="font-size: 12px; color: var(--color-text-secondary);">Cont. = continuous</span>
+</div>
