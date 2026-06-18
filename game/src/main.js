@@ -18,6 +18,7 @@ import { createPostFX } from './postfx.js';
 import { getTheme } from './themes/index.js';
 import { initHud } from './hud.js';
 import { createTransition } from './transition.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const app = document.getElementById('app');
 
@@ -32,6 +33,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(PALETTE.fog, 34, 78);
 
 // soft vertical sky gradient — rebuilt per theme via setSky()
+let skyTex = null;   // only our own gradient is disposed here, never a cached HDRI
 function setSky(stops) {
   const c = document.createElement('canvas');
   c.width = 2;
@@ -45,10 +47,45 @@ function setSky(stops) {
   ctx.fillRect(0, 0, 2, 256);
   const sky = new THREE.CanvasTexture(c);
   sky.colorSpace = THREE.SRGBColorSpace;
-  if (scene.background?.dispose) scene.background.dispose();
+  if (skyTex) skyTex.dispose();
+  skyTex = sky;
   scene.background = sky;
+  scene.backgroundBlurriness = 0;
+  scene.backgroundIntensity = 1;
 }
 setSky(['#8fa3cc', '#b9c2dd', '#d9cfd2']);
+
+// Some themes (the neon city) light the scene with a real captured HDRI: it
+// drives image-based reflections on glossy surfaces and doubles as the skybox.
+// We PMREM-prefilter it once and cache per URL; the gradient sky above is the
+// fallback while it loads and for themes that don't request one.
+const pmrem = new THREE.PMREMGenerator(renderer);
+const hdrLoader = new HDRLoader();
+const envCache = new Map();   // url -> { envMap, background }
+let currentEnvKey = null;     // guards against a theme switch mid-load
+
+function applyEnv(theme) {
+  const key = theme.env || null;
+  currentEnvKey = key;
+  if (!key) { scene.environment = null; return; }   // gradient sky (setSky) stays
+  const put = (entry) => {
+    if (currentEnvKey !== key) return;              // theme switched while loading
+    scene.environment = entry.envMap;
+    scene.environmentIntensity = theme.envIntensity ?? 1;
+    scene.background = entry.background;
+    scene.backgroundBlurriness = theme.envBlur ?? 0;
+    scene.backgroundIntensity = theme.bgIntensity ?? 1;
+  };
+  const cached = envCache.get(key);
+  if (cached) { put(cached); return; }
+  hdrLoader.load(key, (tex) => {
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const envMap = pmrem.fromEquirectangular(tex).texture;
+    const entry = { envMap, background: tex };
+    envCache.set(key, entry);
+    put(entry);
+  });
+}
 
 const camera = new THREE.PerspectiveCamera(CAMERA.fov, innerWidth / innerHeight, 0.1, 200);
 const rig = createCameraRig(camera, renderer.domElement);
@@ -88,6 +125,8 @@ function applyTheme(theme) {
   fill.color.set(theme.fill);
   fill.intensity = theme.fillIntensity;
   renderer.toneMappingExposure = theme.exposure;
+  applyEnv(theme);          // HDRI image-based lighting/skybox, or clears it
+  fx.setBloom(theme.bloom); // per-theme glow (undefined -> default medieval bloom)
 }
 
 // ------------------------------------------------------------------ world + actors
@@ -102,6 +141,7 @@ let furniture = null;   // beds, wardrobes, bookshelves, tables
 let doors = null;       // arched bedroom doors
 let dressing = null;    // carpet + rugs
 let mechanics = null;   // mirrors, levers, traps
+let themeScene = null;  // a theme that ships its own geometry (e.g. the neon city)
 let worldVersion = -1;  // last world we built
 let latestStats = null;
 let latestFrame = null;
@@ -116,21 +156,30 @@ function disposeWorld() {
   if (doors) { doors.dispose(); doors = null; }
   if (dressing) { dressing.dispose(); dressing = null; }
   if (mechanics) { mechanics.dispose(); mechanics = null; }
+  if (themeScene) { themeScene.dispose?.(); themeScene = null; }
 }
 
 function rebuildWorld(worldJson) {
   disposeWorld();
-  applyTheme(getTheme(worldJson.theme));
+  const theme = getTheme(worldJson.theme);
+  applyTheme(theme);
+  rig.setView?.(theme.camera);          // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
-  const world = buildFixedWorld(rows);   // empty wall grid: floor + castle + nature
-  current = buildWorld(world, textures);
-  scene.add(current.group);
-  archGroup = buildArchitecture(worldJson);  // plastered walls + stone columns
-  scene.add(archGroup);
-  furniture = createFurniture(scene, worldJson);  // beds, wardrobes, shelves, tables
-  doors = createDoors(scene, worldJson);          // arched bedroom doors
-  dressing = createDressing(scene, worldJson);    // carpet + rugs
-  mechanics = createMechanics(scene, worldJson);
+  if (theme.buildScene) {
+    // a theme that ships its own world geometry (e.g. the neon city) takes over;
+    // the medieval-only groups stay null, so the render loop simply skips them.
+    themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
+  } else {
+    const world = buildFixedWorld(rows);   // empty wall grid: floor + castle + nature
+    current = buildWorld(world, textures);
+    scene.add(current.group);
+    archGroup = buildArchitecture(worldJson);  // plastered walls + stone columns
+    scene.add(archGroup);
+    furniture = createFurniture(scene, worldJson);  // beds, wardrobes, shelves, tables
+    doors = createDoors(scene, worldJson);          // arched bedroom doors
+    dressing = createDressing(scene, worldJson);    // carpet + rugs
+    mechanics = createMechanics(scene, worldJson);
+  }
   actors.setWorld(parseLayout(rows));
 }
 
@@ -276,6 +325,7 @@ renderer.setAnimationLoop(() => {
   if (mechanics && latestFrame) mechanics.update(latestFrame, t);
   if (doors && latestFrame) doors.update(latestFrame, t);
   if (dressing) dressing.update(t);
+  if (themeScene) themeScene.update?.(t, dt, latestFrame);
   actors.update(dt, t);
   fx.composer.render();
 });

@@ -12,18 +12,20 @@ from .grid import (  # re-exported for convenience / back-compat
     GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
 )
 from . import medieval
+from . import city
 
 # round_id -> module (must expose generate / THEME / ROUND_ID / TITLE)
 ROUND_MODULES = {
     1: medieval,
+    2: city,
 }
 # tournament running order
-ROUNDS = [1]
+ROUNDS = [1, 2]
 
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
     1: ("value_iteration", "policy_iteration"),
-    # 2: ("sarsa", "qlearning"),       # added in Phase B
+    2: ("sarsa", "qlearning"),         # the cliff: on-policy vs off-policy
     # 3: ("qlearning", "monte_carlo"), # added in Phase C
     # 4: ("dqn", "double_dqn"),        # added in Phase D
     # 5: ("dqn", "dueling_dqn"),       # added in Phase E

@@ -3,10 +3,12 @@
 // object (see medieval.js for the shape). Falls back to medieval if unknown.
 
 import { medieval } from './medieval.js';
+import { city } from './city.js';
 
 const THEMES = {
   medieval,
-  // city, paris, harbor, asteroid — added in Phases B-E
+  city,
+  // paris, harbor, asteroid — added in Phases C-E
 };
 
 export function getTheme(name) {

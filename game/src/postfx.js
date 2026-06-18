@@ -30,5 +30,15 @@ export function createPostFX(renderer, scene, camera) {
     composer.setSize(w, h);
   }
 
-  return { composer, setSize };
+  // per-theme bloom: emissive-heavy themes (the neon city) need a gentler pass
+  // and a higher threshold or the whole scene blows out to white.
+  const BLOOM_DEFAULT = { strength: 0.7, radius: 0.6, threshold: 0.75 };
+  function setBloom(opts) {
+    const { strength, radius, threshold } = { ...BLOOM_DEFAULT, ...(opts || {}) };
+    bloom.strength = strength;
+    bloom.radius = radius;
+    bloom.threshold = threshold;
+  }
+
+  return { composer, setSize, setBloom };
 }
