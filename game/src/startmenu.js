@@ -99,8 +99,11 @@ export function createStartMenu({
   // fly-through-the-window state (kicked off by Start)
   let flying = false;
   let flyU = 0;
+  let hasWindow = false;
   const flyStart = new THREE.Vector3();
   const flyEnd = new THREE.Vector3();
+  const flyLook = new THREE.Vector3();
+  const flyThrough = new THREE.Vector3(); // the window centre (set when the sky plane is built)
   const FLY_DUR = 0.85; // seconds
 
   function frame(root) {
@@ -233,6 +236,10 @@ export function createStartMenu({
         );
         sky.position.set(ctr.x, ctr.y, ctr.z - Math.max(sz.z, w * 0.04));
         group.add(sky);
+        // remember the porthole so Start flies the camera UP-and-OUT through it
+        // (not straight into the low wall point the menu camera looks at)
+        flyThrough.copy(ctr);
+        hasWindow = true;
         return;
       }
       for (const m of mats) {
@@ -347,11 +354,16 @@ export function createStartMenu({
     el.classList.remove("show");
     el.classList.add("out"); // fade the title card
 
-    // 1) fly the camera through the window into the sky while the iris closes
+    // 1) fly the camera UP through the porthole and OUT into the sky while the iris
+    // closes. Aim at the window centre (not the low wall point), and keep looking
+    // forward PAST the window so it reads as exiting, not stopping at the glass.
     flying = true;
     flyU = 0;
     flyStart.copy(camera.position);
-    flyEnd.copy(camTarget).sub(flyStart).multiplyScalar(1.15).add(flyStart);
+    const tgt = hasWindow ? flyThrough : camTarget;
+    const dir = tgt.clone().sub(flyStart);
+    flyEnd.copy(flyStart).addScaledVector(dir, 1.05); // up to the porthole/sky (black hits here)
+    flyLook.copy(flyStart).addScaledVector(dir, 3.0); // look forward, out through the window
     requestAnimationFrame(() => setIris(0)); // close to black (next frame so it animates)
     await wait(840);
 
@@ -373,10 +385,16 @@ export function createStartMenu({
   function update(dt, t) {
     if (!framed) return;
     if (flying) {
-      // accelerate forward into the window / sky, keeping it centred
+      // accelerate forward through the porthole, looking out into the sky. Ease the
+      // look target from the menu's camTarget out to flyLook so the view doesn't
+      // snap/rotate on the first frame (start matches where the drift left off).
       flyU = Math.min(1, flyU + dt / FLY_DUR);
       camera.position.lerpVectors(flyStart, flyEnd, flyU * flyU);
-      camera.lookAt(camTarget);
+      camera.lookAt(
+        camTarget.x + (flyLook.x - camTarget.x) * flyU,
+        camTarget.y + (flyLook.y - camTarget.y) * flyU,
+        camTarget.z + (flyLook.z - camTarget.z) * flyU,
+      );
       return;
     }
     const yaw = Math.sin(t * 0.15) * 0.08; // slow orbit around the target
