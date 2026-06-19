@@ -306,47 +306,108 @@ export const city = {
       shrubMaterial(0x568f3e, 0.97),
     ];
 
-    // Water is no longer a stack of bright blue coins. Each slip cell gets a
-    // shallow soil depression, a thin grassy bank, and a translucent rippled
-    // surface. The two water textures scroll slowly in update().
+    // Stylized puddles for slippery cells: a chunky aqua body, darker cartoon
+    // rim, and soft contact shadow baked into one transparent plane.
     const waterNrm = textureAt(`${MK_TEXTURES}water00_nrm.png`, 2.2, 2.2, false);
-    const waterDistortTex = textureAt(`${MK_TEXTURES}uvdistortion00.png`, 1.8, 1.8, false);
-    const waterMat = track(new THREE.MeshStandardMaterial({
-      color: 0x48cfff,
-      transparent: true,
-      opacity: 0.82,
-      roughness: 0.05,
-      metalness: 0,
-      normalMap: waterNrm,
-      normalScale: new THREE.Vector2(0.24, 0.24),
-      envMapIntensity: 1.15,
-      depthWrite: false,
-    }));
-    const bankMat = track(new THREE.MeshStandardMaterial({
-      map: textureAt(`${MK_TEXTURES}groundgrassedge00_alb.png`, 2, 2),
-      normalMap: textureAt(`${MK_TEXTURES}groundgrassedge00_nrm.png`, 2, 2, false),
-      roughnessMap: textureAt(`${MK_TEXTURES}groundgrassedge00_rgh.png`, 2, 2, false),
-      color: 0xa3d874,
-      roughness: 1,
-      metalness: 0,
-      depthWrite: false,
-    }));
-    const wetSoilMat = track(new THREE.MeshStandardMaterial({
-      color: 0x5b4b2f,
-      roughness: 0.88,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false,
-    }));
-    const rippleMat = track(new THREE.MeshBasicMaterial({
-      alphaMap: waterDistortTex,
-      color: 0xd8ffff,
-      transparent: true,
-      opacity: 0.4,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
+    const puddleMats = [];
+    function puddleCanvas(seed) {
+      const S = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      const rnd = (salt) => hashFloat(seed, salt, 211);
+      const makePath = (scale = 1, count = 36) => {
+        ctx.beginPath();
+        const ph1 = rnd(1) * 6.283;
+        const ph2 = rnd(2) * 6.283;
+        const ph3 = rnd(3) * 6.283;
+        const radius = S * (0.36 + rnd(4) * 0.025) * scale;
+        const rx = radius * (1.02 + (rnd(5) - 0.5) * 0.08);
+        const ry = radius * (0.98 + (rnd(6) - 0.5) * 0.08);
+        for (let i = 0; i <= count; i++) {
+          const t = (i / count) * Math.PI * 2;
+          const wobble = 1
+            + 0.07 * Math.sin(t * 3 + ph1)
+            + 0.045 * Math.sin(t * 5 + ph2)
+            + 0.025 * Math.sin(t * 8 + ph3);
+          const x = S / 2 + Math.cos(t) * rx * wobble;
+          const y = S / 2 + Math.sin(t) * ry * wobble;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+      };
+
+      ctx.clearRect(0, 0, S, S);
+      ctx.save();
+      ctx.filter = 'blur(8px)';
+      makePath(1.12, 56);
+      ctx.fillStyle = 'rgba(8, 69, 97, 0.24)';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      makePath(1, 56);
+      ctx.fillStyle = 'rgba(0, 111, 181, 0.95)';
+      ctx.fill();
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0, 70, 134, 0.95)';
+      ctx.lineWidth = 9;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      makePath(0.86, 56);
+      const g = ctx.createRadialGradient(S * 0.38, S * 0.32, S * 0.05, S * 0.53, S * 0.56, S * 0.42);
+      g.addColorStop(0, 'rgba(177, 255, 255, 0.98)');
+      g.addColorStop(0.34, 'rgba(64, 225, 255, 0.96)');
+      g.addColorStop(0.72, 'rgba(16, 169, 233, 0.95)');
+      g.addColorStop(1, 'rgba(4, 126, 208, 0.94)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(124, 247, 255, 0.88)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = 'rgba(244, 255, 255, 0.9)';
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(S * 0.33, S * 0.36);
+      ctx.bezierCurveTo(S * 0.42, S * 0.26, S * 0.58, S * 0.29, S * 0.66, S * 0.39);
+      ctx.stroke();
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = 'rgba(244, 255, 255, 0.92)';
+      ctx.beginPath();
+      ctx.ellipse(S * 0.4, S * 0.47, 8, 4.5, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(S * 0.58, S * 0.58, 6, 3.5, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return canvas;
+    }
+    for (let i = 0; i < 6; i++) {
+      const tex = trackTexture(new THREE.CanvasTexture(puddleCanvas(i + 17)));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxAnisotropy;
+      puddleMats.push(track(new THREE.MeshStandardMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.96,
+        roughness: 0.38,
+        metalness: 0,
+        emissive: 0x036c92,
+        emissiveIntensity: 0.18,
+        normalMap: waterNrm,
+        normalScale: new THREE.Vector2(0.025, 0.025),
+        envMapIntensity: 0.25,
+        depthWrite: false,
+      })));
+    }
     const goalMat = track(new THREE.MeshStandardMaterial({
       color: 0x39d96a, emissive: 0x39d96a, emissiveIntensity: 0.7,
       roughness: 0.4, metalness: 0.1, transparent: true, opacity: 0.9, depthWrite: false,
@@ -569,75 +630,20 @@ export const city = {
     if (wallCells.length) addShrubMaze(wallCells);
 
     // ---- slippery water + the goal (these sit on the grass) --------------
-    function puddlePoints(r, c, radius, salt = 0) {
-      const pts = [];
-      const n = 56;
-      const ph1 = hashFloat(r, c, 1 + salt) * Math.PI * 2;
-      const ph2 = hashFloat(r, c, 9 + salt) * Math.PI * 2;
-      for (let i = 0; i < n; i++) {
-        const t = (i / n) * Math.PI * 2;
-        const rad = radius * (
-          1 + 0.08 * Math.sin(t * 2 + ph1) + 0.035 * Math.sin(t * 5 + ph2)
-        );
-        pts.push(new THREE.Vector2(Math.cos(t) * rad, Math.sin(t) * rad));
-      }
-      return pts;
-    }
-    function shapeFromPoints(pts) {
-      const s = new THREE.Shape();
-      pts.forEach((p, i) => { if (i === 0) s.moveTo(p.x, p.y); else s.lineTo(p.x, p.y); });
-      s.closePath();
-      return s;
-    }
-    function pathFromPoints(pts) {
-      const p = new THREE.Path();
-      pts.forEach((v, i) => { if (i === 0) p.moveTo(v.x, v.y); else p.lineTo(v.x, v.y); });
-      p.closePath();
-      return p;
-    }
-    const puddleShape = (r, c, radius, salt = 0) => shapeFromPoints(puddlePoints(r, c, radius, salt));
-    function puddleRingShape(r, c, outerR, innerR) {
-      const s = shapeFromPoints(puddlePoints(r, c, outerR, 22));
-      s.holes.push(pathFromPoints([...puddlePoints(r, c, innerR, 31)].reverse()));
-      return s;
-    }
-    const rippleGeo = track(new THREE.PlaneGeometry(1, 1));
+    const puddleGeo = track(new THREE.PlaneGeometry(1, 1));
     for (const [r, c] of world.slipCells || []) {
-      const baseR = 0.29 + hashFloat(r, c, 99) * 0.045;
-      const cx = c + 0.5, cz = r + 0.5;
-
-      const wet = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleShape(r, c, baseR * 1.22, 3))), wetSoilMat);
-      wet.rotation.x = -Math.PI / 2;
-      wet.position.set(cx, LAWN_TOP + 0.018, cz);
-      wet.renderOrder = 1;
-      group.add(wet);
-
-      const bank = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleRingShape(r, c, baseR * 1.12, baseR * 0.9))), bankMat);
-      bank.rotation.x = -Math.PI / 2;
-      bank.position.set(cx, LAWN_TOP + 0.027, cz);
-      bank.renderOrder = 2;
-      group.add(bank);
-
-      const water = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleShape(r, c, baseR * 0.88, 8))), waterMat);
-      water.rotation.x = -Math.PI / 2;
-      water.position.set(cx, LAWN_TOP + 0.041, cz);
-      water.renderOrder = 3;
-      group.add(water);
-
-      const angle = hashFloat(r, c, 41) * Math.PI;
-      for (let i = 0; i < 2; i++) {
-        const ripple = new THREE.Mesh(rippleGeo, rippleMat);
-        const off = (i - 0.5) * baseR * 0.46;
-        ripple.rotation.set(-Math.PI / 2, 0, angle + (i ? 0.18 : -0.14));
-        ripple.position.set(
-          cx + Math.cos(angle + Math.PI / 2) * off,
-          LAWN_TOP + 0.048 + i * 0.002,
-          cz + Math.sin(angle + Math.PI / 2) * off
-        );
-        ripple.scale.set(baseR * (0.62 - i * 0.12), 0.018, 1);
-        ripple.renderOrder = 4;
-        group.add(ripple);
-      }
+      const matIndex = (hash(r * 17 + 3, c * 29 + 7) >>> 0) % puddleMats.length;
+      const puddle = new THREE.Mesh(puddleGeo, puddleMats[matIndex]);
+      puddle.rotation.set(-Math.PI / 2, 0, hashFloat(r, c, 73) * Math.PI);
+      puddle.position.set(c + 0.5, LAWN_TOP + 0.053, r + 0.5);
+      const puddleSize = 0.88 + hashFloat(r, c, 61) * 0.1;
+      puddle.scale.set(
+        puddleSize,
+        puddleSize * (1.04 + hashFloat(r, c, 67) * 0.1),
+        1
+      );
+      puddle.renderOrder = 3;
+      group.add(puddle);
     }
 
     // the goal: a glowing pad + a soft light
@@ -809,12 +815,10 @@ export const city = {
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       goalMat.emissiveIntensity = 0.5 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.5));  // goal pulse
-      waterMat.opacity = 0.78 + 0.04 * Math.sin(t * 1.4);                        // gentle sheen
-      waterNrm.offset.x = t * 0.018;                                             // drifting ripples
-      waterNrm.offset.y = t * 0.012;
-      waterDistortTex.offset.x = -t * 0.01;
-      waterDistortTex.offset.y = t * 0.014;
-      rippleMat.opacity = 0.32 + 0.1 * Math.sin(t * 1.8);
+      const waterOpacity = 0.93 + 0.03 * Math.sin(t * 1.4);
+      for (const mat of puddleMats) mat.opacity = waterOpacity;
+      waterNrm.offset.x = t * 0.015;                                             // subtle drifting sheen
+      waterNrm.offset.y = t * 0.011;
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
         const [x, z] = loopAt(tx.L, d);
