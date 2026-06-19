@@ -1,4 +1,4 @@
-"""Round 2 — the NEON CITY rooftop (model-FREE + slippery).
+"""Round 2 — the New Donk City rooftop (model-free + slippery).
 
 A 20x20 city block: buildings ('#') laid on a regular lattice leave a connected
 2-wide street grid. A wall at row 12 splits the map with two key-locked doors;
@@ -7,7 +7,7 @@ up through downtown to the gold and out the north escape.
 
 The plaza around the gold is SLIPPERY (wet rooftop) and a drop-trap on the escape
 run can knock the gold loose. Those unmodeled hazards are why this is the
-model-FREE learning round — the default matchup is SARSA vs Q-Learning, the
+model-free learning round — the default matchup is SARSA vs Q-Learning, the
 classic on-policy / off-policy contrast (Q-Learning walks the cliff edge, SARSA
 plays it safe). Layout is fixed; pressing R just resets the two learners.
 """
@@ -20,7 +20,7 @@ from .grid import (
 
 THEME = "city"
 ROUND_ID = 2
-TITLE = "Neon City"
+TITLE = "New Donk City"
 
 DIVIDER_ROW = 12
 RED_DOOR_POS, BLUE_DOOR_POS = (12, 8), (12, 11)
@@ -82,6 +82,6 @@ def generate(seed=None):
 
 if __name__ == "__main__":
     w = generate()
-    print(f"neon city: {w.H}x{w.W}, {len(w.slip_cells)} slip cells, {len(w.drop_traps)} traps")
+    print(f"new donk city: {w.H}x{w.W}, {len(w.slip_cells)} slip cells, {len(w.drop_traps)} traps")
     for row in w.rows():
         print(row)

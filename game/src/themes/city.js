@@ -1,33 +1,49 @@
-// Round 2 — a neon-city rooftop arena built from REAL low-poly building models
-// (Kenney "City Kit (Commercial)", CC0) instead of procedural boxes.
+// Round 2 — New Donk City, built as a Manhattan park block.
 //
-// The 20x20 board sits on a dark glossy platform. The board's wall tiles ('#')
-// become little city buildings; a dense skyline of taller towers rings the arena
-// on three sides (left / right / back) — the foreground toward the camera is left
-// OPEN so you look out over the edge. A captured night-city HDRI (set via the
-// theme's `env`, loaded in main.js) lights everything and reflects on the wet
-// platform. The live actors / keys / gold / heatmap still ride on the y=0 board.
+// The 20x20 RL grid is a central GREEN PLAZA (lawn + hedges + trees) sitting on
+// the y=0 board plane where the actors, keys, gold and value heatmap live (see
+// live.js / heatmap.js). Going outward from the board: a stone curb, a sidewalk
+// ring (street trees + lamps), a ring road (lane lines + crosswalks), an outer
+// sidewalk, then a dense tall NYC skyline wrapping all four sides.
 //
-// Models load asynchronously: the platform + gameplay decals appear immediately,
-// the buildings pop in as their GLBs arrive. Everything is cloned from a handful
-// of loaded prototypes (shared geometry + one night-tinted material each).
+// Nothing may cover the y=0 board surface: greenery only stands on wall ('#')
+// cells, and every gameplay marker is a thin decal/low pedestal. Models come
+// from the vendored New Donk City Collada pack in assets/models/city-newdonk
+// (DJ_Fox11 / The Models Resource).
 
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const GRID = 20;
 const CTR = GRID / 2;
-const NEON = [0x39e6ff, 0xff3bd0, 0x8b5cff, 0xffc24b, 0x49ff9e];
-const MODELS = './assets/models/city/';
+const ASSETS = './assets/models/city-newdonk/';
+const DIVIDER_ROW = 12;
 
-// kit pieces by role (heights: low ~1.3, mid ~1.5-1.7, tall ~2.9-5.5, filler ~2)
-const OBSTACLE = ['building-a', 'building-b', 'building-c', 'building-d',
-  'building-e', 'building-g', 'building-h'];
-const TALL = ['building-skyscraper-a', 'building-skyscraper-b', 'building-skyscraper-c',
-  'building-skyscraper-d', 'building-skyscraper-e'];
-const MID = ['building-i', 'building-k', 'building-l', 'building-m', 'building-n'];
-const FILLER = ['low-detail-building-a', 'low-detail-building-c', 'low-detail-building-f',
-  'low-detail-building-h', 'low-detail-building-k'];
+// Zone half-extents measured from the board centre (CTR,CTR). The board is
+// [0,20] => half 10; each ring stacks outward from there.
+const PARK_H = 10;     // board edge
+const ISW_H = 11.0;    // inner sidewalk (1.0 wide)
+const ROAD_H = 15.0;   // ring road outer edge (tight, 4-wide road)
+const OSW_H = 16.0;    // outer sidewalk (1.0 wide)
+
+// Buildings used for the surrounding skyline (hashed). NOTE: this pack mislabels
+// most models as Z_UP though they're authored Y-up, so prepare() resets the
+// loader's auto rotation. Buildings 003 and 023 are the genuine Z-up facades and
+// would tip over under that reset, so they're deliberately excluded.
+const BUILDINGS = [
+  'CityWorldHomeBuilding001.dae',
+  'CityWorldHomeBuilding008.dae',
+  'CityWorldHomeBuilding010.dae',
+  'CityWorldHomeBuilding011.dae',
+  'CityWorldHomeBuilding012.dae',
+  'CityWorldHomeBuilding019.dae',
+  'CityWorldHomeBuilding020.dae',
+  'CityWorldHomeBuilding021.dae',
+  'CityWorldHomeBuilding022.dae',
+  'CityWorldHomeBuilding024.dae',
+  'CityWorldHomeBuilding026.dae',
+];
 
 function hash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
@@ -37,219 +53,634 @@ function hash(a, b) {
 
 export const city = {
   name: 'city',
-  title: 'Neon City',
-  sky: ['#05061c', '#0c1238', '#1d0e3e'],
-  fog: 0x0a0e2e,
-  fogNear: 26,
-  fogFar: 130,
-  hemi: [0x3a4a86, 0x05030f, 0.45],
-  sun: 0x9fb0ff,
-  sunIntensity: 0.55,
-  fill: 0xff3bd0,
-  fillIntensity: 0.45,
-  exposure: 1.0,
-  // gentle bloom + high threshold so only true neon (cars, gold, rim) glows — the
-  // self-lit buildings must NOT bloom or the whole scene blows out to white.
-  bloom: { strength: 0.16, radius: 0.5, threshold: 0.85 },
-  // real captured night-city HDRI (Poly Haven, CC0): image-based reflections on
-  // the wet platform + the towers, and a believable skyline behind everything.
-  env: './assets/hdri/modern_buildings_night_2k.hdr',
-  envIntensity: 0.55,
-  envBlur: 0.16,
-  bgIntensity: 0.7,
-  camera: { pitchDeg: 40, dist: 34, targetY: 1.2 },   // used if the rig supports setView
+  title: 'New Donk City',
+  // bright, saturated "New Donk City" sunny look: warm sun vs cool blue fill,
+  // vivid sky, a gentle game-y bloom, punchy ACES exposure
+  sky: ['#2f74d6', '#6fb0f3', '#cfe8ff'],
+  fog: 0xccdff5,
+  fogNear: 55,
+  fogFar: 240,
+  // ONE dominant sun + low ambient = real shadows and a lit/shadow side on
+  // everything (the cure for "flat"). High ambient washes all of that out.
+  hemi: [0x9fccff, 0xb59868, 0.55],
+  sun: 0xfff0c6,
+  sunIntensity: 3.3,
+  fill: 0x88b0ff,
+  fillIntensity: 0.22,
+  exposure: 1.02,
+  bloom: { strength: 0.0, radius: 0.3, threshold: 0.95 }, // no bloom/glow
+  env: './assets/hdri/qwantani_noon_2k.hdr',
+  envIntensity: 0.45,
+  envBlur: 0.0,
+  bgIntensity: 1.02,
   redName: 'Crimson',
   blueName: 'Cobalt',
 
-  buildScene(scene, world) {
+  buildScene(scene, world, { renderer } = {}) {
     const group = new THREE.Group();
     scene.add(group);
+
+    // ---- resource bookkeeping --------------------------------------------
     const trash = [];
+    const textures = new Set();
     const track = (o) => (trash.push(o), o);
-    let disposed = false;
+    const trackTexture = (tex) => {
+      if (tex && tex.isTexture && !textures.has(tex)) {
+        textures.add(tex);
+        trash.push(tex);
+      }
+      return tex;
+    };
 
     const rows = world.rows;
-    const loader = new GLTFLoader();
-    const protos = new Map();   // name -> prepared prototype Object3D
+    const collada = new ColladaLoader();
+    const texLoader = new THREE.TextureLoader();
+    const protos = new Map();
+    const maxAnisotropy = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
+    let disposed = false;
 
-    // ---- night-tint a loaded kit model and cache it as a clonable prototype ---
-    function prepare(gltf) {
-      const root = gltf.scene;
+    const cellWall = (r, c) =>
+      r >= 0 && r < GRID && c >= 0 && c < GRID && rows[r][c] === '#';
+
+    // ---- shared asset / material helpers ---------------------------------
+    function assetTexture(name, repeatX = 1, repeatY = 1, color = true) {
+      const tex = trackTexture(texLoader.load(ASSETS + name));
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.anisotropy = maxAnisotropy;
+      if (color) tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    function pbr(prefix, repeatX, repeatY, fallbackColor) {
+      return track(new THREE.MeshStandardMaterial({
+        color: fallbackColor,
+        map: assetTexture(`${prefix}_alb.png`, repeatX, repeatY),
+        normalMap: assetTexture(`${prefix}_nrm.png`, repeatX, repeatY, false),
+        roughnessMap: assetTexture(`${prefix}_rgh.png`, repeatX, repeatY, false),
+        roughness: 0.92,
+        metalness: 0,
+      }));
+    }
+
+    const solid = (color, opts = {}) =>
+      track(new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0, ...opts }));
+
+    function disposeTree(root) {
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const value of Object.values(mat)) {
+            if (value?.isTexture) value.dispose();
+          }
+          mat.dispose?.();
+        }
+      });
+    }
+
+    function tuneMaterial(mat) {
+      if (!mat) return track(new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.85 }));
+      const m = mat.clone();
+      if (m.map) {
+        m.map.colorSpace = THREE.SRGBColorSpace;
+        m.map.anisotropy = maxAnisotropy;
+        trackTexture(m.map);
+      }
+      if (m.normalMap) trackTexture(m.normalMap);
+      if (m.roughnessMap) trackTexture(m.roughnessMap);
+      if (m.alphaMap) {
+        trackTexture(m.alphaMap);
+        m.transparent = true;
+        m.alphaTest = 0.18;
+      }
+      if (/leaf|flag|wire|fence|poster|graffiti/i.test(m.name || '')) {
+        m.side = THREE.DoubleSide;
+        m.transparent = true;
+        m.alphaTest = Math.max(m.alphaTest || 0, 0.12);
+      }
+      if ('emissiveIntensity' in m) m.emissiveIntensity = Math.min(m.emissiveIntensity || 0, 0.4);
+      if ('shininess' in m) m.shininess = Math.min(m.shininess || 30, 8);
+      track(m);
+      return m;
+    }
+
+    function prepare(asset, keepRotation) {
+      const root = asset.scene;
+      // This pack tags files Z_UP but authors MOST geometry Y-up, so the loader's
+      // automatic Z_UP->Y_UP rotation tips them over; undo it. The taxi is a
+      // genuine Z_UP model, so it passes keepRotation to keep the loader's upright.
+      if (!keepRotation) root.rotation.set(0, 0, 0);
+      root.updateMatrixWorld(true);
       root.traverse((o) => {
         if (!o.isMesh) return;
         o.castShadow = true;
         o.receiveShadow = true;
-        const m = o.material.clone();
-        m.color.multiply(new THREE.Color(0x8e9ac0));   // knock the bright day palette toward night
-        m.emissive = new THREE.Color(0x16213a);        // faint self-lit so windows read at night
-        m.emissiveMap = m.map;
-        m.emissiveIntensity = 0.14;                    // low: bloom must not catch the walls
-        m.metalness = 0.2;
-        m.roughness = 0.75;
-        m.needsUpdate = true;
-        o.material = m;
-        track(m);
         track(o.geometry);
+        o.material = Array.isArray(o.material)
+          ? o.material.map(tuneMaterial)
+          : tuneMaterial(o.material);
       });
+      root.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(root);
+      root.userData.bounds = {
+        cx: (box.min.x + box.max.x) * 0.5,
+        cz: (box.min.z + box.max.z) * 0.5,
+        minY: box.min.y,
+        h: Math.max(0.001, box.max.y - box.min.y),
+        w: Math.max(0.001, box.max.x - box.min.x),
+        d: Math.max(0.001, box.max.z - box.min.z),
+      };
       return root;
     }
-    function getModel(name) {
-      if (protos.has(name)) return Promise.resolve(protos.get(name));
-      return loader.loadAsync(MODELS + name + '.glb').then((g) => {
-        const p = prepare(g);
-        protos.set(name, p);
-        return p;
+
+    function loadModel(name, keepRotation) {
+      if (!protos.has(name)) {
+        protos.set(name, collada.loadAsync(ASSETS + name).then((asset) => {
+          const proto = prepare(asset, keepRotation);
+          if (disposed) disposeTree(proto);
+          return proto;
+        }).catch((err) => {
+          console.warn(`Could not load ${name}`, err);
+          return null;
+        }));
+      }
+      return protos.get(name);
+    }
+
+    // Clone a model to (x,z), its base sitting on baseY. footprint fits the
+    // larger XZ side (keeps proportions); height, when given, scales Y to size.
+    function place(name, x, z, opts = {}) {
+      loadModel(name).then((proto) => {
+        if (disposed || !proto) return;
+        const b = proto.userData.bounds;
+        const inner = cloneSkinned(proto);
+        inner.position.set(-b.cx, -b.minY, -b.cz);
+
+        let sx, sy, sz;
+        if (opts.footprint != null) {
+          sx = sz = opts.footprint / Math.max(b.w, b.d);
+          sy = opts.height != null ? opts.height / b.h : sx;
+        } else if (opts.fitXZ != null) {
+          sx = opts.fitXZ / b.w;
+          sz = opts.fitXZ / b.d;
+          sy = opts.height != null ? opts.height / b.h : Math.min(sx, sz);
+        } else if (opts.height != null) {
+          sx = sy = sz = opts.height / b.h;
+        } else {
+          sx = sy = sz = opts.scale ?? 1;
+        }
+
+        const wrap = new THREE.Group();
+        wrap.add(inner);
+        wrap.scale.set(sx, sy, sz);
+        wrap.rotation.y = opts.ry ?? 0;
+        wrap.position.set(x, opts.baseY ?? 0, z);
+        group.add(wrap);
       });
     }
-    // place a clone (shares geometry + tinted material — cheap) of `name`
-    function place(name, x, z, scale, ry) {
-      getModel(name).then((proto) => {
-        if (disposed) return;
-        const inst = proto.clone(true);
-        inst.position.set(x, 0, z);
-        inst.scale.setScalar(scale);
-        inst.rotation.y = ry;
-        group.add(inst);
-      }).catch(() => { /* a model failed to load — skip it */ });
+
+    // ---- materials -------------------------------------------------------
+    const asphaltMat = pbr('BaseAsphaltRoad01', 16, 16, 0x3a3c40);
+    const apronMat = pbr('BaseAsphaltRoad01', 50, 50, 0x2b2d31);
+    // Textured paver sidewalk (SideWalk01 albedo + normal, constant roughness so
+    // the pack's glossy roughness map doesn't catch the sun as a sheen). repX/repZ
+    // are set PER PIECE so the paver tiles stay one consistent square size on
+    // every walk — inner ring and outer band match instead of stretching.
+    const WALK_TILE = 2.0;   // world size of one paver tile
+    const walkMat = (repX, repZ) => track(new THREE.MeshStandardMaterial({
+      map: assetTexture('SideWalk01_alb.png', repX, repZ),
+      normalMap: assetTexture('SideWalk01_nrm.png', repX, repZ, false),
+      roughness: 1.0, metalness: 0,
+    }));
+    const grassMat = track(new THREE.MeshStandardMaterial({
+      map: assetTexture('GroundLawn00_alb.png', 9, 9),
+      color: 0xbfe08a, roughness: 1, metalness: 0,
+    }));
+    const hedgeMat = solid(0x49992f, { roughness: 0.95 });
+    const planterMat = solid(0x8d8475, { roughness: 0.9 });
+    const lineMat = solid(0xe6c84a, { roughness: 0.6 });
+    const whiteMat = solid(0xeef0ec, { roughness: 0.8 });
+
+    // ---- ground: a sunken road with raised, curbed sidewalks (like real life)
+    const ROAD_Y = -0.18;   // road sits below the walks (deeper curb)
+    const WALK_TOP = 0.0;   // sidewalk surface (~curb height above the road)
+    function ground(half, y, mat) {
+      const m = new THREE.Mesh(track(new THREE.PlaneGeometry(half * 2, half * 2)), mat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(CTR, y, CTR);
+      m.receiveShadow = true;
+      group.add(m);
+      return m;
     }
-
-    // ---- platform the board rests on (dark, glossy/wet, reflects the HDRI) ----
-    const platform = new THREE.Mesh(
-      track(new THREE.BoxGeometry(GRID + 3, 1.4, GRID + 3)),
-      track(new THREE.MeshStandardMaterial({ color: 0x070a16, roughness: 0.22, metalness: 0.9,
-        emissive: 0x0a1430, emissiveIntensity: 0.35 })));
-    platform.position.set(CTR, -0.7, CTR);
-    platform.receiveShadow = true;
-    group.add(platform);
-
-    // a supporting shaft dropping into the haze, so you feel high up
-    const shaft = new THREE.Mesh(
-      track(new THREE.BoxGeometry(GRID + 2, 60, GRID + 2)),
-      track(new THREE.MeshStandardMaterial({ color: 0x05070f, roughness: 0.6, metalness: 0.4 })));
-    shaft.position.set(CTR, -0.7 - 30, CTR);
-    group.add(shaft);
-
-    // ---- board floor + additive neon grid (cosmetic; raycast uses a math plane) -
-    const gc = document.createElement('canvas'); gc.width = gc.height = 512;
-    const gx = gc.getContext('2d');
-    gx.fillStyle = '#070b18'; gx.fillRect(0, 0, 512, 512);
-    gx.strokeStyle = 'rgba(80,170,255,0.55)'; gx.lineWidth = 2;
-    for (let i = 0; i <= GRID; i++) {
-      const p = (i / GRID) * 512;
-      gx.beginPath(); gx.moveTo(p, 0); gx.lineTo(p, 512); gx.stroke();
-      gx.beginPath(); gx.moveTo(0, p); gx.lineTo(512, p); gx.stroke();
-    }
-    const gridTex = track(new THREE.CanvasTexture(gc));
-    gridTex.colorSpace = THREE.SRGBColorSpace;
-    const floor = new THREE.Mesh(
-      track(new THREE.PlaneGeometry(GRID, GRID)),
-      track(new THREE.MeshStandardMaterial({ map: gridTex, roughness: 0.35, metalness: 0.6,
-        emissive: 0x0a1830, emissiveMap: gridTex, emissiveIntensity: 0.22 })));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(CTR, 0.02, CTR);
-    floor.receiveShadow = true;
-    group.add(floor);
-
-    // glowing rim around the board
-    const rimMat = track(new THREE.MeshBasicMaterial({ color: 0x39e6ff }));
-    const rimH = track(new THREE.BoxGeometry(GRID + 0.3, 0.16, 0.18));
-    const rimV = track(new THREE.BoxGeometry(0.18, 0.16, GRID + 0.3));
-    for (const [g2, x, z] of [[rimH, CTR, 0], [rimH, CTR, GRID], [rimV, 0, CTR], [rimV, GRID, CTR]]) {
-      const bar = new THREE.Mesh(g2, rimMat); bar.position.set(x, 0.09, z); group.add(bar);
-    }
-
-    // ---- in-play buildings: a real Kenney model on every '#' wall tile ---------
-    for (let r = 0; r < GRID; r++) {
-      for (let c = 0; c < GRID; c++) {
-        if (rows[r][c] !== '#') continue;
-        const h = hash(r, c);
-        const name = OBSTACLE[h % OBSTACLE.length];
-        const ry = (h >> 3 & 3) * (Math.PI / 2);
-        place(name, c + 0.5, r + 0.5, 0.94, ry);
-      }
-    }
-
-    // ---- surrounding skyline: towers on three sides, foreground left OPEN ------
-    // camera sits on the +z side, so the open band is high z (toward the viewer).
-    for (let x = -16; x <= 36; x += 4) {
-      for (let z = -16; z <= 24; z += 4) {
-        const onBoard = x > -2 && x < 22 && z > -2 && z < 22;
-        const inFront = z > 21 && x > -3 && x < 23;     // keep the foreground clear
-        if (onBoard || inFront) continue;
-        const h = hash(x + 200, z + 200);
-        if (h % 10 < 3) continue;                       // gaps = sky-streets
-        const roll = h % 10;
-        const name = roll < 4 ? TALL[h % TALL.length]
-          : roll < 7 ? FILLER[h % FILLER.length]
-            : MID[h % MID.length];
-        const scale = 1.4 + (h % 5) * 0.45;             // 1.4 .. 3.2
-        const jx = (((h >> 4) % 5) - 2) * 0.5;
-        const jz = (((h >> 8) % 5) - 2) * 0.5;
-        const ry = (h >> 2 & 3) * (Math.PI / 2);
-        place(name, x + jx, z + jz, scale, ry);
-      }
-    }
-
-    // ---- gameplay decals (slip / drop-traps / escape / doors / gold pedestal) --
-    const decal = (r, c, hex, op = 0.7, y = 0.05) => {
-      const mesh = new THREE.Mesh(
-        track(new THREE.PlaneGeometry(0.92, 0.92)),
-        track(new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: op,
-          blending: THREE.AdditiveBlending, depthWrite: false })));
-      mesh.rotation.x = -Math.PI / 2; mesh.position.set(c + 0.5, y, r + 0.5); group.add(mesh); return mesh;
+    // Rounded-rectangle walks (Extrude) so the block corners curve like a real
+    // intersection. ExtrudeGeometry's top UVs are in world units, so a texture
+    // repeat of 1/WALK_TILE gives square, consistent pavers on every piece.
+    const drawRoundedRect = (ctx, half, r) => {
+      const a = -half, b = half;
+      ctx.moveTo(a + r, a);
+      ctx.lineTo(b - r, a); ctx.quadraticCurveTo(b, a, b, a + r);
+      ctx.lineTo(b, b - r); ctx.quadraticCurveTo(b, b, b - r, b);
+      ctx.lineTo(a + r, b); ctx.quadraticCurveTo(a, b, a, b - r);
+      ctx.lineTo(a, a + r); ctx.quadraticCurveTo(a, a, a + r, a);
     };
-    for (const [r, c] of world.slipCells) decal(r, c, 0x2ad0ff, 0.5);
-    const grates = (world.dropTraps || []).map(([r, c]) => decal(r, c, 0xff5a1a, 0.6));
-    const portals = world.escape.map(([r, c]) => decal(r, c, 0x49ff9e, 0.85, 0.06));
+    function extrudeWalk(shape, top, thickness) {
+      const geo = track(new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false }));
+      const m = new THREE.Mesh(geo, walkMat(1 / WALK_TILE, 1 / WALK_TILE));
+      m.rotation.x = -Math.PI / 2;            // lay the XY shape flat, top face up
+      m.position.set(CTR, top - thickness, CTR);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      group.add(m);
+      return m;
+    }
+    const CORNER = 0.6;                        // just a slight corner round
+    ground(80, -0.30, apronMat);              // far district floor (below the road)
+    ground(50, ROAD_Y, asphaltMat);           // road base (shows in the road ring)
+    // outer walk: big square with a rounded hole on the road side (hole radius
+    // keeps the road a constant width around the bend)
+    const outerWalk = new THREE.Shape();
+    drawRoundedRect(outerWalk, 50, 0);
+    const roadHole = new THREE.Path();
+    drawRoundedRect(roadHole, ROAD_H, 1.0);
+    outerWalk.holes.push(roadHole);
+    extrudeWalk(outerWalk, WALK_TOP, 0.22);
+    // inner walk: a rounded square around the park
+    const innerWalk = new THREE.Shape();
+    drawRoundedRect(innerWalk, ISW_H, CORNER);
+    extrudeWalk(innerWalk, WALK_TOP, 0.22);
+    ground(PARK_H, 0.012, grassMat);          // the park lawn (board)
+    ground(PARK_H, 0.012, grassMat);                  // the park lawn (board)
 
-    // gold pedestal under the floating gold key
-    const [gr, gc2] = world.goldHome;
+    // road lane lines (a dashed square loop down the middle of the ring road)
+    const RMID = (ISW_H + ROAD_H) / 2;        // 16.5 from centre
+    const dashX = track(new THREE.BoxGeometry(1.2, 0.04, 0.16));
+    const dashZ = track(new THREE.BoxGeometry(0.16, 0.04, 1.2));
+    for (let t = -RMID + 3.5; t <= RMID - 3.5; t += 2.4) {   // stop short of the corners
+      for (const s of [-1, 1]) {
+        const a = new THREE.Mesh(dashX, lineMat);   // N / S runs
+        a.position.set(CTR + t, ROAD_Y + 0.01, CTR + s * RMID);
+        group.add(a);
+        const b = new THREE.Mesh(dashZ, lineMat);   // E / W runs
+        b.position.set(CTR + s * RMID, ROAD_Y + 0.01, CTR + t);
+        group.add(b);
+      }
+    }
+
+    // crosswalks across each side of the ring road, at the side mid-point
+    const stripeX = track(new THREE.BoxGeometry(2.4, 0.05, 0.28));
+    const stripeZ = track(new THREE.BoxGeometry(0.28, 0.05, 2.4));
+    function crosswalk(cx, cz, vertical) {
+      for (const o of [-1.4, -0.8, 0.8, 1.4]) {   // 2 + gap + 2 stripes
+        const s = new THREE.Mesh(vertical ? stripeX : stripeZ, whiteMat);
+        s.position.set(cx + (vertical ? 0 : o), ROAD_Y + 0.01, cz + (vertical ? o : 0));
+        group.add(s);
+      }
+    }
+    crosswalk(CTR, CTR - RMID, true);   // north
+    crosswalk(CTR, CTR + RMID, true);   // south
+    crosswalk(CTR - RMID, CTR, false);  // west
+    crosswalk(CTR + RMID, CTR, false);  // east
+
+    // ---- the park interior: greenery on every wall cell ------------------
+    const planterGeo = track(new THREE.BoxGeometry(0.92, 0.2, 0.92));
+    const hedgeGeo = track(new THREE.BoxGeometry(0.82, 0.66, 0.82));
+    for (let r = 1; r < GRID - 1; r++) {
+      for (let c = 1; c < GRID - 1; c++) {
+        if (r === DIVIDER_ROW || !cellWall(r, c)) continue;
+        const h = hash(r * 31 + 7, c * 17 + 3);
+        const x = c + 0.5;
+        const z = r + 0.5;
+
+        const planter = new THREE.Mesh(planterGeo, planterMat);
+        planter.position.set(x, 0.04, z);
+        planter.castShadow = true;
+        planter.receiveShadow = true;
+        group.add(planter);
+
+        const k = h % 6;
+        if (k < 3) {
+          const hedge = new THREE.Mesh(hedgeGeo, hedgeMat);
+          hedge.position.set(x, 0.14 + 0.33, z);
+          hedge.castShadow = true;
+          hedge.receiveShadow = true;
+          group.add(hedge);
+        } else if (k < 5) {
+          place('CityWorldHomeTree000.dae', x, z, { baseY: 0.14, height: 2.5 + (h % 3) * 0.4, ry: h });
+        } else {
+          place('CityWorldBushA.dae', x, z, { baseY: 0.14, height: 1.2, ry: h });
+        }
+        if (h % 8 === 0) {
+          place('CityWorldHomeBench000.dae', x + 0.6, z + 0.6, { baseY: 0.04, height: 0.6, ry: (h >> 2) * 0.7 });
+        }
+      }
+    }
+
+    // ---- divider row 12: a hedge wall split by the two key-locked gates ---
+    const HEDGE_W = 1.35;
+    const hedgeWall = (x0, x1) => {
+      const w = x1 - x0;
+      const base = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.2, 0.9)), planterMat);
+      base.position.set((x0 + x1) / 2, 0.04, DIVIDER_ROW + 0.5);
+      base.receiveShadow = true;
+      group.add(base);
+      const hedge = new THREE.Mesh(track(new THREE.BoxGeometry(w, HEDGE_W, 0.8)), hedgeMat);
+      hedge.position.set((x0 + x1) / 2, 0.14 + HEDGE_W / 2, DIVIDER_ROW + 0.5);
+      hedge.castShadow = true;
+      hedge.receiveShadow = true;
+      group.add(hedge);
+    };
+    const [rdr, rdc] = world.redDoor;   // (12, 8)
+    const [bdr, bdc] = world.blueDoor;  // (12, 11)
+    hedgeWall(0, rdc);
+    hedgeWall(rdc + 1, bdc);
+    hedgeWall(bdc + 1, GRID);
+
+    // garden gate arches at each door
+    const gateArch = (x, z, color) => {
+      const m = solid(color, { roughness: 0.5, metalness: 0.2, emissive: color, emissiveIntensity: 0.2 });
+      for (const dx of [-0.5, 0.5]) {
+        const post = new THREE.Mesh(track(new THREE.BoxGeometry(0.16, HEDGE_W + 0.7, 0.6)), m);
+        post.position.set(x + dx, (HEDGE_W + 0.7) / 2, z);
+        post.castShadow = true;
+        group.add(post);
+      }
+      const top = new THREE.Mesh(track(new THREE.BoxGeometry(1.32, 0.24, 0.6)), m);
+      top.position.set(x, HEDGE_W + 0.7, z);
+      top.castShadow = true;
+      group.add(top);
+    };
+    gateArch(rdc + 0.5, rdr + 0.5, 0xe23a44);
+    gateArch(bdc + 0.5, bdr + 0.5, 0x3b7bff);
+
+    // closing gate panels (hidden once the matching key is taken)
+    const gatePanel = (r, c, color) => {
+      const mesh = new THREE.Mesh(
+        track(new THREE.BoxGeometry(0.9, HEDGE_W + 0.4, 0.18)),
+        solid(color, { roughness: 0.45, metalness: 0.1 })
+      );
+      mesh.position.set(c + 0.5, (HEDGE_W + 0.4) / 2, r + 0.5);
+      mesh.castShadow = true;
+      group.add(mesh);
+      return mesh;
+    };
+    const redGate = gatePanel(rdr, rdc, 0xe23a44);
+    const blueGate = gatePanel(bdr, bdc, 0x3b7bff);
+
+    // ---- thin cell markers (all hug the y=0 board) -----------------------
+    const decal = (r, c, hex, op = 0.55, y = 0.05, size = 0.9) => {
+      const mesh = new THREE.Mesh(
+        track(new THREE.PlaneGeometry(size, size)),
+        track(new THREE.MeshStandardMaterial({
+          color: hex, transparent: true, opacity: op,
+          roughness: 0.5, metalness: 0, depthWrite: false,
+          emissive: hex, emissiveIntensity: 0.4,
+        }))
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(c + 0.5, y, r + 0.5);
+      group.add(mesh);
+      return mesh;
+    };
+
+    // slippery wet lawn -> puddles
+    for (const [r, c] of world.slipCells || []) decal(r, c, 0x49b6ff, 0.32, 0.05);
+
+    // drop-trap manholes
+    const grates = [];
+    for (const [r, c] of world.dropTraps || []) {
+      place('CityWorldHomeManhole000.dae', c + 0.5, r + 0.5, { baseY: 0.02, fitXZ: 0.86, ry: Math.PI / 4 });
+      grates.push(decal(r, c, 0xff7a2a, 0.4, 0.07, 0.95));
+    }
+
+    // north escape tiles + a park-exit arch over them
+    const portals = (world.escape || []).map(([r, c]) => decal(r, c, 0x39d96a, 0.6, 0.08));
+    if ((world.escape || []).length) {
+      const ex = world.escape.reduce((s, e) => s + e[1] + 0.5, 0) / world.escape.length;
+      const ez = world.escape[0][0] + 0.5;
+      const archMat = solid(0x2fbf66, { emissive: 0x39d96a, emissiveIntensity: 0.6, metalness: 0.2, roughness: 0.5 });
+      for (const dx of [-1.1, 1.1]) {
+        const post = new THREE.Mesh(track(new THREE.BoxGeometry(0.2, 3.0, 0.2)), archMat);
+        post.position.set(ex + dx, 1.5, ez);
+        post.castShadow = true;
+        group.add(post);
+      }
+      const bar = new THREE.Mesh(track(new THREE.BoxGeometry(2.6, 0.42, 0.3)), archMat);
+      bar.position.set(ex, 3.0, ez);
+      group.add(bar);
+    }
+
+    // spawn pads
+    const spawnPad = (cell, hex) => {
+      if (!cell) return;
+      const [r, c] = cell;
+      const ring = new THREE.Mesh(
+        track(new THREE.RingGeometry(0.32, 0.46, 28)),
+        track(new THREE.MeshStandardMaterial({
+          color: hex, emissive: hex, emissiveIntensity: 0.5,
+          transparent: true, opacity: 0.75, roughness: 0.5, depthWrite: false,
+        }))
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(c + 0.5, 0.06, r + 0.5);
+      group.add(ring);
+    };
+    spawnPad(world.redSpawn, 0xff4d6a);
+    spawnPad(world.blueSpawn, 0x5b8dff);
+
+    // pads under the floating keys (the keys themselves are drawn in live.js)
+    if (world.redKey) decal(world.redKey[0], world.redKey[1], 0xff4d6a, 0.45, 0.06, 0.7);
+    if (world.blueKey) decal(world.blueKey[0], world.blueKey[1], 0x5b8dff, 0.45, 0.06, 0.7);
+
+    // gold home: a small stone fountain (floating gold rests at goldCol+1, x=10)
+    const [gr, gc] = world.goldHome;
+    const fx = gc + 1.0, fz = gr + 0.5;
+    const basin = new THREE.Mesh(
+      track(new THREE.CylinderGeometry(1.0, 1.15, 0.34, 24)),
+      track(new THREE.MeshStandardMaterial({ color: 0xb9b2a3, roughness: 0.8, metalness: 0.05 }))
+    );
+    basin.position.set(fx, 0.11, fz);
+    basin.castShadow = true;
+    basin.receiveShadow = true;
+    group.add(basin);
+    const water = new THREE.Mesh(
+      track(new THREE.CircleGeometry(0.86, 24)),
+      track(new THREE.MeshStandardMaterial({ color: 0x49b6ff, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.1 }))
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(fx, 0.29, fz);
+    group.add(water);
     const pedestal = new THREE.Mesh(
-      track(new THREE.CylinderGeometry(0.34, 0.42, 0.3, 16)),
-      track(new THREE.MeshStandardMaterial({ color: 0x1a2240, emissive: 0xffc24b,
-        emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.7 })));
-    pedestal.position.set(gc2 + 0.5, 0.15, gr + 0.5); group.add(pedestal);
+      track(new THREE.CylinderGeometry(0.22, 0.3, 0.4, 16)),
+      track(new THREE.MeshStandardMaterial({
+        color: 0x6b5a2a, emissive: 0xffc24b, emissiveIntensity: 0.45,
+        roughness: 0.4, metalness: 0.55,
+      }))
+    );
+    pedestal.position.set(fx, 0.34, fz);
+    pedestal.castShadow = true;
+    group.add(pedestal);
 
-    // key-locked door shutters (visible until that side grabs its colored key)
-    const slab = (r, c, hex) => {
-      const mesh = new THREE.Mesh(
-        track(new THREE.BoxGeometry(0.96, 1.1, 0.22)),
-        track(new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 0.9,
-          transparent: true, opacity: 0.75, roughness: 0.3, metalness: 0.4 })));
-      mesh.position.set(c + 0.5, 0.55, r + 0.5); group.add(mesh); return mesh;
-    };
-    const redShutter = slab(world.redDoor[0], world.redDoor[1], 0xff3b46);
-    const blueShutter = slab(world.blueDoor[0], world.blueDoor[1], 0x3b7bff);
-
-    // arena lights so the actors read against the dim night HDRI
-    const goldLight = track(new THREE.PointLight(0xffc24b, 14, 14, 2));
-    goldLight.position.set(gc2 + 0.5, 2.4, gr + 0.5);
-    const gateLight = track(new THREE.PointLight(0x49ff9e, 16, 14, 2));
-    gateLight.position.set(CTR, 2.2, 0.8);
-    group.add(goldLight, gateLight);
-
-    // ---- a few flying cars weaving around the towers (flavor) ------------------
-    const cars = [];
-    const carGeo = track(new THREE.BoxGeometry(0.9, 0.22, 0.36));
-    for (let i = 0; i < 8; i++) {
-      const hue = NEON[i % NEON.length];
-      const body = new THREE.Mesh(carGeo, track(new THREE.MeshStandardMaterial({
-        color: 0x111, emissive: hue, emissiveIntensity: 1.8, roughness: 0.4 })));
-      group.add(body);
-      cars.push({ body, r: 16 + (i % 4) * 5, h: 3 + (i % 4) * 2.2, spd: (i % 2 ? 1 : -1) * (0.12 + 0.04 * (i % 3)), ang: i * 0.8 });
+    // ---- a few street lamps hugging the grid edge, axis-aligned (0/90),
+    //      facing the road; none on the south/front side -------------------
+    const lampR = PARK_H + 0.6;  // just off the grass, a touch toward the road
+    const lampSides = [
+      { dx: 0, dz: -1, ry: Math.PI },        // north
+      { dx: -1, dz: 0, ry: -Math.PI / 2 },   // west
+      { dx: 1, dz: 0, ry: Math.PI / 2 },     // east
+    ];
+    for (const t of [-6.5, 6.5]) {
+      for (const s of lampSides) {
+        const x = CTR + (s.dx ? s.dx * lampR : t);
+        const z = CTR + (s.dz ? s.dz * lampR : t);
+        place('CityWorldHomeStreetlight000.dae', x, z, { baseY: WALK_TOP - 0.01, height: 3.6, ry: s.ry });
+      }
     }
 
-    function update(t, dt, frame) {
-      const pulse = 0.6 + 0.4 * Math.sin(t * 2.2);
-      for (const p of portals) p.material.opacity = 0.55 + 0.35 * pulse;
-      for (const g2 of grates) g2.material.opacity = 0.4 + 0.3 * Math.abs(Math.sin(t * 3));
-      goldLight.intensity = 11 + 5 * Math.sin(t * 1.7);
-      for (const car of cars) {
-        car.ang += car.spd * dt;
-        car.body.position.set(CTR + Math.cos(car.ang) * car.r, car.h + Math.sin(t * 0.7 + car.r) * 0.4, CTR + Math.sin(car.ang) * car.r);
-        car.body.rotation.y = -car.ang + Math.PI / 2;
+    // ---- the surrounding NYC skyline: rows of buildings ------------------
+    // Each ring is a hollow square whose building INNER FACES line up just
+    // behind the outer sidewalk (centre = front + foot/2), so they read as a
+    // continuous street wall and never sit on the road. Rows rise taller as
+    // they recede. No jitter -> clean rows; corners aren't double-placed.
+    const RINGS = [
+      { front: OSW_H + 0.4, step: 7.5, hLo: 9,  hVar: 6,  foot: 7, skip: 0 },
+      { front: OSW_H + 9,   step: 8.5, hLo: 15, hVar: 8,  foot: 7, skip: 6 },
+      { front: OSW_H + 18,  step: 10,  hLo: 21, hVar: 12, foot: 8, skip: 4 },
+    ];
+    for (let ri = 0; ri < RINGS.length; ri++) {
+      const { front, step, hLo, hVar, foot, skip } = RINGS[ri];
+      const d = front + foot / 2;            // centre distance so fronts align
+      const plots = [];
+      for (let t = -d; t <= d + 0.01; t += step) {
+        plots.push([CTR + t, CTR - d], [CTR + t, CTR + d]);     // N + S edges
       }
-      if (frame) { redShutter.visible = !frame.redKey; blueShutter.visible = !frame.blueKey; }
+      for (let t = -d + step; t <= d - step + 0.01; t += step) {
+        plots.push([CTR - d, CTR + t], [CTR + d, CTR + t]);     // W + E edges (no corners)
+      }
+      plots.forEach(([x, z], i) => {
+        const h = hash(ri * 131 + i * 7, 808);
+        if (skip && h % skip === 0) return;       // gaps = cross streets
+        const height = hLo + (h % 5) / 4 * hVar + (h % 3) * 0.8;
+        // face the park: each row turns its front toward the centre
+        const dx = x - CTR, dz = z - CTR;
+        const ry = Math.abs(dz) >= Math.abs(dx)
+          ? (dz < 0 ? 0 : Math.PI)                  // north / south rows
+          : (dx < 0 ? Math.PI / 2 : -Math.PI / 2);  // west / east rows
+        place(BUILDINGS[h % BUILDINGS.length], x, z, {
+          baseY: WALK_TOP - 0.02, footprint: foot, height, ry,
+        });
+      });
+    }
+
+    // ---- a few manholes set flush in the road lanes ----------------------
+    const manR = RMID + 1.0;   // in the outer driving lane, off the centre line
+    for (const [x, z] of [
+      [CTR - manR, CTR + 4],   // west
+      [CTR + manR, CTR - 4],   // east
+    ]) {
+      place('CityWorldHomeManhole000.dae', x, z, { baseY: ROAD_Y - 0.04, fitXZ: 1.0, ry: 0 });
+    }
+
+    // ---- a few trash cans on the outer sidewalk by the buildings ---------
+    const propR = OSW_H - 0.55;
+    for (let i = 0; i < 22; i++) {
+      const h = hash(i * 53 + 13, 7001);
+      const side = h % 4;
+      if (side === 1) continue;                  // skip the south/front side
+      if (h % 3 !== 0) continue;                 // sparse — only some spots get one
+      const along = (((h >> 2) % 1000) / 1000 - 0.5) * 2 * (OSW_H - 3);
+      if (Math.abs(along) < 3.5) continue;        // near a crosswalk/entrance
+      let x, z, ry;
+      if (side === 0) { x = CTR + along; z = CTR - propR; ry = 0; }
+      else if (side === 2) { x = CTR - propR; z = CTR + along; ry = Math.PI / 2; }
+      else { x = CTR + propR; z = CTR + along; ry = -Math.PI / 2; }
+      place('CityWorldHomeTrashBox000.dae', x, z, { baseY: WALK_TOP - 0.01, height: 0.9, ry });
+    }
+
+    // ---- benches on the inner sidewalk, facing the park ------------------
+    const benchR = PARK_H + 0.5;
+    const benchSides = [
+      [0, -1, Math.PI],       // north (rotated 180 to face the park)
+      [-1, 0, -Math.PI / 2],  // west
+      [1, 0, Math.PI / 2],    // east
+    ];                         // (no bench on the south/front)
+    for (const t of [-3.5, 3.5]) {
+      for (const [dx, dz, ry] of benchSides) {
+        const x = CTR + (dx ? dx * benchR : t);
+        const z = CTR + (dz ? dz * benchR : t);
+        place('CityWorldHomeBench000.dae', x, z, { baseY: WALK_TOP - 0.01, height: 0.6, ry });
+      }
+    }
+
+    // traffic signals standing just before each crosswalk (park side of the road)
+    const sigR = ROAD_H + 0.5;  // on the outer-sidewalk curb, just past the road
+    const sigOff = 1.9;         // off to the side of the crosswalk stripes
+    const sigs = [
+      [CTR - sigOff, CTR - sigR, 0],             // north
+      [CTR - sigR, CTR + sigOff, Math.PI / 2],   // west
+      [CTR + sigR, CTR - sigOff, -Math.PI / 2],  // east
+    ];                                            // (no signal on the south/front)
+    for (const [x, z, ry] of sigs) {
+      place('CityWorldHomeSignal000.dae', x, z, { baseY: WALK_TOP - 0.15, height: 4.2, ry });
+    }
+
+    // ---- a taxi cruising the ring road -----------------------------------
+    // The car is a genuine Z_UP model -> keep the loader's upright rotation.
+    let taxi = null;
+    const TAXI_LEN = 2.6, TAXI_SPEED = 6, TAXI_FWD = 0; // TAXI_FWD: set Math.PI if it drives backwards
+    loadModel('Car.dae', true).then((proto) => {
+      if (disposed || !proto) return;
+      const b = proto.userData.bounds;
+      const inner = cloneSkinned(proto);
+      inner.position.set(-b.cx, -b.minY, -b.cz);
+      const wrap = new THREE.Group();
+      wrap.add(inner);
+      wrap.scale.setScalar(TAXI_LEN / Math.max(b.w, b.d));
+      group.add(wrap);
+      taxi = wrap;
+    });
+    // rounded-rectangle loop along the ring road; taxiLoop(distance)->[x,z]
+    const taxiL = RMID, taxiRc = 2.5, taxiC = taxiL - taxiRc;
+    const taxiStraight = 2 * taxiC, taxiArc = (Math.PI / 2) * taxiRc;
+    const taxiSide = taxiStraight + taxiArc, TAXI_PERIM = 4 * taxiSide;
+    function taxiLoop(dist) {
+      let d = ((dist % TAXI_PERIM) + TAXI_PERIM) % TAXI_PERIM;
+      const k = Math.floor(d / taxiSide);
+      const s = d - k * taxiSide;
+      let x, z;
+      if (s <= taxiStraight) { x = taxiL; z = -taxiC + s; }
+      else { const a = (s - taxiStraight) / taxiRc; x = taxiC + taxiRc * Math.cos(a); z = taxiC + taxiRc * Math.sin(a); }
+      for (let i = 0; i < k; i++) { const nx = -z, nz = x; x = nx; z = nz; }   // rotate side by 90°
+      return [CTR + x, CTR + z];
+    }
+
+    // ---- subtle RL grid overlay so the park tiles stay legible -----------
+    const grid = new THREE.GridHelper(GRID, GRID, 0x3c6b46, 0x3c6b46);
+    grid.position.set(CTR, 0.03, CTR);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.16;
+    track(grid.geometry);
+    track(grid.material);
+    group.add(grid);
+
+    // ---- animation + teardown -------------------------------------------
+    function update(t, dt, frame) {
+      const pulse = 0.6 + 0.4 * Math.sin(t * 2.0);
+      for (const p of portals) p.material.opacity = 0.42 + 0.3 * pulse;
+      for (const g of grates) g.material.opacity = 0.28 + 0.26 * Math.abs(Math.sin(t * 3));
+      if (taxi) {
+        const d = t * TAXI_SPEED;
+        const [x, z] = taxiLoop(d);
+        const [x2, z2] = taxiLoop(d + 0.2);
+        taxi.position.set(x, ROAD_Y, z);
+        taxi.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
+      }
+      if (frame) {
+        redGate.visible = !frame.redKey;
+        blueGate.visible = !frame.blueKey;
+      }
     }
 
     function dispose() {

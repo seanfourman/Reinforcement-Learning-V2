@@ -55,7 +55,7 @@ function setSky(stops) {
 }
 setSky(['#8fa3cc', '#b9c2dd', '#d9cfd2']);
 
-// Some themes (the neon city) light the scene with a real captured HDRI: it
+// Some themes (the city) light the scene with a real captured HDRI: it
 // drives image-based reflections on glossy surfaces and doubles as the skybox.
 // We PMREM-prefilter it once and cache per URL; the gradient sky above is the
 // fallback while it loads and for themes that don't request one.
@@ -141,7 +141,7 @@ let furniture = null;   // beds, wardrobes, bookshelves, tables
 let doors = null;       // arched bedroom doors
 let dressing = null;    // carpet + rugs
 let mechanics = null;   // mirrors, levers, traps
-let themeScene = null;  // a theme that ships its own geometry (e.g. the neon city)
+let themeScene = null;  // a theme that ships its own geometry (e.g. the city)
 let worldVersion = -1;  // last world we built
 let latestStats = null;
 let latestFrame = null;
@@ -166,7 +166,7 @@ function rebuildWorld(worldJson) {
   rig.setView?.(theme.camera);          // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
   if (theme.buildScene) {
-    // a theme that ships its own world geometry (e.g. the neon city) takes over;
+    // a theme that ships its own world geometry (e.g. the city) takes over;
     // the medieval-only groups stay null, so the render loop simply skips them.
     themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
   } else {
