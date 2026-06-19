@@ -321,7 +321,7 @@ export const city = {
       const ctx = canvas.getContext('2d');
       const img = ctx.createImageData(S, S);
       const d = img.data;
-      const lo = [60, 192, 186], hi = [142, 228, 214];   // turquoise: base -> soft ripple
+      const lo = [24, 78, 140], hi = [58, 128, 190];     // darker blue: base -> soft ripple
       for (let y = 0; y < S; y++) {
         for (let x = 0; x < S; x++) {
           const u = x / S, v = y / S;
@@ -347,7 +347,7 @@ export const city = {
     const waterMat = track(new THREE.MeshStandardMaterial({
       color: 0xffffff, map: waterTex, transparent: true, opacity: 0.92,
       roughness: 0.3, metalness: 0.1, envMapIntensity: 0.5,
-      emissive: 0x1f8f88, emissiveIntensity: 0.06,
+      emissive: 0x123a66, emissiveIntensity: 0.06,
       normalMap: waterNrm, normalScale: new THREE.Vector2(0.14, 0.14),
       depthWrite: false,
     }));
