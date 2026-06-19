@@ -38,13 +38,26 @@ export function createStartMenu({
   if (actors?.group) actors.group.visible = false;
   heatmap?.hide?.();
 
+  // turn OFF the game's bright daylight while the menu's warm interior is up —
+  // otherwise the sun (intensity ~1.9) + my lights double up and blow the light
+  // cream cabinet out to white. Restored in dispose().
+  const dimmedLights = [];
+  scene.traverse((o) => {
+    if (o.isLight) {
+      dimmedLights.push([o, o.intensity]);
+      o.intensity = 0;
+    }
+  });
+  const prevExposure = renderer.toneMappingExposure;
+  renderer.toneMappingExposure = 1.06;
+
   // warm interior lighting for the cabin
   const menuLights = new THREE.Group();
-  menuLights.add(new THREE.HemisphereLight(0xfff1dc, 0x3a2c20, 0.95));
-  const key = new THREE.DirectionalLight(0xfff0cc, 1.4);
+  menuLights.add(new THREE.HemisphereLight(0xfff1dc, 0x3a2c20, 0.78));
+  const key = new THREE.DirectionalLight(0xfff0cc, 1.2);
   key.position.set(4, 9, 6);
   menuLights.add(key);
-  const warm = new THREE.PointLight(0xffce8c, 0.9, 40, 2);
+  const warm = new THREE.PointLight(0xffce8c, 0.75, 40, 2);
   warm.position.set(0, 5, 3);
   menuLights.add(warm);
   scene.add(menuLights);
@@ -93,8 +106,13 @@ export function createStartMenu({
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
         if (!m) continue;
         if (m.map) {
+          // tile mirrored HORIZONTALLY only (left-right flip on each repeat) so the
+          // panels line up; vertical stays a normal repeat (no up/down flip)
+          m.map.wrapS = THREE.MirroredRepeatWrapping;
+          m.map.wrapT = THREE.RepeatWrapping;
           m.map.colorSpace = THREE.SRGBColorSpace;
           m.map.anisotropy = maxAniso;
+          m.map.needsUpdate = true;
         }
         if ("shininess" in m) m.shininess = Math.min(m.shininess || 20, 12);
       }
@@ -182,6 +200,8 @@ export function createStartMenu({
     disposed = true;
     scene.remove(group);
     scene.remove(menuLights);
+    for (const [l, i] of dimmedLights) l.intensity = i;   // restore game daylight
+    renderer.toneMappingExposure = prevExposure;
     group.traverse((o) => {
       if (!o.isMesh) return;
       o.geometry?.dispose?.();
