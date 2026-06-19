@@ -626,35 +626,56 @@ export const city = {
       place('CityWorldHomeSignal000.dae', x, z, { baseY: WALK_TOP - 0.15, height: 4.2, ry });
     }
 
-    // ---- a taxi cruising the ring road -----------------------------------
+    // ---- taxis cruising the ring road (right-hand lanes, both ways) -------
     // The car is a genuine Z_UP model -> keep the loader's upright rotation.
-    let taxi = null;
-    const TAXI_LEN = 2.6, TAXI_SPEED = 6, TAXI_FWD = 0; // TAXI_FWD: set Math.PI if it drives backwards
-    loadModel('Car.dae', true).then((proto) => {
-      if (disposed || !proto) return;
-      const b = proto.userData.bounds;
-      const inner = cloneSkinned(proto);
-      inner.position.set(-b.cx, -b.minY, -b.cz);
-      const wrap = new THREE.Group();
-      wrap.add(inner);
-      wrap.scale.setScalar(TAXI_LEN / Math.max(b.w, b.d));
-      group.add(wrap);
-      taxi = wrap;
-    });
-    // rounded-rectangle loop along the ring road; taxiLoop(distance)->[x,z]
-    const taxiL = RMID, taxiRc = 2.5, taxiC = taxiL - taxiRc;
-    const taxiStraight = 2 * taxiC, taxiArc = (Math.PI / 2) * taxiRc;
-    const taxiSide = taxiStraight + taxiArc, TAXI_PERIM = 4 * taxiSide;
-    function taxiLoop(dist) {
-      let d = ((dist % TAXI_PERIM) + TAXI_PERIM) % TAXI_PERIM;
-      const k = Math.floor(d / taxiSide);
-      const s = d - k * taxiSide;
+    const taxis = [];
+    const TAXI_LEN = 2.6, TAXI_SPEED = 6, TAXI_FWD = 0; // TAXI_FWD: Math.PI if it drives backwards
+    const taxiDefs = [
+      { L: RMID + 1.3, dir: 1, off: 0.0 },    // outer lane, CCW = right-hand
+      { L: RMID + 1.3, dir: 1, off: 0.5 },
+      { L: RMID - 1.3, dir: -1, off: 0.25 },  // inner lane, CW = right-hand the other way
+      { L: RMID - 1.3, dir: -1, off: 0.7 },
+    ];
+    const loopPerim = (L) => { const Rc = Math.min(2.5, L - 0.5); return 4 * (2 * (L - Rc) + (Math.PI / 2) * Rc); };
+    function loopAt(L, dist) {
+      const Rc = Math.min(2.5, L - 0.5), C = L - Rc;
+      const straight = 2 * C, side = straight + (Math.PI / 2) * Rc, perim = 4 * side;
+      let d = ((dist % perim) + perim) % perim;
+      const k = Math.floor(d / side);
+      const s = d - k * side;
       let x, z;
-      if (s <= taxiStraight) { x = taxiL; z = -taxiC + s; }
-      else { const a = (s - taxiStraight) / taxiRc; x = taxiC + taxiRc * Math.cos(a); z = taxiC + taxiRc * Math.sin(a); }
-      for (let i = 0; i < k; i++) { const nx = -z, nz = x; x = nx; z = nz; }   // rotate side by 90°
+      if (s <= straight) { x = L; z = -C + s; }
+      else { const a = (s - straight) / Rc; x = C + Rc * Math.cos(a); z = C + Rc * Math.sin(a); }
+      for (let i = 0; i < k; i++) { const nx = -z, nz = x; x = nx; z = nz; }   // rotate the side by 90°
       return [CTR + x, CTR + z];
     }
+    loadModel('Car.dae', true).then((proto) => {
+      if (disposed || !proto) return;
+      // the ripped New Donk taxi albedo is amber/orange — lift green toward red on
+      // the painted body so it reads yellow (whites + cool glass are left alone)
+      proto.traverse((o) => {
+        if (!o.isMesh) return;
+        for (const mat of (Array.isArray(o.material) ? o.material : [o.material])) {
+          if (!mat || mat.userData.yellowed) continue;
+          mat.userData.yellowed = true;
+          mat.onBeforeCompile = (sh) => {
+            sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>',
+              '#include <map_fragment>\n\tdiffuseColor.g = mix(diffuseColor.g, diffuseColor.r, 0.5);');
+          };
+        }
+      });
+      const b = proto.userData.bounds;
+      const scl = TAXI_LEN / Math.max(b.w, b.d);
+      for (const def of taxiDefs) {
+        const inner = cloneSkinned(proto);
+        inner.position.set(-b.cx, -b.minY, -b.cz);
+        const wrap = new THREE.Group();
+        wrap.add(inner);
+        wrap.scale.setScalar(scl);
+        group.add(wrap);
+        taxis.push({ mesh: wrap, L: def.L, dir: def.dir, base: def.off * loopPerim(def.L) });
+      }
+    });
 
     // ---- subtle RL grid overlay so the park tiles stay legible -----------
     const grid = new THREE.GridHelper(GRID, GRID, 0x3c6b46, 0x3c6b46);
@@ -670,12 +691,12 @@ export const city = {
       const pulse = 0.6 + 0.4 * Math.sin(t * 2.0);
       for (const p of portals) p.material.opacity = 0.42 + 0.3 * pulse;
       for (const g of grates) g.material.opacity = 0.28 + 0.26 * Math.abs(Math.sin(t * 3));
-      if (taxi) {
-        const d = t * TAXI_SPEED;
-        const [x, z] = taxiLoop(d);
-        const [x2, z2] = taxiLoop(d + 0.2);
-        taxi.position.set(x, ROAD_Y, z);
-        taxi.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
+      for (const tx of taxis) {
+        const d = t * TAXI_SPEED * tx.dir + tx.base;
+        const [x, z] = loopAt(tx.L, d);
+        const [x2, z2] = loopAt(tx.L, d + 0.25 * tx.dir);
+        tx.mesh.position.set(x, ROAD_Y, z);
+        tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
       }
       if (frame) {
         redGate.visible = !frame.redKey;
