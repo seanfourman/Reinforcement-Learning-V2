@@ -28,6 +28,7 @@ export function createStartMenu({
   renderer,
   actors,
   heatmap,
+  fx,
   onStart,
 }) {
   let active = true;
@@ -43,6 +44,18 @@ export function createStartMenu({
   if (actors?.group) actors.group.visible = false;
   heatmap?.hide?.();
 
+  // hide the game HUD (Blue/Red/round), the control panel + its tab, and the edge
+  // vignette so the menu is clean. All restored in dispose().
+  const hiddenEls = [];
+  for (const id of ["rl-hud", "rl-panel", "rl-tab"]) {
+    const el = document.getElementById(id);
+    if (el) {
+      hiddenEls.push([el, el.style.display]);
+      el.style.display = "none";
+    }
+  }
+  fx?.setVignette?.(false);
+
   // turn OFF the game's bright daylight while the menu's warm interior is up —
   // otherwise the sun (intensity ~1.9) + my lights double up and blow the light
   // cream cabinet out to white. Restored in dispose().
@@ -54,17 +67,28 @@ export function createStartMenu({
     }
   });
   const prevExposure = renderer.toneMappingExposure;
-  renderer.toneMappingExposure = 1.06;
+  renderer.toneMappingExposure = 1.1;
+  // gentle, NORMAL scene glow: low strength + high threshold so only the very
+  // brightest background (the window) blooms a little — books never glow. Reset in
+  // dispose().
+  fx?.setBloom?.({ strength: 0.28, radius: 0.55, threshold: 0.93 });
 
-  // warm interior lighting for the cabin
+  // ---- alive, game-y lighting: a warm KEY with real shadows + a cool RIM for
+  // colour contrast + a warm/cool hemisphere. Positioned to the room in frame(),
+  // gently animated in update() so the scene breathes instead of sitting flat.
+  const KEY_I = 2.5,
+    RIM_I = 1.0;
   const menuLights = new THREE.Group();
-  menuLights.add(new THREE.HemisphereLight(0xfff1dc, 0x3a2c20, 0.78));
-  const key = new THREE.DirectionalLight(0xfff0cc, 1.2);
-  key.position.set(4, 9, 6);
-  menuLights.add(key);
-  const warm = new THREE.PointLight(0xffce8c, 0.75, 40, 2);
-  warm.position.set(0, 5, 3);
-  menuLights.add(warm);
+  const hemi = new THREE.HemisphereLight(0xfdf4ec, 0x2a3a50, 1.25); // neutral sky / cool floor
+  menuLights.add(hemi);
+  const key = new THREE.DirectionalLight(0xfff2e2, KEY_I); // near-white key (casts shadows)
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  menuLights.add(key, key.target);
+  const rim = new THREE.DirectionalLight(0x56a6ff, RIM_I); // cool complementary rim
+  menuLights.add(rim, rim.target);
+  const fill = new THREE.DirectionalLight(0xfff0e6, 0.75); // soft neutral front fill
+  menuLights.add(fill, fill.target);
   scene.add(menuLights);
 
   // camera framing, computed once the room's bounds are known
@@ -94,6 +118,25 @@ export function createStartMenu({
     const cx = (min.x + max.x) / 2,
       H = max.y - min.y,
       D = max.z - min.z;
+    // place the lights relative to the room + size the key's shadow to cover it
+    const cz = (min.z + max.z) / 2;
+    const S = Math.max(max.x - min.x, H, D);
+    const lc = new THREE.Vector3(cx, min.y + H * 0.55, cz);
+    key.position.set(lc.x + S * 0.55, lc.y + S * 0.85, lc.z + S * 0.6);
+    key.target.position.copy(lc);
+    const sc = key.shadow.camera;
+    sc.left = -S * 0.75;
+    sc.right = S * 0.75;
+    sc.top = S * 0.75;
+    sc.bottom = -S * 0.75;
+    sc.near = S * 0.05;
+    sc.far = S * 3.5;
+    sc.updateProjectionMatrix();
+    key.shadow.bias = -0.0006;
+    rim.position.set(lc.x - S * 0.7, lc.y + S * 0.45, lc.z - S * 0.8);
+    rim.target.position.copy(lc);
+    fill.position.set(lc.x, lc.y + S * 0.25, lc.z + S * 1.1);
+    fill.target.position.copy(lc);
     // camera sits inside the room near the open FRONT (max.z), looking back + up
     // at the round window on the BACK wall (min.z)
     camTarget.set(cx, min.y + LOOK_H * H, min.z + LOOK_BACK * D);
@@ -165,8 +208,7 @@ export function createStartMenu({
   style.textContent = `
     #rl-menu{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
       align-items:center;justify-content:flex-end;padding-bottom:13vh;pointer-events:none;
-      font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;
-      background:radial-gradient(120% 90% at 50% 18%,rgba(0,0,0,0) 55%,rgba(0,0,0,.45) 100%);}
+      font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
     #rl-menu.show{opacity:1;}
     #rl-menu.out{opacity:0;transition:opacity .6s ease;}
     #rl-menu .ttl{font-size:66px;font-weight:800;color:#fff;letter-spacing:1px;margin:0;
@@ -208,6 +250,9 @@ export function createStartMenu({
   // ---- per-frame: a gentle cinematic camera drift ----------------------
   function update(dt, t) {
     if (!framed) return;
+    // subtle living light: a warm shimmer on the key + a slow swell on the cool rim
+    key.intensity = KEY_I * (1 + Math.sin(t * 6.5) * 0.025 + Math.sin(t * 2.1) * 0.03);
+    rim.intensity = RIM_I * (0.8 + 0.2 * Math.sin(t * 0.8));
     const yaw = Math.sin(t * 0.15) * 0.08; // slow orbit around the target
     const dx = camPos.x - camTarget.x,
       dz = camPos.z - camTarget.z;
@@ -227,6 +272,9 @@ export function createStartMenu({
     scene.remove(menuLights);
     for (const [l, i] of dimmedLights) l.intensity = i; // restore game daylight
     renderer.toneMappingExposure = prevExposure;
+    fx?.setBloom?.(); // reset bloom to default (the round's theme re-sets it anyway)
+    fx?.setVignette?.(true); // restore the edge vignette for the game
+    for (const [el, d] of hiddenEls) el.style.display = d; // restore HUD + panel
     group.traverse((o) => {
       if (!o.isMesh) return;
       o.geometry?.dispose?.();

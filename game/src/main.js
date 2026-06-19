@@ -228,12 +228,6 @@ async function poll() {
   } catch (e) { /* transient */ }
   finally { polling = false; }
 }
-// show the start menu (cabin background) first; boot the live match on Start
-menu = createStartMenu({
-  scene, camera, renderer, actors, heatmap,
-  onStart: () => { menu.dispose(); menu = null; setInterval(poll, 33); poll(); },
-});
-
 // ------------------------------------------------------------------ input
 window.addEventListener('keydown', (e) => {
   // fixed curated world now — R resets the two models (relearn from scratch)
@@ -271,6 +265,13 @@ initPanel();
 
 // ------------------------------------------------------------------ post fx
 const fx = createPostFX(renderer, scene, camera);
+
+// show the start menu (cabin background) first; boot the live match on Start.
+// Created after fx so the menu can tune bloom (books shouldn't glow).
+menu = createStartMenu({
+  scene, camera, renderer, actors, heatmap, fx,
+  onStart: () => { menu.dispose(); menu = null; setInterval(poll, 33); poll(); },
+});
 function resize() {
   const pr = Math.min(devicePixelRatio, 2);
   renderer.setPixelRatio(pr);

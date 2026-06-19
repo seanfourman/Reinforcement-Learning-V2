@@ -40,5 +40,10 @@ export function createPostFX(renderer, scene, camera) {
     bloom.threshold = threshold;
   }
 
-  return { composer, setSize, setBloom };
+  // toggle the edge vignette (the start menu turns it off for a clean look)
+  function setVignette(on) {
+    vignette.enabled = on !== false;
+  }
+
+  return { composer, setSize, setBloom, setVignette };
 }
