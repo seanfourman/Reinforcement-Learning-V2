@@ -368,10 +368,6 @@ export const city = {
       }
       return s;
     }
-    const goalMat = track(new THREE.MeshStandardMaterial({
-      color: 0x39d96a, emissive: 0x39d96a, emissiveIntensity: 0.7,
-      roughness: 0.4, metalness: 0.1, transparent: true, opacity: 0.9, depthWrite: false,
-    }));
     const lineMat = solid(0xe6c84a, { roughness: 0.6 });
     const whiteMat = solid(0xeef0ec, { roughness: 0.8 });
 
@@ -606,16 +602,26 @@ export const city = {
       group.add(water);
     }
 
-    // the goal: a glowing pad + a soft light
-    const goalGeo = track(new THREE.CircleGeometry(0.46, 28));
-    for (const [r, c] of world.escape || []) {
-      const pad = new THREE.Mesh(goalGeo, goalMat);
-      pad.rotation.x = -Math.PI / 2;
-      pad.position.set(c + 0.5, LAWN_TOP + 0.02, r + 0.5);
-      group.add(pad);
-      const glow = new THREE.PointLight(0x59ff95, 0.9, 5, 2);
-      glow.position.set(c + 0.5, 1.1, r + 0.5);
-      group.add(glow);
+    // ---- a spinning Power Star floating between the two goal cells --------
+    let star = null;
+    const starEsc = world.escape || [];
+    if (starEsc.length) {
+      let mx = 0, mz = 0;
+      for (const [r, c] of starEsc) { mx += c + 0.5; mz += r + 0.5; }
+      mx /= starEsc.length; mz /= starEsc.length;
+      // PowerStar is genuinely Z_UP -> keep the loader's upright rotation
+      loadModel('PowerStar.dae', true).then((proto) => {
+        if (disposed || !proto) return;
+        const b = proto.userData.bounds;
+        const inner = cloneSkinned(proto);
+        inner.position.set(-b.cx, -(b.minY + b.h / 2), -b.cz);   // centre at origin so it floats
+        const wrap = new THREE.Group();
+        wrap.add(inner);
+        wrap.scale.setScalar(0.95 / Math.max(b.w, b.h, b.d));
+        wrap.position.set(mx, 1.0, mz);
+        group.add(wrap);
+        star = { mesh: wrap, baseY: 1.0 };
+      });
     }
 
     // ---- a few street lamps hugging the grid edge, axis-aligned (0/90),
@@ -684,7 +690,7 @@ export const city = {
       const h = hash(i * 53 + 13, 7001);
       const side = h % 4;
       if (side === 1) continue;                  // skip the south/front side
-      if (h % 3 !== 0) continue;                 // sparse — only some spots get one
+      if (h % 3 !== 0) continue;                 // sparse — only some spots get one (UNCHANGED)
       const along = (((h >> 2) % 1000) / 1000 - 0.5) * 2 * (OSW_H - 3);
       if (Math.abs(along) < 3.5) continue;        // near a crosswalk/entrance
       let x, z, ry;
@@ -692,6 +698,19 @@ export const city = {
       else if (side === 2) { x = CTR - propR; z = CTR + along; ry = Math.PI / 2; }
       else { x = CTR + propR; z = CTR + along; ry = -Math.PI / 2; }
       place('CityWorldHomeTrashBox000.dae', x, z, { baseY: WALK_TOP - 0.01, height: 0.9, ry });
+      // garbage bags on the walk next to the can (offset along the sidewalk); some
+      // spots get a single bag, some get a small stacked pile of 3 (2 + 1 on top)
+      const tang = side === 0 ? [1, 0] : [0, 1];
+      const perp = [tang[1], -tang[0]];
+      const off = (h & 16) ? 0.7 : -0.7;
+      const bx = x + tang[0] * off, bz = z + tang[1] * off;
+      const bag = (ax, az, ay, salt) => place('BlowObjGarbageBag.dae', ax, az, {
+        baseY: WALK_TOP - 0.02 + ay, height: 0.5, ry: ((h >> salt) % 8) * (Math.PI / 4),
+      });
+      // 2 bags on the ground; a 3rd resting on top ONLY on the right/East can
+      bag(bx - tang[0] * 0.2, bz - tang[1] * 0.2, 0, 0);
+      bag(bx + tang[0] * 0.2 + perp[0] * 0.06, bz + tang[1] * 0.2 + perp[1] * 0.06, 0, 3);
+      if (side === 3) bag(bx + perp[0] * 0.04, bz + perp[1] * 0.04, 0.27, 6);   // side 3 = East = right
     }
 
     // ---- benches on the inner sidewalk, facing the park ------------------
@@ -781,12 +800,15 @@ export const city = {
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
-      goalMat.emissiveIntensity = 0.5 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.5));  // goal pulse
       waterMat.opacity = 0.82 + 0.04 * Math.sin(t * 1.4);
       waterNrm.offset.x = t * 0.015;                                             // subtle drifting sheen
       waterNrm.offset.y = t * 0.011;
       waterTex.offset.x = t * 0.018;                                            // cartoon water drifts
       waterTex.offset.y = t * 0.012;
+      if (star) {                                                                // power star spins + bobs
+        star.mesh.rotation.y = t * 1.3;
+        star.mesh.position.y = star.baseY + Math.sin(t * 2) * 0.12;
+      }
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
         const [x, z] = loopAt(tx.L, tx.turnR, d);
