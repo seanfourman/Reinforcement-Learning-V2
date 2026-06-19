@@ -71,7 +71,7 @@ export function createStartMenu({
   // gentle, NORMAL scene glow: low strength + high threshold so only the very
   // brightest background (the window) blooms a little — books never glow. Reset in
   // dispose().
-  fx?.setBloom?.({ strength: 0.28, radius: 0.55, threshold: 0.93 });
+  fx?.setBloom?.({ strength: 0.2, radius: 0.7, threshold: 0.42 });
 
   // ---- alive, game-y lighting: a warm KEY with real shadows + a cool RIM for
   // colour contrast + a warm/cool hemisphere. Positioned to the room in frame(),
@@ -147,11 +147,88 @@ export function createStartMenu({
     framed = true;
   }
 
+  // a generated sky for the porthole (its own texture is blank white): an
+  // atmospheric blue gradient with soft FRACTAL-NOISE clouds (layered value noise,
+  // not blobs) so it reads like a real sky.
+  function skyCanvas() {
+    const S = 384;
+    const c = document.createElement("canvas");
+    c.width = c.height = S;
+    const ctx = c.getContext("2d");
+    const hash = (i, j, s) => {
+      let h = (i * 374761393 + j * 668265263 + s * 1442695040) & 0x7fffffff;
+      h = ((h ^ (h >> 13)) * 1274126177) & 0x7fffffff;
+      return (h & 0xffff) / 0xffff;
+    };
+    const vnoise = (x, y, s) => {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const xf = x - xi, yf = y - yi;
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      const a = hash(xi, yi, s), b = hash(xi + 1, yi, s);
+      const e = hash(xi, yi + 1, s), f = hash(xi + 1, yi + 1, s);
+      return a + (b - a) * u + (e - a) * v + (a - b - e + f) * u * v;
+    };
+    const fbm = (x, y) => {
+      let val = 0, amp = 0.5, fr = 1;
+      for (let i = 0; i < 5; i++) { val += amp * vnoise(x * fr, y * fr, i * 131); fr *= 2; amp *= 0.5; }
+      return val;
+    };
+    const sstep = (a, b, x) => {
+      const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    const img = ctx.createImageData(S, S);
+    const d = img.data;
+    for (let y = 0; y < S; y++) {
+      const t = y / S; // 0 = zenith (deep blue), 1 = horizon (pale)
+      const r0 = 26 + (104 - 26) * t, g0 = 92 + (166 - 92) * t, b0 = 204 + (230 - 204) * t;
+      for (let x = 0; x < S; x++) {
+        const n = fbm(x / 95, y / 52); // clouds wider than tall
+        const cov = sstep(0.5, 0.72, n) * (0.4 + 0.6 * t); // more cloud toward the horizon
+        const i = (y * S + x) * 4;
+        d[i] = r0 * (1 - cov) + 255 * cov;
+        d[i + 1] = g0 * (1 - cov) + 253 * cov;
+        d[i + 2] = b0 * (1 - cov) + 250 * cov;
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+  const skyTex = new THREE.CanvasTexture(skyCanvas());
+  skyTex.colorSpace = THREE.SRGBColorSpace;
+
   function tune(root) {
     root.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = o.receiveShadow = true;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      // the porthole "glass" uses a blank white texture -> swap it for the sky
+      const isWindow = mats.some((m) =>
+        /window/i.test(m?.map?.image?.src || m?.map?.name || m?.name || ""),
+      );
+      if (isWindow) {
+        // the window mesh's UVs smear a flat texture into vertical stripes -> hide
+        // it and place a clean flat sky plane right behind the porthole instead
+        o.updateWorldMatrix(true, false);
+        const box = new THREE.Box3().setFromObject(o);
+        const ctr = box.getCenter(new THREE.Vector3());
+        const sz = box.getSize(new THREE.Vector3());
+        o.visible = false;
+        const w = Math.max(sz.x, sz.y) * 1.2;
+        const sky = new THREE.Mesh(
+          new THREE.PlaneGeometry(w, w),
+          new THREE.MeshBasicMaterial({
+            map: skyTex,
+            side: THREE.DoubleSide,
+            fog: false,
+          }),
+        );
+        sky.position.set(ctr.x, ctr.y, ctr.z - Math.max(sz.z, w * 0.04));
+        group.add(sky);
+        return;
+      }
+      for (const m of mats) {
         if (!m) continue;
         if (m.map) {
           // tile mirrored HORIZONTALLY only (left-right flip on each repeat) so the
@@ -161,6 +238,10 @@ export function createStartMenu({
           m.map.colorSpace = THREE.SRGBColorSpace;
           m.map.anisotropy = maxAniso;
           m.map.needsUpdate = true;
+          // the bright book pages otherwise dominate the bloom -> knock the paper
+          // (open book + map) material down so the scene glow doesn't fixate on it
+          const src = m.map.image?.src || m.map.name || m.name || "";
+          if (/paper/i.test(src)) m.color?.set?.(0x8a8a8a);
         }
         if ("shininess" in m) m.shininess = Math.min(m.shininess || 20, 12);
       }
@@ -250,9 +331,6 @@ export function createStartMenu({
   // ---- per-frame: a gentle cinematic camera drift ----------------------
   function update(dt, t) {
     if (!framed) return;
-    // subtle living light: a warm shimmer on the key + a slow swell on the cool rim
-    key.intensity = KEY_I * (1 + Math.sin(t * 6.5) * 0.025 + Math.sin(t * 2.1) * 0.03);
-    rim.intensity = RIM_I * (0.8 + 0.2 * Math.sin(t * 0.8));
     const yaw = Math.sin(t * 0.15) * 0.08; // slow orbit around the target
     const dx = camPos.x - camTarget.x,
       dz = camPos.z - camTarget.z;
