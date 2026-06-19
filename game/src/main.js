@@ -270,7 +270,24 @@ const fx = createPostFX(renderer, scene, camera);
 // Created after fx so the menu can tune bloom (books shouldn't glow).
 menu = createStartMenu({
   scene, camera, renderer, actors, heatmap, fx,
-  onStart: () => { menu.dispose(); menu = null; setInterval(poll, 33); poll(); },
+  // boot the live match, then resolve once the world is built AND every asset has
+  // finished loading — the menu keeps the screen black (iris) until this resolves,
+  // so the player never sees the scene pop in.
+  onStart: () => new Promise((resolve) => {
+    setInterval(poll, 33);
+    poll();
+    const t0 = performance.now();
+    (function ready() {
+      const mgr = THREE.DefaultLoadingManager;
+      const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
+      const built = themeScene != null || current != null;
+      if (built && idle && performance.now() - t0 > 600) {
+        requestAnimationFrame(() => requestAnimationFrame(resolve)); // a couple frames to settle
+      } else {
+        requestAnimationFrame(ready);
+      }
+    })();
+  }),
 });
 function resize() {
   const pr = Math.min(devicePixelRatio, 2);

@@ -96,6 +96,13 @@ export function createStartMenu({
   const camTarget = new THREE.Vector3();
   let framed = false;
 
+  // fly-through-the-window state (kicked off by Start)
+  let flying = false;
+  let flyU = 0;
+  const flyStart = new THREE.Vector3();
+  const flyEnd = new THREE.Vector3();
+  const FLY_DUR = 0.85; // seconds
+
   function frame(root) {
     root.updateMatrixWorld(true);
     const v = new THREE.Vector3();
@@ -316,21 +323,62 @@ export function createStartMenu({
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("show"));
 
+  // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
+  // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
+  // = reveals the scene. Starts fully open (no black).
+  const iris = document.createElement("div");
+  const diag = Math.ceil(Math.hypot(window.innerWidth, window.innerHeight) * 1.3);
+  const setIris = (dpx) => {
+    iris.style.width = iris.style.height = dpx + "px";
+    iris.style.margin = `${-dpx / 2}px 0 0 ${-dpx / 2}px`;
+  };
+  iris.style.cssText =
+    "position:fixed;top:50%;left:50%;border-radius:50%;pointer-events:none;z-index:100;" +
+    `width:${diag}px;height:${diag}px;margin:${-diag / 2}px 0 0 ${-diag / 2}px;` +
+    `box-shadow:0 0 0 ${diag}px #000;` +
+    "transition:width .8s cubic-bezier(.66,0,.34,1),height .8s cubic-bezier(.66,0,.34,1),margin .8s cubic-bezier(.66,0,.34,1);";
+  document.body.appendChild(iris);
+
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   let starting = false;
-  el.querySelector(".start").addEventListener("click", () => {
+  async function runStart() {
     if (starting) return;
     starting = true;
     el.classList.remove("show");
-    el.classList.add("out");
-    setTimeout(() => {
-      active = false;
-      onStart?.();
-    }, 650);
-  });
+    el.classList.add("out"); // fade the title card
+
+    // 1) fly the camera through the window into the sky while the iris closes
+    flying = true;
+    flyU = 0;
+    flyStart.copy(camera.position);
+    flyEnd.copy(camTarget).sub(flyStart).multiplyScalar(1.15).add(flyStart);
+    requestAnimationFrame(() => setIris(0)); // close to black (next frame so it animates)
+    await wait(840);
+
+    // 2) fully black: tear the menu down, let the game render (still hidden by black)
+    teardown();
+    active = false;
+
+    // 3) boot the match and WAIT until the scene is fully loaded (no pop-in)
+    await onStart?.();
+
+    // 4) iris-open onto the finished game
+    setIris(diag);
+    await wait(820);
+    iris.remove();
+  }
+  el.querySelector(".start").addEventListener("click", runStart);
 
   // ---- per-frame: a gentle cinematic camera drift ----------------------
   function update(dt, t) {
     if (!framed) return;
+    if (flying) {
+      // accelerate forward into the window / sky, keeping it centred
+      flyU = Math.min(1, flyU + dt / FLY_DUR);
+      camera.position.lerpVectors(flyStart, flyEnd, flyU * flyU);
+      camera.lookAt(camTarget);
+      return;
+    }
     const yaw = Math.sin(t * 0.15) * 0.08; // slow orbit around the target
     const dx = camPos.x - camTarget.x,
       dz = camPos.z - camTarget.z;
@@ -344,7 +392,10 @@ export function createStartMenu({
     camera.lookAt(camTarget);
   }
 
-  function dispose() {
+  // tear down the cabin + restore the game's render state (NOT the iris, which the
+  // transition removes once the scene is revealed)
+  function teardown() {
+    if (disposed) return;
     disposed = true;
     scene.remove(group);
     scene.remove(menuLights);
@@ -352,7 +403,7 @@ export function createStartMenu({
     renderer.toneMappingExposure = prevExposure;
     fx?.setBloom?.(); // reset bloom to default (the round's theme re-sets it anyway)
     fx?.setVignette?.(true); // restore the edge vignette for the game
-    for (const [el, d] of hiddenEls) el.style.display = d; // restore HUD + panel
+    for (const [hel, d] of hiddenEls) hel.style.display = d; // restore HUD + panel
     group.traverse((o) => {
       if (!o.isMesh) return;
       o.geometry?.dispose?.();
@@ -366,6 +417,11 @@ export function createStartMenu({
       actors.group.visible = prevActorsVisible;
     el.remove();
     style.remove();
+  }
+
+  function dispose() {
+    teardown();
+    iris.remove();
   }
 
   return {
