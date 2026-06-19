@@ -302,7 +302,7 @@ export function createStartMenu({
   const style = document.createElement("style");
   style.textContent = `
     #rl-menu{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
-      align-items:flex-start;justify-content:flex-end;padding:0 0 20vh 6vw;pointer-events:none;
+      align-items:flex-start;justify-content:flex-end;padding:0 0 13vh 3.5vw;pointer-events:none;
       perspective:1600px;font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
     #rl-menu .panel{display:flex;flex-direction:column;align-items:flex-start;
       transform-origin:left center;transform:rotateY(32deg);
