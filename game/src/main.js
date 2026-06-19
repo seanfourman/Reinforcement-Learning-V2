@@ -18,6 +18,7 @@ import { createPostFX } from './postfx.js';
 import { getTheme } from './themes/index.js';
 import { initHud } from './hud.js';
 import { createTransition } from './transition.js';
+import { createStartMenu } from './startmenu.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const app = document.getElementById('app');
@@ -145,6 +146,7 @@ let themeScene = null;  // a theme that ships its own geometry (e.g. the city)
 let worldVersion = -1;  // last world we built
 let latestStats = null;
 let latestFrame = null;
+let menu = null;          // start menu (cabin background); gates the game boot
 
 initHud();                          // Blue top-left / Red top-right score + round banner
 const transition = createTransition();  // video-game curtain between arenas
@@ -226,8 +228,11 @@ async function poll() {
   } catch (e) { /* transient */ }
   finally { polling = false; }
 }
-setInterval(poll, 33); // ~30 Hz
-poll();
+// show the start menu (cabin background) first; boot the live match on Start
+menu = createStartMenu({
+  scene, camera, renderer, actors, heatmap,
+  onStart: () => { menu.dispose(); menu = null; setInterval(poll, 33); poll(); },
+});
 
 // ------------------------------------------------------------------ input
 window.addEventListener('keydown', (e) => {
@@ -283,6 +288,7 @@ renderer.setAnimationLoop(() => {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
   const t = timer.getElapsed();
+  if (menu && menu.active) { menu.update(dt, t); fx.composer.render(); return; }
   rig.update(dt);
 
   if (current) {
