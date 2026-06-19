@@ -74,16 +74,26 @@ export function createLiveActors(scene, walkers) {
   const target = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   let frame = null;
   let layout = null;
+  let isCross = false;   // cross rounds (the hedge maze) have NO keys / gold
+  // manhole fall animation, latched by the env's count (dormant unless drop_traps)
+  const fell = { red: null, blue: null };
+  const lastFallN = { red: 0, blue: 0 };
+  const FALL_DUR = 0.55;
   const vTmp = new THREE.Vector3();
 
   const cw = (cell) => cellToWorld(cell.r, cell.c); // {r,c} -> {x,z}
   const cwArr = (arr) => cellToWorld(arr[0], arr[1]); // [row,col] -> {x,z}
 
-  function setWorld(lay) {
+  function setWorld(lay, cross = false) {
     layout = lay;
+    isCross = cross;
+    // no keys / gold in a cross round — hide them outright so they never appear
+    redKey.group.visible = !cross;
+    blueKey.group.visible = !cross;
+    goldKey.group.visible = !cross;
     const place = (k, cell) => { const { x, z } = cw(cell); k.group.position.set(x, FLOAT_Y, z); };
-    if (lay.redKey) place(redKey, lay.redKey);
-    if (lay.blueKey) place(blueKey, lay.blueKey);
+    if (!cross && lay.redKey) place(redKey, lay.redKey);
+    if (!cross && lay.blueKey) place(blueKey, lay.blueKey);
     const e = lay.escape[0] || { r: 0, c: 10 };
     const ew = cw(e);
     escGlow.position.set(ew.x + 0.5, 1.4, ew.z);
@@ -99,6 +109,16 @@ export function createLiveActors(scene, walkers) {
     frame = f;
     target.red = cwArr(f.red);
     target.blue = cwArr(f.blue);
+    // start a fall animation when the env reports a new manhole drop
+    if (f.fell) {
+      for (const key of ['red', 'blue']) {
+        const fe = f.fell[key];
+        if (fe && fe.cell && fe.n > lastFallN[key]) {
+          lastFallN[key] = fe.n;
+          fell[key] = { at: cwArr(fe.cell), e: 0 };
+        }
+      }
+    }
   }
 
   function faceToward(walker, key, dx, dz) {
@@ -114,6 +134,22 @@ export function createLiveActors(scene, walkers) {
   function update(dt, t) {
     const k = 1 - Math.exp(-dt * 12); // smoothing toward the latest target
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
+      // mid-fall: drop into the manhole (sink + shrink + spin), then reappear
+      if (fell[key]) {
+        fell[key].e += dt;
+        const p = fell[key].e / FALL_DUR;
+        if (p < 1) {
+          const at = fell[key].at;
+          walker.group.position.set(at.x, -2.6 * p, at.z);
+          walker.group.scale.setScalar(1.2 * (1 - 0.6 * p));
+          walker.group.rotation.y += dt * 9;
+          continue;                       // skip normal movement while falling
+        }
+        fell[key] = null;
+        walker.group.position.y = 0;
+        walker.group.scale.setScalar(1.2);
+        rendered[key] = { ...target[key] }; // reappear at spawn without sliding
+      }
       const r = rendered[key], tg = target[key];
       const dx = tg.x - r.x, dz = tg.z - r.z;
       const moving = Math.abs(dx) + Math.abs(dz) > 0.02;
@@ -131,29 +167,32 @@ export function createLiveActors(scene, walkers) {
     }
 
     if (!frame) return;
-    redKey.group.visible = !frame.redKey;
-    blueKey.group.visible = !frame.blueKey;
-    const spin = t * 1.5;
-    const bob = Math.sin(t * 2) * 0.05;
-    for (const kk of [redKey, blueKey]) {
-      kk.group.rotation.y = spin;
-      kk.group.position.y = FLOAT_Y + bob;
-    }
+    if (!isCross) {                       // keys + gold only exist in race rounds
+      redKey.group.visible = !frame.redKey;
+      blueKey.group.visible = !frame.blueKey;
+      const spin = t * 1.5;
+      const bob = Math.sin(t * 2) * 0.05;
+      for (const kk of [redKey, blueKey]) {
+        kk.group.rotation.y = spin;
+        kk.group.position.y = FLOAT_Y + bob;
+      }
 
-    const holder = frame.gold.holder;
-    if (holder) {
-      const w = holder === 'red' ? king : princess;
-      w.handAnchors.L.getWorldPosition(vTmp);
-      goldKey.group.position.copy(vTmp);
-      goldKey.group.rotation.y = w.group.rotation.y;
-      goldKey.group.scale.setScalar(0.7);
-    } else if (frame.gold.pos) {
-      const { x, z } = cwArr(frame.gold.pos);
-      // the on-ground gold rests in its central chamber cell (col 9); nudge it
-      // half a tile east so it sits dead-centre between the two gates (x = 10).
-      goldKey.group.position.set(x + 0.5, FLOAT_Y + bob, z);
-      goldKey.group.rotation.y = spin;
-      goldKey.group.scale.setScalar(1.0);
+      goldKey.group.visible = !!(frame.gold.holder || frame.gold.pos);
+      const holder = frame.gold.holder;
+      if (holder) {
+        const w = holder === 'red' ? king : princess;
+        w.handAnchors.L.getWorldPosition(vTmp);
+        goldKey.group.position.copy(vTmp);
+        goldKey.group.rotation.y = w.group.rotation.y;
+        goldKey.group.scale.setScalar(0.7);
+      } else if (frame.gold.pos) {
+        const { x, z } = cwArr(frame.gold.pos);
+        // the on-ground gold rests in its central chamber cell (col 9); nudge it
+        // half a tile east so it sits dead-centre between the two gates (x = 10).
+        goldKey.group.position.set(x + 0.5, FLOAT_Y + Math.sin(t * 2) * 0.05, z);
+        goldKey.group.rotation.y = t * 1.5;
+        goldKey.group.scale.setScalar(1.0);
+      }
     }
 
     if (frame.winner) {

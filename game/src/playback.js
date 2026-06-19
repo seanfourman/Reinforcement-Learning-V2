@@ -81,8 +81,9 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     const { x, z } = cellToWorld(cell.r, cell.c);
     obj.position.set(x, y, z);
   };
-  place(redKey.group, layout.redKey, FLOAT_Y);
-  place(blueKey.group, layout.blueKey, FLOAT_Y);
+  // cross rounds (the hedge maze) carry no key tiles — skip the initial placement
+  if (layout.redKey) place(redKey.group, layout.redKey, FLOAT_Y);
+  if (layout.blueKey) place(blueKey.group, layout.blueKey, FLOAT_Y);
 
   // a warm torch-glow at the escape gate — neutral, never tinted by who wins
   const escapeCell = layout.escape[0];
@@ -158,30 +159,33 @@ export function createPlayback(scene, trajectory, layout, walkers) {
       updateWalker(walker, dt, moving);
     }
 
-    // --- colored keys vanish once collected ----------------------------------
-    redKey.group.visible = !f.redKey;
-    blueKey.group.visible = !f.blueKey;
+    // --- keys + gold: race rounds only (a "cross" frame carries `fell`) -------
+    const cross = f.fell !== undefined;
+    redKey.group.visible = !cross && !f.redKey;
+    blueKey.group.visible = !cross && !f.blueKey;
     const spin = elapsed * 1.5;
     const bob = Math.sin(elapsed * 2) * 0.05;
-    for (const k2 of [redKey, blueKey]) {
-      k2.group.rotation.y = spin;
-      k2.group.position.y = FLOAT_Y + bob;
-    }
-
-    // --- gold key: carried by its holder, else floating on the ground --------
-    const holder = f.gold.holder;
-    if (holder) {
-      const w = holder === 'red' ? king : princess;
-      w.handAnchors.L.getWorldPosition(vTmp);
-      goldKey.group.position.copy(vTmp);
-      goldKey.group.rotation.y = w.group.rotation.y;
-      goldKey.group.scale.setScalar(0.7);
+    if (cross) {
+      goldKey.group.visible = false;
     } else {
-      const gp = f.gold.pos; // [row, col]
-      const { x, z } = cellToWorld(gp[0], gp[1]);
-      goldKey.group.position.set(x, FLOAT_Y + bob, z);
-      goldKey.group.rotation.y = spin;
-      goldKey.group.scale.setScalar(1.0);
+      for (const k2 of [redKey, blueKey]) {
+        k2.group.rotation.y = spin;
+        k2.group.position.y = FLOAT_Y + bob;
+      }
+      const holder = f.gold.holder;
+      goldKey.group.visible = !!(holder || f.gold.pos);
+      if (holder) {
+        const w = holder === 'red' ? king : princess;
+        w.handAnchors.L.getWorldPosition(vTmp);
+        goldKey.group.position.copy(vTmp);
+        goldKey.group.rotation.y = w.group.rotation.y;
+        goldKey.group.scale.setScalar(0.7);
+      } else if (f.gold.pos) {
+        const { x, z } = cellToWorld(f.gold.pos[0], f.gold.pos[1]);
+        goldKey.group.position.set(x, FLOAT_Y + bob, z);
+        goldKey.group.rotation.y = spin;
+        goldKey.group.scale.setScalar(1.0);
+      }
     }
 
     // --- finale: warm flare at the gate + banner (gate stays neutral) --------

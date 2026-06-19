@@ -41,13 +41,17 @@ class World:
     def __init__(self, grid, *, theme="medieval", round_id=1, title="",
                  red_spawn, blue_spawn, red_key, blue_key, red_door, blue_door,
                  gold_home, escape, furniture=None, room_doors=None,
-                 drop_traps=None, slip_cells=None, slip_prob=0.0, seed=1):
+                 drop_traps=None, slip_cells=None, slip_prob=0.0, seed=1,
+                 objective="race"):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
         self.round_id = round_id
         self.title = title
         self.seed = seed
+        # "race" = the key->gold->escape contest; "cross" = a Cliff-Walking
+        # traverse (start -> goal across a manhole cliff), used by Round 2.
+        self.objective = objective
         self.red_spawn, self.blue_spawn = tuple(red_spawn), tuple(blue_spawn)
         self.red_key, self.blue_key = tuple(red_key), tuple(blue_key)
         self.red_door, self.blue_door = tuple(red_door), tuple(blue_door)
@@ -70,6 +74,7 @@ class World:
     def to_json(self):
         return {
             "theme": self.theme, "roundId": self.round_id, "title": self.title,
+            "objective": self.objective,
             "rows": self.rows(), "seed": self.seed,
             "redSpawn": list(self.red_spawn), "blueSpawn": list(self.blue_spawn),
             "redKey": list(self.red_key), "blueKey": list(self.blue_key),
@@ -90,8 +95,38 @@ class World:
 
 def validate(world):
     """Generic reachability check: each agent can reach its colored key, then
-    (door now open) the gold, then an escape tile. Raises on an unsolvable map."""
+    (door now open) the gold, then an escape tile. Raises on an unsolvable map.
+
+    For a "cross" world (Cliff Walking) the check is simpler: each spawn must
+    have a SAFE path to a goal cell — one that never steps on a manhole — so the
+    cautious policy always has somewhere to go."""
     g, H, W = world.grid, world.H, world.W
+
+    if getattr(world, "objective", "race") == "cross":
+        cliffs = {tuple(c) for c in world.drop_traps}
+        goals = {tuple(e) for e in world.escape}
+
+        def reach_safe(start):
+            seen, stack = {tuple(start)}, [tuple(start)]
+            while stack:
+                r, c = stack.pop()
+                for dr, dc in ORTHO:
+                    nr, nc = r + dr, c + dc
+                    if not (0 <= nr < H and 0 <= nc < W) or (nr, nc) in seen:
+                        continue
+                    if g[nr][nc] == WALL or (nr, nc) in cliffs:
+                        continue
+                    seen.add((nr, nc))
+                    stack.append((nr, nc))
+            return seen
+
+        problems = []
+        for name, spawn in (("red", world.red_spawn), ("blue", world.blue_spawn)):
+            if not (reach_safe(spawn) & goals):
+                problems.append(f"{name}: no safe (manhole-free) path to the goal")
+        if problems:
+            raise ValueError("world invalid:\n  " + "\n  ".join(problems))
+        return
 
     def reach(start, agent, red_key, blue_key):
         seen, stack = {tuple(start)}, [tuple(start)]

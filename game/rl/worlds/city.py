@@ -1,76 +1,90 @@
-"""Round 2 — the New Donk City rooftop (model-free + slippery).
+"""Round 2 — New Donk City hedge maze (SARSA vs Q-Learning).
 
-A 20x20 city block: buildings ('#') laid on a regular lattice leave a connected
-2-wide street grid. A wall at row 12 splits the map with two key-locked doors;
-each agent grabs its colored key down in the streets, opens its door, then races
-up through downtown to the gold and out the north escape.
+A hand-designed, left-right symmetric hedge maze on a grass field. Agent A starts
+in the bottom-left corner, agent B in the bottom-right, and they race to the goal
+cells at the top centre. The maze gives each side lots of twisting local choices
+early on, but the corridors gradually pull both toward the middle, so it's a real
+race rather than two mirrored tunnels.
 
-The plaza around the gold is SLIPPERY (wet rooftop) and a drop-trap on the escape
-run can knock the gold loose. Those unmodeled hazards are why this is the
-model-free learning round — the default matchup is SARSA vs Q-Learning, the
-classic on-policy / off-policy contrast (Q-Learning walks the cliff edge, SARSA
-plays it safe). Layout is fixed; pressing R just resets the two learners.
+Scattered through it are SLIPPERY junction cells ('S'). On one, the agent loses
+control: 75% it's shoved the optimal way toward the goal (the env's privileged
+knowledge), 10% left, 10% right, 5% backward — and if that hits a bush it stays
+put (see ``env._cross_move``). That stochastic junction is the professor's
+slippery-cell requirement and the on/off-policy engine.
+
+Legend:  # bush/wall   . path   S slippery junction   A/B spawns   G goal
+Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns).
 """
 
 from .grid import (
-    World, validate, SIZE,
-    WALL, FLOOR, ESCAPE, RED_KEY, BLUE_KEY, RED_DOOR, BLUE_DOOR,
-    GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
+    World, validate,
+    WALL, FLOOR, ESCAPE, RED_SPAWN, BLUE_SPAWN,
 )
 
 THEME = "city"
 ROUND_ID = 2
 TITLE = "New Donk City"
 
-DIVIDER_ROW = 12
-RED_DOOR_POS, BLUE_DOOR_POS = (12, 8), (12, 11)
-RED_SPAWN_POS, BLUE_SPAWN_POS = (19, 6), (19, 13)
-RED_KEY_POS, BLUE_KEY_POS = (16, 3), (16, 16)
-GOLD_CELL = (5, 9)
-ESCAPE_POS = [(0, 9), (0, 10)]
-DROP_TRAPS = [(3, 10)]
-SLIP_PROB = 0.2
+# the maze, drawn by hand (20x20). Mirror-symmetric, corners open for the spawns.
+MAZE = [
+    "#########GG#########",
+    "#...S....SS....S...#",
+    "#.###..#....#..###.#",
+    "#......S.##.S......#",
+    "#...#..#.##.#..#...#",
+    "#.#..............#.#",
+    "#.#.#.#.####.#.#.#.#",
+    "#...S...#..#...S...#",
+    "##..##..#SS#..##..##",
+    "#.....#......#.....#",
+    "#.###.###..###.###.#",
+    "#.......S..S.......#",
+    "###.#.##.##.##.#.###",
+    "#...#..........#...#",
+    "#...###..##..###...#",
+    "#.....S.####.S.....#",
+    "#...##........##...#",
+    "#...#...SS...#...#.#",
+    "#.#...###..#...#.#.#",
+    "A....###....###....B",
+]
 
 
 def _build():
-    g = [[FLOOR] * SIZE for _ in range(SIZE)]
-
-    # city blocks: 1x1 buildings on a 3-grid, so 2-wide streets stay connected
-    for r in range(1, SIZE - 1):
-        for c in range(1, SIZE - 1):
-            if r % 3 == 1 and c % 3 == 1:
-                g[r][c] = WALL
-
-    # downtown divider with two key-locked doors + their open throats
-    for c in range(SIZE):
-        g[DIVIDER_ROW][c] = WALL
-    g[RED_DOOR_POS[0]][RED_DOOR_POS[1]] = RED_DOOR
-    g[BLUE_DOOR_POS[0]][BLUE_DOOR_POS[1]] = BLUE_DOOR
-    for (r, c) in [(11, 8), (13, 8), (11, 11), (13, 11)]:
-        g[r][c] = FLOOR
-
-    # gameplay tiles (overwrite any block underneath them)
-    for (r, c) in ESCAPE_POS:
-        g[r][c] = ESCAPE
-    g[GOLD_CELL[0]][GOLD_CELL[1]] = GOLD_HOME
-    g[RED_KEY_POS[0]][RED_KEY_POS[1]] = RED_KEY
-    g[BLUE_KEY_POS[0]][BLUE_KEY_POS[1]] = BLUE_KEY
-    g[RED_SPAWN_POS[0]][RED_SPAWN_POS[1]] = RED_SPAWN
-    g[BLUE_SPAWN_POS[0]][BLUE_SPAWN_POS[1]] = BLUE_SPAWN
-    for (r, c) in DROP_TRAPS:
-        g[r][c] = GOLD_TRAP
-
-    # slippery wet plaza around the gold (only the actual floor tiles)
-    slip = [(r, c) for r in range(4, 7) for c in range(8, 12) if g[r][c] == FLOOR]
+    grid, slip, goals = [], [], []
+    red = blue = None
+    for r, line in enumerate(MAZE):
+        row = []
+        for c, ch in enumerate(line):
+            if ch == "#":
+                row.append(WALL)
+            elif ch == "S":
+                row.append(FLOOR)
+                slip.append((r, c))
+            elif ch == "A":
+                row.append(RED_SPAWN)
+                red = (r, c)
+            elif ch == "B":
+                row.append(BLUE_SPAWN)
+                blue = (r, c)
+            elif ch == "G":
+                row.append(ESCAPE)
+                goals.append((r, c))
+            else:
+                row.append(FLOOR)
+        grid.append(row)
 
     return World(
-        g, theme=THEME, round_id=ROUND_ID, title=TITLE,
-        red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS,
-        red_key=RED_KEY_POS, blue_key=BLUE_KEY_POS,
-        red_door=RED_DOOR_POS, blue_door=BLUE_DOOR_POS,
-        gold_home=GOLD_CELL, escape=ESCAPE_POS,
-        furniture=[], room_doors=[], drop_traps=DROP_TRAPS,
-        slip_cells=slip, slip_prob=SLIP_PROB, seed=2,
+        grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
+        red_spawn=red, blue_spawn=blue,
+        # no keys / doors / gold in a cross world — point them at the spawns so the
+        # World container stays happy; the env ignores them in "cross" mode.
+        red_key=red, blue_key=blue, red_door=red, blue_door=blue,
+        gold_home=red, escape=goals,
+        furniture=[], room_doors=[], drop_traps=[],
+        # cross uses the fixed 75/10/10/5 control-loss model in env._cross_move;
+        # slip_prob is unused there but kept non-zero for clarity.
+        slip_cells=slip, slip_prob=1.0, seed=2,
     )
 
 
@@ -82,6 +96,7 @@ def generate(seed=None):
 
 if __name__ == "__main__":
     w = generate()
-    print(f"new donk city: {w.H}x{w.W}, {len(w.slip_cells)} slip cells, {len(w.drop_traps)} traps")
+    print(f"hedge maze: {w.H}x{w.W}, {len(w.slip_cells)} slippery junctions, "
+          f"goals {w.escape}, spawns {w.red_spawn}/{w.blue_spawn}")
     for row in w.rows():
         print(row)

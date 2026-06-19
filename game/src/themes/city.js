@@ -269,27 +269,91 @@ export const city = {
       normalMap: assetTexture('SideWalk01_nrm.png', repX, repZ, false),
       roughness: 1.0, metalness: 0,
     }));
+    // grass-tile board (the green squares) — Mushroom-Kingdom soil in the seams,
+    // GroundLawn tops with per-cell green tints
     const soilMat = track(new THREE.MeshStandardMaterial({
       map: textureAt(`${MK_TEXTURES}groundbasesoil02_alb.png`, 7, 7),
       normalMap: textureAt(`${MK_TEXTURES}groundbasesoil02_nrm.png`, 7, 7, false),
-      color: 0xc6a279,
-      roughness: 1,
-      metalness: 0,
+      color: 0xc6a279, roughness: 1, metalness: 0,
     }));
     const lawnTileTex = assetTexture('GroundLawn00_alb.png', 1.25, 1.25);
     const lawnTopMats = [
       0xb7df7e, 0xaed76f, 0xc2e78d, 0xa4cf67, 0xbce287, 0x9fca62,
     ].map((color) => track(new THREE.MeshStandardMaterial({
-      map: lawnTileTex,
-      color,
-      roughness: 1,
-      metalness: 0,
+      map: lawnTileTex, color, roughness: 1, metalness: 0,
     })));
     const lawnEdgeMats = [
       0x638a39, 0x587f33, 0x6f9342, 0x4f7530,
     ].map((color) => solid(color, { roughness: 1 }));
-    const hedgeMat = solid(0x49992f, { roughness: 0.95 });
-    const planterMat = solid(0x8d8475, { roughness: 0.9 });
+
+    // Rounded hedge masses for wall cells. The old repeated cone-bush model read
+    // like a stamp grid from the fixed camera, so the hedge is built from varied
+    // ellipsoid leaf lobes instead.
+    const shrubTex = textureAt(`${MK_TEXTURES}shrubberyplants00_alb.png`, 1.8, 1.8);
+    const shrubNrm = textureAt(`${MK_TEXTURES}shrubberyplants00_nrm.png`, 1.8, 1.8, false);
+    const shrubRgh = textureAt(`${MK_TEXTURES}shrubberyplants00_rgh.png`, 1.8, 1.8, false);
+    const shrubMat = track(new THREE.MeshStandardMaterial({
+      map: shrubTex,
+      normalMap: shrubNrm,
+      roughnessMap: shrubRgh,
+      color: 0x7bd64f,
+      roughness: 0.92,
+      metalness: 0,
+    }));
+    const shrubDarkMat = track(new THREE.MeshStandardMaterial({
+      map: shrubTex,
+      normalMap: shrubNrm,
+      roughnessMap: shrubRgh,
+      color: 0x4e9837,
+      roughness: 0.96,
+      metalness: 0,
+    }));
+
+    // Water is no longer a stack of bright blue coins. Each slip cell gets a
+    // shallow soil depression, a thin grassy bank, and a translucent rippled
+    // surface. The two water textures scroll slowly in update().
+    const waterNrm = textureAt(`${MK_TEXTURES}water00_nrm.png`, 2.2, 2.2, false);
+    const waterDistortTex = textureAt(`${MK_TEXTURES}uvdistortion00.png`, 1.8, 1.8, false);
+    const waterMat = track(new THREE.MeshStandardMaterial({
+      color: 0x48cfff,
+      transparent: true,
+      opacity: 0.82,
+      roughness: 0.05,
+      metalness: 0,
+      normalMap: waterNrm,
+      normalScale: new THREE.Vector2(0.24, 0.24),
+      envMapIntensity: 1.15,
+      depthWrite: false,
+    }));
+    const bankMat = track(new THREE.MeshStandardMaterial({
+      map: textureAt(`${MK_TEXTURES}groundgrassedge00_alb.png`, 2, 2),
+      normalMap: textureAt(`${MK_TEXTURES}groundgrassedge00_nrm.png`, 2, 2, false),
+      roughnessMap: textureAt(`${MK_TEXTURES}groundgrassedge00_rgh.png`, 2, 2, false),
+      color: 0xa3d874,
+      roughness: 1,
+      metalness: 0,
+      depthWrite: false,
+    }));
+    const wetSoilMat = track(new THREE.MeshStandardMaterial({
+      color: 0x5b4b2f,
+      roughness: 0.88,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+    }));
+    const rippleMat = track(new THREE.MeshBasicMaterial({
+      alphaMap: waterDistortTex,
+      color: 0xd8ffff,
+      transparent: true,
+      opacity: 0.4,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }));
+    const goalMat = track(new THREE.MeshStandardMaterial({
+      color: 0x39d96a, emissive: 0x39d96a, emissiveIntensity: 0.7,
+      roughness: 0.4, metalness: 0.1, transparent: true, opacity: 0.9, depthWrite: false,
+    }));
     const lineMat = solid(0xe6c84a, { roughness: 0.6 });
     const whiteMat = solid(0xeef0ec, { roughness: 0.8 });
 
@@ -325,6 +389,7 @@ export const city = {
       group.add(m);
       return m;
     }
+    // the green grass squares — one slightly-irregular extruded tile per cell
     function lawnCellShape(r, c) {
       const j = (salt, amp) => (hashFloat(r, c, salt) - 0.5) * amp;
       const half = 0.468 + hashFloat(r, c, 34) * 0.012;
@@ -395,8 +460,8 @@ export const city = {
     const innerWalk = new THREE.Shape();
     drawRoundedRect(innerWalk, ISW_H, CORNER);
     extrudeWalk(innerWalk, WALK_TOP, 0.22);
-    ground(PARK_H, 0.012, soilMat);           // Mushroom Kingdom soil visible in cell seams
-    addLawnCells();
+    ground(PARK_H, 0.012, soilMat);           // soil base, visible in the grass-tile seams
+    addLawnCells();                           // the green grass squares (one per cell)
 
     // road lane lines (a dashed square loop down the middle of the ring road)
     const RMID = (ISW_H + ROAD_H) / 2;        // 16.5 from centre
@@ -428,184 +493,154 @@ export const city = {
     crosswalk(CTR - RMID, CTR, false);  // west
     crosswalk(CTR + RMID, CTR, false);  // east
 
-    // ---- the park interior: greenery on every wall cell ------------------
-    const planterGeo = track(new THREE.BoxGeometry(0.92, 0.2, 0.92));
-    const hedgeGeo = track(new THREE.BoxGeometry(0.82, 0.66, 0.82));
-    for (let r = 1; r < GRID - 1; r++) {
-      for (let c = 1; c < GRID - 1; c++) {
-        if (r === DIVIDER_ROW || !cellWall(r, c)) continue;
-        const h = hash(r * 31 + 7, c * 17 + 3);
-        const x = c + 0.5;
-        const z = r + 0.5;
+    // ---- hedge maze: rounded leaf masses on every wall cell ---------------
+    const mazeRows = world.rows || [];
+    const wallCells = [];
+    for (let r = 0; r < GRID; r++) {
+      for (let c = 0; c < GRID; c++) {
+        if ((mazeRows[r] || '')[c] === '#') wallCells.push([r, c]);
+      }
+    }
+    function addShrubMaze(cells) {
+      const geo = track(new THREE.SphereGeometry(1, 18, 10));
+      const upper = new THREE.InstancedMesh(geo, shrubMat, cells.length * 3);
+      const lower = new THREE.InstancedMesh(geo, shrubDarkMat, cells.length * 2);
+      const dummy = new THREE.Object3D();
+      let ui = 0, li = 0;
 
-        const planter = new THREE.Mesh(planterGeo, planterMat);
-        planter.position.set(x, 0.04, z);
-        planter.castShadow = true;
-        planter.receiveShadow = true;
-        group.add(planter);
+      const put = (mesh, index, x, z, sx, sy, sz, ry = 0) => {
+        dummy.position.set(x, LAWN_TOP + sy + 0.02, z);
+        dummy.rotation.set(0, ry, 0);
+        dummy.scale.set(sx, sy, sz);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(index, dummy.matrix);
+      };
 
-        const k = h % 6;
-        if (k < 3) {
-          const hedge = new THREE.Mesh(hedgeGeo, hedgeMat);
-          hedge.position.set(x, 0.14 + 0.33, z);
-          hedge.castShadow = true;
-          hedge.receiveShadow = true;
-          group.add(hedge);
-        } else if (k < 5) {
-          place('CityWorldHomeTree000.dae', x, z, { baseY: 0.14, height: 2.5 + (h % 3) * 0.4, ry: h });
-        } else {
-          place('CityWorldBushA.dae', x, z, { baseY: 0.14, height: 1.2, ry: h });
+      for (const [r, c] of cells) {
+        const x = c + 0.5, z = r + 0.5;
+        const seed = hash(r * 13 + 2, c * 11 + 4);
+        const rot = (seed % 360) * Math.PI / 180;
+        const s = 0.94 + hashFloat(r, c, 71) * 0.16;
+
+        for (let i = 0; i < 2; i++) {
+          const a = rot + i * Math.PI + hashFloat(r, c, 75 + i) * 0.45;
+          const d = 0.12 + hashFloat(r, c, 79 + i) * 0.08;
+          put(
+            lower, li++,
+            x + Math.cos(a) * d,
+            z + Math.sin(a) * d,
+            (0.34 + hashFloat(r, c, 82 + i) * 0.08) * s,
+            (0.22 + hashFloat(r, c, 86 + i) * 0.05) * s,
+            (0.34 + hashFloat(r, c, 90 + i) * 0.08) * s,
+            a
+          );
         }
-        if (h % 8 === 0) {
-          place('CityWorldHomeBench000.dae', x + 0.6, z + 0.6, { baseY: 0.04, height: 0.6, ry: (h >> 2) * 0.7 });
+
+        for (let i = 0; i < 3; i++) {
+          const a = rot + i * (Math.PI * 2 / 3) + hashFloat(r, c, 96 + i) * 0.4;
+          const d = i === 0 ? 0.02 : 0.13 + hashFloat(r, c, 101 + i) * 0.08;
+          put(
+            upper, ui++,
+            x + Math.cos(a) * d,
+            z + Math.sin(a) * d,
+            (0.28 + hashFloat(r, c, 107 + i) * 0.08) * s,
+            (0.34 + hashFloat(r, c, 113 + i) * 0.09) * s,
+            (0.28 + hashFloat(r, c, 119 + i) * 0.08) * s,
+            a
+          );
         }
       }
+
+      upper.castShadow = lower.castShadow = true;
+      upper.receiveShadow = lower.receiveShadow = true;
+      upper.instanceMatrix.needsUpdate = lower.instanceMatrix.needsUpdate = true;
+      group.add(lower, upper);
     }
+    if (wallCells.length) addShrubMaze(wallCells);
 
-    // ---- divider row 12: a hedge wall split by the two key-locked gates ---
-    const HEDGE_W = 1.35;
-    const hedgeWall = (x0, x1) => {
-      const w = x1 - x0;
-      const base = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.2, 0.9)), planterMat);
-      base.position.set((x0 + x1) / 2, 0.04, DIVIDER_ROW + 0.5);
-      base.receiveShadow = true;
-      group.add(base);
-      const hedge = new THREE.Mesh(track(new THREE.BoxGeometry(w, HEDGE_W, 0.8)), hedgeMat);
-      hedge.position.set((x0 + x1) / 2, 0.14 + HEDGE_W / 2, DIVIDER_ROW + 0.5);
-      hedge.castShadow = true;
-      hedge.receiveShadow = true;
-      group.add(hedge);
-    };
-    const [rdr, rdc] = world.redDoor;   // (12, 8)
-    const [bdr, bdc] = world.blueDoor;  // (12, 11)
-    hedgeWall(0, rdc);
-    hedgeWall(rdc + 1, bdc);
-    hedgeWall(bdc + 1, GRID);
-
-    // garden gate arches at each door
-    const gateArch = (x, z, color) => {
-      const m = solid(color, { roughness: 0.5, metalness: 0.2, emissive: color, emissiveIntensity: 0.2 });
-      for (const dx of [-0.5, 0.5]) {
-        const post = new THREE.Mesh(track(new THREE.BoxGeometry(0.16, HEDGE_W + 0.7, 0.6)), m);
-        post.position.set(x + dx, (HEDGE_W + 0.7) / 2, z);
-        post.castShadow = true;
-        group.add(post);
+    // ---- slippery water + the goal (these sit on the grass) --------------
+    function puddlePoints(r, c, radius, salt = 0) {
+      const pts = [];
+      const n = 56;
+      const ph1 = hashFloat(r, c, 1 + salt) * Math.PI * 2;
+      const ph2 = hashFloat(r, c, 9 + salt) * Math.PI * 2;
+      for (let i = 0; i < n; i++) {
+        const t = (i / n) * Math.PI * 2;
+        const rad = radius * (
+          1 + 0.08 * Math.sin(t * 2 + ph1) + 0.035 * Math.sin(t * 5 + ph2)
+        );
+        pts.push(new THREE.Vector2(Math.cos(t) * rad, Math.sin(t) * rad));
       }
-      const top = new THREE.Mesh(track(new THREE.BoxGeometry(1.32, 0.24, 0.6)), m);
-      top.position.set(x, HEDGE_W + 0.7, z);
-      top.castShadow = true;
-      group.add(top);
-    };
-    gateArch(rdc + 0.5, rdr + 0.5, 0xe23a44);
-    gateArch(bdc + 0.5, bdr + 0.5, 0x3b7bff);
-
-    // closing gate panels (hidden once the matching key is taken)
-    const gatePanel = (r, c, color) => {
-      const mesh = new THREE.Mesh(
-        track(new THREE.BoxGeometry(0.9, HEDGE_W + 0.4, 0.18)),
-        solid(color, { roughness: 0.45, metalness: 0.1 })
-      );
-      mesh.position.set(c + 0.5, (HEDGE_W + 0.4) / 2, r + 0.5);
-      mesh.castShadow = true;
-      group.add(mesh);
-      return mesh;
-    };
-    const redGate = gatePanel(rdr, rdc, 0xe23a44);
-    const blueGate = gatePanel(bdr, bdc, 0x3b7bff);
-
-    // ---- thin cell markers (all hug the y=0 board) -----------------------
-    const decal = (r, c, hex, op = 0.55, y = 0.05, size = 0.9) => {
-      const mesh = new THREE.Mesh(
-        track(new THREE.PlaneGeometry(size, size)),
-        track(new THREE.MeshStandardMaterial({
-          color: hex, transparent: true, opacity: op,
-          roughness: 0.5, metalness: 0, depthWrite: false,
-          emissive: hex, emissiveIntensity: 0.4,
-        }))
-      );
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(c + 0.5, y, r + 0.5);
-      group.add(mesh);
-      return mesh;
-    };
-
-    // slippery wet lawn -> puddles
-    for (const [r, c] of world.slipCells || []) decal(r, c, 0x49b6ff, 0.32, 0.05);
-
-    // drop-trap manholes
-    const grates = [];
-    for (const [r, c] of world.dropTraps || []) {
-      place('CityWorldHomeManhole000.dae', c + 0.5, r + 0.5, { baseY: 0.02, fitXZ: 0.86, ry: Math.PI / 4 });
-      grates.push(decal(r, c, 0xff7a2a, 0.4, 0.07, 0.95));
+      return pts;
     }
+    function shapeFromPoints(pts) {
+      const s = new THREE.Shape();
+      pts.forEach((p, i) => { if (i === 0) s.moveTo(p.x, p.y); else s.lineTo(p.x, p.y); });
+      s.closePath();
+      return s;
+    }
+    function pathFromPoints(pts) {
+      const p = new THREE.Path();
+      pts.forEach((v, i) => { if (i === 0) p.moveTo(v.x, v.y); else p.lineTo(v.x, v.y); });
+      p.closePath();
+      return p;
+    }
+    const puddleShape = (r, c, radius, salt = 0) => shapeFromPoints(puddlePoints(r, c, radius, salt));
+    function puddleRingShape(r, c, outerR, innerR) {
+      const s = shapeFromPoints(puddlePoints(r, c, outerR, 22));
+      s.holes.push(pathFromPoints([...puddlePoints(r, c, innerR, 31)].reverse()));
+      return s;
+    }
+    const rippleGeo = track(new THREE.PlaneGeometry(1, 1));
+    for (const [r, c] of world.slipCells || []) {
+      const baseR = 0.29 + hashFloat(r, c, 99) * 0.045;
+      const cx = c + 0.5, cz = r + 0.5;
 
-    // north escape tiles + a park-exit arch over them
-    const portals = (world.escape || []).map(([r, c]) => decal(r, c, 0x39d96a, 0.6, 0.08));
-    if ((world.escape || []).length) {
-      const ex = world.escape.reduce((s, e) => s + e[1] + 0.5, 0) / world.escape.length;
-      const ez = world.escape[0][0] + 0.5;
-      const archMat = solid(0x2fbf66, { emissive: 0x39d96a, emissiveIntensity: 0.6, metalness: 0.2, roughness: 0.5 });
-      for (const dx of [-1.1, 1.1]) {
-        const post = new THREE.Mesh(track(new THREE.BoxGeometry(0.2, 3.0, 0.2)), archMat);
-        post.position.set(ex + dx, 1.5, ez);
-        post.castShadow = true;
-        group.add(post);
+      const wet = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleShape(r, c, baseR * 1.22, 3))), wetSoilMat);
+      wet.rotation.x = -Math.PI / 2;
+      wet.position.set(cx, LAWN_TOP + 0.018, cz);
+      wet.renderOrder = 1;
+      group.add(wet);
+
+      const bank = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleRingShape(r, c, baseR * 1.12, baseR * 0.9))), bankMat);
+      bank.rotation.x = -Math.PI / 2;
+      bank.position.set(cx, LAWN_TOP + 0.027, cz);
+      bank.renderOrder = 2;
+      group.add(bank);
+
+      const water = new THREE.Mesh(track(new THREE.ShapeGeometry(puddleShape(r, c, baseR * 0.88, 8))), waterMat);
+      water.rotation.x = -Math.PI / 2;
+      water.position.set(cx, LAWN_TOP + 0.041, cz);
+      water.renderOrder = 3;
+      group.add(water);
+
+      const angle = hashFloat(r, c, 41) * Math.PI;
+      for (let i = 0; i < 2; i++) {
+        const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+        const off = (i - 0.5) * baseR * 0.46;
+        ripple.rotation.set(-Math.PI / 2, 0, angle + (i ? 0.18 : -0.14));
+        ripple.position.set(
+          cx + Math.cos(angle + Math.PI / 2) * off,
+          LAWN_TOP + 0.048 + i * 0.002,
+          cz + Math.sin(angle + Math.PI / 2) * off
+        );
+        ripple.scale.set(baseR * (0.62 - i * 0.12), 0.018, 1);
+        ripple.renderOrder = 4;
+        group.add(ripple);
       }
-      const bar = new THREE.Mesh(track(new THREE.BoxGeometry(2.6, 0.42, 0.3)), archMat);
-      bar.position.set(ex, 3.0, ez);
-      group.add(bar);
     }
 
-    // spawn pads
-    const spawnPad = (cell, hex) => {
-      if (!cell) return;
-      const [r, c] = cell;
-      const ring = new THREE.Mesh(
-        track(new THREE.RingGeometry(0.32, 0.46, 28)),
-        track(new THREE.MeshStandardMaterial({
-          color: hex, emissive: hex, emissiveIntensity: 0.5,
-          transparent: true, opacity: 0.75, roughness: 0.5, depthWrite: false,
-        }))
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(c + 0.5, 0.06, r + 0.5);
-      group.add(ring);
-    };
-    spawnPad(world.redSpawn, 0xff4d6a);
-    spawnPad(world.blueSpawn, 0x5b8dff);
-
-    // pads under the floating keys (the keys themselves are drawn in live.js)
-    if (world.redKey) decal(world.redKey[0], world.redKey[1], 0xff4d6a, 0.45, 0.06, 0.7);
-    if (world.blueKey) decal(world.blueKey[0], world.blueKey[1], 0x5b8dff, 0.45, 0.06, 0.7);
-
-    // gold home: a small stone fountain (floating gold rests at goldCol+1, x=10)
-    const [gr, gc] = world.goldHome;
-    const fx = gc + 1.0, fz = gr + 0.5;
-    const basin = new THREE.Mesh(
-      track(new THREE.CylinderGeometry(1.0, 1.15, 0.34, 24)),
-      track(new THREE.MeshStandardMaterial({ color: 0xb9b2a3, roughness: 0.8, metalness: 0.05 }))
-    );
-    basin.position.set(fx, 0.11, fz);
-    basin.castShadow = true;
-    basin.receiveShadow = true;
-    group.add(basin);
-    const water = new THREE.Mesh(
-      track(new THREE.CircleGeometry(0.86, 24)),
-      track(new THREE.MeshStandardMaterial({ color: 0x49b6ff, transparent: true, opacity: 0.7, roughness: 0.2, metalness: 0.1 }))
-    );
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(fx, 0.29, fz);
-    group.add(water);
-    const pedestal = new THREE.Mesh(
-      track(new THREE.CylinderGeometry(0.22, 0.3, 0.4, 16)),
-      track(new THREE.MeshStandardMaterial({
-        color: 0x6b5a2a, emissive: 0xffc24b, emissiveIntensity: 0.45,
-        roughness: 0.4, metalness: 0.55,
-      }))
-    );
-    pedestal.position.set(fx, 0.34, fz);
-    pedestal.castShadow = true;
-    group.add(pedestal);
+    // the goal: a glowing pad + a soft light
+    const goalGeo = track(new THREE.CircleGeometry(0.46, 28));
+    for (const [r, c] of world.escape || []) {
+      const pad = new THREE.Mesh(goalGeo, goalMat);
+      pad.rotation.x = -Math.PI / 2;
+      pad.position.set(c + 0.5, LAWN_TOP + 0.02, r + 0.5);
+      group.add(pad);
+      const glow = new THREE.PointLight(0x59ff95, 0.9, 5, 2);
+      glow.position.set(c + 0.5, 1.1, r + 0.5);
+      group.add(glow);
+    }
 
     // ---- a few street lamps hugging the grid edge, axis-aligned (0/90),
     //      facing the road; none on the south/front side -------------------
@@ -763,19 +798,19 @@ export const city = {
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
-      const pulse = 0.6 + 0.4 * Math.sin(t * 2.0);
-      for (const p of portals) p.material.opacity = 0.42 + 0.3 * pulse;
-      for (const g of grates) g.material.opacity = 0.28 + 0.26 * Math.abs(Math.sin(t * 3));
+      goalMat.emissiveIntensity = 0.5 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.5));  // goal pulse
+      waterMat.opacity = 0.78 + 0.04 * Math.sin(t * 1.4);                        // gentle sheen
+      waterNrm.offset.x = t * 0.018;                                             // drifting ripples
+      waterNrm.offset.y = t * 0.012;
+      waterDistortTex.offset.x = -t * 0.01;
+      waterDistortTex.offset.y = t * 0.014;
+      rippleMat.opacity = 0.32 + 0.1 * Math.sin(t * 1.8);
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
         const [x, z] = loopAt(tx.L, d);
         const [x2, z2] = loopAt(tx.L, d + 0.25 * tx.dir);
         tx.mesh.position.set(x, ROAD_Y, z);
         tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
-      }
-      if (frame) {
-        redGate.visible = !frame.redKey;
-        blueGate.visible = !frame.blueKey;
       }
     }
 

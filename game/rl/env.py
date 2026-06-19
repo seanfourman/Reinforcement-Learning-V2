@@ -40,6 +40,11 @@ MOVE_ACTIONS = (0, 1, 2, 3)
 # W/E, W/E slip to N/S (Benny's slippery/windy gridworld). This is the stochastic
 # part of the otherwise-known transition model that Dynamic Programming solves.
 PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
+# turns relative to a facing direction (0=N, 1=S, 2=W, 3=E), for the maze's
+# "lose control on a slippery junction" transition model (see _cross_move).
+LEFT_OF = {0: 2, 1: 3, 2: 1, 3: 0}
+RIGHT_OF = {0: 3, 1: 2, 2: 0, 3: 1}
+BACK_OF = {0: 1, 1: 0, 2: 3, 3: 2}
 
 # --- coarse opponent regions ------------------------------------------------
 REGION_RED, REGION_BLUE, REGION_ARENA = 0, 1, 2
@@ -58,6 +63,7 @@ LOSE = -1.0
 MAX_STEPS = 400
 TRAP_PENALTY = -0.05   # being snared (the big cost is being flung back to spawn)
 TRAP_REWARD = 0.05     # for the agent whose armed trap caught the rival
+CLIFF_PENALTY = -0.5   # "cross" worlds: fall into an open manhole, then respawn
 
 # Difference-of-potentials shaping: F = Φ(s') − Φ(s), with Φ = −W·(remaining path
 # length to the goal through the required sub-goals). Progress earns +W, standing
@@ -90,6 +96,10 @@ class GridWorld(gym.Env):
     # ---------------------------------------------------------------- install
     def _install(self, world):
         self.world = world
+        # "race" (key->gold->escape) vs "cross" (Cliff Walking: start->goal over a
+        # manhole cliff). Set early — the shaping BFS below branches on it.
+        self.objective = getattr(world, "objective", "race")
+        self.goal_set = {tuple(e) for e in world.escape}
         g = world.grid
         self.H, self.W = world.H, world.W
         # every non-wall cell is a graph node (doors included — passability is
@@ -139,6 +149,11 @@ class GridWorld(gym.Env):
         t = self.world.grid[r][c]
         if t == WALL:
             return False
+        # cross worlds: the shaping potential routes AROUND the manholes (so the
+        # cautious detour reads as "making progress"); falling in is steppable but
+        # handled as a live penalty, not a static path.
+        if self.objective == "cross" and (r, c) in self.drop_set:
+            return False
         if t == RED_DOOR:
             return agent == "red"
         if t == BLUE_DOOR:
@@ -182,6 +197,10 @@ class GridWorld(gym.Env):
 
     def _potential(self, agent):
         """Φ(s) = −W · remaining path length to escape through the needed sub-goals."""
+        if self.objective == "cross":
+            # straight-line-ish progress toward the goal, routed around the manholes
+            pos = self.red_pos if agent == "red" else self.blue_pos
+            return -SHAPE_W * self.dist_escape[agent].get(pos, _UNREACH)
         if agent == "red":
             pos, has_key = self.red_pos, self.red_key
         else:
@@ -241,6 +260,10 @@ class GridWorld(gym.Env):
         self.steps = 0
         self.done = False
         self.winner = None
+        # cross worlds: latched fall events (count + where) so the 30Hz viewer
+        # never misses a manhole drop even when the sim steps faster than it polls
+        self.fall_n = {"red": 0, "blue": 0}
+        self.fall_cell = {"red": None, "blue": None}
         obs = (self.observe("red"), self.observe("blue"))
         return obs, {}
 
@@ -257,6 +280,11 @@ class GridWorld(gym.Env):
             pos, has_key, other = self.red_pos, self.red_key, self.blue_pos
         else:
             pos, has_key, other = self.blue_pos, self.blue_key, self.red_pos
+        if self.objective == "cross":
+            # Cliff Walking: each agent is an independent single-agent learner whose
+            # state is simply its cell (no opponent context -> no aliasing, clean
+            # greedy policy). The two just happen to share the map.
+            return (self.cell_index[pos], 0, GOLD_GROUND, REGION_ARENA, 0, 0)
         opp_region = self.region_of(*other)
         adj = 1 if (abs(pos[0] - other[0]) + abs(pos[1] - other[1])) <= 1 else 0
         return (self.cell_index[pos], int(has_key), self._gold_loc(agent),
@@ -308,9 +336,89 @@ class GridWorld(gym.Env):
                 return cell
         return dist[-1][1]
 
+    def _best_dir(self, agent, pos):
+        """The optimal move direction toward the goal from pos — the env's
+        privileged knowledge, read off the precomputed escape-distance map."""
+        dist = self.dist_escape[agent]
+        best_a, best_d = None, _UNREACH + 1
+        for a in MOVE_ACTIONS:
+            nxt = self._resolve(agent, pos, a)
+            if nxt == pos:                       # blocked / no progress
+                continue
+            d = dist.get(nxt, _UNREACH)
+            if d < best_d:
+                best_d, best_a = d, a
+        return best_a if best_a is not None else 0
+
+    def _cross_move(self, agent, pos, action):
+        """Maze transition. On a normal cell the move is deterministic. On a
+        SLIPPERY junction the agent loses control: 75% it's shoved the BEST way
+        (the optimal direction only the env knows), 10% left / 10% right / 5%
+        backward of that — and if the shoved direction hits a bush it stays put.
+        That makes risky junctions genuinely dangerous but still learnable."""
+        if action not in MOVE_ACTIONS:
+            return pos
+        if pos not in self.slip_set:
+            return self._resolve(agent, pos, action)
+        best = self._best_dir(agent, pos)
+        roll = self.rng.random()
+        if roll < 0.75:
+            d = best
+        elif roll < 0.85:
+            d = LEFT_OF[best]
+        elif roll < 0.95:
+            d = RIGHT_OF[best]
+        else:
+            d = BACK_OF[best]
+        return self._resolve(agent, pos, d)      # _resolve stays put if blocked
+
+    def _step_cross(self, a_red, a_blue):
+        """Cliff-Walking step: both move; stepping onto an open manhole drops you
+        (penalty + back to spawn); first onto a goal cell wins."""
+        self.steps += 1
+        reward = {"red": -STEP_COST, "blue": -STEP_COST}
+        phi0 = {"red": self._potential("red"), "blue": self._potential("blue")}
+
+        self.red_pos = self._cross_move("red", self.red_pos, a_red)
+        self.blue_pos = self._cross_move("blue", self.blue_pos, a_blue)
+
+        # fall into an open manhole -> penalty, then flung back to spawn
+        for agent in ("red", "blue"):
+            if self._pos(agent) in self.drop_set:
+                reward[agent] += CLIFF_PENALTY
+                self.fall_n[agent] += 1                       # latch for the viewer
+                self.fall_cell[agent] = list(self._pos(agent))
+                if agent == "red":
+                    self.red_pos = self.world.red_spawn
+                else:
+                    self.blue_pos = self.world.blue_spawn
+
+        # reach the goal -> win (simultaneous tie -> red)
+        for agent in ("red", "blue"):
+            if self._pos(agent) in self.goal_set:
+                self.done = True
+                self.winner = agent
+                loser = "blue" if agent == "red" else "red"
+                reward[agent] += WIN
+                reward[loser] += LOSE
+                break
+
+        for agent in ("red", "blue"):
+            reward[agent] += self._potential(agent) - phi0[agent]
+
+        truncated = False
+        if not self.done and self.steps >= MAX_STEPS:
+            self.done = True
+            truncated = True
+            self.winner = None
+        obs = (self.observe("red"), self.observe("blue"))
+        return obs, reward, self.done, truncated, {"winner": self.winner}
+
     def step(self, a_red, a_blue):
         if self.done:
             raise RuntimeError("step() on a finished episode")
+        if self.objective == "cross":
+            return self._step_cross(a_red, a_blue)
         self.steps += 1
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
         phi0 = {"red": self._potential("red"), "blue": self._potential("blue")}
@@ -403,6 +511,19 @@ class GridWorld(gym.Env):
     # --------------------------------------------------------------- snapshot
     def snapshot(self):
         """Live render state for the viewer (positions + key/gold flags)."""
+        if self.objective == "cross":
+            # no keys / gold in a cross world; flags set so the viewer hides them
+            return {
+                "red": list(self.red_pos), "blue": list(self.blue_pos),
+                "redKey": True, "blueKey": True,
+                "gold": {"holder": None, "pos": None},
+                "trapArmed": False,
+                "fell": {
+                    "red": {"n": self.fall_n["red"], "cell": self.fall_cell["red"]},
+                    "blue": {"n": self.fall_n["blue"], "cell": self.fall_cell["blue"]},
+                },
+                "steps": self.steps, "winner": self.winner,
+            }
         if self.gold_holder is None:
             gold = {"holder": None, "pos": list(self.gold_pos)}
         else:

@@ -180,7 +180,7 @@ function rebuildWorld(worldJson) {
     dressing = createDressing(scene, worldJson);    // carpet + rugs
     mechanics = createMechanics(scene, worldJson);
   }
-  actors.setWorld(parseLayout(rows));
+  actors.setWorld(parseLayout(rows), worldJson.objective === 'cross');
 }
 
 // ------------------------------------------------------------------ live polling
