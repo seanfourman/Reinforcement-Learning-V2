@@ -302,31 +302,46 @@ export function createStartMenu({
   const style = document.createElement("style");
   style.textContent = `
     #rl-menu{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
-      align-items:center;justify-content:flex-end;padding-bottom:13vh;pointer-events:none;
-      font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
+      align-items:flex-start;justify-content:flex-end;padding:0 0 20vh 6vw;pointer-events:none;
+      perspective:1600px;font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
+    #rl-menu .panel{display:flex;flex-direction:column;align-items:flex-start;
+      transform-origin:left center;transform:rotateY(32deg);
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;will-change:transform;}
     #rl-menu.show{opacity:1;}
-    #rl-menu.out{opacity:0;transition:opacity .6s ease;}
-    #rl-menu .ttl{font-size:66px;font-weight:800;color:#fff;letter-spacing:1px;margin:0;
-      text-shadow:0 4px 30px rgba(0,0,0,.75),0 1px 0 rgba(0,0,0,.5);}
-    #rl-menu .sub{font-size:17px;color:#ffe6b0;letter-spacing:5px;text-transform:uppercase;
-      margin:8px 0 28px;text-shadow:0 2px 14px rgba(0,0,0,.7);}
-    #rl-menu .start{pointer-events:auto;cursor:pointer;border:none;border-radius:40px;
-      padding:16px 56px;font:700 24px "Segoe UI",system-ui,sans-serif;color:#4a2c00;
-      background:linear-gradient(180deg,#ffe07a,#ffb13a);
-      box-shadow:0 10px 30px rgba(0,0,0,.5),inset 0 2px 0 rgba(255,255,255,.65);
-      transition:transform .15s ease,box-shadow .15s ease;}
-    #rl-menu .start:hover{transform:translateY(-2px) scale(1.03);
-      box-shadow:0 14px 38px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.75);}
-    #rl-menu .start:active{transform:translateY(1px) scale(.99);}
+    #rl-menu.out{opacity:0;transition:opacity .5s ease;}
+    #rl-menu .brand{position:absolute;top:2vh;left:2vw;margin:0;}
+    #rl-menu .brand img{display:block;width:340px;height:auto;
+      filter:drop-shadow(0 8px 20px rgba(0,0,0,.55));}
+    #rl-menu .items{display:flex;flex-direction:column;align-items:flex-start;gap:13px;}
+    #rl-menu .item{pointer-events:auto;cursor:pointer;border:none;background:none;text-align:left;
+      display:flex;align-items:center;gap:16px;padding:9px 12px;opacity:.9;
+      font:800 40px "Segoe UI",system-ui,sans-serif;color:#fff;
+      text-shadow:0 2px 12px rgba(0,0,0,.55);transition:transform .16s ease,opacity .16s ease;}
+    #rl-menu .item:nth-child(n+2){font-size:33px;opacity:.8;}
+    #rl-menu .item .cap{width:0;height:44px;overflow:hidden;flex:none;transition:width .18s ease;}
+    #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:440px;
+      box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
+      text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
+    #rl-menu .item.sel .cap{width:62px;}
   `;
   document.head.appendChild(style);
+
+  const CAP = `<svg class="cap" viewBox="0 0 120 80" aria-hidden="true">
+    <path fill="#e8352b" d="M36 52C36 26 56 12 78 17C97 21 106 36 106 52C106 56 103 58 98 58L46 58C40 58 36 56 36 52Z"/>
+    <path fill="#e8352b" d="M16 57C7 52 12 41 29 45C47 49 55 54 55 58C55 63 46 64 35 63C26 62 20 60 16 57Z"/>
+    <circle cx="70" cy="30" r="8.5" fill="#fff"/></svg>`;
 
   const el = document.createElement("div");
   el.id = "rl-menu";
   el.innerHTML = `
-    <h1 class="ttl">RL Arena</h1>
-    <div class="sub">Red vs Blue Tournament</div>
-    <button class="start" type="button">&#9654;&nbsp; Start</button>`;
+    <div class="brand"><img src="./assets/ui/rival-minds-logo.png" alt="Rival Minds"></div>
+    <div class="panel">
+      <div class="items">
+        <button class="item sel" type="button" data-go="1">${CAP}Start</button>
+        <button class="item" type="button">${CAP}How It Works</button>
+        <button class="item" type="button">${CAP}Algorithms</button>
+      </div>
+    </div>`;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("show"));
 
@@ -379,7 +394,45 @@ export function createStartMenu({
     await wait(1020);
     iris.remove();
   }
-  el.querySelector(".start").addEventListener("click", runStart);
+  // hovering an item slides the white pill onto it; clicking "Start" launches
+  const items = [...el.querySelectorAll(".item")];
+  const itemsBox = el.querySelector(".items");
+  let selected = items[0];
+  function select(it) {
+    if (it === selected) return;
+    selected = it;
+    for (const x of items) x.classList.toggle("sel", x === it);
+  }
+  // move the pill to whichever item the cursor is vertically nearest, so it flips
+  // at the midpoint between items — the selection heads to the next one as soon as
+  // you move toward it, not only once you're fully over it
+  function onMove(e) {
+    if (starting || disposed) return;
+    const box = itemsBox.getBoundingClientRect();
+    if (
+      e.clientX < box.left - 140 || e.clientX > box.right + 180 ||
+      e.clientY < box.top - 60 || e.clientY > box.bottom + 60
+    )
+      return;
+    let best = selected,
+      bestD = Infinity;
+    for (const it of items) {
+      const r = it.getBoundingClientRect();
+      const d = Math.abs(e.clientY - (r.top + r.height / 2));
+      if (d < bestD) {
+        bestD = d;
+        best = it;
+      }
+    }
+    select(best);
+  }
+  window.addEventListener("mousemove", onMove);
+  for (const it of items) {
+    it.addEventListener("click", () => {
+      select(it);
+      if (it.dataset.go) runStart();
+    });
+  }
 
   // ---- per-frame: a gentle cinematic camera drift ----------------------
   function update(dt, t) {
@@ -415,6 +468,7 @@ export function createStartMenu({
   function teardown() {
     if (disposed) return;
     disposed = true;
+    window.removeEventListener("mousemove", onMove);
     scene.remove(group);
     scene.remove(menuLights);
     for (const [l, i] of dimmedLights) l.intensity = i; // restore game daylight
