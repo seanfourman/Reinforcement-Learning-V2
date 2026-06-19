@@ -104,7 +104,7 @@ export function createStartMenu({
   const flyEnd = new THREE.Vector3();
   const flyLook = new THREE.Vector3();
   const flyThrough = new THREE.Vector3(); // the window centre (set when the sky plane is built)
-  const FLY_DUR = 0.85; // seconds
+  const FLY_DUR = 1.0; // seconds (synced to the iris close)
 
   function frame(root) {
     root.updateMatrixWorld(true);
@@ -343,7 +343,7 @@ export function createStartMenu({
     "position:fixed;top:50%;left:50%;border-radius:50%;pointer-events:none;z-index:100;" +
     `width:${diag}px;height:${diag}px;margin:${-diag / 2}px 0 0 ${-diag / 2}px;` +
     `box-shadow:0 0 0 ${diag}px #000;` +
-    "transition:width .8s cubic-bezier(.66,0,.34,1),height .8s cubic-bezier(.66,0,.34,1),margin .8s cubic-bezier(.66,0,.34,1);";
+    "transition:width 1s cubic-bezier(.66,0,.34,1),height 1s cubic-bezier(.66,0,.34,1),margin 1s cubic-bezier(.66,0,.34,1);";
   document.body.appendChild(iris);
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -365,7 +365,7 @@ export function createStartMenu({
     flyEnd.copy(flyStart).addScaledVector(dir, 1.05); // up to the porthole/sky (black hits here)
     flyLook.copy(flyStart).addScaledVector(dir, 3.0); // look forward, out through the window
     requestAnimationFrame(() => setIris(0)); // close to black (next frame so it animates)
-    await wait(840);
+    await wait(1040);
 
     // 2) fully black: tear the menu down, let the game render (still hidden by black)
     teardown();
@@ -376,7 +376,7 @@ export function createStartMenu({
 
     // 4) iris-open onto the finished game
     setIris(diag);
-    await wait(820);
+    await wait(1020);
     iris.remove();
   }
   el.querySelector(".start").addEventListener("click", runStart);
