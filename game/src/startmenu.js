@@ -17,6 +17,11 @@ const CAM_H = 0.42; // camera height, as a fraction of room height
 const LOOK_BACK = 0.15; // look-at distance from the BACK (window) wall, fraction of depth
 const LOOK_H = 0.1; // look-at height (lower = camera angles down), fraction of height
 
+// --- chair placement knobs (two armchairs in the back corners, angled inward) -
+const CHAIR_X = 90.0; // horizontal offset from centre, in chair-widths (left/right)
+const CHAIR_BACK = 90.0; // how far back toward the window, in chair-depths
+const CHAIR_ANGLE = Math.PI / 4; // turn-in angle toward the centre/camera
+
 export function createStartMenu({
   scene,
   camera,
@@ -119,21 +124,41 @@ export function createStartMenu({
     });
   }
 
-  function load(name, onReady) {
+  function load(name, onReady, side) {
     collada
       .loadAsync(ASSETS + name)
       .then((asset) => {
         if (disposed) return;
-        tune(asset.scene);
-        group.add(asset.scene);
-        onReady?.(asset.scene);
+        const root = asset.scene;
+        tune(root);
+        if (side) {
+          // both chairs are modelled on the same centred spot (they overlap into
+          // one in the table). Recentre each on its own X/Z axis (keep Y so it
+          // stays on the floor), then push it back + out to a corner, angled inward.
+          const box = new THREE.Box3().setFromObject(root);
+          const c = box.getCenter(new THREE.Vector3());
+          const sz = box.getSize(new THREE.Vector3());
+          root.position.set(-c.x, 0, -c.z);
+          const wrap = new THREE.Group();
+          wrap.add(root);
+          wrap.rotation.y = -side * CHAIR_ANGLE; // left turns right, right turns left
+          wrap.position.set(
+            c.x + side * CHAIR_X * sz.x, // left (-1) / right (+1)
+            0,
+            c.z - CHAIR_BACK * sz.z, // back toward the window
+          );
+          group.add(wrap);
+        } else {
+          group.add(root);
+        }
+        onReady?.(root);
       })
       .catch((e) => console.warn("start menu: could not load", name, e));
   }
 
   load("HomeInside.dae", (room) => frame(room));
-  load("HomeChairL.dae");
-  load("HomeChairR.dae");
+  load("HomeChairL.dae", null, -1);
+  load("HomeChairR.dae", null, +1);
 
   // ---- DOM overlay -----------------------------------------------------
   const style = document.createElement("style");
@@ -200,7 +225,7 @@ export function createStartMenu({
     disposed = true;
     scene.remove(group);
     scene.remove(menuLights);
-    for (const [l, i] of dimmedLights) l.intensity = i;   // restore game daylight
+    for (const [l, i] of dimmedLights) l.intensity = i; // restore game daylight
     renderer.toneMappingExposure = prevExposure;
     group.traverse((o) => {
       if (!o.isMesh) return;
