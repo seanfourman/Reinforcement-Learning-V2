@@ -615,12 +615,39 @@ export const city = {
         const b = proto.userData.bounds;
         const inner = cloneSkinned(proto);
         inner.position.set(-b.cx, -(b.minY + b.h / 2), -b.cz);   // centre at origin so it floats
+        // model reads white -> golden-yellow BODY, but keep the EYES solid black
+        // (the star has separate Shine__BodyMT and Shine__EyeMT meshes/materials)
+        const bodyMats = [];
+        inner.traverse((o) => {
+          if (!o.isMesh) return;
+          const isEye = /eye/i.test(o.name || '');
+          for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+            if (!m) continue;
+            if (isEye) {
+              m.map = null;
+              m.color?.set?.(0x000000);
+              m.emissive?.set?.(0x000000);
+              if ('emissiveIntensity' in m) m.emissiveIntensity = 0;
+            } else {
+              m.color?.set?.(0xffd12a);
+              m.emissive?.set?.(0xffb000);
+              if ('emissiveIntensity' in m) m.emissiveIntensity = 0.25;
+              bodyMats.push(m);
+            }
+            m.needsUpdate = true;
+          }
+        });
         const wrap = new THREE.Group();
         wrap.add(inner);
         wrap.scale.setScalar(0.95 / Math.max(b.w, b.h, b.d));
         wrap.position.set(mx, 1.0, mz);
         group.add(wrap);
-        star = { mesh: wrap, baseY: 1.0 };
+        // "glow" = the star's own emissive gently pulsing + a faint warm light.
+        // NO halo sprite (that read as a flat pasted-on disc).
+        const glow = new THREE.PointLight(0xffd24a, 0.2, 4, 2);
+        glow.position.set(mx, 1.0, mz);
+        group.add(glow);
+        star = { mesh: wrap, mats: bodyMats, light: glow, baseY: 1.0 };
       });
     }
 
@@ -805,9 +832,12 @@ export const city = {
       waterNrm.offset.y = t * 0.011;
       waterTex.offset.x = t * 0.018;                                            // cartoon water drifts
       waterTex.offset.y = t * 0.012;
-      if (star) {                                                                // power star spins + bobs
+      if (star) {                                                                // power star spins, bobs + breathes
         star.mesh.rotation.y = t * 1.3;
         star.mesh.position.y = star.baseY + Math.sin(t * 2) * 0.12;
+        const breath = 0.5 + 0.5 * Math.sin(t * 1.5);    // slow in/out (~4s)
+        for (const m of star.mats) m.emissiveIntensity = 0.15 + breath * 0.3;   // body glints
+        star.light.intensity = 0.06 + breath * 0.16;
       }
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
