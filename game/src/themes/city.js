@@ -749,31 +749,38 @@ export const city = {
       }
     }
 
-    // traffic signals standing just before each crosswalk (park side of the road)
-    const sigR = ROAD_H + 0.5;  // on the outer-sidewalk curb, just past the road
-    const sigOff = 1.9;         // off to the side of the crosswalk stripes
+    // traffic signals stand just before each crosswalk, nudged slightly inward
+    // from the building-side curb so the skyline rows never swallow them.
+    const sigR = ROAD_H - 0.45;
+    const sigOff = 1.85;        // off to the side of the crosswalk stripes
     const sigs = [
       [CTR - sigOff, CTR - sigR, 0],             // north
       [CTR - sigR, CTR + sigOff, Math.PI / 2],   // west
       [CTR + sigR, CTR - sigOff, -Math.PI / 2],  // east
     ];                                            // (no signal on the south/front)
     for (const [x, z, ry] of sigs) {
-      place('CityWorldHomeSignal000.dae', x, z, { baseY: WALK_TOP - 0.15, height: 4.2, ry });
+      place('CityWorldHomeSignal000.dae', x, z, { baseY: WALK_TOP - 0.1, height: 4.2, ry });
     }
 
     // ---- taxis cruising the ring road (right-hand lanes, both ways) -------
     // The car is a genuine Z_UP model -> keep the loader's upright rotation.
     const taxis = [];
     const TAXI_LEN = 2.6, TAXI_SPEED = 6, TAXI_FWD = 0; // TAXI_FWD: Math.PI if it drives backwards
+    const TAXI_INNER_L = RMID - 1.0;
+    const TAXI_OUTER_L = RMID + 1.3;
+    const TAXI_TURN_R = 2.55;
     const taxiDefs = [
-      { L: RMID + 1.3, dir: 1, off: 0.0 },    // outer lane, CCW = right-hand
-      { L: RMID + 1.3, dir: 1, off: 0.5 },
-      { L: RMID - 1.3, dir: -1, off: 0.25 },  // inner lane, CW = right-hand the other way
-      { L: RMID - 1.3, dir: -1, off: 0.7 },
+      { L: TAXI_OUTER_L, turnR: TAXI_TURN_R, dir: -1, off: 0.0 },
+      { L: TAXI_OUTER_L, turnR: TAXI_TURN_R, dir: -1, off: 0.5 },
+      { L: TAXI_INNER_L, turnR: TAXI_TURN_R, dir: 1, off: 0.25 },
+      { L: TAXI_INNER_L, turnR: TAXI_TURN_R, dir: 1, off: 0.7 },
     ];
-    const loopPerim = (L) => { const Rc = Math.min(2.5, L - 0.5); return 4 * (2 * (L - Rc) + (Math.PI / 2) * Rc); };
-    function loopAt(L, dist) {
-      const Rc = Math.min(2.5, L - 0.5), C = L - Rc;
+    const loopPerim = (L, turnR) => {
+      const Rc = Math.min(turnR, L - 0.5);
+      return 4 * (2 * (L - Rc) + (Math.PI / 2) * Rc);
+    };
+    function loopAt(L, turnR, dist) {
+      const Rc = Math.min(turnR, L - 0.5), C = L - Rc;
       const straight = 2 * C, side = straight + (Math.PI / 2) * Rc, perim = 4 * side;
       let d = ((dist % perim) + perim) % perim;
       const k = Math.floor(d / side);
@@ -808,7 +815,7 @@ export const city = {
         wrap.add(inner);
         wrap.scale.setScalar(scl);
         group.add(wrap);
-        taxis.push({ mesh: wrap, L: def.L, dir: def.dir, base: def.off * loopPerim(def.L) });
+        taxis.push({ mesh: wrap, L: def.L, turnR: def.turnR, dir: def.dir, base: def.off * loopPerim(def.L, def.turnR) });
       }
     });
 
@@ -821,8 +828,8 @@ export const city = {
       waterNrm.offset.y = t * 0.011;
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
-        const [x, z] = loopAt(tx.L, d);
-        const [x2, z2] = loopAt(tx.L, d + 0.25 * tx.dir);
+        const [x, z] = loopAt(tx.L, tx.turnR, d);
+        const [x2, z2] = loopAt(tx.L, tx.turnR, d + 0.25 * tx.dir);
         tx.mesh.position.set(x, ROAD_Y, z);
         tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
       }
