@@ -12,8 +12,8 @@ const ASSETS = "./assets/models/home-inside/";
 
 // --- camera framing knobs (fractions of the ROOM box; the giant backdrop plane
 // behind the window is auto-excluded so it doesn't blow up the framing) -------
-const CAM_BACK = -0.05; // camera distance from the open FRONT, as a fraction of room depth (neg = outside, further back)
-const CAM_H = 0.42; // camera height, as a fraction of room height
+const CAM_BACK = 0.05; // camera distance from the open FRONT, as a fraction of room depth (neg = outside, further back)
+const CAM_H = 0.32; // camera height, as a fraction of room height
 const LOOK_BACK = 0.15; // look-at distance from the BACK (window) wall, fraction of depth
 const LOOK_H = 0.1; // look-at height (lower = camera angles down), fraction of height
 
