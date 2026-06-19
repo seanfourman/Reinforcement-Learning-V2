@@ -311,11 +311,44 @@ export const city = {
     // reflective water material (the cartoon look from the first version). Ripple
     // normals scroll in update().
     const waterNrm = textureAt(`${MK_TEXTURES}water00_nrm.png`, 2.2, 2.2, false);
+    // a generated, seamless SOFT TURQUOISE water texture matched to the reference:
+    // smooth, LOW-contrast turquoise with gentle diagonal ripples (two low-frequency
+    // sines, smoothly blended — no busy banding). Tiled + slowly scrolled in update().
+    function waterCanvas() {
+      const S = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      const img = ctx.createImageData(S, S);
+      const d = img.data;
+      const lo = [60, 192, 186], hi = [142, 228, 214];   // turquoise: base -> soft ripple
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const u = x / S, v = y / S;
+          let n = 0.5
+            + 0.30 * Math.sin(2 * Math.PI * (u + v))
+            + 0.20 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
+          n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));   // gentle, low contrast
+          const i = (y * S + x) * 4;
+          d[i] = lo[0] + (hi[0] - lo[0]) * n;
+          d[i + 1] = lo[1] + (hi[1] - lo[1]) * n;
+          d[i + 2] = lo[2] + (hi[2] - lo[2]) * n;
+          d[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      return canvas;
+    }
+    const waterTex = trackTexture(new THREE.CanvasTexture(waterCanvas()));
+    waterTex.colorSpace = THREE.SRGBColorSpace;
+    waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+    waterTex.repeat.set(1.6, 1.6);
+    waterTex.anisotropy = maxAnisotropy;
     const waterMat = track(new THREE.MeshStandardMaterial({
-      color: 0x46cdf0, transparent: true, opacity: 0.84,
-      roughness: 0.05, metalness: 0.35, envMapIntensity: 1.0,
-      emissive: 0x0f96d6, emissiveIntensity: 0.22,
-      normalMap: waterNrm, normalScale: new THREE.Vector2(0.18, 0.18),
+      color: 0xffffff, map: waterTex, transparent: true, opacity: 0.92,
+      roughness: 0.3, metalness: 0.1, envMapIntensity: 0.5,
+      emissive: 0x1f8f88, emissiveIntensity: 0.06,
+      normalMap: waterNrm, normalScale: new THREE.Vector2(0.14, 0.14),
       depthWrite: false,
     }));
     // a smooth, generated puddle outline (gentle wobble — "the shape is good")
@@ -752,6 +785,8 @@ export const city = {
       waterMat.opacity = 0.82 + 0.04 * Math.sin(t * 1.4);
       waterNrm.offset.x = t * 0.015;                                             // subtle drifting sheen
       waterNrm.offset.y = t * 0.011;
+      waterTex.offset.x = t * 0.018;                                            // cartoon water drifts
+      waterTex.offset.y = t * 0.012;
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
         const [x, z] = loopAt(tx.L, tx.turnR, d);
