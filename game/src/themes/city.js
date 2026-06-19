@@ -18,6 +18,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 const GRID = 20;
 const CTR = GRID / 2;
 const ASSETS = './assets/models/city-newdonk/';
+const MK_TEXTURES = './assets/textures/mushroom-kingdom/';
 const DIVIDER_ROW = 12;
 
 // Zone half-extents measured from the board centre (CTR,CTR). The board is
@@ -26,6 +27,8 @@ const PARK_H = 10;     // board edge
 const ISW_H = 11.0;    // inner sidewalk (1.0 wide)
 const ROAD_H = 15.0;   // ring road outer edge (tight, 4-wide road)
 const OSW_H = 16.0;    // outer sidewalk (1.0 wide)
+const LAWN_TOP = 0.04; // raised park cell surface, kept below decals/heatmap
+const LAWN_THICK = 0.055;
 
 // Buildings used for the surrounding skyline (hashed). NOTE: this pack mislabels
 // most models as Z_UP though they're authored Y-up, so prepare() resets the
@@ -111,6 +114,14 @@ export const city = {
       if (color) tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     }
+    function textureAt(url, repeatX = 1, repeatY = 1, color = true) {
+      const tex = trackTexture(texLoader.load(url));
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.anisotropy = maxAnisotropy;
+      if (color) tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
 
     function pbr(prefix, repeatX, repeatY, fallbackColor) {
       return track(new THREE.MeshStandardMaterial({
@@ -125,6 +136,9 @@ export const city = {
 
     const solid = (color, opts = {}) =>
       track(new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0, ...opts }));
+
+    const hashFloat = (a, b, salt = 0) =>
+      ((hash(a * 97 + salt * 37, b * 131 + salt * 53) >>> 0) % 10000) / 10000;
 
     function disposeTree(root) {
       root.traverse((o) => {
@@ -255,10 +269,25 @@ export const city = {
       normalMap: assetTexture('SideWalk01_nrm.png', repX, repZ, false),
       roughness: 1.0, metalness: 0,
     }));
-    const grassMat = track(new THREE.MeshStandardMaterial({
-      map: assetTexture('GroundLawn00_alb.png', 9, 9),
-      color: 0xbfe08a, roughness: 1, metalness: 0,
+    const soilMat = track(new THREE.MeshStandardMaterial({
+      map: textureAt(`${MK_TEXTURES}groundbasesoil02_alb.png`, 7, 7),
+      normalMap: textureAt(`${MK_TEXTURES}groundbasesoil02_nrm.png`, 7, 7, false),
+      color: 0xc6a279,
+      roughness: 1,
+      metalness: 0,
     }));
+    const lawnTileTex = assetTexture('GroundLawn00_alb.png', 1.25, 1.25);
+    const lawnTopMats = [
+      0xb7df7e, 0xaed76f, 0xc2e78d, 0xa4cf67, 0xbce287, 0x9fca62,
+    ].map((color) => track(new THREE.MeshStandardMaterial({
+      map: lawnTileTex,
+      color,
+      roughness: 1,
+      metalness: 0,
+    })));
+    const lawnEdgeMats = [
+      0x638a39, 0x587f33, 0x6f9342, 0x4f7530,
+    ].map((color) => solid(color, { roughness: 1 }));
     const hedgeMat = solid(0x49992f, { roughness: 0.95 });
     const planterMat = solid(0x8d8475, { roughness: 0.9 });
     const lineMat = solid(0xe6c84a, { roughness: 0.6 });
@@ -296,6 +325,61 @@ export const city = {
       group.add(m);
       return m;
     }
+    function lawnCellShape(r, c) {
+      const j = (salt, amp) => (hashFloat(r, c, salt) - 0.5) * amp;
+      const half = 0.468 + hashFloat(r, c, 34) * 0.012;
+      const left = -half + j(1, 0.018);
+      const right = half + j(2, 0.018);
+      const bottom = -half + j(3, 0.018);
+      const top = half + j(4, 0.018);
+      const cb = 0.045 + hashFloat(r, c, 5) * 0.035;
+      const cr = 0.045 + hashFloat(r, c, 6) * 0.035;
+      const ct = 0.045 + hashFloat(r, c, 7) * 0.035;
+      const cl = 0.045 + hashFloat(r, c, 8) * 0.035;
+      const pts = [
+        [left + cb, bottom + j(9, 0.018)],
+        [-0.16 + j(10, 0.045), bottom + j(11, 0.028)],
+        [0.16 + j(12, 0.045), bottom + j(13, 0.028)],
+        [right - cb, bottom + j(14, 0.018)],
+        [right + j(15, 0.018), bottom + cr],
+        [right + j(16, 0.028), -0.16 + j(17, 0.045)],
+        [right + j(18, 0.028), 0.16 + j(19, 0.045)],
+        [right + j(20, 0.018), top - cr],
+        [right - ct, top + j(21, 0.018)],
+        [0.16 + j(22, 0.045), top + j(23, 0.028)],
+        [-0.16 + j(24, 0.045), top + j(25, 0.028)],
+        [left + ct, top + j(26, 0.018)],
+        [left + j(27, 0.018), top - cl],
+        [left + j(28, 0.028), 0.16 + j(29, 0.045)],
+        [left + j(30, 0.028), -0.16 + j(31, 0.045)],
+        [left + j(32, 0.018), bottom + cl],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      return new THREE.Shape(pts);
+    }
+
+    function addLawnCells() {
+      for (let r = 0; r < GRID; r++) {
+        for (let c = 0; c < GRID; c++) {
+          const geo = track(new THREE.ExtrudeGeometry(lawnCellShape(r, c), {
+            depth: LAWN_THICK,
+            bevelEnabled: true,
+            bevelSize: 0.012,
+            bevelThickness: 0.008,
+            bevelSegments: 1,
+          }));
+          const h = hash(r * 19 + 11, c * 23 + 5);
+          const mesh = new THREE.Mesh(geo, [
+            lawnTopMats[h % lawnTopMats.length],
+            lawnEdgeMats[(h >>> 3) % lawnEdgeMats.length],
+          ]);
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.position.set(c + 0.5, LAWN_TOP - LAWN_THICK + hashFloat(r, c, 33) * 0.006, r + 0.5);
+          mesh.castShadow = false;
+          mesh.receiveShadow = true;
+          group.add(mesh);
+        }
+      }
+    }
     const CORNER = 0.6;                        // just a slight corner round
     ground(80, -0.30, apronMat);              // far district floor (below the road)
     ground(50, ROAD_Y, asphaltMat);           // road base (shows in the road ring)
@@ -311,8 +395,8 @@ export const city = {
     const innerWalk = new THREE.Shape();
     drawRoundedRect(innerWalk, ISW_H, CORNER);
     extrudeWalk(innerWalk, WALK_TOP, 0.22);
-    ground(PARK_H, 0.012, grassMat);          // the park lawn (board)
-    ground(PARK_H, 0.012, grassMat);                  // the park lawn (board)
+    ground(PARK_H, 0.012, soilMat);           // Mushroom Kingdom soil visible in cell seams
+    addLawnCells();
 
     // road lane lines (a dashed square loop down the middle of the ring road)
     const RMID = (ISW_H + ROAD_H) / 2;        // 16.5 from centre
@@ -676,15 +760,6 @@ export const city = {
         taxis.push({ mesh: wrap, L: def.L, dir: def.dir, base: def.off * loopPerim(def.L) });
       }
     });
-
-    // ---- subtle RL grid overlay so the park tiles stay legible -----------
-    const grid = new THREE.GridHelper(GRID, GRID, 0x3c6b46, 0x3c6b46);
-    grid.position.set(CTR, 0.03, CTR);
-    grid.material.transparent = true;
-    grid.material.opacity = 0.16;
-    track(grid.geometry);
-    track(grid.material);
-    group.add(grid);
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
