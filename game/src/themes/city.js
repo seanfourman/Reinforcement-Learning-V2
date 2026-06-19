@@ -292,22 +292,19 @@ export const city = {
     const shrubTex = textureAt(`${MK_TEXTURES}shrubberyplants00_alb.png`, 1.8, 1.8);
     const shrubNrm = textureAt(`${MK_TEXTURES}shrubberyplants00_nrm.png`, 1.8, 1.8, false);
     const shrubRgh = textureAt(`${MK_TEXTURES}shrubberyplants00_rgh.png`, 1.8, 1.8, false);
-    const shrubMat = track(new THREE.MeshStandardMaterial({
+    const shrubMaterial = (color, roughness = 0.94) => track(new THREE.MeshStandardMaterial({
       map: shrubTex,
       normalMap: shrubNrm,
       roughnessMap: shrubRgh,
-      color: 0x7bd64f,
-      roughness: 0.92,
+      color,
+      roughness,
       metalness: 0,
     }));
-    const shrubDarkMat = track(new THREE.MeshStandardMaterial({
-      map: shrubTex,
-      normalMap: shrubNrm,
-      roughnessMap: shrubRgh,
-      color: 0x4e9837,
-      roughness: 0.96,
-      metalness: 0,
-    }));
+    const shrubMats = [
+      shrubMaterial(0x65b947, 0.94),
+      shrubMaterial(0x72c851, 0.92),
+      shrubMaterial(0x568f3e, 0.97),
+    ];
 
     // Water is no longer a stack of bright blue coins. Each slip cell gets a
     // shallow soil depression, a thin grassy bank, and a translucent rippled
@@ -503,58 +500,71 @@ export const city = {
     }
     function addShrubMaze(cells) {
       const geo = track(new THREE.SphereGeometry(1, 18, 10));
-      const upper = new THREE.InstancedMesh(geo, shrubMat, cells.length * 3);
-      const lower = new THREE.InstancedMesh(geo, shrubDarkMat, cells.length * 2);
+      const lobes = shrubMats.map(() => []);
       const dummy = new THREE.Object3D();
-      let ui = 0, li = 0;
+      const recipes = [
+        { lobes: 5, spread: 0.21, low: 0.23, high: 0.36, wide: 1.0, tall: 1.0 },
+        { lobes: 5, spread: 0.23, low: 0.22, high: 0.34, wide: 1.06, tall: 0.94 },
+        { lobes: 4, spread: 0.19, low: 0.25, high: 0.39, wide: 0.94, tall: 1.05 },
+      ];
 
-      const put = (mesh, index, x, z, sx, sy, sz, ry = 0) => {
-        dummy.position.set(x, LAWN_TOP + sy + 0.02, z);
-        dummy.rotation.set(0, ry, 0);
-        dummy.scale.set(sx, sy, sz);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(index, dummy.matrix);
+      const addLobe = (matIndex, x, z, sx, sy, sz, ry = 0) => {
+        lobes[matIndex % lobes.length].push({ x, y: LAWN_TOP + sy + 0.02, z, sx, sy, sz, ry });
       };
 
       for (const [r, c] of cells) {
         const x = c + 0.5, z = r + 0.5;
         const seed = hash(r * 13 + 2, c * 11 + 4);
         const rot = (seed % 360) * Math.PI / 180;
-        const s = 0.94 + hashFloat(r, c, 71) * 0.16;
+        const recipe = recipes[seed % recipes.length];
+        const cellScale = 0.95 + hashFloat(r, c, 71) * 0.12;
+        const baseMat = seed % shrubMats.length;
+        const centerLift = recipe.high * (0.94 + hashFloat(r, c, 72) * 0.12) * cellScale;
 
-        for (let i = 0; i < 2; i++) {
-          const a = rot + i * Math.PI + hashFloat(r, c, 75 + i) * 0.45;
-          const d = 0.12 + hashFloat(r, c, 79 + i) * 0.08;
-          put(
-            lower, li++,
+        addLobe(
+          baseMat,
+          x + (hashFloat(r, c, 131) - 0.5) * 0.04,
+          z + (hashFloat(r, c, 137) - 0.5) * 0.04,
+          0.3 * recipe.wide * cellScale,
+          centerLift,
+          0.3 * recipe.wide * cellScale,
+          rot
+        );
+
+        for (let i = 0; i < recipe.lobes; i++) {
+          const a = rot + i * (Math.PI * 2 / recipe.lobes) + (hashFloat(r, c, 75 + i) - 0.5) * 0.28;
+          const d = recipe.spread * (0.82 + hashFloat(r, c, 79 + i) * 0.28);
+          const lower = i % 2 === 0;
+          addLobe(
+            baseMat + (lower ? 2 : 1),
             x + Math.cos(a) * d,
             z + Math.sin(a) * d,
-            (0.34 + hashFloat(r, c, 82 + i) * 0.08) * s,
-            (0.22 + hashFloat(r, c, 86 + i) * 0.05) * s,
-            (0.34 + hashFloat(r, c, 90 + i) * 0.08) * s,
-            a
-          );
-        }
-
-        for (let i = 0; i < 3; i++) {
-          const a = rot + i * (Math.PI * 2 / 3) + hashFloat(r, c, 96 + i) * 0.4;
-          const d = i === 0 ? 0.02 : 0.13 + hashFloat(r, c, 101 + i) * 0.08;
-          put(
-            upper, ui++,
-            x + Math.cos(a) * d,
-            z + Math.sin(a) * d,
-            (0.28 + hashFloat(r, c, 107 + i) * 0.08) * s,
-            (0.34 + hashFloat(r, c, 113 + i) * 0.09) * s,
-            (0.28 + hashFloat(r, c, 119 + i) * 0.08) * s,
+            (0.24 + hashFloat(r, c, 82 + i) * 0.06) * recipe.wide * cellScale,
+            (lower ? recipe.low : recipe.high * 0.8) * (0.92 + hashFloat(r, c, 86 + i) * 0.14) * recipe.tall,
+            (0.24 + hashFloat(r, c, 90 + i) * 0.06) * recipe.wide * cellScale,
             a
           );
         }
       }
 
-      upper.castShadow = lower.castShadow = true;
-      upper.receiveShadow = lower.receiveShadow = true;
-      upper.instanceMatrix.needsUpdate = lower.instanceMatrix.needsUpdate = true;
-      group.add(lower, upper);
+      const placeInstances = (geometry, material, items, writeMatrix) => {
+        if (!items.length) return;
+        const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        items.forEach((item, i) => {
+          writeMatrix(item);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        group.add(mesh);
+      };
+      lobes.forEach((items, i) => placeInstances(geo, shrubMats[i], items, (p) => {
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.rotation.set(0, p.ry, 0);
+        dummy.scale.set(p.sx, p.sy, p.sz);
+      }));
     }
     if (wallCells.length) addShrubMaze(wallCells);
 
