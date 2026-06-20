@@ -23,6 +23,7 @@ const CHARACTERS = [
   { name: "Bowser", file: "bowser/bowser.dae" },
   { name: "Peach", file: "peach/peach.dae" },
   { name: "Toad", file: "toad/toad.dae" },
+  { name: "Parabones", file: "parabones/parabones.dae" },
 ];
 
 const JOINT_ALIASES = {
@@ -221,6 +222,23 @@ const JOINT_ALIASES = {
     ArmR1: "joint21",
     ArmR2: "joint22",
     HandR: "joint23",
+  },
+  parabones: {
+    // KaronWing rig — bones use their real names (legs/head/feet found directly);
+    // only the arms differ (ArmL/ElbowL instead of ArmL1/ArmL2)
+    LegL1: "LegL1",
+    LegL2: "LegL2",
+    LegR1: "LegR1",
+    LegR2: "LegR2",
+    FootL: "FootL",
+    FootR: "FootR",
+    Head: "Head",
+    ArmL1: "ArmL",
+    ArmL2: "ElbowL",
+    HandL: "HandL",
+    ArmR1: "ArmR",
+    ArmR2: "ElbowR",
+    HandR: "HandR",
   },
 };
 
@@ -1285,10 +1303,10 @@ export function createStartMenu({
     /* 4 corner-bracket cursors on the selected tile, pulsing out and in */
     #rl-select .tile .cursor{position:absolute;inset:0;display:none;pointer-events:none;z-index:4;}
     #rl-select .tile.sel .cursor,#rl-select .tile:hover .cursor{display:block;}
+    /* hovering moves the cursor off the locked pick onto whatever you point at */
+    #rl-select .grid:hover .tile.sel:not(:hover) .cursor{display:none;}
     #rl-select .tile .cc{position:absolute;width:30px;height:30px;background-color:#fff;
       -webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}
-    #rl-select .tile.sel .cursor .cc{background-color:#ffac33;} /* orange on the locked pick */
-    #rl-select .tile:hover .cursor .cc{background-color:#fff;} /* white follows the hover */
     #rl-select .tile .cc.tl{top:10px;left:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_1.png);
       mask-image:url(./assets/cursor/bg_cursor_1.png);animation:rl-cur-tl .6s ease-in-out infinite;}
     #rl-select .tile .cc.tr{top:10px;right:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_2.png);
