@@ -520,9 +520,16 @@ export function createStartMenu({
       // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
       const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
       const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(n);
+      const yoshiEye = charKey === "yoshi" && /^Eye[0-2]__/.test(n);
       if (charKey === "koopa" && koopaEye) {
         const open = /^EyeOpen__/.test(n);
         const closed = /^EyeClose__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (yoshiEye) {
+        const open = /^Eye0__/.test(n);
+        const closed = /^Eye2__/.test(n);
         o.visible = open;
         if (open) face.eyes.push({ mesh: o, baseVisible: true });
         if (closed) face.eyelids.push({ mesh: o });
@@ -542,6 +549,9 @@ export function createStartMenu({
         // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) —
         // keep only the 00 pose so the hand doesn't render doubled
         if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
+      } else if (charKey === "yoshi") {
+        if (/^(?:YoshiTongue|Mustache)__/.test(n)) o.visible = false;
+        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
       } else if (
         charKey === "mario" &&
         (/mario_(?:tongue|tooth)/i.test(n) || /^Hair__/i.test(n))
@@ -558,7 +568,7 @@ export function createStartMenu({
           m.map.colorSpace = THREE.SRGBColorSpace;
           m.map.anisotropy = maxAniso;
         }
-        if (eyeMesh) {
+        if (eyeMesh && charKey !== "yoshi") {
           // the eye texture is set to repeat -> it tiles; clamp so the single eye
           // image just stretches across the UVs instead
           for (const t of [m.map, m.normalMap, m.roughnessMap]) {
