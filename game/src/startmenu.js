@@ -20,6 +20,9 @@ const CHARACTERS = [
   { name: "Toadette", file: "toadette/toadette.dae" },
   { name: "Pauline", file: "pauline/pauline.dae" },
   { name: "Koopa", file: "koopa/koopa.dae" },
+  { name: "Bowser", file: "bowser/bowser.dae" },
+  { name: "Peach", file: "peach/peach.dae" },
+  { name: "Toad", file: "toad/toad.dae" },
 ];
 
 const JOINT_ALIASES = {
@@ -157,6 +160,56 @@ const JOINT_ALIASES = {
     LegR2: "joint9",
     FootR: "joint10",
     ToeR: "joint11",
+    Spine1: "joint12",
+    Spine2: "joint13",
+    Head: "joint14",
+    ShoulderL: "joint16",
+    ArmL1: "joint17",
+    ArmL2: "joint18",
+    HandL: "joint19",
+    ShoulderR: "joint20",
+    ArmR1: "joint21",
+    ArmR2: "joint22",
+    HandR: "joint23",
+  },
+  bowser: {
+    LegL1: "joint1",
+    LegL2: "joint2",
+    LegR1: "joint5",
+    LegR2: "joint6",
+    ShoulderL: "joint32",
+    ArmL1: "joint33",
+    ArmL2: "joint34",
+    ArmR1: "joint50",
+    ArmR2: "joint51",
+  },
+  peach: {
+    LegL1: "joint67",
+    LegL2: "joint68",
+    FootL: "joint2",
+    LegR1: "joint69",
+    LegR2: "joint70",
+    FootR: "joint4",
+    Spine1: "joint12",
+    Spine2: "joint0",
+    Head: "joint54",
+    ShoulderL: "joint14",
+    ArmL1: "joint15",
+    ArmL2: "joint16",
+    HandL: "joint17",
+    ShoulderR: "joint33",
+    ArmR1: "joint34",
+    ArmR2: "joint35",
+    HandR: "joint36",
+  },
+  toad: {
+    Hip: "joint3",
+    LegL1: "joint4",
+    LegL2: "joint5",
+    FootL: "joint6",
+    LegR1: "joint8",
+    LegR2: "joint9",
+    FootR: "joint10",
     Spine1: "joint12",
     Spine2: "joint13",
     Head: "joint14",
@@ -1213,17 +1266,26 @@ export function createStartMenu({
       text-shadow:0 2px 12px rgba(0,0,0,.8);}
     #rl-select .side.left .plab{color:#ff7d7d;}
     #rl-select .side.right .plab{color:#7da4ff;}
-    #rl-select .grid{display:flex;gap:11px;}
-    #rl-select .tile{width:96px;height:112px;border-radius:12px;cursor:pointer;overflow:hidden;
-      position:relative;background:rgba(30,32,44,.7);border:3px solid rgba(255,255,255,.28);
-      box-shadow:0 6px 18px rgba(0,0,0,.45);transition:transform .12s ease,border-color .12s ease;}
-    #rl-select .tile:hover{transform:translateY(-4px) scale(1.05);border-color:#fff;}
-    #rl-select .tile.sel{border-color:#ffd24a;
-      box-shadow:0 0 0 2px rgba(255,210,74,.55),0 6px 18px rgba(0,0,0,.45);}
-    #rl-select .tile .pic{position:absolute;inset:0;background-size:cover;background-position:center 12%;
+    #rl-select .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px 34px;}
+    #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;
+      transition:transform .12s ease;}
+    #rl-select .tile:hover{transform:translateY(-4px) scale(1.06);}
+    #rl-select .tile .pic{position:absolute;inset:0;background-size:contain;background-position:center;
       background-repeat:no-repeat;}
-    #rl-select .tile .nm{position:absolute;left:0;right:0;bottom:0;text-align:center;padding:4px 0;
-      font-weight:800;font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.82));}
+    /* 4 corner-bracket cursors on the selected tile, pulsing out and in */
+    #rl-select .tile .cursor{position:absolute;inset:0;display:none;pointer-events:none;z-index:4;}
+    #rl-select .tile.sel .cursor{display:block;}
+    #rl-select .tile .cc{position:absolute;width:30px;height:30px;}
+    #rl-select .tile .cc.tl{top:10px;left:-8px;animation:rl-cur-tl .8s ease-in-out infinite;}
+    #rl-select .tile .cc.tr{top:10px;right:-8px;animation:rl-cur-tr .8s ease-in-out infinite;}
+    #rl-select .tile .cc.bl{bottom:-8px;left:-8px;animation:rl-cur-bl .8s ease-in-out infinite;}
+    #rl-select .tile .cc.br{bottom:-8px;right:-8px;animation:rl-cur-br .8s ease-in-out infinite;}
+    @keyframes rl-cur-tl{0%,100%{transform:translate(0,0);}50%{transform:translate(-5px,-5px);}}
+    @keyframes rl-cur-tr{0%,100%{transform:translate(0,0);}50%{transform:translate(5px,-5px);}}
+    @keyframes rl-cur-bl{0%,100%{transform:translate(0,0);}50%{transform:translate(-5px,5px);}}
+    @keyframes rl-cur-br{0%,100%{transform:translate(0,0);}50%{transform:translate(5px,5px);}}
+    #rl-select .tile .nm{position:absolute;left:0;right:0;bottom:-2px;text-align:center;
+      font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.95),0 0 3px rgba(0,0,0,.9);}
     #rl-select .back{position:absolute;left:1.5vw;bottom:3vh;display:flex;align-items:center;gap:11px;
       cursor:pointer;pointer-events:auto;color:#fff;}
     #rl-select .back .key{display:inline-flex;align-items:center;justify-content:center;
@@ -1269,14 +1331,24 @@ export function createStartMenu({
     `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
   document.body.appendChild(selectEl);
 
-  // a 3x2 grid of tiles per side; both reference the same 6 portraits
+  // a row of tiles per side; each uses the character's icon + the 4 animated
+  // corner-bracket cursors (shown on the selected tile)
+  const CURSOR =
+    `<div class="cursor">` +
+    `<img class="cc tl" src="./assets/cursor/bg_cursor_1.png">` +
+    `<img class="cc tr" src="./assets/cursor/bg_cursor_2.png">` +
+    `<img class="cc bl" src="./assets/cursor/bg_cursor_3.png">` +
+    `<img class="cc br" src="./assets/cursor/bg_cursor_4.png"></div>`;
   const sideTiles = { "-1": [], 1: [] };
   for (const side of [-1, 1]) {
     const strip = selectEl.querySelector(`.grid[data-side="${side}"]`);
     CHARACTERS.forEach((def, idx) => {
+      const key = def.file.split("/")[0];
       const t = document.createElement("div");
       t.className = "tile";
-      t.innerHTML = `<div class="pic"></div><div class="nm">${def.name}</div>`;
+      t.innerHTML =
+        `<div class="pic" style="background-image:url(./assets/icons/${key}.png)"></div>` +
+        `<div class="nm">${def.name}</div>${CURSOR}`;
       t.addEventListener("click", () => {
         picks[side] = idx;
         savePicks();
@@ -1305,24 +1377,11 @@ export function createStartMenu({
     selectEl.classList.remove("open");
     el.classList.remove("shift"); // bring the main menu back
   }
-  let portraitsStarted = false;
   function openSelect() {
     if (starting) return;
     selectEl.classList.add("open");
     el.classList.add("shift"); // slide the main menu off to the left
     refreshSelect();
-    if (portraitsStarted) return;
-    portraitsStarted = true;
-    (async () => {
-      for (let i = 0; i < CHARACTERS.length; i++) {
-        if (disposed) return;
-        const url = await portrait(i);
-        if (!url) continue;
-        for (const side of [-1, 1])
-          sideTiles[side][i].querySelector(".pic").style.backgroundImage =
-            `url(${url})`;
-      }
-    })();
   }
 
   // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
