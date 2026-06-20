@@ -44,6 +44,13 @@ const JOINT_ALIASES = {
     ArmR1: "joint19",
     ArmR2: "joint21",
     HandR: "joint23",
+    LipUpper: "joint40",
+    Jaw: "joint41",
+    LipLowerCenter: "joint42",
+    LipLowerL: "joint43",
+    LipLowerR: "joint44",
+    MouthCornerL: "joint45",
+    MouthCornerR: "joint46",
   },
   luigi: {
     Hip: "joint11",
@@ -66,6 +73,9 @@ const JOINT_ALIASES = {
     ArmR1: "joint9",
     ArmR2: "joint25",
     HandR: "joint27",
+    Jaw: "joint33",
+    MouthCornerL: "joint4",
+    MouthCornerR: "joint5",
   },
   yoshi: {
     Hip: "joint13",
@@ -162,8 +172,8 @@ const JOINT_ALIASES = {
 // the cabin scale automatically; tweak these to fine-tune how they sit) ---------
 const CHAR_HEIGHT = 1.72; // character height in WORLD units (the chair bbox is a
 //                          near-zero skinned-mesh box, so size absolutely instead)
-const CHAR_FWD = 0.42; // nudge out of the seat toward the camera, world units
-const CHAR_LIFT = 0.025; // vertical offset, world units (feet at floor = 0)
+const CHAR_FWD = 0.58; // nudge out of the seat toward the camera, world units
+const CHAR_LIFT = 0.09; // vertical offset, world units (feet at floor = 0)
 const CHAR_PITCH = 0.06; // small upright seated lean
 const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 
@@ -488,14 +498,27 @@ export function createStartMenu({
     }
   }
 
-  function tuneChar(root) {
+  function tuneChar(root, charKey) {
+    const face = { eyelids: [], eyes: [] };
     root.traverse((o) => {
       if (!o.isMesh) return;
-      // the rip ships open eyeballs plus several lid meshes stuck in a closed/half
-      // state; hide all the lid meshes so the eyes read fully open
-      if (/eyelid/i.test(o.name)) {
+      const n = o.name || "";
+      const lower = n.toLowerCase();
+      if (lower.includes("eyelid")) {
         o.visible = false;
-        return;
+        if (charKey !== "mario" || lower.includes("eyelidclose")) {
+          face.eyelids.push({ mesh: o });
+        }
+      } else if (
+        (lower.includes("eye") || lower.includes("pupil")) &&
+        !lower.includes("brow")
+      ) {
+        face.eyes.push({ mesh: o, baseVisible: o.visible });
+      }
+      if (charKey === "luigi") {
+        if (/Joe/i.test(n)) o.visible = false;
+      } else if (charKey === "mario" && /mario_(?:tongue|tooth)/i.test(n)) {
+        o.visible = false;
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
@@ -513,6 +536,7 @@ export function createStartMenu({
         if ("envMapIntensity" in m) m.envMapIntensity = 0;
       }
     });
+    return face;
   }
 
   function collectRig(root, charKey) {
@@ -556,16 +580,23 @@ export function createStartMenu({
       tail: bone("Tail"),
       hairL1: bone("HairL1"),
       hairR1: bone("HairR1"),
+      jaw: bone("Jaw", "JoeUnder"),
+      lipUpper: bone("LipUpper"),
+      lipLowerCenter: bone("LipLowerCenter"),
+      lipLowerL: bone("LipLowerL", "LipLowerLeft"),
+      lipLowerR: bone("LipLowerR", "LipLowerRight"),
+      mouthCornerL: bone("MouthCornerL", "JoeLeft"),
+      mouthCornerR: bone("MouthCornerR", "JoeRight"),
     };
   }
 
   function makeBoneAimer(root) {
     const wp = (b) => b.getWorldPosition(new THREE.Vector3());
-    return (bone, targetBone, tx, ty, tz) => {
+    const pointAlong = (bone, targetBone, target) => {
       if (!bone || !targetBone) return false;
       root.updateMatrixWorld(true);
       const cur = wp(targetBone).sub(wp(bone));
-      const tgt = new THREE.Vector3(tx, ty, tz);
+      const tgt = target.clone();
       if (cur.lengthSq() < 1e-8 || tgt.lengthSq() < 1e-8) return false;
       cur.normalize();
       tgt.normalize();
@@ -578,10 +609,32 @@ export function createStartMenu({
       bone.updateMatrixWorld(true);
       return true;
     };
+    const aim = (bone, targetBone, tx, ty, tz) =>
+      pointAlong(bone, targetBone, new THREE.Vector3(tx, ty, tz));
+    aim.vector = pointAlong;
+    return aim;
   }
 
   function firstBoneChild(bone, boneSet) {
     return bone?.children.find((c) => boneSet.has(c)) ?? null;
+  }
+
+  const poseEuler = new THREE.Euler();
+  const poseQuat = new THREE.Quaternion();
+  function addLocalPose(bone, x = 0, y = 0, z = 0) {
+    if (!bone) return;
+    poseEuler.set(x, y, z, "XYZ");
+    poseQuat.setFromEuler(poseEuler);
+    bone.quaternion.multiply(poseQuat);
+  }
+
+  function poseNeutralMouth(rig, charKey) {
+    if (charKey !== "mario") return;
+    addLocalPose(rig.jaw, 0, 0, -0.2);
+    addLocalPose(rig.lipLowerCenter, 0, 0, -0.06);
+    addLocalPose(rig.lipLowerL, 0, 0, -0.04);
+    addLocalPose(rig.lipLowerR, 0, 0, -0.04);
+    addLocalPose(rig.lipUpper, 0, 0, 0.025);
   }
 
   function poseFallbackSeated(root, rig, aim) {
@@ -612,9 +665,22 @@ export function createStartMenu({
       }
     }
     const f = SEAT_FACE;
+    const sideAxis = arm.L && arm.R
+      ? wp(arm.L).sub(wp(arm.R)).normalize()
+      : new THREE.Vector3(-1, 0, 0);
+    const down = new THREE.Vector3(0, -1, 0);
+    const forward = new THREE.Vector3(0, 0, f);
     let posed = false;
-    if (arm.L) posed = aim(arm.L, firstBoneChild(arm.L, boneSet), -0.35, -0.85, 0.2 * f) || posed;
-    if (arm.R) posed = aim(arm.R, firstBoneChild(arm.R, boneSet), 0.35, -0.85, 0.2 * f) || posed;
+    if (arm.L) {
+      const out = sideAxis.clone();
+      const target = out.multiplyScalar(0.58).addScaledVector(down, 0.78).addScaledVector(forward, 0.08);
+      posed = aim.vector(arm.L, firstBoneChild(arm.L, boneSet), target) || posed;
+    }
+    if (arm.R) {
+      const out = sideAxis.clone().negate();
+      const target = out.multiplyScalar(0.58).addScaledVector(down, 0.78).addScaledVector(forward, 0.08);
+      posed = aim.vector(arm.R, firstBoneChild(arm.R, boneSet), target) || posed;
+    }
     for (const side of ["L", "R"]) {
       const thighBone = thigh[side];
       if (!thighBone) continue;
@@ -633,6 +699,13 @@ export function createStartMenu({
     const rig = collectRig(root, charKey);
     const aim = makeBoneAimer(root);
     const f = SEAT_FACE;
+    const shoulderLeft = rig.shoulderL?.getWorldPosition(new THREE.Vector3());
+    const shoulderRight = rig.shoulderR?.getWorldPosition(new THREE.Vector3());
+    const sideAxis = shoulderLeft && shoulderRight
+      ? shoulderLeft.sub(shoulderRight).normalize()
+      : new THREE.Vector3(-1, 0, 0);
+    const down = new THREE.Vector3(0, -1, 0);
+    const forward = new THREE.Vector3(0, 0, f);
     let posed = false;
 
     const leg = (side, sign) => {
@@ -651,13 +724,17 @@ export function createStartMenu({
       const upper = side === "L" ? rig.armL1 : rig.armR1;
       const lower = side === "L" ? rig.armL2 : rig.armR2;
       const hand = side === "L" ? rig.handL : rig.handR;
-      posed = aim(upper, lower, sign * 0.38, -0.82, 0.22 * f) || posed;
-      posed = aim(lower, hand, sign * 0.08, -0.38, 0.92 * f) || posed;
+      const out = sideAxis.clone().multiplyScalar(side === "L" ? 1 : -1);
+      const upperTarget = out.clone().multiplyScalar(0.62).addScaledVector(down, 0.76).addScaledVector(forward, 0.08);
+      const lowerTarget = out.clone().multiplyScalar(0.3).addScaledVector(down, 0.42).addScaledVector(forward, 0.42);
+      posed = aim.vector(upper, lower, upperTarget) || posed;
+      posed = aim.vector(lower, hand, lowerTarget) || posed;
     };
     arm("L", -1);
     arm("R", 1);
 
     if (!posed) poseFallbackSeated(root, rig, aim);
+    poseNeutralMouth(rig, charKey);
     root.updateMatrixWorld(true);
     return rig;
   }
@@ -668,13 +745,17 @@ export function createStartMenu({
     return bone ? { bone, base: bone.quaternion.clone() } : null;
   }
 
-  function createSeatedIdle(root, inner, side, rig) {
+  function createSeatedIdle(root, inner, side, rig, face) {
     const phase = (side < 0 ? 0.7 : 3.6) + Math.random() * 0.35;
     return {
       root,
       inner,
       side,
       phase,
+      face,
+      blinkAt: null,
+      blinkDur: 0.12,
+      quickBlink: false,
       basePos: inner.position.clone(),
       baseRotY: inner.rotation.y,
       bones: {
@@ -696,6 +777,13 @@ export function createStartMenu({
         tail: idleCtrl(rig.tail),
         hairL1: idleCtrl(rig.hairL1),
         hairR1: idleCtrl(rig.hairR1),
+        jaw: idleCtrl(rig.jaw),
+        lipUpper: idleCtrl(rig.lipUpper),
+        lipLowerCenter: idleCtrl(rig.lipLowerCenter),
+        lipLowerL: idleCtrl(rig.lipLowerL),
+        lipLowerR: idleCtrl(rig.lipLowerR),
+        mouthCornerL: idleCtrl(rig.mouthCornerL),
+        mouthCornerR: idleCtrl(rig.mouthCornerR),
       },
     };
   }
@@ -707,6 +795,34 @@ export function createStartMenu({
     ctrl.bone.quaternion.copy(ctrl.base).multiply(idleQuat);
   }
 
+  function updateFaceIdle(state, t) {
+    const face = state.face;
+    if (!face?.eyelids?.length) return;
+    if (state.blinkAt == null) {
+      state.blinkAt = t + 0.72 + (state.side < 0 ? 0 : 0.38);
+      return;
+    }
+    let blink = 0;
+    if (t >= state.blinkAt) {
+      const u = (t - state.blinkAt) / state.blinkDur;
+      if (u <= 1) {
+        blink = Math.sin(u * Math.PI);
+      } else if (!state.quickBlink && Math.sin(t * 7.3 + state.phase) > 0.7) {
+        state.quickBlink = true;
+        state.blinkAt = t + 0.16;
+      } else {
+        state.quickBlink = false;
+        state.blinkAt =
+          t + 2.35 + (Math.sin(t * 1.17 + state.phase * 2.4) + 1) * 0.85;
+      }
+    }
+    const closed = blink > 0.24;
+    for (const part of face.eyelids) part.mesh.visible = closed;
+    for (const part of face.eyes) {
+      part.mesh.visible = part.baseVisible && blink < 0.72;
+    }
+  }
+
   function updateSeatedIdle(state, t) {
     const b = state.bones;
     const p = state.phase;
@@ -715,9 +831,11 @@ export function createStartMenu({
     const glance = Math.sin(t * 0.38 + p * 1.7);
     const nod = Math.sin(t * 0.82 + p * 0.9);
     const hand = Math.sin(t * 1.55 + p + 0.4);
+    const mouth = Math.sin(t * 0.74 + p * 1.9);
     state.inner.position.y = state.basePos.y + breathe * 0.012 + breathe2 * 0.003;
     state.inner.rotation.y = state.baseRotY + state.side * glance * 0.014;
 
+    updateFaceIdle(state, t);
     applyIdle(b.spine1, breathe * 0.012, state.side * glance * 0.006, 0);
     applyIdle(b.spine2, breathe * 0.018, state.side * glance * 0.008, -state.side * breathe * 0.004);
     applyIdle(b.head, nod * 0.018 + breathe * 0.006, state.side * glance * 0.026, -state.side * nod * 0.012);
@@ -736,6 +854,13 @@ export function createStartMenu({
     applyIdle(b.tail, breathe * 0.018, state.side * hand * 0.016, 0);
     applyIdle(b.hairL1, hand * 0.012, 0, breathe * 0.01);
     applyIdle(b.hairR1, -hand * 0.012, 0, -breathe * 0.01);
+    applyIdle(b.jaw, 0, 0, mouth * 0.004);
+    applyIdle(b.lipUpper, 0, 0, -mouth * 0.002);
+    applyIdle(b.lipLowerCenter, 0, 0, mouth * 0.003);
+    applyIdle(b.lipLowerL, 0, 0, mouth * 0.002);
+    applyIdle(b.lipLowerR, 0, 0, mouth * 0.002);
+    applyIdle(b.mouthCornerL, 0, 0, mouth * 0.005);
+    applyIdle(b.mouthCornerR, 0, 0, -mouth * 0.005);
     state.root.updateMatrixWorld(true);
   }
 
@@ -782,8 +907,9 @@ export function createStartMenu({
         if (s.y < Math.max(s.x, s.z) * 0.85) {
           root.rotation.set(0, 0, 0);
         }
-        const rig = poseSeated(root, def.file.split("/")[0]); // bend the legs into a sit
-        tuneChar(root); // matte materials + open eyes
+        const charKey = def.file.split("/")[0];
+        const rig = poseSeated(root, charKey); // bend the legs into a sit
+        const face = tuneChar(root, charKey); // matte materials + neutral face parts
         // re-measure AFTER posing so the seated figure sits feet-on-floor
         root.updateMatrixWorld(true);
         box = new THREE.Box3().setFromObject(root);
@@ -801,7 +927,7 @@ export function createStartMenu({
         disposeSeated(side);
         wrap.add(inner);
         seated[side] = inner;
-        seatedIdle[side] = createSeatedIdle(root, inner, side, rig);
+        seatedIdle[side] = createSeatedIdle(root, inner, side, rig, face);
       })
       .catch((e) => console.warn("character load failed:", def.file, e));
   }
