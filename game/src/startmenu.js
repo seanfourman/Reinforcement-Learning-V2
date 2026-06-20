@@ -1276,14 +1276,14 @@ export function createStartMenu({
     #rl-select .tile .cursor{position:absolute;inset:0;display:none;pointer-events:none;z-index:4;}
     #rl-select .tile.sel .cursor{display:block;}
     #rl-select .tile .cc{position:absolute;width:30px;height:30px;}
-    #rl-select .tile .cc.tl{top:10px;left:-8px;animation:rl-cur-tl .8s ease-in-out infinite;}
-    #rl-select .tile .cc.tr{top:10px;right:-8px;animation:rl-cur-tr .8s ease-in-out infinite;}
-    #rl-select .tile .cc.bl{bottom:-8px;left:-8px;animation:rl-cur-bl .8s ease-in-out infinite;}
-    #rl-select .tile .cc.br{bottom:-8px;right:-8px;animation:rl-cur-br .8s ease-in-out infinite;}
-    @keyframes rl-cur-tl{0%,100%{transform:translate(0,0);}50%{transform:translate(-5px,-5px);}}
-    @keyframes rl-cur-tr{0%,100%{transform:translate(0,0);}50%{transform:translate(5px,-5px);}}
-    @keyframes rl-cur-bl{0%,100%{transform:translate(0,0);}50%{transform:translate(-5px,5px);}}
-    @keyframes rl-cur-br{0%,100%{transform:translate(0,0);}50%{transform:translate(5px,5px);}}
+    #rl-select .tile .cc.tl{top:10px;left:-8px;animation:rl-cur-tl .6s ease-in-out infinite;}
+    #rl-select .tile .cc.tr{top:10px;right:-8px;animation:rl-cur-tr .6s ease-in-out infinite;}
+    #rl-select .tile .cc.bl{bottom:-8px;left:-8px;animation:rl-cur-bl .6s ease-in-out infinite;}
+    #rl-select .tile .cc.br{bottom:-8px;right:-8px;animation:rl-cur-br .6s ease-in-out infinite;}
+    @keyframes rl-cur-tl{0%{transform:translate(0,0);}67%{transform:translate(-5px,-5px);}100%{transform:translate(0,0);}}
+    @keyframes rl-cur-tr{0%{transform:translate(0,0);}67%{transform:translate(5px,-5px);}100%{transform:translate(0,0);}}
+    @keyframes rl-cur-bl{0%{transform:translate(0,0);}67%{transform:translate(-5px,5px);}100%{transform:translate(0,0);}}
+    @keyframes rl-cur-br{0%{transform:translate(0,0);}67%{transform:translate(5px,5px);}100%{transform:translate(0,0);}}
     #rl-select .tile .nm{position:absolute;left:0;right:0;bottom:-2px;text-align:center;
       font-weight:800;font-size:12px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.95),0 0 3px rgba(0,0,0,.9);}
     #rl-select .back{position:absolute;left:1.5vw;bottom:3vh;display:flex;align-items:center;gap:11px;
@@ -1348,7 +1348,7 @@ export function createStartMenu({
       t.className = "tile";
       t.innerHTML =
         `<div class="pic" style="background-image:url(./assets/icons/${key}.png)"></div>` +
-        `<div class="nm">${def.name}</div>${CURSOR}`;
+        CURSOR;
       t.addEventListener("click", () => {
         picks[side] = idx;
         savePicks();
