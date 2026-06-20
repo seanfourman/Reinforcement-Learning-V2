@@ -800,21 +800,40 @@ export function createStartMenu({
       const lower = side === "L" ? rig.armL2 : rig.armR2;
       const hand = side === "L" ? rig.handL : rig.handR;
       const out = sideAxis.clone().multiplyScalar(side === "L" ? 1 : -1);
-      const upperTarget = out
-        .clone()
-        .multiplyScalar(0.62)
-        .addScaledVector(down, 0.76)
-        .addScaledVector(forward, 0.08);
-      const lowerTarget = out
-        .clone()
-        .multiplyScalar(0.3)
-        .addScaledVector(down, 0.42)
-        .addScaledVector(forward, 0.42);
+      let upperTarget;
+      let lowerTarget;
+      if (charKey === "pauline") {
+        upperTarget = out
+          .clone()
+          .multiplyScalar(0.14)
+          .addScaledVector(down, 0.86)
+          .addScaledVector(forward, 0.25);
+        lowerTarget = out
+          .clone()
+          .multiplyScalar(-0.52)
+          .addScaledVector(down, 0.1)
+          .addScaledVector(forward, 0.62);
+      } else {
+        upperTarget = out
+          .clone()
+          .multiplyScalar(0.62)
+          .addScaledVector(down, 0.76)
+          .addScaledVector(forward, 0.08);
+        lowerTarget = out
+          .clone()
+          .multiplyScalar(0.3)
+          .addScaledVector(down, 0.42)
+          .addScaledVector(forward, 0.42);
+      }
       posed = aim.vector(upper, lower, upperTarget) || posed;
       posed = aim.vector(lower, hand, lowerTarget) || posed;
     };
     arm("L", -1);
     arm("R", 1);
+    if (charKey === "pauline") {
+      addLocalPose(rig.handL, -1.5, 0, 0);
+      addLocalPose(rig.handR, -1.5, 0, 0);
+    }
 
     if (!posed) poseFallbackSeated(root, rig, aim);
     poseNeutralMouth(rig, charKey);
