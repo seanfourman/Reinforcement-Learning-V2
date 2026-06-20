@@ -811,8 +811,8 @@ export function createStartMenu({
         lowerTarget = out
           .clone()
           .multiplyScalar(-0.52)
-          .addScaledVector(down, 0.1)
-          .addScaledVector(forward, 0.62);
+          .addScaledVector(down, side === "R" ? 0.05 : 0.2)
+          .addScaledVector(forward, side === "R" ? 0.54 : 0.72);
       } else {
         upperTarget = out
           .clone()
