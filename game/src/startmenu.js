@@ -517,7 +517,17 @@ export function createStartMenu({
       if (!o.isMesh) return;
       const n = o.name || "";
       const lower = n.toLowerCase();
-      if (lower.includes("eyelid")) {
+      // the iris/eyeball meshes use the eye material (…__EyeMT / __EyePupil…) and the
+      // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
+      const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
+      const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(n);
+      if (charKey === "koopa" && koopaEye) {
+        const open = /^EyeOpen__/.test(n);
+        const closed = /^EyeClose__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (lower.includes("eyelid")) {
         o.visible = false;
         if (charKey !== "mario" || lower.includes("eyelidclose")) {
           face.eyelids.push({ mesh: o });
@@ -540,6 +550,15 @@ export function createStartMenu({
         if (m.map) {
           m.map.colorSpace = THREE.SRGBColorSpace;
           m.map.anisotropy = maxAniso;
+        }
+        if (eyeMesh) {
+          // the eye texture is set to repeat -> it tiles; clamp so the single eye
+          // image just stretches across the UVs instead
+          for (const t of [m.map, m.normalMap, m.roughnessMap]) {
+            if (!t) continue;
+            t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+            t.needsUpdate = true;
+          }
         }
         // matte like the cabin textures: no shiny specular highlights / reflections
         m.specular?.set?.(0x000000);
