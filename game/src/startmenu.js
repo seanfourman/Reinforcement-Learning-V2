@@ -9,6 +9,31 @@ import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 
 const ASSETS = "./assets/models/home-inside/";
+const CHARS = "./assets/models/characters/";
+
+// the cast copied into game/assets/models/characters/ (from the repo-root
+// characters/ rips). Each is a single base-pose Collada model.
+const CHARACTERS = [
+  { name: "Mario", file: "mario/mario.dae" },
+  { name: "Luigi", file: "luigi/luigi.dae" },
+  { name: "Yoshi", file: "yoshi/yoshi.dae" },
+  { name: "Toadette", file: "toadette/toadette.dae" },
+  { name: "Pauline", file: "pauline/pauline.dae" },
+  { name: "Koopa", file: "koopa/koopa.dae" },
+];
+
+// --- seating knobs (the character is scaled RELATIVE to the chair, so it tracks
+// the cabin scale automatically; tweak these to fine-tune how they sit) ---------
+const CHAR_HEIGHT = 1.8; // character height in WORLD units (the chair bbox is a
+//                          near-zero skinned-mesh box, so size absolutely instead)
+const CHAR_FWD = 0.0; // nudge out of the seat toward the camera, world units
+const CHAR_LIFT = 0.0; // vertical offset, world units (feet at floor = 0)
+const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
+
+// seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
+// so arms/legs are found by position + bone direction in the T-pose, then reoriented.
+// SEAT_FACE flips which way is "forward" if the legs/arms end up reaching backward.
+const SEAT_FACE = 1; // +1 or -1
 
 // --- camera framing knobs (fractions of the ROOM box; the giant backdrop plane
 // behind the window is auto-excluded so it doesn't blow up the framing) -------
@@ -286,6 +311,8 @@ export function createStartMenu({
             c.z - CHAIR_BACK * sz.z, // back toward the window
           );
           group.add(wrap);
+          chairWrap[side] = wrap; // so a character can be parented onto the seat
+          chairSize[side] = sz.clone();
         } else {
           group.add(root);
         }
@@ -294,9 +321,187 @@ export function createStartMenu({
       .catch((e) => console.warn("start menu: could not load", name, e));
   }
 
+  // ---- characters seated in the two chairs -----------------------------
+  const chairWrap = {}; // side(-1/+1) -> chair wrap Group
+  const chairSize = {}; // side -> chair Box3 size (for scaling the character)
+  const seated = {}; // side -> the character Group currently in the chair
+  const seatToken = {}; // side -> guard so rapid cycling ignores stale loads
+
+  function readPicks() {
+    let p = {};
+    try {
+      p = JSON.parse(localStorage.getItem("rl-chars") || "{}");
+    } catch {
+      p = {};
+    }
+    const ok = (v, d) =>
+      Number.isInteger(v) && v >= 0 && v < CHARACTERS.length ? v : d;
+    return { [-1]: ok(p["-1"], 0), [1]: ok(p["1"], 1) }; // default Mario / Luigi
+  }
+  const picks = readPicks();
+  function savePicks() {
+    try {
+      localStorage.setItem(
+        "rl-chars",
+        JSON.stringify({ "-1": picks[-1], "1": picks[1] }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function tuneChar(root) {
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      // the rip ships open eyeballs plus several lid meshes stuck in a closed/half
+      // state; hide all the lid meshes so the eyes read fully open
+      if (/eyelid/i.test(o.name)) {
+        o.visible = false;
+        return;
+      }
+      o.castShadow = true;
+      o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m) continue;
+        if (m.map) {
+          m.map.colorSpace = THREE.SRGBColorSpace;
+          m.map.anisotropy = maxAniso;
+        }
+        // matte like the cabin textures: no shiny specular highlights / reflections
+        m.specular?.set?.(0x000000);
+        if ("shininess" in m) m.shininess = 0;
+        if ("reflectivity" in m) m.reflectivity = 0;
+        m.envMap = null;
+        if ("envMapIntensity" in m) m.envMapIntensity = 0;
+      }
+    });
+  }
+
+  // bend the leg bones into a seated pose. These rip rigs use LegL1/R1 (thighs) and
+  // LegL2/R2 (shins); missing bones are skipped so non-humanoids just stay standing.
+  function poseSeated(root) {
+    root.updateMatrixWorld(true);
+    const set = new Set();
+    root.traverse((o) => {
+      if (o.isBone) set.add(o);
+      else if (o.isSkinnedMesh && o.skeleton)
+        o.skeleton.bones.forEach((b) => set.add(b));
+    });
+    const bones = [...set];
+    if (!bones.length) return;
+    const wp = (b) => b.getWorldPosition(new THREE.Vector3());
+    const bb = new THREE.Box3();
+    bones.forEach((b) => bb.expandByPoint(wp(b)));
+    const cx = (bb.min.x + bb.max.x) / 2;
+    const cy = (bb.min.y + bb.max.y) / 2;
+    const childBone = (b) => b.children.find((c) => set.has(c));
+    // rotate a bone so its child points along (tx,ty,tz) in world space
+    const point = (b, tx, ty, tz) => {
+      const c = childBone(b);
+      if (!c) return;
+      const cur = wp(c).sub(wp(b)).normalize();
+      const tgt = new THREE.Vector3(tx, ty, tz).normalize();
+      const qW = new THREE.Quaternion().setFromUnitVectors(cur, tgt);
+      const nW = qW.multiply(b.getWorldQuaternion(new THREE.Quaternion()));
+      const pW = b.parent
+        ? b.parent.getWorldQuaternion(new THREE.Quaternion())
+        : new THREE.Quaternion();
+      b.quaternion.copy(pW.invert().multiply(nW));
+      b.updateMatrixWorld(true);
+    };
+    const f = SEAT_FACE;
+    // identify the upper arms (horizontal, upper half) and thighs (downward, hips)
+    const arm = { L: null, R: null };
+    const thigh = { L: null, R: null };
+    for (const b of bones) {
+      const c = childBone(b);
+      if (!c) continue;
+      const p = wp(b);
+      const d = wp(c).sub(p);
+      const ax = Math.abs(d.x),
+        ay = Math.abs(d.y),
+        az = Math.abs(d.z);
+      if (p.y > cy && ax > ay && ax > az) {
+        const s = d.x < 0 ? "L" : "R"; // arm points outward
+        if (!arm[s] || Math.abs(p.x - cx) < Math.abs(wp(arm[s]).x - cx)) arm[s] = b;
+      } else if (p.y < cy && ay > ax && ay > az && d.y < 0) {
+        const s = p.x < cx ? "L" : "R"; // leg hangs down
+        if (!thigh[s] || wp(thigh[s]).y < p.y) thigh[s] = b;
+      }
+    }
+    console.log(
+      `[pose] armL=${arm.L?.name} armR=${arm.R?.name} thighL=${thigh.L?.name} thighR=${thigh.R?.name}`,
+    );
+    if (arm.L) point(arm.L, -0.25, -1, 0.15 * f); // arms down to the sides
+    if (arm.R) point(arm.R, 0.25, -1, 0.15 * f);
+    for (const s of ["L", "R"]) {
+      const t = thigh[s];
+      if (!t) continue;
+      point(t, s === "L" ? -0.15 : 0.15, -0.2, f); // thigh forward (sit)
+      const shin = childBone(t);
+      if (shin) point(shin, 0, -1, 0.12 * f); // knee bent, shin down
+    }
+  }
+
+  function disposeSeated(side) {
+    const g = seated[side];
+    if (!g) return;
+    g.parent?.remove(g);
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry?.dispose?.();
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!m) continue;
+        for (const v of Object.values(m)) if (v?.isTexture) v.dispose?.();
+        m.dispose?.();
+      }
+    });
+    seated[side] = null;
+  }
+
+  function seatCharacter(side, idx) {
+    const wrap = chairWrap[side];
+    const chSz = chairSize[side];
+    const def = CHARACTERS[idx];
+    if (!wrap || !chSz || !def) return; // chair not loaded yet
+    const token = (seatToken[side] = (seatToken[side] || 0) + 1);
+    collada
+      .loadAsync(CHARS + def.file)
+      .then((asset) => {
+        if (disposed || token !== seatToken[side]) return; // stale / torn down
+        const root = asset.scene;
+        // ColladaLoader applies a Z_UP->Y conversion; these rips are inconsistent,
+        // so verify the model stands (height is the dominant axis) and undo it if
+        // it ended up tipped over.
+        root.updateMatrixWorld(true);
+        let box = new THREE.Box3().setFromObject(root);
+        let s = box.getSize(new THREE.Vector3());
+        if (s.y < Math.max(s.x, s.z) * 0.85) {
+          root.rotation.set(0, 0, 0);
+        }
+        poseSeated(root); // bend the legs into a sit
+        tuneChar(root); // matte materials + open eyes
+        // re-measure AFTER posing so the seated figure sits feet-on-floor
+        root.updateMatrixWorld(true);
+        box = new THREE.Box3().setFromObject(root);
+        s = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        root.position.set(-ctr.x, -box.min.y, -ctr.z); // centred, feet at y=0
+        const inner = new THREE.Group();
+        inner.add(root);
+        inner.scale.setScalar(CHAR_HEIGHT / s.y);
+        inner.rotation.y = CHAR_ROT;
+        inner.position.set(0, CHAR_LIFT, CHAR_FWD);
+        disposeSeated(side);
+        wrap.add(inner);
+        seated[side] = inner;
+      })
+      .catch((e) => console.warn("character load failed:", def.file, e));
+  }
+
   load("HomeInside.dae", (room) => frame(room));
-  load("HomeChairL.dae", null, -1);
-  load("HomeChairR.dae", null, +1);
+  load("HomeChairL.dae", () => seatCharacter(-1, picks[-1]), -1);
+  load("HomeChairR.dae", () => seatCharacter(1, picks[1]), +1);
 
   // ---- DOM overlay -----------------------------------------------------
   const style = document.createElement("style");
@@ -323,6 +528,21 @@ export function createStartMenu({
       box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
     #rl-menu .item.sel .cap{width:62px;}
+    #rl-cpick{position:fixed;right:3vw;bottom:6vh;z-index:42;pointer-events:none;
+      font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;gap:14px;
+      color:#fff;opacity:0;transition:opacity .9s ease;}
+    #rl-cpick.show{opacity:1;}
+    #rl-cpick.out{opacity:0;transition:opacity .5s ease;}
+    #rl-cpick .row{display:flex;align-items:center;gap:12px;justify-content:flex-end;
+      text-shadow:0 2px 10px rgba(0,0,0,.6);}
+    #rl-cpick .lab{font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.7;
+      width:52px;text-align:right;}
+    #rl-cpick .name{min-width:140px;text-align:center;font-weight:800;font-size:24px;}
+    #rl-cpick button{pointer-events:auto;cursor:pointer;border:none;width:40px;height:40px;
+      border-radius:50%;font-size:22px;font-weight:900;line-height:1;color:#3a3a3a;
+      background:rgba(255,255,255,.92);box-shadow:0 6px 16px rgba(0,0,0,.3);
+      transition:transform .12s ease,background .12s ease;}
+    #rl-cpick button:hover{background:#fff;transform:scale(1.08);}
   `;
   document.head.appendChild(style);
 
@@ -344,6 +564,36 @@ export function createStartMenu({
     </div>`;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("show"));
+
+  // ---- character picker: cycle who sits in the left / right chair ------------
+  const pickEl = document.createElement("div");
+  pickEl.id = "rl-cpick";
+  const row = (side, lab) =>
+    `<div class="row" data-side="${side}"><span class="lab">${lab}</span>` +
+    `<button type="button" data-d="-1">&#8249;</button>` +
+    `<span class="name"></span>` +
+    `<button type="button" data-d="1">&#8250;</button></div>`;
+  pickEl.innerHTML = row(-1, "Left") + row(1, "Right");
+  document.body.appendChild(pickEl);
+  requestAnimationFrame(() => pickEl.classList.add("show"));
+  const nameOf = (side) =>
+    pickEl.querySelector(`.row[data-side="${side}"] .name`);
+  const refreshName = (side) => {
+    nameOf(side).textContent = CHARACTERS[picks[side]].name;
+  };
+  refreshName(-1);
+  refreshName(1);
+  pickEl.querySelectorAll("button").forEach((b) => {
+    b.addEventListener("click", () => {
+      if (starting) return;
+      const side = +b.parentElement.dataset.side;
+      const d = +b.dataset.d;
+      picks[side] = (picks[side] + d + CHARACTERS.length) % CHARACTERS.length;
+      savePicks();
+      refreshName(side);
+      seatCharacter(side, picks[side]);
+    });
+  });
 
   // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
@@ -368,6 +618,8 @@ export function createStartMenu({
     starting = true;
     el.classList.remove("show");
     el.classList.add("out"); // fade the title card
+    pickEl.classList.remove("show");
+    pickEl.classList.add("out"); // fade the character picker too
 
     // 1) fly the camera UP through the porthole and OUT into the sky while the iris
     // closes. Aim at the window centre (not the low wall point), and keep looking
@@ -469,6 +721,9 @@ export function createStartMenu({
     if (disposed) return;
     disposed = true;
     window.removeEventListener("mousemove", onMove);
+    disposeSeated(-1);
+    disposeSeated(1);
+    pickEl.remove();
     scene.remove(group);
     scene.remove(menuLights);
     for (const [l, i] of dimmedLights) l.intensity = i; // restore game daylight
