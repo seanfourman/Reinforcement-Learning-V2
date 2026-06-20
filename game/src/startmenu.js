@@ -255,6 +255,7 @@ const CHAR_SEAT_OFFSETS = {
   pauline: { scale: 1.25, y: -0.55, z: -0.2 },
   toadette: { y: 0.24, z: -0.12 },
   peach: { scale: 1.25, y: -0.5, z: -0.2 }, // swimwear sits a touch high — drop her onto the cushion
+  parabones: { y: 0.35 }, // winged — hovers above the seat
 };
 
 // seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
@@ -654,6 +655,8 @@ export function createStartMenu({
       } else if (charKey === "pauline" && /HairCapOn/i.test(n)) {
         // the small top clump pokes through the hat; her real hair (HairBase) stays
         o.visible = false;
+      } else if (charKey === "parabones" && /^Mustache/i.test(n)) {
+        o.visible = false; // remove the mustache
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
@@ -722,6 +725,10 @@ export function createStartMenu({
       toeL: bone("ToeL"),
       toeR: bone("ToeR"),
       tail: bone("Tail"),
+      wingL1: bone("WingL1"),
+      wingL2: bone("WingL2"),
+      wingR1: bone("WingR1"),
+      wingR2: bone("WingR2"),
       hairL1: bone("HairL1"),
       hairR1: bone("HairR1"),
       eyelidLA: bone("EyelidLA"),
@@ -948,6 +955,7 @@ export function createStartMenu({
       side,
       phase,
       face,
+      fly: !!rig.wingL1, // winged characters get a flying up/down hover
       blinkAt: null,
       blinkDur: 0.12,
       quickBlink: false,
@@ -970,6 +978,10 @@ export function createStartMenu({
         toeL: idleCtrl(rig.toeL),
         toeR: idleCtrl(rig.toeR),
         tail: idleCtrl(rig.tail),
+        wingL1: idleCtrl(rig.wingL1),
+        wingL2: idleCtrl(rig.wingL2),
+        wingR1: idleCtrl(rig.wingR1),
+        wingR2: idleCtrl(rig.wingR2),
         hairL1: idleCtrl(rig.hairL1),
         hairR1: idleCtrl(rig.hairR1),
         eyelidLA: idleCtrl(rig.eyelidLA),
@@ -1045,8 +1057,9 @@ export function createStartMenu({
     const nod = Math.sin(t * 0.82 + p * 0.9);
     const hand = Math.sin(t * 1.55 + p + 0.4);
     const mouth = Math.sin(t * 0.74 + p * 1.9);
+    const hover = state.fly ? Math.sin(t * 1.7 + p) * 0.09 : 0;
     state.inner.position.y =
-      state.basePos.y + breathe * 0.012 + breathe2 * 0.003;
+      state.basePos.y + breathe * 0.012 + breathe2 * 0.003 + hover;
     state.inner.rotation.y = state.baseRotY + state.side * glance * 0.014;
 
     updateFaceIdle(state, t);
@@ -1076,6 +1089,13 @@ export function createStartMenu({
     applyIdle(b.toeL, Math.sin(t * 1.1 + p) * 0.012, 0, 0);
     applyIdle(b.toeR, Math.sin(t * 1.05 + p + 1.4) * 0.012, 0, 0);
     applyIdle(b.tail, breathe * 0.018, state.side * hand * 0.016, 0);
+    // Parabones wings flap forward from rest (0->forward->0), tips lag the base
+    const flap = (Math.sin(t * 6.5 + p) + 1) * 0.5;
+    const flapTip = (Math.sin(t * 6.5 + p - 0.6) + 1) * 0.5;
+    applyIdle(b.wingL1, 0, -flap * 0.5, 0);
+    applyIdle(b.wingR1, 0, flap * 0.5, 0);
+    applyIdle(b.wingL2, 0, -flapTip * 0.34, 0);
+    applyIdle(b.wingR2, 0, flapTip * 0.34, 0);
     applyIdle(b.hairL1, hand * 0.012, 0, breathe * 0.01);
     applyIdle(b.hairR1, -hand * 0.012, 0, -breathe * 0.01);
     applyIdle(b.jaw, 0, 0, mouth * 0.004);
