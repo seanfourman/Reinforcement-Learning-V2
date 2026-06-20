@@ -1077,6 +1077,95 @@ export function createStartMenu({
       .catch((e) => console.warn("character load failed:", def.file, e));
   }
 
+  // render a head-and-shoulders portrait of a character to a data URL (for the
+  // selector grid). Loads the model into a throwaway scene, frames the head, renders
+  // to an offscreen target, then disposes it. Cached per character.
+  const portraitCache = {};
+  async function portrait(idx) {
+    if (idx in portraitCache) return portraitCache[idx];
+    const def = CHARACTERS[idx];
+    try {
+      const asset = await collada.loadAsync(CHARS + def.file);
+      await new Promise((r) => setTimeout(r, 500)); // let textures finish loading
+      if (disposed) return null;
+      const root = asset.scene;
+      root.updateMatrixWorld(true);
+      let box = new THREE.Box3().setFromObject(root);
+      let s = box.getSize(new THREE.Vector3());
+      if (s.y < Math.max(s.x, s.z) * 0.85) {
+        root.rotation.set(0, 0, 0);
+        root.updateMatrixWorld(true);
+        box = new THREE.Box3().setFromObject(root);
+        s = box.getSize(new THREE.Vector3());
+      }
+      tuneChar(root, def.file.split("/")[0]);
+      const ctr = box.getCenter(new THREE.Vector3());
+      // the face is on the +Z or -Z side — find it from the eye meshes
+      let ez = 0,
+        en = 0;
+      root.traverse((o) => {
+        if (o.isMesh && /eye/i.test(o.name) && !/brow|lid/i.test(o.name)) {
+          ez += new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).z;
+          en++;
+        }
+      });
+      const dir = en ? Math.sign(ez / en - ctr.z) || 1 : 1;
+      const headH = s.y * 0.27;
+      const target = new THREE.Vector3(ctr.x, box.max.y - headH * 0.55, ctr.z);
+      const sc = new THREE.Scene();
+      sc.add(root);
+      sc.add(new THREE.HemisphereLight(0xffffff, 0x55606e, 2.6));
+      const dl = new THREE.DirectionalLight(0xfff2e2, 2.3);
+      dl.position.set(target.x + dir, target.y + headH, target.z + dir * 2);
+      sc.add(dl);
+      const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 1000);
+      cam.position.set(target.x, target.y + headH * 0.18, target.z + dir * headH * 3.2);
+      cam.lookAt(target);
+      const SZ = 256;
+      const rt = new THREE.WebGLRenderTarget(SZ, SZ);
+      const prevRT = renderer.getRenderTarget();
+      const pc = renderer.getClearColor(new THREE.Color());
+      const pa = renderer.getClearAlpha();
+      renderer.setRenderTarget(rt);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(sc, cam);
+      renderer.setRenderTarget(prevRT);
+      renderer.setClearColor(pc, pa);
+      const buf = new Uint8Array(SZ * SZ * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, SZ, SZ, buf);
+      const cnv = document.createElement("canvas");
+      cnv.width = cnv.height = SZ;
+      const c2 = cnv.getContext("2d");
+      const im = c2.createImageData(SZ, SZ);
+      for (let y = 0; y < SZ; y++) {
+        const sy = SZ - 1 - y; // readRenderTargetPixels is bottom-up
+        for (let x = 0; x < SZ; x++) {
+          const d = (y * SZ + x) * 4,
+            q = (sy * SZ + x) * 4;
+          im.data[d] = buf[q];
+          im.data[d + 1] = buf[q + 1];
+          im.data[d + 2] = buf[q + 2];
+          im.data[d + 3] = buf[q + 3];
+        }
+      }
+      c2.putImageData(im, 0, 0);
+      rt.dispose();
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        for (const m of [].concat(o.material)) m?.dispose?.();
+      });
+      const url = cnv.toDataURL();
+      portraitCache[idx] = url;
+      return url;
+    } catch (e) {
+      console.warn("portrait failed:", def?.file, e);
+      portraitCache[idx] = null;
+      return null;
+    }
+  }
+
   load("HomeInside.dae", (room) => frame(room));
   load("HomeChairL.dae", () => seatCharacter(-1, picks[-1]), -1);
   load("HomeChairR.dae", () => seatCharacter(1, picks[1]), +1);
@@ -1088,10 +1177,13 @@ export function createStartMenu({
       align-items:flex-start;justify-content:flex-end;padding:0 0 13vh 3.5vw;pointer-events:none;
       perspective:1600px;font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
     #rl-menu .panel{display:flex;flex-direction:column;align-items:flex-start;
-      transform-origin:left center;transform:rotateY(32deg);
+      transform-origin:left center;transform:translateX(0) rotateY(32deg);
+      transition:transform .45s cubic-bezier(.5,0,.2,1);
       backface-visibility:hidden;-webkit-backface-visibility:hidden;will-change:transform;}
     #rl-menu.show{opacity:1;}
     #rl-menu.out{opacity:0;transition:opacity .5s ease;}
+    /* slide ONLY the menu list off-screen while the selector is up (logo stays) */
+    #rl-menu.shift .panel{transform:translateX(-160%) rotateY(32deg);}
     #rl-menu .brand{position:absolute;top:2vh;left:2vw;margin:0;}
     #rl-menu .brand img{display:block;width:340px;height:auto;
       filter:drop-shadow(0 8px 20px rgba(0,0,0,.55));}
@@ -1106,21 +1198,39 @@ export function createStartMenu({
       box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
     #rl-menu .item.sel .cap{width:62px;}
-    #rl-cpick{position:fixed;right:3vw;bottom:6vh;z-index:42;pointer-events:none;
-      font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;gap:14px;
-      color:#fff;opacity:0;transition:opacity .9s ease;}
-    #rl-cpick.show{opacity:1;}
-    #rl-cpick.out{opacity:0;transition:opacity .5s ease;}
-    #rl-cpick .row{display:flex;align-items:center;gap:12px;justify-content:flex-end;
-      text-shadow:0 2px 10px rgba(0,0,0,.6);}
-    #rl-cpick .lab{font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.7;
-      width:52px;text-align:right;}
-    #rl-cpick .name{min-width:140px;text-align:center;font-weight:800;font-size:24px;}
-    #rl-cpick button{pointer-events:auto;cursor:pointer;border:none;width:40px;height:40px;
-      border-radius:50%;font-size:22px;font-weight:900;line-height:1;color:#3a3a3a;
-      background:rgba(255,255,255,.92);box-shadow:0 6px 16px rgba(0,0,0,.3);
-      transition:transform .12s ease,background .12s ease;}
-    #rl-cpick button:hover{background:#fff;transform:scale(1.08);}
+    /* character selector — slides up from the bottom; Player 1 on the left, Player 2
+       on the right, the cabin fully visible between them (no backdrop) */
+    #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 70px;
+      display:flex;flex-direction:row;justify-content:center;align-items:flex-end;gap:5vw;
+      pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;
+      transform:translateY(118%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
+    #rl-select.open{transform:translateY(0);}
+    #rl-select .side{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;}
+    #rl-select .plab{font-weight:900;font-size:20px;letter-spacing:2px;text-transform:uppercase;
+      text-shadow:0 2px 12px rgba(0,0,0,.8);}
+    #rl-select .side.left .plab{color:#ff7d7d;}
+    #rl-select .side.right .plab{color:#7da4ff;}
+    #rl-select .grid{display:flex;gap:11px;}
+    #rl-select .tile{width:96px;height:112px;border-radius:12px;cursor:pointer;overflow:hidden;
+      position:relative;background:rgba(30,32,44,.7);border:3px solid rgba(255,255,255,.28);
+      box-shadow:0 6px 18px rgba(0,0,0,.45);transition:transform .12s ease,border-color .12s ease;}
+    #rl-select .tile:hover{transform:translateY(-4px) scale(1.05);border-color:#fff;}
+    #rl-select .tile.sel{border-color:#ffd24a;
+      box-shadow:0 0 0 2px rgba(255,210,74,.55),0 6px 18px rgba(0,0,0,.45);}
+    #rl-select .tile .pic{position:absolute;inset:0;background-size:cover;background-position:center 12%;
+      background-repeat:no-repeat;}
+    #rl-select .tile .nm{position:absolute;left:0;right:0;bottom:0;text-align:center;padding:4px 0;
+      font-weight:800;font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.82));}
+    #rl-select .back{position:absolute;left:3vw;bottom:20px;display:flex;align-items:center;gap:11px;
+      cursor:pointer;pointer-events:auto;color:#fff;}
+    #rl-select .back .key{display:inline-flex;align-items:center;justify-content:center;
+      width:40px;height:38px;border-radius:9px;background:#fff;color:#222;font-weight:800;
+      font-size:13px;letter-spacing:.5px;box-shadow:0 3px 12px rgba(0,0,0,.5);}
+    #rl-select .back .txt{font-weight:800;font-size:21px;text-shadow:0 2px 12px rgba(0,0,0,.75);}
+    #rl-select .back:hover{opacity:.85;}
+    /* kill the browser focus outline that flashes a square on the menu buttons */
+    #rl-menu .item:focus,#rl-menu .item:focus-visible,
+    #rl-select .tile:focus,#rl-select .back:focus{outline:none;}
   `;
   document.head.appendChild(style);
 
@@ -1136,6 +1246,7 @@ export function createStartMenu({
     <div class="panel">
       <div class="items">
         <button class="item sel" type="button" data-go="1">${CAP}Start</button>
+        <button class="item" type="button" data-open="1">${CAP}Characters</button>
         <button class="item" type="button">${CAP}How It Works</button>
         <button class="item" type="button">${CAP}Algorithms</button>
       </div>
@@ -1143,35 +1254,73 @@ export function createStartMenu({
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("show"));
 
-  // ---- character picker: cycle who sits in the left / right chair ------------
-  const pickEl = document.createElement("div");
-  pickEl.id = "rl-cpick";
-  const row = (side, lab) =>
-    `<div class="row" data-side="${side}"><span class="lab">${lab}</span>` +
-    `<button type="button" data-d="-1">&#8249;</button>` +
-    `<span class="name"></span>` +
-    `<button type="button" data-d="1">&#8250;</button></div>`;
-  pickEl.innerHTML = row(-1, "Left") + row(1, "Right");
-  document.body.appendChild(pickEl);
-  requestAnimationFrame(() => pickEl.classList.add("show"));
-  const nameOf = (side) =>
-    pickEl.querySelector(`.row[data-side="${side}"] .name`);
-  const refreshName = (side) => {
-    nameOf(side).textContent = CHARACTERS[picks[side]].name;
-  };
-  refreshName(-1);
-  refreshName(1);
-  pickEl.querySelectorAll("button").forEach((b) => {
-    b.addEventListener("click", () => {
-      if (starting) return;
-      const side = +b.parentElement.dataset.side;
-      const d = +b.dataset.d;
-      picks[side] = (picks[side] + d + CHARACTERS.length) % CHARACTERS.length;
-      savePicks();
-      refreshName(side);
-      seatCharacter(side, picks[side]);
+  // ---- character selector: a bottom panel with a Player 1 + Player 2 row, both
+  // shown at once. Opened from the "Characters" menu item; the menu slides left.
+  const selectEl = document.createElement("div");
+  selectEl.id = "rl-select";
+  selectEl.innerHTML =
+    `<div class="side left"><span class="plab">Player 1</span>` +
+    `<div class="grid" data-side="-1"></div></div>` +
+    `<div class="side right"><span class="plab">Player 2</span>` +
+    `<div class="grid" data-side="1"></div></div>` +
+    `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
+  document.body.appendChild(selectEl);
+
+  // a 3x2 grid of tiles per side; both reference the same 6 portraits
+  const sideTiles = { "-1": [], 1: [] };
+  for (const side of [-1, 1]) {
+    const strip = selectEl.querySelector(`.grid[data-side="${side}"]`);
+    CHARACTERS.forEach((def, idx) => {
+      const t = document.createElement("div");
+      t.className = "tile";
+      t.innerHTML = `<div class="pic"></div><div class="nm">${def.name}</div>`;
+      t.addEventListener("click", () => {
+        picks[side] = idx;
+        savePicks();
+        seatCharacter(side, idx);
+        refreshSelect();
+      });
+      strip.appendChild(t);
+      sideTiles[side].push(t);
     });
-  });
+  }
+
+  function refreshSelect() {
+    for (const side of [-1, 1])
+      sideTiles[side].forEach((t, i) =>
+        t.classList.toggle("sel", picks[side] === i),
+      );
+  }
+  refreshSelect();
+  selectEl.querySelector(".back").addEventListener("click", () => closeSelect());
+  function onSelectKey(e) {
+    if (e.key === "Escape" && selectEl.classList.contains("open")) closeSelect();
+  }
+  window.addEventListener("keydown", onSelectKey);
+
+  function closeSelect() {
+    selectEl.classList.remove("open");
+    el.classList.remove("shift"); // bring the main menu back
+  }
+  let portraitsStarted = false;
+  function openSelect() {
+    if (starting) return;
+    selectEl.classList.add("open");
+    el.classList.add("shift"); // slide the main menu off to the left
+    refreshSelect();
+    if (portraitsStarted) return;
+    portraitsStarted = true;
+    (async () => {
+      for (let i = 0; i < CHARACTERS.length; i++) {
+        if (disposed) return;
+        const url = await portrait(i);
+        if (!url) continue;
+        for (const side of [-1, 1])
+          sideTiles[side][i].querySelector(".pic").style.backgroundImage =
+            `url(${url})`;
+      }
+    })();
+  }
 
   // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
@@ -1198,8 +1347,8 @@ export function createStartMenu({
     starting = true;
     el.classList.remove("show");
     el.classList.add("out"); // fade the title card
-    pickEl.classList.remove("show");
-    pickEl.classList.add("out"); // fade the character picker too
+    selectEl.classList.remove("open"); // close the selector if it's open
+    el.classList.remove("shift");
 
     // 1) fly the camera UP through the porthole and OUT into the sky while the iris
     // closes. Aim at the window centre (not the low wall point), and keep looking
@@ -1265,6 +1414,7 @@ export function createStartMenu({
     it.addEventListener("click", () => {
       select(it);
       if (it.dataset.go) runStart();
+      else if (it.dataset.open) openSelect();
     });
   }
 
@@ -1304,9 +1454,10 @@ export function createStartMenu({
     if (disposed) return;
     disposed = true;
     window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("keydown", onSelectKey);
     disposeSeated(-1);
     disposeSeated(1);
-    pickEl.remove();
+    selectEl.remove();
     scene.remove(group);
     scene.remove(menuLights);
     for (const [l, i] of dimmedLights) l.intensity = i; // restore game daylight
