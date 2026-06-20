@@ -74,6 +74,7 @@ const JOINT_ALIASES = {
     ArmR1: "joint5",
     ArmR2: "joint22",
     HandR: "joint24",
+    Jaw: "joint25",
   },
   yoshi: {
     Hip: "joint13",
@@ -669,6 +670,10 @@ export function createStartMenu({
   }
 
   function poseNeutralMouth(rig, charKey) {
+    if (charKey === "luigi") {
+      addLocalPose(rig.jaw, 0, 0, 0.8);
+      return;
+    }
     if (charKey !== "mario") return;
     addLocalPose(rig.jaw, 0, 0, -0.2);
     addLocalPose(rig.lipLowerCenter, 0, 0, -0.06);
