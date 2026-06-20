@@ -142,6 +142,10 @@ const JOINT_ALIASES = {
     HandR: "joint55",
     HairL1: "joint29",
     HairR1: "joint30",
+    EyelidLA: "joint89",
+    EyelidLB: "joint90",
+    EyelidRA: "joint91",
+    EyelidRB: "joint92",
   },
   koopa: {
     Hip: "joint3",
@@ -635,6 +639,10 @@ export function createStartMenu({
       tail: bone("Tail"),
       hairL1: bone("HairL1"),
       hairR1: bone("HairR1"),
+      eyelidLA: bone("EyelidLA"),
+      eyelidLB: bone("EyelidLB"),
+      eyelidRA: bone("EyelidRA"),
+      eyelidRB: bone("EyelidRB"),
       jaw: bone("Jaw", "JoeUnder"),
       lipUpper: bone("LipUpper"),
       lipLowerCenter: bone("LipLowerCenter"),
@@ -879,6 +887,10 @@ export function createStartMenu({
         tail: idleCtrl(rig.tail),
         hairL1: idleCtrl(rig.hairL1),
         hairR1: idleCtrl(rig.hairR1),
+        eyelidLA: idleCtrl(rig.eyelidLA),
+        eyelidLB: idleCtrl(rig.eyelidLB),
+        eyelidRA: idleCtrl(rig.eyelidRA),
+        eyelidRB: idleCtrl(rig.eyelidRB),
         jaw: idleCtrl(rig.jaw),
         lipUpper: idleCtrl(rig.lipUpper),
         lipLowerCenter: idleCtrl(rig.lipLowerCenter),
@@ -898,8 +910,18 @@ export function createStartMenu({
   }
 
   function updateFaceIdle(state, t) {
-    const face = state.face;
-    if (!face?.eyelids?.length) return;
+    const face = state.face ?? {};
+    const meshEyelids = face.eyelids ?? [];
+    const eyeMeshes = face.eyes ?? [];
+    const b = state.bones ?? {};
+    const hasMeshBlink = meshEyelids.length > 0;
+    const hasBoneBlink = !!(
+      b.eyelidLA ||
+      b.eyelidLB ||
+      b.eyelidRA ||
+      b.eyelidRB
+    );
+    if (!hasMeshBlink && !hasBoneBlink) return;
     if (state.blinkAt == null) {
       state.blinkAt = t + 0.72 + (state.side < 0 ? 0 : 0.38);
       return;
@@ -919,10 +941,14 @@ export function createStartMenu({
       }
     }
     const closed = blink > 0.24;
-    for (const part of face.eyelids) part.mesh.visible = closed;
-    for (const part of face.eyes) {
+    for (const part of meshEyelids) part.mesh.visible = closed;
+    for (const part of eyeMeshes) {
       part.mesh.visible = part.baseVisible && blink < 0.72;
     }
+    applyIdle(b.eyelidLA, 0, 0, -blink * 0.42);
+    applyIdle(b.eyelidLB, 0, 0, -blink * 0.24);
+    applyIdle(b.eyelidRA, 0, 0, blink * 0.42);
+    applyIdle(b.eyelidRB, 0, 0, blink * 0.24);
   }
 
   function updateSeatedIdle(state, t) {
