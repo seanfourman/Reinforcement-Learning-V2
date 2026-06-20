@@ -172,8 +172,8 @@ const JOINT_ALIASES = {
 // the cabin scale automatically; tweak these to fine-tune how they sit) ---------
 const CHAR_HEIGHT = 1.72; // character height in WORLD units (the chair bbox is a
 //                          near-zero skinned-mesh box, so size absolutely instead)
-const CHAR_FWD = 0.58; // nudge out of the seat toward the camera, world units
-const CHAR_LIFT = 0.09; // vertical offset, world units (feet at floor = 0)
+const CHAR_FWD = 0.68; // nudge out of the seat toward the camera, world units
+const CHAR_LIFT = 0.1; // vertical offset, world units (feet at floor = 0)
 const CHAR_PITCH = 0.06; // small upright seated lean
 const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 
@@ -343,16 +343,27 @@ export function createStartMenu({
       return (h & 0xffff) / 0xffff;
     };
     const vnoise = (x, y, s) => {
-      const xi = Math.floor(x), yi = Math.floor(y);
-      const xf = x - xi, yf = y - yi;
-      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
-      const a = hash(xi, yi, s), b = hash(xi + 1, yi, s);
-      const e = hash(xi, yi + 1, s), f = hash(xi + 1, yi + 1, s);
+      const xi = Math.floor(x),
+        yi = Math.floor(y);
+      const xf = x - xi,
+        yf = y - yi;
+      const u = xf * xf * (3 - 2 * xf),
+        v = yf * yf * (3 - 2 * yf);
+      const a = hash(xi, yi, s),
+        b = hash(xi + 1, yi, s);
+      const e = hash(xi, yi + 1, s),
+        f = hash(xi + 1, yi + 1, s);
       return a + (b - a) * u + (e - a) * v + (a - b - e + f) * u * v;
     };
     const fbm = (x, y) => {
-      let val = 0, amp = 0.5, fr = 1;
-      for (let i = 0; i < 5; i++) { val += amp * vnoise(x * fr, y * fr, i * 131); fr *= 2; amp *= 0.5; }
+      let val = 0,
+        amp = 0.5,
+        fr = 1;
+      for (let i = 0; i < 5; i++) {
+        val += amp * vnoise(x * fr, y * fr, i * 131);
+        fr *= 2;
+        amp *= 0.5;
+      }
       return val;
     };
     const sstep = (a, b, x) => {
@@ -363,7 +374,9 @@ export function createStartMenu({
     const d = img.data;
     for (let y = 0; y < S; y++) {
       const t = y / S; // 0 = zenith (deep blue), 1 = horizon (pale)
-      const r0 = 26 + (104 - 26) * t, g0 = 92 + (166 - 92) * t, b0 = 204 + (230 - 204) * t;
+      const r0 = 26 + (104 - 26) * t,
+        g0 = 92 + (166 - 92) * t,
+        b0 = 204 + (230 - 204) * t;
       for (let x = 0; x < S; x++) {
         const n = fbm(x / 95, y / 52); // clouds wider than tall
         const cov = sstep(0.5, 0.72, n) * (0.4 + 0.6 * t); // more cloud toward the horizon
@@ -491,7 +504,7 @@ export function createStartMenu({
     try {
       localStorage.setItem(
         "rl-chars",
-        JSON.stringify({ "-1": picks[-1], "1": picks[1] }),
+        JSON.stringify({ "-1": picks[-1], 1: picks[1] }),
       );
     } catch {
       /* ignore */
@@ -601,7 +614,9 @@ export function createStartMenu({
       cur.normalize();
       tgt.normalize();
       const qWorld = new THREE.Quaternion().setFromUnitVectors(cur, tgt);
-      const nextWorld = qWorld.multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
+      const nextWorld = qWorld.multiply(
+        bone.getWorldQuaternion(new THREE.Quaternion()),
+      );
       const parentWorld = bone.parent
         ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
         : new THREE.Quaternion();
@@ -658,36 +673,49 @@ export function createStartMenu({
       const az = Math.abs(d.z);
       if (p.y > cy && ax > ay && ax > az) {
         const s = d.x < 0 ? "L" : "R";
-        if (!arm[s] || Math.abs(p.x - cx) < Math.abs(wp(arm[s]).x - cx)) arm[s] = b;
+        if (!arm[s] || Math.abs(p.x - cx) < Math.abs(wp(arm[s]).x - cx))
+          arm[s] = b;
       } else if (p.y < cy && ay > ax && ay > az && d.y < 0) {
         const s = p.x < cx ? "L" : "R";
         if (!thigh[s] || wp(thigh[s]).y < p.y) thigh[s] = b;
       }
     }
     const f = SEAT_FACE;
-    const sideAxis = arm.L && arm.R
-      ? wp(arm.L).sub(wp(arm.R)).normalize()
-      : new THREE.Vector3(-1, 0, 0);
+    const sideAxis =
+      arm.L && arm.R
+        ? wp(arm.L).sub(wp(arm.R)).normalize()
+        : new THREE.Vector3(-1, 0, 0);
     const down = new THREE.Vector3(0, -1, 0);
     const forward = new THREE.Vector3(0, 0, f);
     let posed = false;
     if (arm.L) {
       const out = sideAxis.clone();
-      const target = out.multiplyScalar(0.58).addScaledVector(down, 0.78).addScaledVector(forward, 0.08);
-      posed = aim.vector(arm.L, firstBoneChild(arm.L, boneSet), target) || posed;
+      const target = out
+        .multiplyScalar(0.58)
+        .addScaledVector(down, 0.78)
+        .addScaledVector(forward, 0.08);
+      posed =
+        aim.vector(arm.L, firstBoneChild(arm.L, boneSet), target) || posed;
     }
     if (arm.R) {
       const out = sideAxis.clone().negate();
-      const target = out.multiplyScalar(0.58).addScaledVector(down, 0.78).addScaledVector(forward, 0.08);
-      posed = aim.vector(arm.R, firstBoneChild(arm.R, boneSet), target) || posed;
+      const target = out
+        .multiplyScalar(0.58)
+        .addScaledVector(down, 0.78)
+        .addScaledVector(forward, 0.08);
+      posed =
+        aim.vector(arm.R, firstBoneChild(arm.R, boneSet), target) || posed;
     }
     for (const side of ["L", "R"]) {
       const thighBone = thigh[side];
       if (!thighBone) continue;
       const shin = firstBoneChild(thighBone, boneSet);
       const sign = side === "L" ? -1 : 1;
-      posed = aim(thighBone, shin, sign * 0.12, -0.18, f) || posed;
-      if (shin) posed = aim(shin, firstBoneChild(shin, boneSet), sign * 0.02, -1, 0.18 * f) || posed;
+      posed = aim(thighBone, shin, sign * 0.1, 0.02, 1.15 * f) || posed;
+      if (shin)
+        posed =
+          aim(shin, firstBoneChild(shin, boneSet), sign * 0.02, -1, 0.04 * f) ||
+          posed;
     }
     return posed;
   }
@@ -701,9 +729,10 @@ export function createStartMenu({
     const f = SEAT_FACE;
     const shoulderLeft = rig.shoulderL?.getWorldPosition(new THREE.Vector3());
     const shoulderRight = rig.shoulderR?.getWorldPosition(new THREE.Vector3());
-    const sideAxis = shoulderLeft && shoulderRight
-      ? shoulderLeft.sub(shoulderRight).normalize()
-      : new THREE.Vector3(-1, 0, 0);
+    const sideAxis =
+      shoulderLeft && shoulderRight
+        ? shoulderLeft.sub(shoulderRight).normalize()
+        : new THREE.Vector3(-1, 0, 0);
     const down = new THREE.Vector3(0, -1, 0);
     const forward = new THREE.Vector3(0, 0, f);
     let posed = false;
@@ -713,9 +742,9 @@ export function createStartMenu({
       const lower = side === "L" ? rig.legL2 : rig.legR2;
       const foot = side === "L" ? rig.footL : rig.footR;
       const toe = side === "L" ? rig.toeL : rig.toeR;
-      posed = aim(upper, lower, sign * 0.1, -0.18, 1.0 * f) || posed;
-      posed = aim(lower, foot, sign * 0.02, -0.98, 0.2 * f) || posed;
-      posed = aim(foot, toe, sign * 0.02, -0.04, 1.0 * f) || posed;
+      posed = aim(upper, lower, sign * 0.08, 0.02, 1.18 * f) || posed;
+      posed = aim(lower, foot, sign * 0.02, -1.0, 0.04 * f) || posed;
+      posed = aim(foot, toe, sign * 0.02, -0.04, 1.08 * f) || posed;
     };
     leg("L", -1);
     leg("R", 1);
@@ -725,8 +754,16 @@ export function createStartMenu({
       const lower = side === "L" ? rig.armL2 : rig.armR2;
       const hand = side === "L" ? rig.handL : rig.handR;
       const out = sideAxis.clone().multiplyScalar(side === "L" ? 1 : -1);
-      const upperTarget = out.clone().multiplyScalar(0.62).addScaledVector(down, 0.76).addScaledVector(forward, 0.08);
-      const lowerTarget = out.clone().multiplyScalar(0.3).addScaledVector(down, 0.42).addScaledVector(forward, 0.42);
+      const upperTarget = out
+        .clone()
+        .multiplyScalar(0.62)
+        .addScaledVector(down, 0.76)
+        .addScaledVector(forward, 0.08);
+      const lowerTarget = out
+        .clone()
+        .multiplyScalar(0.3)
+        .addScaledVector(down, 0.42)
+        .addScaledVector(forward, 0.42);
       posed = aim.vector(upper, lower, upperTarget) || posed;
       posed = aim.vector(lower, hand, lowerTarget) || posed;
     };
@@ -832,13 +869,24 @@ export function createStartMenu({
     const nod = Math.sin(t * 0.82 + p * 0.9);
     const hand = Math.sin(t * 1.55 + p + 0.4);
     const mouth = Math.sin(t * 0.74 + p * 1.9);
-    state.inner.position.y = state.basePos.y + breathe * 0.012 + breathe2 * 0.003;
+    state.inner.position.y =
+      state.basePos.y + breathe * 0.012 + breathe2 * 0.003;
     state.inner.rotation.y = state.baseRotY + state.side * glance * 0.014;
 
     updateFaceIdle(state, t);
     applyIdle(b.spine1, breathe * 0.012, state.side * glance * 0.006, 0);
-    applyIdle(b.spine2, breathe * 0.018, state.side * glance * 0.008, -state.side * breathe * 0.004);
-    applyIdle(b.head, nod * 0.018 + breathe * 0.006, state.side * glance * 0.026, -state.side * nod * 0.012);
+    applyIdle(
+      b.spine2,
+      breathe * 0.018,
+      state.side * glance * 0.008,
+      -state.side * breathe * 0.004,
+    );
+    applyIdle(
+      b.head,
+      nod * 0.018 + breathe * 0.006,
+      state.side * glance * 0.026,
+      -state.side * nod * 0.012,
+    );
     applyIdle(b.shoulderL, breathe * 0.012, 0, hand * 0.006);
     applyIdle(b.shoulderR, breathe * 0.012, 0, -hand * 0.006);
     applyIdle(b.armL1, hand * 0.018, 0, -breathe * 0.01);
@@ -914,9 +962,10 @@ export function createStartMenu({
         root.updateMatrixWorld(true);
         box = new THREE.Box3().setFromObject(root);
         s = box.getSize(new THREE.Vector3());
-        const anchor = (rig.hip || rig.spine1 || null)?.getWorldPosition(
-          new THREE.Vector3(),
-        ) ?? box.getCenter(new THREE.Vector3());
+        const anchor =
+          (rig.hip || rig.spine1 || null)?.getWorldPosition(
+            new THREE.Vector3(),
+          ) ?? box.getCenter(new THREE.Vector3());
         root.position.set(-anchor.x, -box.min.y, -anchor.z); // hips centred, feet at y=0
         const inner = new THREE.Group();
         inner.add(root);
@@ -1032,7 +1081,9 @@ export function createStartMenu({
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
   // = reveals the scene. Starts fully open (no black).
   const iris = document.createElement("div");
-  const diag = Math.ceil(Math.hypot(window.innerWidth, window.innerHeight) * 1.3);
+  const diag = Math.ceil(
+    Math.hypot(window.innerWidth, window.innerHeight) * 1.3,
+  );
   const setIris = (dpx) => {
     iris.style.width = iris.style.height = dpx + "px";
     iris.style.margin = `${-dpx / 2}px 0 0 ${-dpx / 2}px`;
@@ -1095,8 +1146,10 @@ export function createStartMenu({
     if (starting || disposed) return;
     const box = itemsBox.getBoundingClientRect();
     if (
-      e.clientX < box.left - 140 || e.clientX > box.right + 180 ||
-      e.clientY < box.top - 60 || e.clientY > box.bottom + 60
+      e.clientX < box.left - 140 ||
+      e.clientX > box.right + 180 ||
+      e.clientY < box.top - 60 ||
+      e.clientY > box.bottom + 60
     )
       return;
     let best = selected,
