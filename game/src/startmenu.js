@@ -176,6 +176,7 @@ const CHAR_LIFT = 0.1; // vertical offset, world units (feet at floor = 0)
 const CHAR_PITCH = 0.06; // small upright seated lean
 const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 const CHAR_SEAT_OFFSETS = {
+  pauline: { scale: 1.25, y: -0.55, z: -0.2 },
   toadette: { y: 0.24, z: -0.12 },
 };
 
@@ -1014,10 +1015,10 @@ export function createStartMenu({
         root.position.set(-anchor.x, -box.min.y, -anchor.z); // hips centred, feet at y=0
         const inner = new THREE.Group();
         inner.add(root);
-        inner.scale.setScalar(CHAR_HEIGHT / s.y);
+        const seatOffset = CHAR_SEAT_OFFSETS[charKey] ?? {};
+        inner.scale.setScalar((CHAR_HEIGHT * (seatOffset.scale ?? 1)) / s.y);
         inner.rotation.x = CHAR_PITCH;
         inner.rotation.y = CHAR_ROT;
-        const seatOffset = CHAR_SEAT_OFFSETS[charKey] ?? {};
         inner.position.set(
           seatOffset.x ?? 0,
           CHAR_LIFT + (seatOffset.y ?? 0),
