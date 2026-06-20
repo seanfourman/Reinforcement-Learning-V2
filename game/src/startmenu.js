@@ -185,23 +185,24 @@ const JOINT_ALIASES = {
     ArmR2: "joint51",
   },
   peach: {
-    LegL1: "joint67",
-    LegL2: "joint68",
-    FootL: "joint2",
-    LegR1: "joint69",
-    LegR2: "joint70",
-    FootR: "joint4",
-    Spine1: "joint12",
-    Spine2: "joint0",
-    Head: "joint54",
-    ShoulderL: "joint14",
-    ArmL1: "joint15",
-    ArmL2: "joint16",
-    HandL: "joint17",
-    ShoulderR: "joint33",
-    ArmR1: "joint34",
-    ArmR2: "joint35",
-    HandR: "joint36",
+    // PeachSwimwear rig (83 joints) — beach look (towel/sarong, flower, sunglasses)
+    LegL1: "joint2",
+    LegL2: "joint3",
+    FootL: "joint30",
+    LegR1: "joint5",
+    LegR2: "joint6",
+    FootR: "joint7",
+    Spine1: "joint9",
+    Spine2: "joint10",
+    Head: "joint12",
+    ShoulderL: "joint13",
+    ArmL1: "joint44",
+    ArmL2: "joint45",
+    HandL: "joint46",
+    ShoulderR: "joint14",
+    ArmR1: "joint15",
+    ArmR2: "joint62",
+    HandR: "joint63",
   },
   toad: {
     Hip: "joint3",
@@ -253,6 +254,7 @@ const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 const CHAR_SEAT_OFFSETS = {
   pauline: { scale: 1.25, y: -0.55, z: -0.2 },
   toadette: { y: 0.24, z: -0.12 },
+  peach: { scale: 1.25, y: -0.5, z: -0.2 }, // swimwear sits a touch high — drop her onto the cushion
 };
 
 // seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
@@ -883,11 +885,8 @@ export function createStartMenu({
       posed = aim(lower, foot, sign * 0.02, -1.0, 0.04 * f) || posed;
       posed = aim(foot, toe, sign * 0.02, -0.04, 1.08 * f) || posed;
     };
-    // skirt characters (Peach) look wrong with bent legs poking out — keep them straight
-    if (charKey !== "peach") {
-      leg("L", -1);
-      leg("R", 1);
-    }
+    leg("L", -1);
+    leg("R", 1);
 
     const arm = (side, sign) => {
       const upper = side === "L" ? rig.armL1 : rig.armR1;
@@ -1191,7 +1190,9 @@ export function createStartMenu({
         en = 0;
       root.traverse((o) => {
         if (o.isMesh && /eye/i.test(o.name) && !/brow|lid/i.test(o.name)) {
-          ez += new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).z;
+          ez += new THREE.Box3()
+            .setFromObject(o)
+            .getCenter(new THREE.Vector3()).z;
           en++;
         }
       });
@@ -1205,7 +1206,11 @@ export function createStartMenu({
       dl.position.set(target.x + dir, target.y + headH, target.z + dir * 2);
       sc.add(dl);
       const cam = new THREE.PerspectiveCamera(32, 1, 0.01, 1000);
-      cam.position.set(target.x, target.y + headH * 0.18, target.z + dir * headH * 3.2);
+      cam.position.set(
+        target.x,
+        target.y + headH * 0.18,
+        target.z + dir * headH * 3.2,
+      );
       cam.lookAt(target);
       const SZ = 256;
       const rt = new THREE.WebGLRenderTarget(SZ, SZ);
@@ -1400,9 +1405,12 @@ export function createStartMenu({
       );
   }
   refreshSelect();
-  selectEl.querySelector(".back").addEventListener("click", () => closeSelect());
+  selectEl
+    .querySelector(".back")
+    .addEventListener("click", () => closeSelect());
   function onSelectKey(e) {
-    if (e.key === "Escape" && selectEl.classList.contains("open")) closeSelect();
+    if (e.key === "Escape" && selectEl.classList.contains("open"))
+      closeSelect();
   }
   window.addEventListener("keydown", onSelectKey);
 
