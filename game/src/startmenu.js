@@ -175,6 +175,9 @@ const CHAR_FWD = 0.68; // nudge out of the seat toward the camera, world units
 const CHAR_LIFT = 0.1; // vertical offset, world units (feet at floor = 0)
 const CHAR_PITCH = 0.06; // small upright seated lean
 const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
+const CHAR_SEAT_OFFSETS = {
+  toadette: { y: 0.24, z: -0.12 },
+};
 
 // seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
 // JOINT_ALIASES maps those runtime names back to hips, legs, arms, and head.
@@ -519,7 +522,9 @@ export function createStartMenu({
       // the iris/eyeball meshes use the eye material (…__EyeMT / __EyePupil…) and the
       // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
       const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
-      const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(n);
+      const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(
+        n,
+      );
       const yoshiEye = charKey === "yoshi" && /^Eye[0-2]__/.test(n);
       if (charKey === "koopa" && koopaEye) {
         const open = /^EyeOpen__/.test(n);
@@ -1012,7 +1017,12 @@ export function createStartMenu({
         inner.scale.setScalar(CHAR_HEIGHT / s.y);
         inner.rotation.x = CHAR_PITCH;
         inner.rotation.y = CHAR_ROT;
-        inner.position.set(0, CHAR_LIFT, CHAR_FWD);
+        const seatOffset = CHAR_SEAT_OFFSETS[charKey] ?? {};
+        inner.position.set(
+          seatOffset.x ?? 0,
+          CHAR_LIFT + (seatOffset.y ?? 0),
+          CHAR_FWD + (seatOffset.z ?? 0),
+        );
         disposeSeated(side);
         wrap.add(inner);
         seated[side] = inner;
