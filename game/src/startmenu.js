@@ -584,6 +584,8 @@ export function createStartMenu({
         n,
       );
       const yoshiEye = charKey === "yoshi" && /^Eye[0-2]__/.test(n);
+      const peachEye =
+        charKey === "peach" && /^Eye(?:Open|Close|Half|Smile)[LR]__/.test(n);
       if (charKey === "koopa" && koopaEye) {
         const open = /^EyeOpen__/.test(n);
         const closed = /^EyeClose__/.test(n);
@@ -593,6 +595,13 @@ export function createStartMenu({
       } else if (yoshiEye) {
         const open = /^Eye0__/.test(n);
         const closed = /^Eye2__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (peachEye) {
+        // show only the open-eye meshes; hide the close/half/smile expressions
+        const open = /^EyeOpen[LR]__/.test(n);
+        const closed = /^EyeClose[LR]__/.test(n);
         o.visible = open;
         if (open) face.eyes.push({ mesh: o, baseVisible: true });
         if (closed) face.eyelids.push({ mesh: o });
@@ -856,8 +865,11 @@ export function createStartMenu({
       posed = aim(lower, foot, sign * 0.02, -1.0, 0.04 * f) || posed;
       posed = aim(foot, toe, sign * 0.02, -0.04, 1.08 * f) || posed;
     };
-    leg("L", -1);
-    leg("R", 1);
+    // skirt characters (Peach) look wrong with bent legs poking out — keep them straight
+    if (charKey !== "peach") {
+      leg("L", -1);
+      leg("R", 1);
+    }
 
     const arm = (side, sign) => {
       const upper = side === "L" ? rig.armL1 : rig.armR1;
@@ -1267,19 +1279,24 @@ export function createStartMenu({
     #rl-select .side.left .plab{color:#ff7d7d;}
     #rl-select .side.right .plab{color:#7da4ff;}
     #rl-select .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px 34px;}
-    #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;
-      transition:transform .12s ease;}
-    #rl-select .tile:hover{transform:translateY(-4px) scale(1.06);}
+    #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;}
     #rl-select .tile .pic{position:absolute;inset:0;background-size:contain;background-position:center;
       background-repeat:no-repeat;}
     /* 4 corner-bracket cursors on the selected tile, pulsing out and in */
     #rl-select .tile .cursor{position:absolute;inset:0;display:none;pointer-events:none;z-index:4;}
-    #rl-select .tile.sel .cursor{display:block;}
-    #rl-select .tile .cc{position:absolute;width:30px;height:30px;}
-    #rl-select .tile .cc.tl{top:10px;left:-8px;animation:rl-cur-tl .6s ease-in-out infinite;}
-    #rl-select .tile .cc.tr{top:10px;right:-8px;animation:rl-cur-tr .6s ease-in-out infinite;}
-    #rl-select .tile .cc.bl{bottom:-8px;left:-8px;animation:rl-cur-bl .6s ease-in-out infinite;}
-    #rl-select .tile .cc.br{bottom:-8px;right:-8px;animation:rl-cur-br .6s ease-in-out infinite;}
+    #rl-select .tile.sel .cursor,#rl-select .tile:hover .cursor{display:block;}
+    #rl-select .tile .cc{position:absolute;width:30px;height:30px;background-color:#fff;
+      -webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}
+    #rl-select .tile.sel .cursor .cc{background-color:#ffac33;} /* orange on the locked pick */
+    #rl-select .tile:hover .cursor .cc{background-color:#fff;} /* white follows the hover */
+    #rl-select .tile .cc.tl{top:10px;left:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_1.png);
+      mask-image:url(./assets/cursor/bg_cursor_1.png);animation:rl-cur-tl .6s ease-in-out infinite;}
+    #rl-select .tile .cc.tr{top:10px;right:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_2.png);
+      mask-image:url(./assets/cursor/bg_cursor_2.png);animation:rl-cur-tr .6s ease-in-out infinite;}
+    #rl-select .tile .cc.bl{bottom:-8px;left:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_3.png);
+      mask-image:url(./assets/cursor/bg_cursor_3.png);animation:rl-cur-bl .6s ease-in-out infinite;}
+    #rl-select .tile .cc.br{bottom:-8px;right:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_4.png);
+      mask-image:url(./assets/cursor/bg_cursor_4.png);animation:rl-cur-br .6s ease-in-out infinite;}
     @keyframes rl-cur-tl{0%{transform:translate(0,0);}67%{transform:translate(-5px,-5px);}100%{transform:translate(0,0);}}
     @keyframes rl-cur-tr{0%{transform:translate(0,0);}67%{transform:translate(5px,-5px);}100%{transform:translate(0,0);}}
     @keyframes rl-cur-bl{0%{transform:translate(0,0);}67%{transform:translate(-5px,5px);}100%{transform:translate(0,0);}}
@@ -1335,10 +1352,8 @@ export function createStartMenu({
   // corner-bracket cursors (shown on the selected tile)
   const CURSOR =
     `<div class="cursor">` +
-    `<img class="cc tl" src="./assets/cursor/bg_cursor_1.png">` +
-    `<img class="cc tr" src="./assets/cursor/bg_cursor_2.png">` +
-    `<img class="cc bl" src="./assets/cursor/bg_cursor_3.png">` +
-    `<img class="cc br" src="./assets/cursor/bg_cursor_4.png"></div>`;
+    `<div class="cc tl"></div><div class="cc tr"></div>` +
+    `<div class="cc bl"></div><div class="cc br"></div></div>`;
   const sideTiles = { "-1": [], 1: [] };
   for (const side of [-1, 1]) {
     const strip = selectEl.querySelector(`.grid[data-side="${side}"]`);
