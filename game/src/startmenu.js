@@ -1200,7 +1200,7 @@ export function createStartMenu({
     #rl-menu .item.sel .cap{width:62px;}
     /* character selector — slides up from the bottom; Player 1 on the left, Player 2
        on the right, the cabin fully visible between them (no backdrop) */
-    #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 70px;
+    #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 10vh;
       display:flex;flex-direction:row;justify-content:center;align-items:flex-end;gap:5vw;
       pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;
       transform:translateY(118%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
@@ -1221,7 +1221,7 @@ export function createStartMenu({
       background-repeat:no-repeat;}
     #rl-select .tile .nm{position:absolute;left:0;right:0;bottom:0;text-align:center;padding:4px 0;
       font-weight:800;font-size:12px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.82));}
-    #rl-select .back{position:absolute;left:3vw;bottom:20px;display:flex;align-items:center;gap:11px;
+    #rl-select .back{position:absolute;left:1.5vw;bottom:3vh;display:flex;align-items:center;gap:11px;
       cursor:pointer;pointer-events:auto;color:#fff;}
     #rl-select .back .key{display:inline-flex;align-items:center;justify-content:center;
       width:40px;height:38px;border-radius:9px;background:#fff;color:#222;font-weight:800;
