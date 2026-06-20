@@ -540,7 +540,12 @@ export function createStartMenu({
       }
       if (charKey === "luigi") {
         if (/Joe/i.test(n)) o.visible = false;
-      } else if (charKey === "mario" && /mario_(?:tongue|tooth)/i.test(n)) {
+      } else if (
+        charKey === "mario" &&
+        (/mario_(?:tongue|tooth)/i.test(n) || /^Hair__/i.test(n))
+      ) {
+        // hide the full hair (it pokes through the cap); the "cap-on" hair
+        // (CapHair__HairMT) stays so he's not bald under the hat
         o.visible = false;
       }
       o.castShadow = true;
