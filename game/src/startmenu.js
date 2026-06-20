@@ -569,6 +569,9 @@ export function createStartMenu({
         // hide the full hair (it pokes through the cap); the "cap-on" hair
         // (CapHair__HairMT) stays so he's not bald under the hat
         o.visible = false;
+      } else if (charKey === "pauline" && /HairCapOn/i.test(n)) {
+        // the small top clump pokes through the hat; her real hair (HairBase) stays
+        o.visible = false;
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
