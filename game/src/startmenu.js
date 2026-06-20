@@ -22,17 +22,154 @@ const CHARACTERS = [
   { name: "Koopa", file: "koopa/koopa.dae" },
 ];
 
+const JOINT_ALIASES = {
+  mario: {
+    Hip: "joint0",
+    LegL1: "joint1",
+    LegL2: "joint2",
+    FootL: "joint3",
+    ToeL: "joint4",
+    LegR1: "joint5",
+    LegR2: "joint6",
+    FootR: "joint7",
+    ToeR: "joint8",
+    Spine1: "joint9",
+    Spine2: "joint10",
+    Head: "joint11",
+    ShoulderL: "joint12",
+    ArmL1: "joint13",
+    ArmL2: "joint15",
+    HandL: "joint17",
+    ShoulderR: "joint18",
+    ArmR1: "joint19",
+    ArmR2: "joint21",
+    HandR: "joint23",
+  },
+  luigi: {
+    Hip: "joint11",
+    LegL1: "joint12",
+    LegL2: "joint13",
+    FootL: "joint14",
+    ToeL: "joint15",
+    LegR1: "joint16",
+    LegR2: "joint17",
+    FootR: "joint18",
+    ToeR: "joint19",
+    Spine1: "joint0",
+    Spine2: "joint1",
+    Head: "joint3",
+    ShoulderL: "joint6",
+    ArmL1: "joint7",
+    ArmL2: "joint21",
+    HandL: "joint23",
+    ShoulderR: "joint8",
+    ArmR1: "joint9",
+    ArmR2: "joint25",
+    HandR: "joint27",
+  },
+  yoshi: {
+    Hip: "joint13",
+    LegL1: "joint14",
+    LegL2: "joint15",
+    FootL: "joint16",
+    ToeL: "joint17",
+    LegR1: "joint18",
+    LegR2: "joint19",
+    FootR: "joint20",
+    ToeR: "joint21",
+    Tail: "joint22",
+    Spine1: "joint24",
+    Spine2: "joint25",
+    Head: "joint26",
+    ShoulderL: "joint31",
+    ArmL1: "joint32",
+    ArmL2: "joint34",
+    HandL: "joint36",
+    ShoulderR: "joint37",
+    ArmR1: "joint38",
+    ArmR2: "joint40",
+    HandR: "joint42",
+  },
+  toadette: {
+    Hip: "joint3",
+    LegL1: "joint4",
+    LegL2: "joint5",
+    FootL: "joint6",
+    LegR1: "joint7",
+    LegR2: "joint8",
+    FootR: "joint9",
+    Spine1: "joint10",
+    Spine2: "joint11",
+    Head: "joint12",
+    HairL1: "joint13",
+    HairR1: "joint16",
+    ShoulderL: "joint24",
+    ArmL1: "joint25",
+    ArmL2: "joint26",
+    HandL: "joint27",
+    ShoulderR: "joint28",
+    ArmR1: "joint29",
+    ArmR2: "joint30",
+    HandR: "joint31",
+  },
+  pauline: {
+    Hip: "joint3",
+    LegL1: "joint4",
+    LegL2: "joint5",
+    FootL: "joint6",
+    LegR1: "joint10",
+    LegR2: "joint11",
+    FootR: "joint12",
+    Spine1: "joint18",
+    Spine2: "joint19",
+    Head: "joint22",
+    ShoulderL: "joint31",
+    ArmL1: "joint32",
+    ArmL2: "joint33",
+    HandL: "joint35",
+    ShoulderR: "joint52",
+    ArmR1: "joint53",
+    ArmR2: "joint54",
+    HandR: "joint55",
+    HairL1: "joint29",
+    HairR1: "joint30",
+  },
+  koopa: {
+    Hip: "joint3",
+    LegL1: "joint4",
+    LegL2: "joint5",
+    FootL: "joint6",
+    ToeL: "joint7",
+    LegR1: "joint8",
+    LegR2: "joint9",
+    FootR: "joint10",
+    ToeR: "joint11",
+    Spine1: "joint12",
+    Spine2: "joint13",
+    Head: "joint14",
+    ShoulderL: "joint16",
+    ArmL1: "joint17",
+    ArmL2: "joint18",
+    HandL: "joint19",
+    ShoulderR: "joint20",
+    ArmR1: "joint21",
+    ArmR2: "joint22",
+    HandR: "joint23",
+  },
+};
+
 // --- seating knobs (the character is scaled RELATIVE to the chair, so it tracks
 // the cabin scale automatically; tweak these to fine-tune how they sit) ---------
-const CHAR_HEIGHT = 1.8; // character height in WORLD units (the chair bbox is a
+const CHAR_HEIGHT = 1.72; // character height in WORLD units (the chair bbox is a
 //                          near-zero skinned-mesh box, so size absolutely instead)
-const CHAR_FWD = 0.0; // nudge out of the seat toward the camera, world units
-const CHAR_LIFT = 0.0; // vertical offset, world units (feet at floor = 0)
+const CHAR_FWD = 0.42; // nudge out of the seat toward the camera, world units
+const CHAR_LIFT = 0.025; // vertical offset, world units (feet at floor = 0)
+const CHAR_PITCH = 0.06; // small upright seated lean
 const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 
 // seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
-// so arms/legs are found by position + bone direction in the T-pose, then reoriented.
-// SEAT_FACE flips which way is "forward" if the legs/arms end up reaching backward.
+// JOINT_ALIASES maps those runtime names back to hips, legs, arms, and head.
+// SEAT_FACE flips which way is "forward" for future assets if needed.
 const SEAT_FACE = 1; // +1 or -1
 
 // --- camera framing knobs (fractions of the ROOM box; the giant backdrop plane
@@ -325,6 +462,7 @@ export function createStartMenu({
   const chairWrap = {}; // side(-1/+1) -> chair wrap Group
   const chairSize = {}; // side -> chair Box3 size (for scaling the character)
   const seated = {}; // side -> the character Group currently in the chair
+  const seatedIdle = {}; // side -> seated rig animation state
   const seatToken = {}; // side -> guard so rapid cycling ignores stale loads
 
   function readPicks() {
@@ -377,75 +515,240 @@ export function createStartMenu({
     });
   }
 
-  // bend the leg bones into a seated pose. These rip rigs use LegL1/R1 (thighs) and
-  // LegL2/R2 (shins); missing bones are skipped so non-humanoids just stay standing.
-  function poseSeated(root) {
-    root.updateMatrixWorld(true);
-    const set = new Set();
+  function collectRig(root, charKey) {
+    const bones = new Map();
+    const aliases = JOINT_ALIASES[charKey] ?? {};
     root.traverse((o) => {
-      if (o.isBone) set.add(o);
-      else if (o.isSkinnedMesh && o.skeleton)
-        o.skeleton.bones.forEach((b) => set.add(b));
+      if (o.isBone) bones.set(o.name, o);
+      else if (o.isSkinnedMesh && o.skeleton) {
+        o.skeleton.bones.forEach((b) => bones.set(b.name, b));
+      }
     });
-    const bones = [...set];
-    if (!bones.length) return;
+    const bone = (...names) => {
+      for (const n of names) {
+        const b = bones.get(n) || bones.get(aliases[n]);
+        if (b) return b;
+      }
+      return null;
+    };
+    return {
+      bones: [...bones.values()],
+      hip: bone("Hip"),
+      spine1: bone("Spine1"),
+      spine2: bone("Spine2"),
+      head: bone("Head"),
+      shoulderL: bone("ShoulderL"),
+      shoulderR: bone("ShoulderR"),
+      armL1: bone("ArmL1"),
+      armR1: bone("ArmR1"),
+      armL2: bone("ArmL2"),
+      armR2: bone("ArmR2"),
+      handL: bone("HandL"),
+      handR: bone("HandR"),
+      legL1: bone("LegL1"),
+      legR1: bone("LegR1"),
+      legL2: bone("LegL2"),
+      legR2: bone("LegR2"),
+      footL: bone("FootL"),
+      footR: bone("FootR"),
+      toeL: bone("ToeL"),
+      toeR: bone("ToeR"),
+      tail: bone("Tail"),
+      hairL1: bone("HairL1"),
+      hairR1: bone("HairR1"),
+    };
+  }
+
+  function makeBoneAimer(root) {
+    const wp = (b) => b.getWorldPosition(new THREE.Vector3());
+    return (bone, targetBone, tx, ty, tz) => {
+      if (!bone || !targetBone) return false;
+      root.updateMatrixWorld(true);
+      const cur = wp(targetBone).sub(wp(bone));
+      const tgt = new THREE.Vector3(tx, ty, tz);
+      if (cur.lengthSq() < 1e-8 || tgt.lengthSq() < 1e-8) return false;
+      cur.normalize();
+      tgt.normalize();
+      const qWorld = new THREE.Quaternion().setFromUnitVectors(cur, tgt);
+      const nextWorld = qWorld.multiply(bone.getWorldQuaternion(new THREE.Quaternion()));
+      const parentWorld = bone.parent
+        ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
+        : new THREE.Quaternion();
+      bone.quaternion.copy(parentWorld.invert().multiply(nextWorld));
+      bone.updateMatrixWorld(true);
+      return true;
+    };
+  }
+
+  function firstBoneChild(bone, boneSet) {
+    return bone?.children.find((c) => boneSet.has(c)) ?? null;
+  }
+
+  function poseFallbackSeated(root, rig, aim) {
+    const bones = rig.bones;
+    const boneSet = new Set(bones);
+    if (!bones.length) return false;
     const wp = (b) => b.getWorldPosition(new THREE.Vector3());
     const bb = new THREE.Box3();
     bones.forEach((b) => bb.expandByPoint(wp(b)));
     const cx = (bb.min.x + bb.max.x) / 2;
     const cy = (bb.min.y + bb.max.y) / 2;
-    const childBone = (b) => b.children.find((c) => set.has(c));
-    // rotate a bone so its child points along (tx,ty,tz) in world space
-    const point = (b, tx, ty, tz) => {
-      const c = childBone(b);
-      if (!c) return;
-      const cur = wp(c).sub(wp(b)).normalize();
-      const tgt = new THREE.Vector3(tx, ty, tz).normalize();
-      const qW = new THREE.Quaternion().setFromUnitVectors(cur, tgt);
-      const nW = qW.multiply(b.getWorldQuaternion(new THREE.Quaternion()));
-      const pW = b.parent
-        ? b.parent.getWorldQuaternion(new THREE.Quaternion())
-        : new THREE.Quaternion();
-      b.quaternion.copy(pW.invert().multiply(nW));
-      b.updateMatrixWorld(true);
-    };
-    const f = SEAT_FACE;
-    // identify the upper arms (horizontal, upper half) and thighs (downward, hips)
     const arm = { L: null, R: null };
     const thigh = { L: null, R: null };
     for (const b of bones) {
-      const c = childBone(b);
+      const c = firstBoneChild(b, boneSet);
       if (!c) continue;
       const p = wp(b);
       const d = wp(c).sub(p);
-      const ax = Math.abs(d.x),
-        ay = Math.abs(d.y),
-        az = Math.abs(d.z);
+      const ax = Math.abs(d.x);
+      const ay = Math.abs(d.y);
+      const az = Math.abs(d.z);
       if (p.y > cy && ax > ay && ax > az) {
-        const s = d.x < 0 ? "L" : "R"; // arm points outward
+        const s = d.x < 0 ? "L" : "R";
         if (!arm[s] || Math.abs(p.x - cx) < Math.abs(wp(arm[s]).x - cx)) arm[s] = b;
       } else if (p.y < cy && ay > ax && ay > az && d.y < 0) {
-        const s = p.x < cx ? "L" : "R"; // leg hangs down
+        const s = p.x < cx ? "L" : "R";
         if (!thigh[s] || wp(thigh[s]).y < p.y) thigh[s] = b;
       }
     }
-    console.log(
-      `[pose] armL=${arm.L?.name} armR=${arm.R?.name} thighL=${thigh.L?.name} thighR=${thigh.R?.name}`,
-    );
-    if (arm.L) point(arm.L, -0.25, -1, 0.15 * f); // arms down to the sides
-    if (arm.R) point(arm.R, 0.25, -1, 0.15 * f);
-    for (const s of ["L", "R"]) {
-      const t = thigh[s];
-      if (!t) continue;
-      point(t, s === "L" ? -0.15 : 0.15, -0.2, f); // thigh forward (sit)
-      const shin = childBone(t);
-      if (shin) point(shin, 0, -1, 0.12 * f); // knee bent, shin down
+    const f = SEAT_FACE;
+    let posed = false;
+    if (arm.L) posed = aim(arm.L, firstBoneChild(arm.L, boneSet), -0.35, -0.85, 0.2 * f) || posed;
+    if (arm.R) posed = aim(arm.R, firstBoneChild(arm.R, boneSet), 0.35, -0.85, 0.2 * f) || posed;
+    for (const side of ["L", "R"]) {
+      const thighBone = thigh[side];
+      if (!thighBone) continue;
+      const shin = firstBoneChild(thighBone, boneSet);
+      const sign = side === "L" ? -1 : 1;
+      posed = aim(thighBone, shin, sign * 0.12, -0.18, f) || posed;
+      if (shin) posed = aim(shin, firstBoneChild(shin, boneSet), sign * 0.02, -1, 0.18 * f) || posed;
+    }
+    return posed;
+  }
+
+  // Build a chair-ready pose from the named Nintendo-style limb rig. If a future
+  // model lacks those names, the fallback still finds broad limb directions.
+  function poseSeated(root, charKey) {
+    root.updateMatrixWorld(true);
+    const rig = collectRig(root, charKey);
+    const aim = makeBoneAimer(root);
+    const f = SEAT_FACE;
+    let posed = false;
+
+    const leg = (side, sign) => {
+      const upper = side === "L" ? rig.legL1 : rig.legR1;
+      const lower = side === "L" ? rig.legL2 : rig.legR2;
+      const foot = side === "L" ? rig.footL : rig.footR;
+      const toe = side === "L" ? rig.toeL : rig.toeR;
+      posed = aim(upper, lower, sign * 0.1, -0.18, 1.0 * f) || posed;
+      posed = aim(lower, foot, sign * 0.02, -0.98, 0.2 * f) || posed;
+      posed = aim(foot, toe, sign * 0.02, -0.04, 1.0 * f) || posed;
+    };
+    leg("L", -1);
+    leg("R", 1);
+
+    const arm = (side, sign) => {
+      const upper = side === "L" ? rig.armL1 : rig.armR1;
+      const lower = side === "L" ? rig.armL2 : rig.armR2;
+      const hand = side === "L" ? rig.handL : rig.handR;
+      posed = aim(upper, lower, sign * 0.38, -0.82, 0.22 * f) || posed;
+      posed = aim(lower, hand, sign * 0.08, -0.38, 0.92 * f) || posed;
+    };
+    arm("L", -1);
+    arm("R", 1);
+
+    if (!posed) poseFallbackSeated(root, rig, aim);
+    root.updateMatrixWorld(true);
+    return rig;
+  }
+
+  const idleEuler = new THREE.Euler();
+  const idleQuat = new THREE.Quaternion();
+  function idleCtrl(bone) {
+    return bone ? { bone, base: bone.quaternion.clone() } : null;
+  }
+
+  function createSeatedIdle(root, inner, side, rig) {
+    const phase = (side < 0 ? 0.7 : 3.6) + Math.random() * 0.35;
+    return {
+      root,
+      inner,
+      side,
+      phase,
+      basePos: inner.position.clone(),
+      baseRotY: inner.rotation.y,
+      bones: {
+        spine1: idleCtrl(rig.spine1),
+        spine2: idleCtrl(rig.spine2),
+        head: idleCtrl(rig.head),
+        shoulderL: idleCtrl(rig.shoulderL),
+        shoulderR: idleCtrl(rig.shoulderR),
+        armL1: idleCtrl(rig.armL1),
+        armR1: idleCtrl(rig.armR1),
+        armL2: idleCtrl(rig.armL2),
+        armR2: idleCtrl(rig.armR2),
+        handL: idleCtrl(rig.handL),
+        handR: idleCtrl(rig.handR),
+        footL: idleCtrl(rig.footL),
+        footR: idleCtrl(rig.footR),
+        toeL: idleCtrl(rig.toeL),
+        toeR: idleCtrl(rig.toeR),
+        tail: idleCtrl(rig.tail),
+        hairL1: idleCtrl(rig.hairL1),
+        hairR1: idleCtrl(rig.hairR1),
+      },
+    };
+  }
+
+  function applyIdle(ctrl, x = 0, y = 0, z = 0) {
+    if (!ctrl) return;
+    idleEuler.set(x, y, z, "XYZ");
+    idleQuat.setFromEuler(idleEuler);
+    ctrl.bone.quaternion.copy(ctrl.base).multiply(idleQuat);
+  }
+
+  function updateSeatedIdle(state, t) {
+    const b = state.bones;
+    const p = state.phase;
+    const breathe = Math.sin(t * 1.35 + p);
+    const breathe2 = Math.sin(t * 2.7 + p * 0.6);
+    const glance = Math.sin(t * 0.38 + p * 1.7);
+    const nod = Math.sin(t * 0.82 + p * 0.9);
+    const hand = Math.sin(t * 1.55 + p + 0.4);
+    state.inner.position.y = state.basePos.y + breathe * 0.012 + breathe2 * 0.003;
+    state.inner.rotation.y = state.baseRotY + state.side * glance * 0.014;
+
+    applyIdle(b.spine1, breathe * 0.012, state.side * glance * 0.006, 0);
+    applyIdle(b.spine2, breathe * 0.018, state.side * glance * 0.008, -state.side * breathe * 0.004);
+    applyIdle(b.head, nod * 0.018 + breathe * 0.006, state.side * glance * 0.026, -state.side * nod * 0.012);
+    applyIdle(b.shoulderL, breathe * 0.012, 0, hand * 0.006);
+    applyIdle(b.shoulderR, breathe * 0.012, 0, -hand * 0.006);
+    applyIdle(b.armL1, hand * 0.018, 0, -breathe * 0.01);
+    applyIdle(b.armR1, -hand * 0.018, 0, breathe * 0.01);
+    applyIdle(b.armL2, -hand * 0.012, breathe * 0.005, 0);
+    applyIdle(b.armR2, hand * 0.012, -breathe * 0.005, 0);
+    applyIdle(b.handL, 0, 0, hand * 0.025);
+    applyIdle(b.handR, 0, 0, -hand * 0.025);
+    applyIdle(b.footL, Math.sin(t * 0.9 + p) * 0.01, 0, 0);
+    applyIdle(b.footR, Math.sin(t * 0.85 + p + 1.6) * 0.01, 0, 0);
+    applyIdle(b.toeL, Math.sin(t * 1.1 + p) * 0.012, 0, 0);
+    applyIdle(b.toeR, Math.sin(t * 1.05 + p + 1.4) * 0.012, 0, 0);
+    applyIdle(b.tail, breathe * 0.018, state.side * hand * 0.016, 0);
+    applyIdle(b.hairL1, hand * 0.012, 0, breathe * 0.01);
+    applyIdle(b.hairR1, -hand * 0.012, 0, -breathe * 0.01);
+    state.root.updateMatrixWorld(true);
+  }
+
+  function updateSeatedIdles(t) {
+    for (const state of Object.values(seatedIdle)) {
+      if (state) updateSeatedIdle(state, t);
     }
   }
 
   function disposeSeated(side) {
     const g = seated[side];
     if (!g) return;
+    delete seatedIdle[side];
     g.parent?.remove(g);
     g.traverse((o) => {
       if (!o.isMesh) return;
@@ -479,22 +782,26 @@ export function createStartMenu({
         if (s.y < Math.max(s.x, s.z) * 0.85) {
           root.rotation.set(0, 0, 0);
         }
-        poseSeated(root); // bend the legs into a sit
+        const rig = poseSeated(root, def.file.split("/")[0]); // bend the legs into a sit
         tuneChar(root); // matte materials + open eyes
         // re-measure AFTER posing so the seated figure sits feet-on-floor
         root.updateMatrixWorld(true);
         box = new THREE.Box3().setFromObject(root);
         s = box.getSize(new THREE.Vector3());
-        const ctr = box.getCenter(new THREE.Vector3());
-        root.position.set(-ctr.x, -box.min.y, -ctr.z); // centred, feet at y=0
+        const anchor = (rig.hip || rig.spine1 || null)?.getWorldPosition(
+          new THREE.Vector3(),
+        ) ?? box.getCenter(new THREE.Vector3());
+        root.position.set(-anchor.x, -box.min.y, -anchor.z); // hips centred, feet at y=0
         const inner = new THREE.Group();
         inner.add(root);
         inner.scale.setScalar(CHAR_HEIGHT / s.y);
+        inner.rotation.x = CHAR_PITCH;
         inner.rotation.y = CHAR_ROT;
         inner.position.set(0, CHAR_LIFT, CHAR_FWD);
         disposeSeated(side);
         wrap.add(inner);
         seated[side] = inner;
+        seatedIdle[side] = createSeatedIdle(root, inner, side, rig);
       })
       .catch((e) => console.warn("character load failed:", def.file, e));
   }
@@ -688,6 +995,7 @@ export function createStartMenu({
 
   // ---- per-frame: a gentle cinematic camera drift ----------------------
   function update(dt, t) {
+    updateSeatedIdles(t);
     if (!framed) return;
     if (flying) {
       // accelerate forward through the porthole, looking out into the sky. Ease the
