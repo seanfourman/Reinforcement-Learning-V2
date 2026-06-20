@@ -254,6 +254,7 @@ const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 const CHAR_SEAT_OFFSETS = {
   pauline: { scale: 1.25, y: -0.55, z: -0.2 },
   toadette: { y: 0.24, z: -0.12 },
+  toad: { y: 0.25 }, // sits low — lift him onto the cushion
   peach: { scale: 1.25, y: -0.5, z: -0.2 }, // swimwear sits a touch high — drop her onto the cushion
   parabones: { y: 0.35 }, // winged — hovers above the seat
 };
@@ -657,6 +658,15 @@ export function createStartMenu({
         o.visible = false;
       } else if (charKey === "parabones" && /^Mustache/i.test(n)) {
         o.visible = false; // remove the mustache
+      } else if (charKey === "parabones" && /MarioEye/i.test(n)) {
+        // glowing yellow eyes
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!m) continue;
+          m.map = null;
+          m.color?.set?.(0xffe11a);
+          m.emissive?.set?.(0xffd000);
+          if ("emissiveIntensity" in m) m.emissiveIntensity = 0.7;
+        }
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
@@ -928,8 +938,16 @@ export function createStartMenu({
       posed = aim.vector(upper, lower, upperTarget) || posed;
       posed = aim.vector(lower, hand, lowerTarget) || posed;
     };
-    arm("L", -1);
-    arm("R", 1);
+    // Parabones' thin skeletal arms get tucked into the body by the seated aim —
+    // rotate the bind T-pose arms down to the sides with a simple local roll instead
+    if (charKey !== "parabones") {
+      arm("L", -1);
+      arm("R", 1);
+    } else {
+      // remove the arms — collapse the arm bones so the geometry shrinks into the body
+      rig.armL1?.scale.setScalar(0.0001);
+      rig.armR1?.scale.setScalar(0.0001);
+    }
     if (charKey === "pauline") {
       addLocalPose(rig.handL, -1.5, 0, 0);
       addLocalPose(rig.handR, -1.5, 0, 0);
