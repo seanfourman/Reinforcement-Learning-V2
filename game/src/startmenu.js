@@ -537,7 +537,10 @@ export function createStartMenu({
         face.eyes.push({ mesh: o, baseVisible: o.visible });
       }
       if (charKey === "luigi") {
-        if (/Joe/i.test(n)) o.visible = false;
+        if (/bag/i.test(n)) o.visible = false; // remove the backpack
+        // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) —
+        // keep only the 00 pose so the hand doesn't render doubled
+        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
       } else if (
         charKey === "mario" &&
         (/mario_(?:tongue|tooth)/i.test(n) || /^Hair__/i.test(n))
