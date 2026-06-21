@@ -1665,14 +1665,25 @@ export function createStartMenu({
     #rl-algos .scr-head{text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.5);}
     #rl-algos .scr-title{font-size:34px;font-weight:900;letter-spacing:1px;}
     #rl-algos .scr-sub{font-size:15px;opacity:.85;margin-top:3px;}
-    #rl-algos .arow{display:flex;gap:30px;flex-wrap:nowrap;justify-content:center;}
+    #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
-    .acard{position:relative;display:flex;width:322px;box-sizing:border-box;border-radius:20px;overflow:hidden;
+    /* stationary hover anchor: the slot never moves, the card inside animates */
+    .acard-slot{position:relative;display:flex;flex:none;width:322px;z-index:calc(var(--i,0) + 1);}
+    .acard-slot:not(:first-child){margin-left:-80px;}
+    .acard{position:relative;flex:1;display:flex;box-sizing:border-box;border-radius:20px;overflow:hidden;
       padding:9px;color:#5e564a;
       background:repeating-linear-gradient(45deg,var(--c) 0 13px,#fbf8f0 13px 26px);
-      transform:rotate(var(--rot,0deg));z-index:calc(10 - var(--i,0));
-      transition:transform .18s ease;}
-    .acard:hover{transform:translateY(-16px) rotate(0deg) scale(1.04);z-index:30;}
+      transform:rotate(var(--rot,0deg));}
+    #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .55s ease-in-out forwards;}
+    #rl-algos .acard-slot.lower .acard{animation:rl-card-return .55s ease-in-out forwards;}
+    @keyframes rl-card-pull{
+      0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
+      50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      100%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}}
+    @keyframes rl-card-return{
+      0%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}
+      50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      100%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}}
     .acard .pc-paper{position:relative;flex:1;border-radius:12px;padding:0 0 19px;
       display:flex;flex-direction:column;
       background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 30px),#f6f1e4;}
@@ -1720,7 +1731,7 @@ export function createStartMenu({
     #rl-scr-back:hover{opacity:.85;}
     @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(var(--rot,0deg)) scale(.96);opacity:0;}
       100%{transform:translateX(0) rotate(var(--rot,0deg)) scale(1);opacity:1;}}
-    #rl-algos.open .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
+    #rl-algos.dealing .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
       animation-delay:calc(var(--i,0) * .09s);}
     #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
     #rl-algos.closing .acard{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
@@ -1771,7 +1782,8 @@ export function createStartMenu({
   algosEl.innerHTML =
     `<div class="arow">` +
     ALGOS.map((a, i) =>
-      `<div class="acard" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg">` +
+      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg">` +
+      `<div class="acard">` +
       `<span class="pc-postmark"></span>` +
       `<div class="pc-stamp">${a.badge}</div>` +
       `<div class="pc-paper">` +
@@ -1782,10 +1794,30 @@ export function createStartMenu({
       `<p class="pc-msg">${a.desc}</p>` +
       `<div class="pc-rule"></div>` +
       `<div class="pc-good"><span class="pc-good-lbl">Good for</span>${a.good}</div>` +
-      `</div></div>`,
+      `</div></div></div>`,
     ).join("") +
     `</div>`;
   document.body.appendChild(algosEl);
+  const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
+  algoSlots.forEach((slot, i) => {
+    if (i === algoSlots.length - 1) return; // rightmost has no card to rise above
+    const clearTimers = () => {
+      clearTimeout(slot._ztid); clearTimeout(slot._dtid); clearTimeout(slot._rtid);
+    };
+    slot.addEventListener("mouseenter", () => {
+      clearTimers();
+      slot.classList.remove("lower");
+      slot.classList.add("lift");
+      slot._ztid = setTimeout(() => { slot.style.zIndex = "50"; }, 220); // raise after it slid clear
+    });
+    slot.addEventListener("mouseleave", () => {
+      clearTimers();
+      slot.classList.remove("lift");
+      slot.classList.add("lower"); // slide back out to the side, then sink into the deck
+      slot._dtid = setTimeout(() => { slot.style.zIndex = ""; }, 275); // drop as it re-enters
+      slot._rtid = setTimeout(() => { slot.classList.remove("lower"); }, 550);
+    });
+  });
 
   const howtoEl = document.createElement("div");
   howtoEl.id = "rl-howto";
@@ -1812,6 +1844,7 @@ export function createStartMenu({
   titleHowto.textContent = "How It Works";
   document.body.appendChild(titleHowto);
   let algosCloseTok = 0;
+  let algosDealTok = 0;
   function dropTitle(t) {
     t._fallTok = (t._fallTok || 0) + 1; // cancel any pending fall-cleanup
     t.classList.remove("show", "fall");
@@ -1836,7 +1869,7 @@ export function createStartMenu({
       algosEl.classList.add("closing"); // let the cards fly out left, then hide
       const tok = ++algosCloseTok;
       setTimeout(() => {
-        if (tok === algosCloseTok) algosEl.classList.remove("open", "closing");
+        if (tok === algosCloseTok) algosEl.classList.remove("open", "closing", "dealing");
       }, 650);
     }
     howtoEl.classList.remove("open");
@@ -1849,7 +1882,9 @@ export function createStartMenu({
     closeScreens();
     algosCloseTok++; // cancel any pending close cleanup
     algosEl.classList.remove("closing");
-    algosEl.classList.add("open");
+    algosEl.classList.add("open", "dealing");
+    const dtok = ++algosDealTok;
+    setTimeout(() => { if (dtok === algosDealTok) algosEl.classList.remove("dealing"); }, 1100);
     el.classList.add("shift"); // slide the main menu off to the left
     dropTitle(titleAlgos);
     scrBack.classList.add("show");
