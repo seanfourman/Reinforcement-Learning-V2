@@ -1674,8 +1674,8 @@ export function createStartMenu({
       padding:9px;color:#5e564a;
       background:repeating-linear-gradient(45deg,var(--c) 0 13px,#fbf8f0 13px 26px);
       transform:rotate(var(--rot,0deg));}
-    #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .55s ease-in-out forwards;}
-    #rl-algos .acard-slot.lower .acard{animation:rl-card-return .55s ease-in-out forwards;}
+    #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .4s ease-in-out forwards;}
+    #rl-algos .acard-slot.lower .acard{animation:rl-card-return .4s ease-in-out forwards;}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
       50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
@@ -1816,9 +1816,9 @@ export function createStartMenu({
     slot.classList.remove("lower");
     slot.classList.add("lift");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 220); // raise after it slid clear
+    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 160); // raise after it slid clear
     clearTimeout(animTimer);
-    animTimer = setTimeout(() => { busy = false; settle(); }, 550);
+    animTimer = setTimeout(() => { busy = false; settle(); }, 400);
   }
   function doLower(slot) {
     busy = true;
@@ -1826,13 +1826,13 @@ export function createStartMenu({
     slot.classList.remove("lift");
     slot.classList.add("lower");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 275); // drop as it re-enters
+    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 200); // drop as it re-enters
     clearTimeout(animTimer);
     animTimer = setTimeout(() => {
       slot.classList.remove("lower");
       busy = false;
       settle();
-    }, 550);
+    }, 400);
   }
   liftable.forEach((slot) => {
     slot.addEventListener("mouseenter", () => { curHover = slot; settle(); });
