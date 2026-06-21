@@ -1799,24 +1799,44 @@ export function createStartMenu({
     `</div>`;
   document.body.appendChild(algosEl);
   const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
-  algoSlots.forEach((slot, i) => {
-    if (i === algoSlots.length - 1) return; // rightmost has no card to rise above
-    const clearTimers = () => {
-      clearTimeout(slot._ztid); clearTimeout(slot._dtid); clearTimeout(slot._rtid);
-    };
-    slot.addEventListener("mouseenter", () => {
-      clearTimers();
+  const liftable = algoSlots.slice(0, -1); // rightmost has no card to rise above
+  let curHover = null; // slot under the cursor
+  let lifted = null;   // slot currently lifted
+  let busy = false;    // an animation is mid-flight -> block triggering another card
+  let animTimer = 0;
+  function settle() {
+    // only act between animations; one card moves at a time
+    if (busy) return;
+    if (lifted && lifted !== curHover) doLower(lifted);
+    else if (!lifted && curHover) doLift(curHover);
+  }
+  function doLift(slot) {
+    busy = true;
+    lifted = slot;
+    slot.classList.remove("lower");
+    slot.classList.add("lift");
+    clearTimeout(slot._z);
+    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 220); // raise after it slid clear
+    clearTimeout(animTimer);
+    animTimer = setTimeout(() => { busy = false; settle(); }, 550);
+  }
+  function doLower(slot) {
+    busy = true;
+    lifted = null;
+    slot.classList.remove("lift");
+    slot.classList.add("lower");
+    clearTimeout(slot._z);
+    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 275); // drop as it re-enters
+    clearTimeout(animTimer);
+    animTimer = setTimeout(() => {
       slot.classList.remove("lower");
-      slot.classList.add("lift");
-      slot._ztid = setTimeout(() => { slot.style.zIndex = "50"; }, 220); // raise after it slid clear
-    });
-    slot.addEventListener("mouseleave", () => {
-      clearTimers();
-      slot.classList.remove("lift");
-      slot.classList.add("lower"); // slide back out to the side, then sink into the deck
-      slot._dtid = setTimeout(() => { slot.style.zIndex = ""; }, 275); // drop as it re-enters
-      slot._rtid = setTimeout(() => { slot.classList.remove("lower"); }, 550);
-    });
+      busy = false;
+      settle();
+    }, 550);
+  }
+  liftable.forEach((slot) => {
+    slot.addEventListener("mouseenter", () => { curHover = slot; settle(); });
+    slot.addEventListener("mouseleave", () => { if (curHover === slot) curHover = null; settle(); });
   });
 
   const howtoEl = document.createElement("div");
