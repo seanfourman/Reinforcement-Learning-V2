@@ -1359,8 +1359,8 @@ export function createStartMenu({
   }
 
   load("HomeInside.dae", (room) => frame(room));
-  load("HomeChairL.dae", () => seatCharacter(-1, picks[-1]), -1);
-  load("HomeChairR.dae", () => seatCharacter(1, picks[1]), +1);
+  load("HomeChairL.dae", () => showInChair(-1, picks[-1]), -1);
+  load("HomeChairR.dae", () => showInChair(1, picks[1]), +1);
 
   // ---- DOM overlay -----------------------------------------------------
   const style = document.createElement("style");
@@ -1423,9 +1423,7 @@ export function createStartMenu({
       background-repeat:no-repeat;}
     /* 4 corner-bracket cursors on the selected tile, pulsing out and in */
     #rl-select .tile .cursor{position:absolute;inset:0;display:none;pointer-events:none;z-index:4;}
-    #rl-select .tile.sel .cursor,#rl-select .tile:hover .cursor{display:block;}
-    /* hovering moves the cursor off the locked pick onto whatever you point at */
-    #rl-select .grid:hover .tile.sel:not(:hover) .cursor{display:none;}
+    #rl-select .tile.preview .cursor{display:block;}
     #rl-select .tile .cc{position:absolute;width:30px;height:30px;background-color:#fff;
       -webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;}
     #rl-select .tile .cc.tl{top:10px;left:-8px;-webkit-mask-image:url(./assets/cursor/bg_cursor_1.png);
@@ -1491,8 +1489,23 @@ export function createStartMenu({
     `<div class="cc tl"></div><div class="cc tr"></div>` +
     `<div class="cc bl"></div><div class="cc br"></div></div>`;
   const sideTiles = { "-1": [], 1: [] };
+  // which character each chair currently shows. Hovering a tile previews that
+  // character in the chair; leaving reverts to the locked pick. Deduped so the
+  // same model isn't reloaded.
+  const shownIdx = { "-1": null, 1: null };
+  function showInChair(side, idx) {
+    if (shownIdx[side] === idx) return;
+    shownIdx[side] = idx;
+    seatCharacter(side, idx);
+    // the cursor brackets follow whatever the chair is showing (the hover preview,
+    // or the locked pick when not hovering) -> stays put across the inter-tile gaps
+    sideTiles[side].forEach((t, i) => t.classList.toggle("preview", i === idx));
+  }
   for (const side of [-1, 1]) {
     const strip = selectEl.querySelector(`.grid[data-side="${side}"]`);
+    // revert to the pick only when the mouse leaves the WHOLE grid, so crossing the
+    // gaps between tiles doesn't briefly flip back to the selected character
+    strip.addEventListener("mouseleave", () => showInChair(side, picks[side]));
     CHARACTERS.forEach((def, idx) => {
       const key = def.file.split("/")[0];
       const t = document.createElement("div");
@@ -1501,10 +1514,11 @@ export function createStartMenu({
       t.innerHTML =
         `<div class="pic" style="background-image:url(./assets/icons/${key}.png)"></div>` +
         CURSOR;
+      t.addEventListener("mouseenter", () => showInChair(side, idx));
       t.addEventListener("click", () => {
         picks[side] = idx;
         savePicks();
-        seatCharacter(side, idx);
+        showInChair(side, idx);
         refreshSelect();
       });
       strip.appendChild(t);
