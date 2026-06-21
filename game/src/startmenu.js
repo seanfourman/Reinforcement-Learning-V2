@@ -1403,7 +1403,25 @@ export function createStartMenu({
     #rl-select .side{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;}
     #rl-select .plab{display:inline-flex;align-items:center;gap:9px;
       padding:6px 8px 6px 18px;border-radius:999px;font-weight:900;
-      text-transform:uppercase;color:#fff;border:2px solid rgba(255,255,255,.3);}
+      text-transform:uppercase;color:#fff;border:2px solid rgba(255,255,255,.3);
+      position:relative;overflow:hidden;}
+    /* recurring light "glint" sweeping across each pill */
+    #rl-select .plab::after{content:"";position:absolute;top:0;left:-60%;width:45%;
+      height:100%;pointer-events:none;transform:skewX(-22deg);
+      background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);
+;}
+    #rl-select.open .plab::after{animation:rl-plab-shine 3.6s ease-in-out infinite;}
+    #rl-select.open .side.right .plab::after{animation-delay:1.8s;}
+    @keyframes rl-plab-shine{0%{left:-60%;}22%{left:140%;}100%{left:140%;}}
+    /* bouncy pop-in when the selector opens (P1 from the left, P2 from the right) */
+    #rl-select.open .side.left .plab{
+      animation:rl-plab-in-l .55s cubic-bezier(.34,1.56,.64,1) .08s both;}
+    #rl-select.open .side.right .plab{
+      animation:rl-plab-in-r .55s cubic-bezier(.34,1.56,.64,1) .08s both;}
+    @keyframes rl-plab-in-l{0%{transform:translateX(-46px) scale(.8);opacity:0;}
+      100%{transform:none;opacity:1;}}
+    @keyframes rl-plab-in-r{0%{transform:translateX(46px) scale(.8);opacity:0;}
+      100%{transform:none;opacity:1;}}
     #rl-select .plab .ptxt{font-size:17px;letter-spacing:3px;}
     #rl-select .plab .pnum{display:grid;place-items:center;width:30px;height:30px;
       box-sizing:border-box;padding-bottom:2px;border-radius:50%;font-size:19px;background:#fff;}
@@ -1462,9 +1480,9 @@ export function createStartMenu({
     <div class="panel">
       <div class="items">
         <button class="item sel" type="button" data-go="1">${CAP}Start</button>
+        <button class="item" type="button" data-algos="1">${CAP}Algorithms</button>
         <button class="item" type="button" data-open="1">${CAP}Characters</button>
-        <button class="item" type="button">${CAP}How It Works</button>
-        <button class="item" type="button">${CAP}Algorithms</button>
+        <button class="item" type="button" data-howto="1">${CAP}How It Works</button>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -1545,13 +1563,210 @@ export function createStartMenu({
   function closeSelect() {
     selectEl.classList.remove("open");
     el.classList.remove("shift"); // bring the main menu back
+    titleChars.classList.remove("show");
   }
   function openSelect() {
     if (starting) return;
     selectEl.classList.add("open");
     el.classList.add("shift"); // slide the main menu off to the left
+    dropTitle(titleChars);
     refreshSelect();
   }
+
+  // ===== "How It Works" + "Algorithms" info screens (Nintendo flash-card style) =====
+  const screenCSS = document.createElement("style");
+  screenCSS.textContent = `
+    @font-face{font-family:"SuperMario256";
+      src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
+    #rl-algos,#rl-howto{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:24px;padding:30px;box-sizing:border-box;
+      opacity:0;pointer-events:none;}
+    #rl-algos.open,#rl-howto.open{opacity:1;pointer-events:auto;}
+    #rl-algos .scr-head{text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.5);}
+    #rl-algos .scr-title{font-size:34px;font-weight:900;letter-spacing:1px;}
+    #rl-algos .scr-sub{font-size:15px;opacity:.85;margin-top:3px;}
+    #rl-algos .arow{display:flex;gap:16px;flex-wrap:nowrap;justify-content:center;}
+    .acard{width:200px;background:#fff;border-radius:18px;overflow:hidden;cursor:pointer;
+      border:3px solid transparent;display:flex;flex-direction:column;
+      transition:transform .15s ease,border-color .15s ease;}
+    .acard:hover{transform:translateY(-6px);}
+    .acard .acard-bar{height:8px;background:var(--c);}
+    .acard .acard-h{display:flex;align-items:center;gap:10px;padding:13px 14px 4px;}
+    .acard .acard-badge{flex:none;width:42px;height:42px;border-radius:12px;display:grid;
+      place-items:center;font-weight:900;font-size:15px;color:#fff;background:var(--c);}
+    .acard .acard-name{font-size:16px;font-weight:800;color:#222;line-height:1.1;}
+    .acard .acard-type{font-size:10px;font-weight:700;color:#9097a0;text-transform:uppercase;
+      letter-spacing:.5px;margin-top:3px;}
+    .acard .acard-tag{padding:6px 14px 0;font-style:italic;font-weight:700;color:var(--c);font-size:13px;}
+    .acard .acard-desc{padding:7px 14px 4px;margin:0;font-size:12.5px;line-height:1.5;color:#454b54;flex:1;}
+    .acard .acard-good{margin:6px 12px 10px;padding:8px 10px;background:#f4f5f7;border-radius:10px;
+      font-size:11.5px;line-height:1.45;color:#454b54;}
+    .acard .acard-good .lbl{display:block;font-weight:800;color:var(--c);text-transform:uppercase;
+      font-size:10px;letter-spacing:.6px;margin-bottom:2px;}
+    .acard .acard-pick{padding:9px;text-align:center;font-weight:900;font-size:12px;letter-spacing:1px;
+      color:#9aa0a8;border-top:2px dashed #e6e8ec;text-transform:uppercase;}
+    .acard.picked{border-color:var(--c);}
+    .acard.picked .acard-pick{color:#fff;background:var(--c);border-top:2px solid var(--c);}
+    #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
+    #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
+    #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
+    #rl-howto .ht-step{display:flex;gap:14px;align-items:flex-start;padding:11px 0;border-top:1px solid #eee;}
+    #rl-howto .ht-n{flex:none;width:32px;height:32px;border-radius:50%;background:var(--c);color:#fff;
+      display:grid;place-items:center;font-weight:900;font-size:15px;}
+    #rl-howto .ht-step b{display:block;color:#222;font-size:15px;}
+    #rl-howto .ht-step span{display:block;color:#586069;font-size:13px;line-height:1.5;margin-top:2px;}
+    #rl-howto .ht-foot{margin-top:14px;font-size:12.5px;color:#7b828b;font-style:italic;}
+    #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
+      gap:11px;cursor:pointer;color:#fff;pointer-events:none;
+      transform:translateY(220%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
+    #rl-scr-back.show{transform:translateY(0);pointer-events:auto;}
+    #rl-scr-back .key{display:inline-flex;align-items:center;justify-content:center;width:40px;
+      height:38px;border-radius:9px;background:#fff;color:#222;font-weight:800;font-size:13px;
+      letter-spacing:.5px;box-shadow:0 3px 12px rgba(0,0,0,.5);}
+    #rl-scr-back .txt{font-weight:800;font-size:21px;text-shadow:0 2px 12px rgba(0,0,0,.75);}
+    #rl-scr-back:hover{opacity:.85;}
+    @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(7deg) scale(.96);opacity:0;}
+      100%{transform:none;opacity:1;}}
+    #rl-algos.open .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
+      animation-delay:calc(var(--i,0) * .09s);}
+    #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
+    .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
+      font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
+      font-size:clamp(54px,9vw,110px);color:#fff;-webkit-text-stroke:6px #1f1f1f;paint-order:stroke fill;
+      transform:translateY(-260%);}
+    .big-title.show{animation:rl-title-drop .9s .1s both;}
+    @keyframes rl-title-drop{
+      0%{transform:translateY(-260%) rotate(3deg);animation-timing-function:cubic-bezier(.55,.02,.9,.26);}
+      44%{transform:translateY(0) rotate(-7deg);animation-timing-function:ease-out;}
+      62%{transform:translateY(-54px) rotate(0deg);animation-timing-function:ease-in;}
+      78%{transform:translateY(0) rotate(-5deg);animation-timing-function:ease-out;}
+      89%{transform:translateY(-22px) rotate(-2deg);animation-timing-function:ease-in;}
+      100%{transform:translateY(0) rotate(-3deg);}}`;
+  document.head.appendChild(screenCSS);
+
+  const ALGOS = [
+    {key:"dp",badge:"DP",name:"Dynamic Programming",type:"Model-based / Planning",color:"#f59e0b",
+     tag:'"The all-knowing planner"',
+     desc:"Hand it the full rulebook - every move's outcome and reward - and it computes the perfect strategy before taking a single step.",
+     good:"Small, fully-known worlds. It's the benchmark every other method chases."},
+    {key:"montecarlo",badge:"MC",name:"Monte Carlo",type:"Model-free / Episodic",color:"#a855f7",
+     tag:'"The patient gambler"',
+     desc:"Plays whole episodes out to the end, then learns from the real final score - no mid-game guessing, just outcomes.",
+     good:"Episodic tasks with clear endings. Simple and unbiased, but it waits for the finish line."},
+    {key:"sarsa",badge:"S",name:"SARSA",type:"On-policy / TD learning",color:"#22c55e",
+     tag:'"The cautious learner"',
+     desc:"Learns by doing and values the path it actually walks - exploration slip-ups included. It plays it safe.",
+     good:"Online learning where mistakes are costly. Finds a reliable route, not a reckless one."},
+    {key:"qlearning",badge:"Q",name:"Q-Learning",type:"Off-policy / TD learning",color:"#3b82f6",
+     tag:'"The bold optimist"',
+     desc:"Explores freely but always learns the value of the best move - so it chases the optimal path even while wandering.",
+     good:"Finding the best policy fast on table-sized worlds. Aggressive and effective."},
+    {key:"dqn",badge:"DQN",name:"Deep Q-Network",type:"Deep RL / Neural Q",color:"#ef4444",
+     tag:'"Q-Learning, supersized"',
+     desc:"Swaps the lookup table for a neural network, with experience replay and a target net to stay stable.",
+     good:"Huge or pixel-based worlds where a table would never fit. The heavyweight of the bracket."},
+  ];
+  const algosEl = document.createElement("div");
+  algosEl.id = "rl-algos";
+  algosEl.innerHTML =
+    `<div class="arow">` +
+    ALGOS.map((a, i) =>
+      `<div class="acard" data-algo="${a.key}" style="--c:${a.color};--i:${i}">` +
+      `<div class="acard-bar"></div>` +
+      `<div class="acard-h"><span class="acard-badge">${a.badge}</span>` +
+      `<div><div class="acard-name">${a.name}</div>` +
+      `<div class="acard-type">${a.type}</div></div></div>` +
+      `<div class="acard-tag">${a.tag}</div>` +
+      `<p class="acard-desc">${a.desc}</p>` +
+      `<div class="acard-good"><span class="lbl">Good for</span>${a.good}</div>` +
+      `<div class="acard-pick">Pick this team</div></div>`,
+    ).join("") +
+    `</div>`;
+  document.body.appendChild(algosEl);
+
+  let algoPick = null;
+  try { algoPick = localStorage.getItem("rl-algo"); } catch { /* ignore */ }
+  const acards = [...algosEl.querySelectorAll(".acard")];
+  function refreshAlgos() {
+    acards.forEach((c) => {
+      const picked = c.dataset.algo === algoPick;
+      c.classList.toggle("picked", picked);
+      c.querySelector(".acard-pick").textContent = picked ? "Your team" : "Pick this team";
+    });
+  }
+  acards.forEach((c) =>
+    c.addEventListener("click", () => {
+      algoPick = c.dataset.algo;
+      try { localStorage.setItem("rl-algo", algoPick); } catch { /* ignore */ }
+      refreshAlgos();
+    }),
+  );
+  refreshAlgos();
+
+  const howtoEl = document.createElement("div");
+  howtoEl.id = "rl-howto";
+  howtoEl.innerHTML =
+    `<div class="howto-card">` +
+    `<div class="ht-title">How It Works</div>` +
+    `<p class="ht-lede">Rival Minds pits two reinforcement-learning brains against each other across themed rounds - Red vs Blue. Last mind standing takes the crown.</p>` +
+    `<div class="ht-step" style="--c:#f59e0b"><div class="ht-n">1</div><div><b>Learn</b><span>Each agent learns by trial and error: try a move, earn a reward, and sharpen its strategy - its policy.</span></div></div>` +
+    `<div class="ht-step" style="--c:#22c55e"><div class="ht-n">2</div><div><b>Face off</b><span>Both brains tackle the same map at once, one Red and one Blue, so every duel is fair and head-to-head.</span></div></div>` +
+    `<div class="ht-step" style="--c:#3b82f6"><div class="ht-n">3</div><div><b>Score</b><span>Whoever solves the round better - faster, safer, higher reward - wins the point.</span></div></div>` +
+    `<div class="ht-step" style="--c:#ef4444"><div class="ht-n">4</div><div><b>Crown</b><span>Take the most rounds across the bracket and you're the champion of Rival Minds.</span></div></div>` +
+    `<div class="ht-foot">Pick your fighters and your algorithm team, then watch them compete.</div></div>`;
+  document.body.appendChild(howtoEl);
+
+  const titleAlgos = document.createElement("div");
+  titleAlgos.className = "big-title";
+  titleAlgos.textContent = "Algorithms";
+  document.body.appendChild(titleAlgos);
+  const titleChars = document.createElement("div");
+  titleChars.className = "big-title";
+  titleChars.textContent = "Characters";
+  document.body.appendChild(titleChars);
+  function dropTitle(t) {
+    t.classList.remove("show");
+    void t.offsetWidth; // force reflow so the drop replays each open
+    t.classList.add("show");
+  }
+  const scrBack = document.createElement("div");
+  scrBack.id = "rl-scr-back";
+  scrBack.innerHTML = `<span class="key">ESC</span><span class="txt">Back</span>`;
+  document.body.appendChild(scrBack);
+
+  function closeScreens() {
+    algosEl.classList.remove("open");
+    howtoEl.classList.remove("open");
+    el.classList.remove("shift");
+    titleAlgos.classList.remove("show");
+    scrBack.classList.remove("show");
+  }
+  function openAlgos() {
+    closeScreens();
+    algosEl.classList.add("open");
+    el.classList.add("shift"); // slide the main menu off to the left
+    dropTitle(titleAlgos);
+    scrBack.classList.add("show");
+  }
+  function openHowto() {
+    closeScreens();
+    howtoEl.classList.add("open");
+    el.classList.add("shift");
+    scrBack.classList.add("show");
+  }
+  scrBack.addEventListener("click", closeScreens);
+  for (const sc of [algosEl, howtoEl]) {
+    sc.addEventListener("click", (e) => {
+      if (e.target === sc) closeScreens();
+    });
+  }
+  window.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      (algosEl.classList.contains("open") || howtoEl.classList.contains("open"))
+    )
+      closeScreens();
+  });
 
   // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
@@ -1646,6 +1861,8 @@ export function createStartMenu({
       select(it);
       if (it.dataset.go) runStart();
       else if (it.dataset.open) openSelect();
+      else if (it.dataset.howto) openHowto();
+      else if (it.dataset.algos) openAlgos();
     });
   }
 
