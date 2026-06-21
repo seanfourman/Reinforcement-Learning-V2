@@ -1407,6 +1407,12 @@ export function createStartMenu({
     #rl-select .side.right .plab{color:#7da4ff;}
     #rl-select .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px 34px;}
     #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;}
+    #rl-select.open .tile{transform-origin:28% 72%;
+      animation:rl-tile-pop .5s cubic-bezier(.34,1.56,.64,1) both;
+      animation-delay:calc(0.15s + var(--i,0) * 45ms);}
+    @keyframes rl-tile-pop{
+      0%{transform:translate(-22px,22px) scale(.2) rotate(-12deg);opacity:0;}
+      100%{transform:none;opacity:1;}}
     #rl-select .tile .pic{position:absolute;inset:0;background-size:contain;background-position:center;
       background-repeat:no-repeat;}
     /* 4 corner-bracket cursors on the selected tile, pulsing out and in */
@@ -1485,6 +1491,7 @@ export function createStartMenu({
       const key = def.file.split("/")[0];
       const t = document.createElement("div");
       t.className = "tile";
+      t.style.setProperty("--i", idx); // stagger index for the swing-in
       t.innerHTML =
         `<div class="pic" style="background-image:url(./assets/icons/${key}.png)"></div>` +
         CURSOR;
