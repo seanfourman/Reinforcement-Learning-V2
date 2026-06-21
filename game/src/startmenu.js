@@ -1846,7 +1846,7 @@ export function createStartMenu({
       `<div class="pc-tag">${t.tag}</div>` +
       `<p class="pc-msg">${t.desc}</p>` +
       `<div class="pc-rule"></div>` +
-      `<div class="pc-good"><span class="pc-good-lbl">Inside &middot; tap to open</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
+      `<div class="pc-good"><span class="pc-good-lbl">Inside</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
       `</div></div>` +
       `<div class="acard pc-back">` +
       `<div class="pc-paper pc-back-paper">` +
