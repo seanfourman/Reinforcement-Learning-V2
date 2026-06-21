@@ -1670,7 +1670,7 @@ export function createStartMenu({
     /* stationary hover anchor: the slot never moves, the card inside animates */
     .acard-slot{position:relative;display:flex;flex:none;width:322px;z-index:calc(var(--i,0) + 1);}
     .acard-slot:not(:first-child){margin-left:-80px;}
-    .acard{position:relative;flex:1;display:flex;box-sizing:border-box;border-radius:20px;overflow:hidden;
+    .acard{position:relative;flex:1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:20px;overflow:hidden;
       padding:9px;color:#5e564a;
       background:repeating-linear-gradient(45deg,var(--c) 0 13px,#fbf8f0 13px 26px);
       transform:rotate(var(--rot,0deg));}
@@ -1684,7 +1684,7 @@ export function createStartMenu({
       0%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}
       50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}}
-    .acard .pc-paper{position:relative;flex:1;border-radius:12px;padding:0 0 19px;
+    .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:12px;padding:0 0 19px;
       display:flex;flex-direction:column;
       background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 30px),#f6f1e4;}
     .acard .pc-head{display:flex;justify-content:flex-start;align-items:baseline;
