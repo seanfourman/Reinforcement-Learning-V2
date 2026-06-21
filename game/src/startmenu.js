@@ -1665,28 +1665,41 @@ export function createStartMenu({
     #rl-algos .scr-head{text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.5);}
     #rl-algos .scr-title{font-size:34px;font-weight:900;letter-spacing:1px;}
     #rl-algos .scr-sub{font-size:15px;opacity:.85;margin-top:3px;}
-    #rl-algos .arow{display:flex;gap:16px;flex-wrap:nowrap;justify-content:center;}
-    .acard{width:200px;background:#fff;border-radius:18px;overflow:hidden;cursor:pointer;
-      border:3px solid transparent;display:flex;flex-direction:column;
-      transition:transform .15s ease,border-color .15s ease;}
-    .acard:hover{transform:translateY(-6px);}
-    .acard .acard-bar{height:8px;background:var(--c);}
-    .acard .acard-h{display:flex;align-items:center;gap:10px;padding:13px 14px 4px;}
-    .acard .acard-badge{flex:none;width:42px;height:42px;border-radius:12px;display:grid;
-      place-items:center;font-weight:900;font-size:15px;color:#fff;background:var(--c);}
-    .acard .acard-name{font-size:16px;font-weight:800;color:#222;line-height:1.1;}
-    .acard .acard-type{font-size:10px;font-weight:700;color:#9097a0;text-transform:uppercase;
-      letter-spacing:.5px;margin-top:3px;}
-    .acard .acard-tag{padding:6px 14px 0;font-style:italic;font-weight:700;color:var(--c);font-size:13px;}
-    .acard .acard-desc{padding:7px 14px 4px;margin:0;font-size:12.5px;line-height:1.5;color:#454b54;flex:1;}
-    .acard .acard-good{margin:6px 12px 10px;padding:8px 10px;background:#f4f5f7;border-radius:10px;
-      font-size:11.5px;line-height:1.45;color:#454b54;}
-    .acard .acard-good .lbl{display:block;font-weight:800;color:var(--c);text-transform:uppercase;
-      font-size:10px;letter-spacing:.6px;margin-bottom:2px;}
-    .acard .acard-pick{padding:9px;text-align:center;font-weight:900;font-size:12px;letter-spacing:1px;
-      color:#9aa0a8;border-top:2px dashed #e6e8ec;text-transform:uppercase;}
-    .acard.picked{border-color:var(--c);}
-    .acard.picked .acard-pick{color:#fff;background:var(--c);border-top:2px solid var(--c);}
+    #rl-algos .arow{display:flex;gap:30px;flex-wrap:nowrap;justify-content:center;}
+        /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
+    .acard{position:relative;display:flex;width:322px;box-sizing:border-box;border-radius:20px;overflow:hidden;
+      padding:9px;color:#5e564a;
+      background:repeating-linear-gradient(45deg,var(--c) 0 13px,#fbf8f0 13px 26px);
+      transform:rotate(var(--rot,0deg));z-index:calc(10 - var(--i,0));
+      transition:transform .18s ease;}
+    .acard:hover{transform:translateY(-16px) rotate(0deg) scale(1.04);z-index:30;}
+    .acard .pc-paper{position:relative;flex:1;border-radius:12px;padding:0 0 19px;
+      display:flex;flex-direction:column;
+      background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 30px),#f6f1e4;}
+    .acard .pc-head{display:flex;justify-content:flex-start;align-items:baseline;
+      padding:11px 18px 7px;margin-bottom:12px;border-bottom:1.5px solid rgba(120,100,60,.3);}
+    .acard .pc-series{font-size:12px;font-weight:800;letter-spacing:1.5px;color:#a99c80;
+      text-transform:uppercase;}
+    .acard .pc-stamp{position:absolute;top:20px;right:20px;z-index:5;width:62px;height:74px;
+      display:grid;place-items:center;font-weight:900;font-size:21px;color:#fff;background:var(--c);
+      border:3px solid #fbf8f0;outline:2px dashed rgba(255,255,255,.85);outline-offset:-4px;
+      transform:rotate(6deg);box-shadow:0 2px 7px rgba(0,0,0,.24);}
+    .acard .pc-postmark{position:absolute;top:15px;right:58px;z-index:6;width:58px;height:58px;
+      border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(-14deg);}
+    .acard .pc-postmark::after{content:"★";position:absolute;inset:0;display:grid;
+      place-items:center;color:rgba(55,48,40,.42);font-size:20px;}
+    .acard .pc-name{padding:0 19px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
+      font-size:31px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:80px;
+      min-height:2.06em;}
+    .acard .pc-type{padding:0 19px;margin-top:11px;font-size:13px;font-weight:800;letter-spacing:2px;
+      text-transform:uppercase;color:var(--c);}
+    .acard .pc-tag{padding:0 19px;margin-top:16px;font-family:Georgia,serif;font-style:italic;
+      font-size:20px;color:#4a443b;}
+    .acard .pc-msg{padding:0 19px;margin:13px 0 0;font-size:16px;line-height:1.5;flex:1;}
+    .acard .pc-rule{margin:16px 19px 12px;height:0;border-top:1.5px dashed rgba(120,100,60,.42);}
+    .acard .pc-good{padding:0 19px;font-size:15px;line-height:1.5;}
+    .acard .pc-good-lbl{display:block;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
+      font-size:12px;color:var(--c);margin-bottom:5px;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
     #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
@@ -1705,15 +1718,15 @@ export function createStartMenu({
       letter-spacing:.5px;box-shadow:0 3px 12px rgba(0,0,0,.5);}
     #rl-scr-back .txt{font-weight:800;font-size:21px;text-shadow:0 2px 12px rgba(0,0,0,.75);}
     #rl-scr-back:hover{opacity:.85;}
-    @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(7deg) scale(.96);opacity:0;}
-      100%{transform:none;opacity:1;}}
+    @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(var(--rot,0deg)) scale(.96);opacity:0;}
+      100%{transform:translateX(0) rotate(var(--rot,0deg)) scale(1);opacity:1;}}
     #rl-algos.open .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
       animation-delay:calc(var(--i,0) * .09s);}
     #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
     #rl-algos.closing .acard{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
       animation-delay:calc(var(--i,0) * .05s);}
-    @keyframes rl-card-fly-out{0%{transform:none;opacity:1;}
-      100%{transform:translateX(-118vw) rotate(-8deg);opacity:0;}}
+    @keyframes rl-card-fly-out{0%{transform:translateX(0) rotate(var(--rot,0deg));opacity:1;}
+      100%{transform:translateX(-118vw) rotate(var(--rot,0deg));opacity:0;}}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:clamp(54px,9vw,110px);color:#fff;-webkit-text-stroke:6px #1f1f1f;paint-order:stroke fill;
@@ -1758,37 +1771,21 @@ export function createStartMenu({
   algosEl.innerHTML =
     `<div class="arow">` +
     ALGOS.map((a, i) =>
-      `<div class="acard" data-algo="${a.key}" style="--c:${a.color};--i:${i}">` +
-      `<div class="acard-bar"></div>` +
-      `<div class="acard-h"><span class="acard-badge">${a.badge}</span>` +
-      `<div><div class="acard-name">${a.name}</div>` +
-      `<div class="acard-type">${a.type}</div></div></div>` +
-      `<div class="acard-tag">${a.tag}</div>` +
-      `<p class="acard-desc">${a.desc}</p>` +
-      `<div class="acard-good"><span class="lbl">Good for</span>${a.good}</div>` +
-      `<div class="acard-pick">Pick this team</div></div>`,
+      `<div class="acard" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg">` +
+      `<span class="pc-postmark"></span>` +
+      `<div class="pc-stamp">${a.badge}</div>` +
+      `<div class="pc-paper">` +
+      `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
+      `<div class="pc-name">${a.name}</div>` +
+      `<div class="pc-type">${a.type}</div>` +
+      `<div class="pc-tag">${a.tag}</div>` +
+      `<p class="pc-msg">${a.desc}</p>` +
+      `<div class="pc-rule"></div>` +
+      `<div class="pc-good"><span class="pc-good-lbl">Good for</span>${a.good}</div>` +
+      `</div></div>`,
     ).join("") +
     `</div>`;
   document.body.appendChild(algosEl);
-
-  let algoPick = null;
-  try { algoPick = localStorage.getItem("rl-algo"); } catch { /* ignore */ }
-  const acards = [...algosEl.querySelectorAll(".acard")];
-  function refreshAlgos() {
-    acards.forEach((c) => {
-      const picked = c.dataset.algo === algoPick;
-      c.classList.toggle("picked", picked);
-      c.querySelector(".acard-pick").textContent = picked ? "Your team" : "Pick this team";
-    });
-  }
-  acards.forEach((c) =>
-    c.addEventListener("click", () => {
-      algoPick = c.dataset.algo;
-      try { localStorage.setItem("rl-algo", algoPick); } catch { /* ignore */ }
-      refreshAlgos();
-    }),
-  );
-  refreshAlgos();
 
   const howtoEl = document.createElement("div");
   howtoEl.id = "rl-howto";
