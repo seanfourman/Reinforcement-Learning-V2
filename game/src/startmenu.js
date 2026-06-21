@@ -1668,11 +1668,11 @@ export function createStartMenu({
     #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
-    .acard-slot{position:relative;display:flex;flex:none;width:322px;z-index:calc(20 - var(--i,0));}
-    .acard-slot:not(:first-child){margin-left:-80px;}
-    .acard{position:relative;flex:1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:20px;overflow:hidden;
-      padding:9px;color:#5e564a;
-      background:repeating-linear-gradient(45deg,var(--c) 0 13px,#fbf8f0 13px 26px);
+    .acard-slot{position:relative;display:flex;flex:none;width:370px;z-index:calc(20 - var(--i,0));}
+    .acard-slot:not(:first-child){margin-left:-92px;}
+    .acard{position:relative;flex:1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:23px;overflow:hidden;
+      padding:10px;color:#5e564a;
+      background:repeating-linear-gradient(45deg,var(--c) 0 15px,#fbf8f0 15px 30px);
       transform:rotate(var(--rot,0deg));}
     #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .4s ease-in-out forwards;}
     #rl-algos .acard-slot.lower .acard{animation:rl-card-return .4s ease-in-out forwards;}
@@ -1680,39 +1680,39 @@ export function createStartMenu({
     #rl-algos .acard-slot:first-child:hover .acard{transform:translateY(-8px) rotate(0deg) scale(1.04);}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
-      50%{transform:translateX(115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      50%{transform:translateX(132px) translateY(-18px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}}
     @keyframes rl-card-return{
       0%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}
-      50%{transform:translateX(115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      50%{transform:translateX(132px) translateY(-18px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}}
-    .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:12px;padding:0 0 19px;
+    .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:14px;padding:0 0 22px;
       display:flex;flex-direction:column;
-      background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 30px),#f6f1e4;}
+      background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 35px),#f6f1e4;}
     .acard .pc-head{display:flex;justify-content:flex-start;align-items:baseline;
-      padding:11px 18px 7px;margin-bottom:12px;border-bottom:1.5px solid rgba(120,100,60,.3);}
-    .acard .pc-series{font-size:12px;font-weight:800;letter-spacing:1.5px;color:#a99c80;
+      padding:13px 21px 8px;margin-bottom:14px;border-bottom:1.5px solid rgba(120,100,60,.3);}
+    .acard .pc-series{font-size:14px;font-weight:800;letter-spacing:1.5px;color:#a99c80;
       text-transform:uppercase;}
-    .acard .pc-stamp{position:absolute;top:20px;right:20px;z-index:5;width:62px;height:74px;
-      display:grid;place-items:center;font-weight:900;font-size:21px;color:#fff;background:var(--c);
+    .acard .pc-stamp{position:absolute;top:23px;right:23px;z-index:5;width:72px;height:86px;
+      display:grid;place-items:center;font-weight:900;font-size:24px;color:#fff;background:var(--c);
       border:3px solid #fbf8f0;outline:2px dashed rgba(255,255,255,.85);outline-offset:-4px;
-      transform:rotate(6deg);box-shadow:0 2px 7px rgba(0,0,0,.24);}
-    .acard .pc-postmark{position:absolute;top:calc(15px + var(--pmy,0px));right:calc(70px + var(--pmx,0px));z-index:4;width:58px;height:58px;
+      transform:rotate(6deg);box-shadow:0 3px 9px rgba(0,0,0,.24);}
+    .acard .pc-postmark{position:absolute;top:calc(17px + var(--pmy,0px));right:calc(81px + var(--pmx,0px));z-index:4;width:67px;height:67px;
       border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(calc(-14deg + var(--pmr,0deg)));
       display:grid;place-items:center;color:rgba(55,48,40,.5);}
-    .acard .pc-postmark svg{width:34px;height:34px;}
-    .acard .pc-name{padding:0 19px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
-      font-size:31px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:80px;
+    .acard .pc-postmark svg{width:40px;height:40px;}
+    .acard .pc-name{padding:0 22px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
+      font-size:36px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:92px;
       min-height:2.06em;}
-    .acard .pc-type{padding:0 19px;margin-top:11px;font-size:13px;font-weight:800;letter-spacing:2px;
+    .acard .pc-type{padding:0 22px;margin-top:13px;font-size:15px;font-weight:800;letter-spacing:2px;
       text-transform:uppercase;color:var(--c);}
-    .acard .pc-tag{padding:0 19px;margin-top:16px;font-family:Georgia,serif;font-style:italic;
-      font-size:20px;color:#4a443b;}
-    .acard .pc-msg{padding:0 19px;margin:13px 0 0;font-size:16px;line-height:1.5;flex:1;}
-    .acard .pc-rule{margin:16px 19px 12px;height:0;border-top:1.5px dashed rgba(120,100,60,.42);}
-    .acard .pc-good{padding:0 19px;font-size:15px;line-height:1.5;}
+    .acard .pc-tag{padding:0 22px;margin-top:18px;font-family:Georgia,serif;font-style:italic;
+      font-size:23px;color:#4a443b;}
+    .acard .pc-msg{padding:0 22px;margin:15px 0 0;font-size:18px;line-height:1.5;flex:1;}
+    .acard .pc-rule{margin:18px 22px 14px;height:0;border-top:1.5px dashed rgba(120,100,60,.42);}
+    .acard .pc-good{padding:0 22px;font-size:17.5px;line-height:1.5;}
     .acard .pc-good-lbl{display:block;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
-      font-size:12px;color:var(--c);margin-bottom:5px;}
+      font-size:14px;color:var(--c);margin-bottom:6px;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
     #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
@@ -1791,7 +1791,7 @@ export function createStartMenu({
   algosEl.innerHTML =
     `<div class="arow">` +
     ALGOS.map((a, i) =>
-      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, -4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
+      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
       `<div class="acard">` +
       `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
       `<div class="pc-stamp">${a.badge}</div>` +
