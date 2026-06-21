@@ -1668,52 +1668,60 @@ export function createStartMenu({
     #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
-    .acard-slot{position:relative;display:flex;flex:none;width:370px;height:470px;perspective:1800px;z-index:calc(20 - var(--i,0));}
-    .acard-slot:not(:first-child){margin-left:-92px;}
+    .acard-slot{position:relative;display:flex;flex:none;width:340px;height:432px;perspective:1700px;z-index:calc(20 - var(--i,0));}
+    .acard-slot:not(:first-child){margin-left:-85px;}
     .acard-flip{position:relative;flex:1;width:100%;height:100%;transform-style:preserve-3d;
       transform:rotate(var(--rot,0deg));transition:transform .5s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
-    .acard{position:absolute;inset:0;display:flex;flex-direction:column;box-sizing:border-box;border-radius:23px;overflow:hidden;
+    .acard{position:absolute;inset:0;display:flex;flex-direction:column;box-sizing:border-box;border-radius:21px;overflow:hidden;
       backface-visibility:hidden;-webkit-backface-visibility:hidden;
-      padding:10px;color:#5e564a;
-      background:repeating-linear-gradient(45deg,var(--c) 0 15px,#fbf8f0 15px 30px);}
+      padding:9px;color:#5e564a;
+      background:repeating-linear-gradient(45deg,var(--c) 0 14px,#fbf8f0 14px 28px);}
     .acard.pc-back{transform:rotateY(180deg);}
     #rl-algos .acard-slot.lift .acard-flip{animation:rl-card-pull .4s ease-in-out forwards;}
     #rl-algos .acard-slot.lower .acard-flip{animation:rl-card-return .4s ease-in-out forwards;}
+    #rl-algos .acard-slot:first-child.lift .acard-flip{animation:rl-card-rise .35s ease-in-out forwards;}
+    #rl-algos .acard-slot:first-child.lower .acard-flip{animation:rl-card-sink .35s ease-in-out forwards;}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
-      50%{transform:translateX(132px) translateY(-18px) rotate(0deg) scale(1.06);}
-      100%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}}
+      50%{transform:translateX(122px) translateY(-17px) rotate(0deg) scale(1.06);}
+      100%{transform:translateX(0) translateY(-7px) rotate(0deg) scale(1.05);}}
     @keyframes rl-card-return{
-      0%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}
-      50%{transform:translateX(132px) translateY(-18px) rotate(0deg) scale(1.06);}
+      0%{transform:translateX(0) translateY(-7px) rotate(0deg) scale(1.05);}
+      50%{transform:translateX(122px) translateY(-17px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}}
-    .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:14px;padding:0 0 22px;
+    @keyframes rl-card-rise{
+      0%{transform:translateY(0) rotate(var(--rot,0deg)) scale(1);}
+      100%{transform:translateY(-9px) rotate(0deg) scale(1.05);}}
+    @keyframes rl-card-sink{
+      0%{transform:translateY(-9px) rotate(0deg) scale(1.05);}
+      100%{transform:translateY(0) rotate(var(--rot,0deg)) scale(1);}}
+    .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:13px;padding:0 0 20px;
       display:flex;flex-direction:column;
-      background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 35px),#f6f1e4;}
+      background:repeating-linear-gradient(0deg,rgba(120,100,60,.045) 0 1px,transparent 1px 32px),#f6f1e4;}
     .acard .pc-head{display:flex;justify-content:flex-start;align-items:baseline;
-      padding:13px 21px 8px;margin-bottom:14px;border-bottom:1.5px solid rgba(120,100,60,.3);}
-    .acard .pc-series{font-size:14px;font-weight:800;letter-spacing:1.5px;color:#a99c80;
+      padding:12px 19px 7px;margin-bottom:13px;border-bottom:1.5px solid rgba(120,100,60,.3);}
+    .acard .pc-series{font-size:13px;font-weight:800;letter-spacing:1.5px;color:#a99c80;
       text-transform:uppercase;}
-    .acard .pc-stamp{position:absolute;top:23px;right:23px;z-index:5;width:72px;height:86px;
-      display:grid;place-items:center;font-weight:900;font-size:24px;color:#fff;background:var(--c);
+    .acard .pc-stamp{position:absolute;top:21px;right:21px;z-index:5;width:66px;height:79px;
+      display:grid;place-items:center;font-weight:900;font-size:22px;color:#fff;background:var(--c);
       border:3px solid #fbf8f0;outline:2px dashed rgba(255,255,255,.85);outline-offset:-4px;
       transform:rotate(6deg);box-shadow:0 3px 9px rgba(0,0,0,.24);}
-    .acard .pc-postmark{position:absolute;top:calc(17px + var(--pmy,0px));right:calc(81px + var(--pmx,0px));z-index:4;width:67px;height:67px;
+    .acard .pc-postmark{position:absolute;top:calc(16px + var(--pmy,0px));right:calc(75px + var(--pmx,0px));z-index:4;width:62px;height:62px;
       border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(calc(-14deg + var(--pmr,0deg)));
       display:grid;place-items:center;color:rgba(55,48,40,.5);}
-    .acard .pc-postmark svg{width:40px;height:40px;}
-    .acard .pc-name{padding:0 22px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
-      font-size:36px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:92px;
+    .acard .pc-postmark svg{width:37px;height:37px;}
+    .acard .pc-name{padding:0 20px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
+      font-size:33px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:85px;
       min-height:2.06em;}
-    .acard .pc-type{padding:0 22px;margin-top:13px;font-size:15px;font-weight:800;letter-spacing:2px;
+    .acard .pc-type{padding:0 20px;margin-top:12px;font-size:14px;font-weight:800;letter-spacing:2px;
       text-transform:uppercase;color:var(--c);}
-    .acard .pc-tag{padding:0 22px;margin-top:18px;font-family:Georgia,serif;font-style:italic;
-      font-size:23px;color:#4a443b;}
-    .acard .pc-msg{padding:0 22px;margin:15px 0 0;font-size:18px;line-height:1.5;flex:1;}
-    .acard .pc-rule{margin:18px 22px 14px;height:0;border-top:1.5px dashed rgba(120,100,60,.42);}
-    .acard .pc-good{padding:0 22px;font-size:17.5px;line-height:1.5;}
+    .acard .pc-tag{padding:0 20px;margin-top:17px;font-family:Georgia,serif;font-style:italic;
+      font-size:21px;color:#4a443b;}
+    .acard .pc-msg{padding:0 20px;margin:14px 0 0;font-size:16.5px;line-height:1.5;flex:1;}
+    .acard .pc-rule{margin:16px 20px 13px;height:0;border-top:1.5px dashed rgba(120,100,60,.42);}
+    .acard .pc-good{padding:0 20px;font-size:16px;line-height:1.5;}
     .acard .pc-good-lbl{display:block;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
-      font-size:14px;color:var(--c);margin-bottom:6px;}
+      font-size:13px;color:var(--c);margin-bottom:5px;}
     /* --- drill-in: click a type -> centre + flip, neighbours clear off --- */
     #rl-algos.drilled .acard-slot{cursor:default;}
     .acard-slot.expanded{z-index:90;}
@@ -1724,21 +1732,21 @@ export function createStartMenu({
     .acard-flip{cursor:pointer;}
     /* --- back face: algorithm pick-list --- */
     .acard .pc-back-paper{padding:0;}
-    .acard .pc-back-head{display:flex;align-items:center;gap:11px;
-      padding:16px 18px 13px;border-bottom:1.5px solid rgba(120,100,60,.3);}
-    .acard .pc-back-badge{flex:none;width:36px;height:36px;display:grid;place-items:center;
-      background:var(--c);color:#fff;font-weight:900;font-size:15px;border-radius:8px;}
+    .acard .pc-back-head{display:flex;align-items:center;gap:10px;
+      padding:15px 17px 12px;border-bottom:1.5px solid rgba(120,100,60,.3);}
+    .acard .pc-back-badge{flex:none;width:33px;height:33px;display:grid;place-items:center;
+      background:var(--c);color:#fff;font-weight:900;font-size:14px;border-radius:8px;}
     .acard .pc-back-title{font-family:Georgia,"Times New Roman",serif;font-weight:800;
-      font-size:21px;line-height:1.05;color:#2c2722;}
-    .acard .pc-algos{display:flex;flex-direction:column;justify-content:center;gap:11px;padding:13px 15px 6px;flex:1;}
+      font-size:19px;line-height:1.05;color:#2c2722;}
+    .acard .pc-algos{display:flex;flex-direction:column;justify-content:center;gap:10px;padding:12px 14px 5px;flex:1;}
     .acard .pc-back-foot{padding:6px 16px 15px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
     .acard .pc-algo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;
       text-align:left;font:inherit;color:inherit;cursor:pointer;
-      background:#fffdf6;border:1.6px solid rgba(120,100,60,.28);border-radius:12px;padding:11px 14px;
+      background:#fffdf6;border:1.6px solid rgba(120,100,60,.28);border-radius:11px;padding:10px 13px;
       transition:transform .13s ease,border-color .13s ease,background .13s ease;}
     .acard .pc-algo:hover{transform:translateX(5px);border-color:var(--c);background:#fff;}
-    .acard .pc-algo-name{font-weight:900;font-size:17px;color:#2c2722;}
-    .acard .pc-algo-blurb{font-size:13.5px;line-height:1.35;color:#6a6253;}
+    .acard .pc-algo-name{font-weight:900;font-size:16px;color:#2c2722;}
+    .acard .pc-algo-blurb{font-size:12.5px;line-height:1.35;color:#6a6253;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
     #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
