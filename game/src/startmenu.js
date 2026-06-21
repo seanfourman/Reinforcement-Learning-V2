@@ -1349,10 +1349,10 @@ export function createStartMenu({
       font:800 40px "Segoe UI",system-ui,sans-serif;color:#fff;
       text-shadow:0 2px 12px rgba(0,0,0,.55);transition:transform .16s ease,opacity .16s ease;}
     #rl-menu .item:nth-child(n+2){font-size:33px;opacity:.8;}
-    #rl-menu .item .cap{width:0;height:46px;overflow:hidden;flex:none;transition:width .18s ease;
+    #rl-menu .item .cap{width:0;height:38px;overflow:hidden;flex:none;transition:width .18s ease;
       background-color:#e8352b;
-      -webkit-mask:url(./assets/icons/mario-kart-tour-svgrepo-com.png) no-repeat center/contain;
-      mask:url(./assets/icons/mario-kart-tour-svgrepo-com.png) no-repeat center/contain;}
+      -webkit-mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;
+      mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;}
     #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:440px;
       box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
