@@ -174,15 +174,25 @@ const JOINT_ALIASES = {
     HandR: "joint23",
   },
   bowser: {
+    // bone names differ: Hip1/Spine/Stomach/Face/ShoulderR1/Wrist*/Foot*1
+    Hip: "joint0",
+    Spine1: "joint9",
+    Spine2: "joint66",
+    Head: "joint12",
     LegL1: "joint1",
     LegL2: "joint2",
+    FootL: "joint3",
     LegR1: "joint5",
     LegR2: "joint6",
+    FootR: "joint7",
     ShoulderL: "joint32",
     ArmL1: "joint33",
     ArmL2: "joint34",
+    HandL: "joint36",
+    ShoulderR: "joint49",
     ArmR1: "joint50",
     ArmR2: "joint51",
+    HandR: "joint53",
   },
   peach: {
     // PeachSwimwear rig (83 joints) — beach look (towel/sarong, flower, sunglasses)
@@ -627,6 +637,10 @@ export function createStartMenu({
         o.visible = open;
         if (open) face.eyes.push({ mesh: o, baseVisible: true });
         if (closed) face.eyelids.push({ mesh: o });
+      } else if (charKey === "bowser" && /MarioEye/i.test(n)) {
+        // stray blue Mario-pupil overlay sits over his real KoopaEye — hide it here
+        // (NOT via the costume chain, or the blink idle re-shows it every frame)
+        o.visible = false;
       } else if (lower.includes("eyelid")) {
         o.visible = false;
         if (charKey !== "mario" || lower.includes("eyelidclose")) {
@@ -667,6 +681,8 @@ export function createStartMenu({
           m.emissive?.set?.(0xffd000);
           if ("emissiveIntensity" in m) m.emissiveIntensity = 0.7;
         }
+      } else if (charKey === "bowser" && /Mustache/i.test(n)) {
+        o.visible = false; // drop his mustache (the Mario-eye overlay is hidden above)
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
@@ -1160,16 +1176,18 @@ export function createStartMenu({
       .then((asset) => {
         if (disposed || token !== seatToken[side]) return; // stale / torn down
         const root = asset.scene;
+        const charKey = def.file.split("/")[0];
         // ColladaLoader applies a Z_UP->Y conversion; these rips are inconsistent,
         // so verify the model stands (height is the dominant axis) and undo it if
-        // it ended up tipped over.
+        // it ended up tipped over. Bowser is a genuine Z-up that DOES stand after the
+        // loader's fix, but his arm span makes him wider-than-tall and trips this test
+        // (which would tip him onto his back) — so skip the undo for him.
         root.updateMatrixWorld(true);
         let box = new THREE.Box3().setFromObject(root);
         let s = box.getSize(new THREE.Vector3());
-        if (s.y < Math.max(s.x, s.z) * 0.85) {
+        if (charKey !== "bowser" && s.y < Math.max(s.x, s.z) * 0.85) {
           root.rotation.set(0, 0, 0);
         }
-        const charKey = def.file.split("/")[0];
         const rig = poseSeated(root, charKey); // bend the legs into a sit
         const face = tuneChar(root, charKey); // matte materials + neutral face parts
         // re-measure AFTER posing so the seated figure sits feet-on-floor
