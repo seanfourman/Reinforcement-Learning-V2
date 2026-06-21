@@ -1668,7 +1668,7 @@ export function createStartMenu({
     #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
-    .acard-slot{position:relative;display:flex;flex:none;width:322px;z-index:calc(var(--i,0) + 1);}
+    .acard-slot{position:relative;display:flex;flex:none;width:322px;z-index:calc(20 - var(--i,0));}
     .acard-slot:not(:first-child){margin-left:-80px;}
     .acard{position:relative;flex:1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:20px;overflow:hidden;
       padding:9px;color:#5e564a;
@@ -1676,15 +1676,15 @@ export function createStartMenu({
       transform:rotate(var(--rot,0deg));}
     #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .4s ease-in-out forwards;}
     #rl-algos .acard-slot.lower .acard{animation:rl-card-return .4s ease-in-out forwards;}
-    #rl-algos .acard-slot:last-child .acard{transition:transform .4s ease-in-out;}
-    #rl-algos .acard-slot:last-child:hover .acard{transform:translateY(-8px) rotate(0deg) scale(1.04);}
+    #rl-algos .acard-slot:first-child .acard{transition:transform .4s ease-in-out;}
+    #rl-algos .acard-slot:first-child:hover .acard{transform:translateY(-8px) rotate(0deg) scale(1.04);}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
-      50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      50%{transform:translateX(115px) translateY(-16px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}}
     @keyframes rl-card-return{
       0%{transform:translateX(0) translateY(-8px) rotate(0deg) scale(1.05);}
-      50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
+      50%{transform:translateX(115px) translateY(-16px) rotate(0deg) scale(1.06);}
       100%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}}
     .acard .pc-paper{position:relative;flex:1;width:100%;border-radius:12px;padding:0 0 19px;
       display:flex;flex-direction:column;
@@ -1697,8 +1697,8 @@ export function createStartMenu({
       display:grid;place-items:center;font-weight:900;font-size:21px;color:#fff;background:var(--c);
       border:3px solid #fbf8f0;outline:2px dashed rgba(255,255,255,.85);outline-offset:-4px;
       transform:rotate(6deg);box-shadow:0 2px 7px rgba(0,0,0,.24);}
-    .acard .pc-postmark{position:absolute;top:15px;right:58px;z-index:6;width:58px;height:58px;
-      border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(-14deg);}
+    .acard .pc-postmark{position:absolute;top:calc(15px + var(--pmy,0px));right:calc(70px + var(--pmx,0px));z-index:4;width:58px;height:58px;
+      border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(calc(-14deg + var(--pmr,0deg)));}
     .acard .pc-postmark::after{content:"★";position:absolute;inset:0;display:grid;
       place-items:center;color:rgba(55,48,40,.42);font-size:20px;}
     .acard .pc-name{padding:0 19px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
@@ -1784,7 +1784,7 @@ export function createStartMenu({
   algosEl.innerHTML =
     `<div class="arow">` +
     ALGOS.map((a, i) =>
-      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg">` +
+      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, -4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
       `<div class="acard">` +
       `<span class="pc-postmark"></span>` +
       `<div class="pc-stamp">${a.badge}</div>` +
@@ -1801,7 +1801,7 @@ export function createStartMenu({
     `</div>`;
   document.body.appendChild(algosEl);
   const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
-  const liftable = algoSlots.slice(0, -1); // rightmost has no card to rise above
+  const liftable = algoSlots.slice(1); // leftmost (on top) has no card to rise above
   let curHover = null; // slot under the cursor
   let lifted = null;   // slot currently lifted
   let busy = false;    // an animation is mid-flight -> block triggering another card
