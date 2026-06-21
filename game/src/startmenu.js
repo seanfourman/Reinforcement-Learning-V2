@@ -1676,6 +1676,8 @@ export function createStartMenu({
       transform:rotate(var(--rot,0deg));}
     #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .4s ease-in-out forwards;}
     #rl-algos .acard-slot.lower .acard{animation:rl-card-return .4s ease-in-out forwards;}
+    #rl-algos .acard-slot:last-child .acard{transition:transform .4s ease-in-out;}
+    #rl-algos .acard-slot:last-child:hover .acard{transform:translateY(-8px) rotate(0deg) scale(1.04);}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
       50%{transform:translateX(-115px) translateY(-16px) rotate(0deg) scale(1.06);}
@@ -1917,11 +1919,6 @@ export function createStartMenu({
     scrBack.classList.add("show");
   }
   scrBack.addEventListener("click", closeScreens);
-  for (const sc of [algosEl, howtoEl]) {
-    sc.addEventListener("click", (e) => {
-      if (e.target === sc) closeScreens();
-    });
-  }
   window.addEventListener("keydown", (e) => {
     if (
       e.key === "Escape" &&
