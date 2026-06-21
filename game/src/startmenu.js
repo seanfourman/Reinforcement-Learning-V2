@@ -1630,6 +1630,10 @@ export function createStartMenu({
     #rl-algos.open .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
       animation-delay:calc(var(--i,0) * .09s);}
     #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
+    #rl-algos.closing .acard{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
+      animation-delay:calc(var(--i,0) * .05s);}
+    @keyframes rl-card-fly-out{0%{transform:none;opacity:1;}
+      100%{transform:translateX(-118vw) rotate(-8deg);opacity:0;}}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:clamp(54px,9vw,110px);color:#fff;-webkit-text-stroke:6px #1f1f1f;paint-order:stroke fill;
@@ -1710,7 +1714,6 @@ export function createStartMenu({
   howtoEl.id = "rl-howto";
   howtoEl.innerHTML =
     `<div class="howto-card">` +
-    `<div class="ht-title">How It Works</div>` +
     `<p class="ht-lede">Rival Minds pits two reinforcement-learning brains against each other across themed rounds - Red vs Blue. Last mind standing takes the crown.</p>` +
     `<div class="ht-step" style="--c:#f59e0b"><div class="ht-n">1</div><div><b>Learn</b><span>Each agent learns by trial and error: try a move, earn a reward, and sharpen its strategy - its policy.</span></div></div>` +
     `<div class="ht-step" style="--c:#22c55e"><div class="ht-n">2</div><div><b>Face off</b><span>Both brains tackle the same map at once, one Red and one Blue, so every duel is fair and head-to-head.</span></div></div>` +
@@ -1727,6 +1730,11 @@ export function createStartMenu({
   titleChars.className = "big-title";
   titleChars.textContent = "Characters";
   document.body.appendChild(titleChars);
+  const titleHowto = document.createElement("div");
+  titleHowto.className = "big-title";
+  titleHowto.textContent = "How It Works";
+  document.body.appendChild(titleHowto);
+  let algosCloseTok = 0;
   function dropTitle(t) {
     t._fallTok = (t._fallTok || 0) + 1; // cancel any pending fall-cleanup
     t.classList.remove("show", "fall");
@@ -1747,14 +1755,23 @@ export function createStartMenu({
   document.body.appendChild(scrBack);
 
   function closeScreens() {
-    algosEl.classList.remove("open");
+    if (algosEl.classList.contains("open")) {
+      algosEl.classList.add("closing"); // let the cards fly out left, then hide
+      const tok = ++algosCloseTok;
+      setTimeout(() => {
+        if (tok === algosCloseTok) algosEl.classList.remove("open", "closing");
+      }, 650);
+    }
     howtoEl.classList.remove("open");
     el.classList.remove("shift");
     fallTitle(titleAlgos);
+    fallTitle(titleHowto);
     scrBack.classList.remove("show");
   }
   function openAlgos() {
     closeScreens();
+    algosCloseTok++; // cancel any pending close cleanup
+    algosEl.classList.remove("closing");
     algosEl.classList.add("open");
     el.classList.add("shift"); // slide the main menu off to the left
     dropTitle(titleAlgos);
@@ -1764,6 +1781,7 @@ export function createStartMenu({
     closeScreens();
     howtoEl.classList.add("open");
     el.classList.add("shift");
+    dropTitle(titleHowto);
     scrBack.classList.add("show");
   }
   scrBack.addEventListener("click", closeScreens);
