@@ -1668,16 +1668,17 @@ export function createStartMenu({
     #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
-    .acard-slot{position:relative;display:flex;flex:none;width:370px;z-index:calc(20 - var(--i,0));}
+    .acard-slot{position:relative;display:flex;flex:none;width:370px;height:470px;perspective:1800px;z-index:calc(20 - var(--i,0));}
     .acard-slot:not(:first-child){margin-left:-92px;}
-    .acard{position:relative;flex:1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:23px;overflow:hidden;
+    .acard-flip{position:relative;flex:1;width:100%;height:100%;transform-style:preserve-3d;
+      transform:rotate(var(--rot,0deg));transition:transform .5s cubic-bezier(.4,0,.2,1),opacity .4s ease;}
+    .acard{position:absolute;inset:0;display:flex;flex-direction:column;box-sizing:border-box;border-radius:23px;overflow:hidden;
+      backface-visibility:hidden;-webkit-backface-visibility:hidden;
       padding:10px;color:#5e564a;
-      background:repeating-linear-gradient(45deg,var(--c) 0 15px,#fbf8f0 15px 30px);
-      transform:rotate(var(--rot,0deg));}
-    #rl-algos .acard-slot.lift .acard{animation:rl-card-pull .4s ease-in-out forwards;}
-    #rl-algos .acard-slot.lower .acard{animation:rl-card-return .4s ease-in-out forwards;}
-    #rl-algos .acard-slot:first-child .acard{transition:transform .4s ease-in-out;}
-    #rl-algos .acard-slot:first-child:hover .acard{transform:translateY(-8px) rotate(0deg) scale(1.04);}
+      background:repeating-linear-gradient(45deg,var(--c) 0 15px,#fbf8f0 15px 30px);}
+    .acard.pc-back{transform:rotateY(180deg);}
+    #rl-algos .acard-slot.lift .acard-flip{animation:rl-card-pull .4s ease-in-out forwards;}
+    #rl-algos .acard-slot.lower .acard-flip{animation:rl-card-return .4s ease-in-out forwards;}
     @keyframes rl-card-pull{
       0%{transform:translateX(0) translateY(0) rotate(var(--rot,0deg)) scale(1);}
       50%{transform:translateX(132px) translateY(-18px) rotate(0deg) scale(1.06);}
@@ -1713,6 +1714,31 @@ export function createStartMenu({
     .acard .pc-good{padding:0 22px;font-size:17.5px;line-height:1.5;}
     .acard .pc-good-lbl{display:block;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
       font-size:14px;color:var(--c);margin-bottom:6px;}
+    /* --- drill-in: click a type -> centre + flip, neighbours clear off --- */
+    #rl-algos.drilled .acard-slot{cursor:default;}
+    .acard-slot.expanded{z-index:90;}
+    .acard-slot.expanded .acard-flip{transform:translate(var(--dx,0px),var(--dy,0px)) scale(1.16) rotateY(180deg);}
+    .acard-slot.off-left .acard-flip{transform:translateX(-120vw) rotate(-7deg);opacity:0;}
+    .acard-slot.off-right .acard-flip{transform:translateX(120vw) rotate(7deg);opacity:0;}
+    .acard-slot.off-left,.acard-slot.off-right{pointer-events:none;}
+    .acard-flip{cursor:pointer;}
+    /* --- back face: algorithm pick-list --- */
+    .acard .pc-back-paper{padding:0;}
+    .acard .pc-back-head{display:flex;align-items:center;gap:11px;
+      padding:16px 18px 13px;border-bottom:1.5px solid rgba(120,100,60,.3);}
+    .acard .pc-back-badge{flex:none;width:36px;height:36px;display:grid;place-items:center;
+      background:var(--c);color:#fff;font-weight:900;font-size:15px;border-radius:8px;}
+    .acard .pc-back-title{font-family:Georgia,"Times New Roman",serif;font-weight:800;
+      font-size:21px;line-height:1.05;color:#2c2722;}
+    .acard .pc-algos{display:flex;flex-direction:column;justify-content:center;gap:11px;padding:13px 15px 6px;flex:1;}
+    .acard .pc-back-foot{padding:6px 16px 15px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
+    .acard .pc-algo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;
+      text-align:left;font:inherit;color:inherit;cursor:pointer;
+      background:#fffdf6;border:1.6px solid rgba(120,100,60,.28);border-radius:12px;padding:11px 14px;
+      transition:transform .13s ease,border-color .13s ease,background .13s ease;}
+    .acard .pc-algo:hover{transform:translateX(5px);border-color:var(--c);background:#fff;}
+    .acard .pc-algo-name{font-weight:900;font-size:17px;color:#2c2722;}
+    .acard .pc-algo-blurb{font-size:13.5px;line-height:1.35;color:#6a6253;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
     #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
@@ -1733,10 +1759,10 @@ export function createStartMenu({
     #rl-scr-back:hover{opacity:.85;}
     @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(var(--rot,0deg)) scale(.96);opacity:0;}
       100%{transform:translateX(0) rotate(var(--rot,0deg)) scale(1);opacity:1;}}
-    #rl-algos.dealing .acard{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
+    #rl-algos.dealing .acard-flip{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
       animation-delay:calc(var(--i,0) * .09s);}
     #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
-    #rl-algos.closing .acard{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
+    #rl-algos.closing .acard-flip{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
       animation-delay:calc(var(--i,0) * .05s);}
     @keyframes rl-card-fly-out{0%{transform:translateX(0) rotate(var(--rot,0deg));opacity:1;}
       100%{transform:translateX(-118vw) rotate(var(--rot,0deg));opacity:0;}}
@@ -1780,7 +1806,7 @@ export function createStartMenu({
        {name:"Q-Learning",blurb:"Off-policy: always learns the value of the best move."},
        {name:"Expected-SARSA",blurb:"Averages over next actions - same idea, lower variance."},
      ]},
-    {key:"deep",badge:"DRL",name:"Deep Value-Based",type:"Function Approximation",color:"#ef4444",
+    {key:"deep",badge:"DRL",name:"Deep Value Based",type:"Function Approximation",color:"#ef4444",
      tag:'"Q-Learning, supersized"',
      desc:"Swaps the lookup table for a neural network so value-based RL can scale to huge or pixel-based worlds.",
      algos:[
@@ -1809,7 +1835,8 @@ export function createStartMenu({
     `<div class="arow">` +
     TYPES.map((t, i) =>
       `<div class="acard-slot" style="--c:${t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
-      `<div class="acard">` +
+      `<div class="acard-flip">` +
+      `<div class="acard pc-front">` +
       `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
       `<div class="pc-stamp">${t.badge}</div>` +
       `<div class="pc-paper">` +
@@ -1819,50 +1846,112 @@ export function createStartMenu({
       `<div class="pc-tag">${t.tag}</div>` +
       `<p class="pc-msg">${t.desc}</p>` +
       `<div class="pc-rule"></div>` +
-      `<div class="pc-good"><span class="pc-good-lbl">Inside</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
-      `</div></div></div>`,
+      `<div class="pc-good"><span class="pc-good-lbl">Inside &middot; tap to open</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
+      `</div></div>` +
+      `<div class="acard pc-back">` +
+      `<div class="pc-paper pc-back-paper">` +
+      `<div class="pc-back-head"><span class="pc-back-badge">${t.badge}</span><span class="pc-back-title">${t.name}</span></div>` +
+      `<div class="pc-algos">` +
+      t.algos.map((x) => `<button class="pc-algo"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></button>`).join("") +
+      `</div>` +
+      `</div></div>` +
+      `</div></div>`,
     ).join("") +
     `</div>`;
   document.body.appendChild(algosEl);
   const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
-  const liftable = algoSlots.slice(1); // leftmost (on top) has no card to rise above
-  let curHover = null; // slot under the cursor
-  let lifted = null;   // slot currently lifted
-  let busy = false;    // an animation is mid-flight -> block triggering another card
+  let upCard = null;   // the card brought to the top (null = in the stack)
+  let flipped = false; // upCard card is centred + flipped to its algorithms
+  let busy = false;    // an animation is mid-flight
   let animTimer = 0;
-  function settle() {
-    // only act between animations; one card moves at a time
-    if (busy) return;
-    if (lifted && lifted !== curHover) doLower(lifted);
-    else if (!lifted && curHover) doLift(curHover);
+  let pending = null;  // a card queued to come up once the current animation ends
+
+  function runPending() {
+    if (!pending || busy) return;
+    if (upCard) { lowerCard(upCard); return; }
+    const p = pending;
+    pending = null;
+    liftCard(p);
   }
-  function doLift(slot) {
+  function liftCard(slot) {
     busy = true;
-    lifted = slot;
+    upCard = slot;
     slot.classList.remove("lower");
     slot.classList.add("lift");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 160); // raise after it slid clear
+    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 160);
     clearTimeout(animTimer);
-    animTimer = setTimeout(() => { busy = false; settle(); }, 400);
+    animTimer = setTimeout(() => { busy = false; runPending(); }, 400);
   }
-  function doLower(slot) {
+  function lowerCard(slot) {
     busy = true;
-    lifted = null;
+    if (upCard === slot) upCard = null;
     slot.classList.remove("lift");
     slot.classList.add("lower");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 200); // drop as it re-enters
+    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 200);
     clearTimeout(animTimer);
     animTimer = setTimeout(() => {
       slot.classList.remove("lower");
       busy = false;
-      settle();
+      runPending();
     }, 400);
   }
-  liftable.forEach((slot) => {
-    slot.addEventListener("mouseenter", () => { curHover = slot; settle(); });
-    slot.addEventListener("mouseleave", () => { if (curHover === slot) curHover = null; settle(); });
+  // second click: centre the card + flip it to its algorithms, sweep the neighbours off
+  function flipCard(slot) {
+    flipped = true;
+    const flip = slot.querySelector(".acard-flip");
+    const r = slot.getBoundingClientRect();
+    const dx = Math.round(window.innerWidth / 2 - (r.left + r.width / 2));
+    const dy = Math.round(window.innerHeight / 2 - (r.top + r.height / 2));
+    const cur = getComputedStyle(flip).transform;
+    flip.style.transform = cur && cur !== "none" ? cur : "";
+    const idx = algoSlots.indexOf(slot);
+    algoSlots.forEach((s, i) => {
+      s.classList.remove("lift", "lower");
+      if (s !== slot) s.classList.add(i < idx ? "off-left" : "off-right");
+    });
+    algosEl.classList.add("drilled");
+    slot.classList.add("expanded");
+    void flip.offsetWidth; // commit the frozen start value
+    flip.style.transform =
+      "translate(" + dx + "px," + dy + "px) scale(1.16) rotateY(180deg)";
+  }
+  function unflip() {
+    const slot = upCard;
+    flipped = false;
+    upCard = null;
+    algoSlots.forEach((s) =>
+      s.classList.remove("expanded", "off-left", "off-right", "lift", "lower"),
+    );
+    algosEl.classList.remove("drilled");
+    if (slot) {
+      const flip = slot.querySelector(".acard-flip");
+      if (flip) flip.style.transform = "";
+      slot.style.zIndex = "";
+    }
+  }
+  function goBack() {
+    pending = null;
+    if (flipped) unflip();
+    else if (upCard && !busy) lowerCard(upCard);
+  }
+  algoSlots.forEach((slot) => {
+    slot.addEventListener("click", () => {
+      if (flipped) { goBack(); return; } // click the open card to go back
+      if (slot === upCard) { if (!busy) flipCard(slot); return; } // 2nd click -> flip
+      pending = slot;
+      if (busy) return; // it will come up once the running animation ends
+      if (upCard) lowerCard(upCard); // a different card was up: lower it, then lift this
+      else { pending = null; liftCard(slot); } // 1st click -> bring on top
+    });
+  });
+  algosEl.querySelectorAll(".pc-algo").forEach((b) => {
+    b.addEventListener("click", (e) => e.stopPropagation());
+  });
+  // click anywhere off a card -> go back
+  algosEl.addEventListener("click", (e) => {
+    if (!e.target.closest(".acard-slot") && (flipped || upCard)) goBack();
   });
 
   const howtoEl = document.createElement("div");
@@ -1942,12 +2031,11 @@ export function createStartMenu({
     dropTitle(titleHowto);
     scrBack.classList.add("show");
   }
-  scrBack.addEventListener("click", closeScreens);
+  scrBack.addEventListener("click", () => { if (flipped || upCard) goBack(); else closeScreens(); });
   window.addEventListener("keydown", (e) => {
-    if (
-      e.key === "Escape" &&
-      (algosEl.classList.contains("open") || howtoEl.classList.contains("open"))
-    )
+    if (e.key !== "Escape") return;
+    if (flipped || upCard) { goBack(); return; }
+    if (algosEl.classList.contains("open") || howtoEl.classList.contains("open"))
       closeScreens();
   });
 
