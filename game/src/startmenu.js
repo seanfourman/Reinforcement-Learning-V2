@@ -1401,10 +1401,16 @@ export function createStartMenu({
       transform:translateY(118%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
     #rl-select.open{transform:translateY(0);}
     #rl-select .side{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;}
-    #rl-select .plab{font-weight:900;font-size:20px;letter-spacing:2px;text-transform:uppercase;
-      text-shadow:0 2px 12px rgba(0,0,0,.8);}
-    #rl-select .side.left .plab{color:#ff7d7d;}
-    #rl-select .side.right .plab{color:#7da4ff;}
+    #rl-select .plab{display:inline-flex;align-items:center;gap:9px;
+      padding:6px 8px 6px 18px;border-radius:999px;font-weight:900;
+      text-transform:uppercase;color:#fff;border:2px solid rgba(255,255,255,.3);}
+    #rl-select .plab .ptxt{font-size:17px;letter-spacing:3px;}
+    #rl-select .plab .pnum{display:grid;place-items:center;width:30px;height:30px;
+      box-sizing:border-box;padding-bottom:2px;border-radius:50%;font-size:19px;background:#fff;}
+    #rl-select .side.left .plab{background:#e23333;}
+    #rl-select .side.left .pnum{color:#dc2b2b;}
+    #rl-select .side.right .plab{background:#3360e6;}
+    #rl-select .side.right .pnum{color:#2b54dc;}
     #rl-select .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px 34px;}
     #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;}
     #rl-select.open .tile{transform-origin:28% 72%;
@@ -1471,9 +1477,9 @@ export function createStartMenu({
   const selectEl = document.createElement("div");
   selectEl.id = "rl-select";
   selectEl.innerHTML =
-    `<div class="side left"><span class="plab">Player 1</span>` +
+    `<div class="side left"><div class="plab"><span class="ptxt">Player</span><span class="pnum">1</span></div>` +
     `<div class="grid" data-side="-1"></div></div>` +
-    `<div class="side right"><span class="plab">Player 2</span>` +
+    `<div class="side right"><div class="plab"><span class="ptxt">Player</span><span class="pnum">2</span></div>` +
     `<div class="grid" data-side="1"></div></div>` +
     `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
   document.body.appendChild(selectEl);
