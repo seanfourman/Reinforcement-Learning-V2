@@ -946,7 +946,10 @@ export function createStartMenu({
         lowerTarget = out
           .clone()
           .multiplyScalar(-0.52)
-          .addScaledVector(down, side === "R" ? 0.05 : 0.2)
+          .addScaledVector(
+            down,
+            side === "R" ? (charKey === "peach" ? 0.2 : 0.6) : 0.2,
+          )
           .addScaledVector(forward, side === "R" ? 0.54 : 0.72);
       } else {
         upperTarget = out
