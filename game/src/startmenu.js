@@ -708,6 +708,14 @@ export function createStartMenu({
         if ("reflectivity" in m) m.reflectivity = 0;
         m.envMap = null;
         if ("envMapIntensity" in m) m.envMapIntensity = 0;
+        // Pauline's eyeball maps to a red patch of the shared skin texture -> force
+        // a clean white sclera (her blue iris is a separate mesh rendered on top)
+        if (charKey === "pauline" && /eyeball/i.test(n)) {
+          m.map = null;
+          m.color?.set?.(0xffffff);
+          m.emissive?.set?.(0x000000);
+          m.needsUpdate = true;
+        }
       }
     });
     return face;
@@ -1341,7 +1349,10 @@ export function createStartMenu({
       font:800 40px "Segoe UI",system-ui,sans-serif;color:#fff;
       text-shadow:0 2px 12px rgba(0,0,0,.55);transition:transform .16s ease,opacity .16s ease;}
     #rl-menu .item:nth-child(n+2){font-size:33px;opacity:.8;}
-    #rl-menu .item .cap{width:0;height:44px;overflow:hidden;flex:none;transition:width .18s ease;}
+    #rl-menu .item .cap{width:0;height:46px;overflow:hidden;flex:none;transition:width .18s ease;
+      background-color:#e8352b;
+      -webkit-mask:url(./assets/icons/mario-kart-tour-svgrepo-com.png) no-repeat center/contain;
+      mask:url(./assets/icons/mario-kart-tour-svgrepo-com.png) no-repeat center/contain;}
     #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:440px;
       box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
@@ -1396,10 +1407,7 @@ export function createStartMenu({
   `;
   document.head.appendChild(style);
 
-  const CAP = `<svg class="cap" viewBox="0 0 120 80" aria-hidden="true">
-    <path fill="#e8352b" d="M36 52C36 26 56 12 78 17C97 21 106 36 106 52C106 56 103 58 98 58L46 58C40 58 36 56 36 52Z"/>
-    <path fill="#e8352b" d="M16 57C7 52 12 41 29 45C47 49 55 54 55 58C55 63 46 64 35 63C26 62 20 60 16 57Z"/>
-    <circle cx="70" cy="30" r="8.5" fill="#fff"/></svg>`;
+  const CAP = `<span class="cap"></span>`;
 
   const el = document.createElement("div");
   el.id = "rl-menu";
