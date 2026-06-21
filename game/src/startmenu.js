@@ -1563,7 +1563,7 @@ export function createStartMenu({
   function closeSelect() {
     selectEl.classList.remove("open");
     el.classList.remove("shift"); // bring the main menu back
-    titleChars.classList.remove("show");
+    fallTitle(titleChars);
   }
   function openSelect() {
     if (starting) return;
@@ -1641,7 +1641,10 @@ export function createStartMenu({
       62%{transform:translateY(-54px) rotate(0deg);animation-timing-function:ease-in;}
       78%{transform:translateY(0) rotate(-5deg);animation-timing-function:ease-out;}
       89%{transform:translateY(-22px) rotate(-2deg);animation-timing-function:ease-in;}
-      100%{transform:translateY(0) rotate(-3deg);}}`;
+      100%{transform:translateY(0) rotate(-3deg);}}
+    .big-title.fall{animation:rl-title-fall .6s cubic-bezier(.5,0,.9,.3) forwards;}
+    @keyframes rl-title-fall{0%{transform:translateY(0) rotate(-3deg);}
+      100%{transform:translateY(120vh) rotate(11deg);}}`;
   document.head.appendChild(screenCSS);
 
   const ALGOS = [
@@ -1725,9 +1728,18 @@ export function createStartMenu({
   titleChars.textContent = "Characters";
   document.body.appendChild(titleChars);
   function dropTitle(t) {
-    t.classList.remove("show");
+    t._fallTok = (t._fallTok || 0) + 1; // cancel any pending fall-cleanup
+    t.classList.remove("show", "fall");
     void t.offsetWidth; // force reflow so the drop replays each open
     t.classList.add("show");
+  }
+  function fallTitle(t) {
+    if (!t.classList.contains("show")) return;
+    t.classList.add("fall"); // tumble it off the bottom, then hide
+    const tok = (t._fallTok = (t._fallTok || 0) + 1);
+    setTimeout(() => {
+      if (t._fallTok === tok) t.classList.remove("show", "fall");
+    }, 600);
   }
   const scrBack = document.createElement("div");
   scrBack.id = "rl-scr-back";
@@ -1738,7 +1750,7 @@ export function createStartMenu({
     algosEl.classList.remove("open");
     howtoEl.classList.remove("open");
     el.classList.remove("shift");
-    titleAlgos.classList.remove("show");
+    fallTitle(titleAlgos);
     scrBack.classList.remove("show");
   }
   function openAlgos() {
