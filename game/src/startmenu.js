@@ -937,7 +937,7 @@ export function createStartMenu({
       const out = sideAxis.clone().multiplyScalar(side === "L" ? 1 : -1);
       let upperTarget;
       let lowerTarget;
-      if (charKey === "pauline") {
+      if (charKey === "pauline" || charKey === "peach") {
         upperTarget = out
           .clone()
           .multiplyScalar(0.14)
@@ -973,7 +973,7 @@ export function createStartMenu({
       rig.armL1?.scale.setScalar(0.0001);
       rig.armR1?.scale.setScalar(0.0001);
     }
-    if (charKey === "pauline") {
+    if (charKey === "pauline" || charKey === "peach") {
       addLocalPose(rig.handL, -1.5, 0, 0);
       addLocalPose(rig.handR, -1.5, 0, 0);
     }
