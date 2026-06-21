@@ -937,20 +937,50 @@ export function createStartMenu({
       const out = sideAxis.clone().multiplyScalar(side === "L" ? 1 : -1);
       let upperTarget;
       let lowerTarget;
-      if (charKey === "pauline" || charKey === "peach") {
+      if (charKey === "pauline") {
         upperTarget = out
           .clone()
           .multiplyScalar(0.14)
           .addScaledVector(down, 0.86)
           .addScaledVector(forward, 0.25);
-        lowerTarget = out
+        if (side === "L") {
+          // Pauline LEFT hand
+          lowerTarget = out
+            .clone()
+            .multiplyScalar(-0.52)
+            .addScaledVector(down, 0.2)
+            .addScaledVector(forward, 0.72);
+        } else {
+          // Pauline RIGHT hand
+          lowerTarget = out
+            .clone()
+            .multiplyScalar(-0.52)
+            .addScaledVector(down, 0.05)
+            .addScaledVector(forward, 0.54);
+        }
+      } else if (charKey === "peach") {
+        // out/in = multiplyScalar (toward 0/positive = further OUT), down = height
+        // (bigger = lower), forward = toward the camera
+        upperTarget = out
           .clone()
-          .multiplyScalar(-0.52)
-          .addScaledVector(
-            down,
-            side === "R" ? (charKey === "peach" ? 0.2 : 0.6) : 0.2,
-          )
-          .addScaledVector(forward, side === "R" ? 0.54 : 0.72);
+          .multiplyScalar(0.14)
+          .addScaledVector(down, 0.86)
+          .addScaledVector(forward, 0.25);
+        if (side === "L") {
+          // Peach LEFT hand
+          lowerTarget = out
+            .clone()
+            .multiplyScalar(-0.2)
+            .addScaledVector(down, 0.25)
+            .addScaledVector(forward, 0.72);
+        } else {
+          // Peach RIGHT hand
+          lowerTarget = out
+            .clone()
+            .multiplyScalar(-0.2)
+            .addScaledVector(down, 0.22)
+            .addScaledVector(forward, 0.54);
+        }
       } else {
         upperTarget = out
           .clone()
@@ -976,9 +1006,12 @@ export function createStartMenu({
       rig.armL1?.scale.setScalar(0.0001);
       rig.armR1?.scale.setScalar(0.0001);
     }
-    if (charKey === "pauline" || charKey === "peach") {
+    if (charKey === "pauline") {
       addLocalPose(rig.handL, -1.5, 0, 0);
       addLocalPose(rig.handR, -1.5, 0, 0);
+    } else if (charKey === "peach") {
+      addLocalPose(rig.handL, 1.64, 0, 0); // Peach LEFT hand rotation (palm down)
+      addLocalPose(rig.handR, -1.5, 0, 0); // Peach RIGHT hand rotation
     }
 
     if (!posed) poseFallbackSeated(root, rig, aim);
