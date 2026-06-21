@@ -686,6 +686,7 @@ export function createStartMenu({
       }
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
+      o.userData.excludeBloom = true; // characters are kept out of the menu bloom
       for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
         if (!m) continue;
         if (m.map) {

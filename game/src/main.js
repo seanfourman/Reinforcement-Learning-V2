@@ -306,7 +306,7 @@ renderer.setAnimationLoop(() => {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
   const t = timer.getElapsed();
-  if (menu && menu.active) { menu.update(dt, t); fx.composer.render(); return; }
+  if (menu && menu.active) { menu.update(dt, t); fx.renderSelective(); return; }
   rig.update(dt);
 
   if (current) {
