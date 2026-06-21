@@ -603,12 +603,82 @@ export function createStartMenu({
     }
   }
 
+  const PARABONES_LOOSE_LIMB_SKIN_JOINTS = new Set([
+    2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16,
+  ]);
+  function stripParabonesLooseLimbGeometry(mesh) {
+    const geo = mesh.geometry;
+    const pos = geo?.getAttribute?.("position");
+    const skinIndex = geo?.getAttribute?.("skinIndex");
+    const skinWeight = geo?.getAttribute?.("skinWeight");
+    if (!pos || !skinIndex || !skinWeight) return;
+
+    const drop = new Uint8Array(pos.count);
+    const idxArray = skinIndex.array;
+    const weightArray = skinWeight.array;
+    const idxSize = skinIndex.itemSize;
+    const weightSize = skinWeight.itemSize;
+    for (let i = 0; i < pos.count; i++) {
+      let limbWeight = 0;
+      for (let j = 0; j < Math.min(idxSize, weightSize); j++) {
+        const joint = idxArray[i * idxSize + j];
+        if (PARABONES_LOOSE_LIMB_SKIN_JOINTS.has(joint)) {
+          limbWeight += weightArray[i * weightSize + j] || 0;
+        }
+      }
+      if (limbWeight > 0.2) drop[i] = 1;
+    }
+
+    const index = geo.getIndex?.();
+    if (index) {
+      const src = index.array;
+      const kept = [];
+      for (let i = 0; i < src.length; i += 3) {
+        const a = src[i];
+        const b = src[i + 1];
+        const c = src[i + 2];
+        if (!drop[a] && !drop[b] && !drop[c]) kept.push(a, b, c);
+      }
+      if (kept.length === src.length) return;
+      const IndexArray = pos.count > 65535 ? Uint32Array : Uint16Array;
+      geo.setIndex(new THREE.BufferAttribute(new IndexArray(kept), 1));
+      geo.clearGroups();
+      geo.addGroup(0, kept.length, 0);
+    } else {
+      for (let i = 0; i < pos.count; i += 3) {
+        if (!drop[i] && !drop[i + 1] && !drop[i + 2]) continue;
+        pos.setXYZ(i, 0, 0, 0);
+        pos.setXYZ(i + 1, 0, 0, 0);
+        pos.setXYZ(i + 2, 0, 0, 0);
+      }
+      pos.needsUpdate = true;
+    }
+    geo.computeBoundingBox?.();
+    geo.computeBoundingSphere?.();
+  }
+
   function tuneChar(root, charKey) {
     const face = { eyelids: [], eyes: [] };
     root.traverse((o) => {
       if (!o.isMesh) return;
       const n = o.name || "";
       const lower = n.toLowerCase();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const meshSignature = [
+        n,
+        o.geometry?.name,
+        ...mats.flatMap((m) => [
+          m?.name,
+          m?.map?.name,
+          m?.map?.image?.src,
+        ]),
+      ].filter(Boolean).join(" ");
+      const isParabonesWingMesh =
+        charKey === "parabones" &&
+        /(?:KaronWing__WingMT|WingMT|BodyWing)/i.test(meshSignature);
+      if (charKey === "parabones" && !isParabonesWingMesh) {
+        stripParabonesLooseLimbGeometry(o);
+      }
       // the iris/eyeball meshes use the eye material (…__EyeMT / __EyePupil…) and the
       // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
       const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
@@ -687,7 +757,7 @@ export function createStartMenu({
       o.castShadow = true;
       o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
       o.userData.excludeBloom = true; // characters are kept out of the menu bloom
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      for (const m of mats) {
         if (!m) continue;
         if (m.map) {
           m.map.colorSpace = THREE.SRGBColorSpace;
@@ -751,6 +821,8 @@ export function createStartMenu({
       armR2: bone("ArmR2"),
       handL: bone("HandL"),
       handR: bone("HandR"),
+      fingerL: bone("FingerL"),
+      fingerR: bone("FingerR"),
       legL1: bone("LegL1"),
       legR1: bone("LegR1"),
       legL2: bone("LegL2"),
@@ -1003,8 +1075,16 @@ export function createStartMenu({
       arm("R", 1);
     } else {
       // remove the arms — collapse the arm bones so the geometry shrinks into the body
-      rig.armL1?.scale.setScalar(0.0001);
-      rig.armR1?.scale.setScalar(0.0001);
+      [
+        rig.armL1,
+        rig.armL2,
+        rig.handL,
+        rig.fingerL,
+        rig.armR1,
+        rig.armR2,
+        rig.handR,
+        rig.fingerR,
+      ].forEach((b) => b?.scale.setScalar(0.0001));
     }
     if (charKey === "pauline") {
       addLocalPose(rig.handL, -1.5, 0, 0);
