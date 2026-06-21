@@ -1757,52 +1757,69 @@ export function createStartMenu({
       100%{transform:translateY(120vh) rotate(11deg);}}`;
   document.head.appendChild(screenCSS);
 
-  const ALGOS = [
+  const TYPES = [
     {key:"dp",badge:"DP",name:"Dynamic Programming",type:"Model-based / Planning",color:"#f59e0b",
      tag:'"The all-knowing planner"',
-     desc:"Hand it the full rulebook - every move's outcome and reward - and it computes the perfect strategy before taking a single step.",
-     good:"Small, fully-known worlds where planning every move pays off. It's the benchmark every other method chases."},
-    {key:"montecarlo",badge:"MC",name:"Monte Carlo",type:"Model-free / Episodic",color:"#a855f7",
+     desc:"Hand it the full rulebook - every outcome and reward - and it computes the perfect strategy before taking a single step.",
+     algos:[
+       {name:"Value Iteration",blurb:"Bellman optimality sweeps until V converges."},
+       {name:"Policy Iteration",blurb:"Evaluate, improve, repeat until the policy is stable."},
+     ]},
+    {key:"mc",badge:"MC",name:"Monte Carlo",type:"Model-free / Episodic",color:"#a855f7",
      tag:'"The patient gambler"',
-     desc:"Plays whole episodes out to the end, then learns from the real final score - no mid-game guessing, just outcomes.",
-     good:"Episodic tasks with clear endings. Simple and unbiased, but it waits for the finish line."},
-    {key:"sarsa",badge:"S",name:"SARSA",type:"On-policy / TD learning",color:"#22c55e",
-     tag:'"The cautious learner"',
-     desc:"Learns by doing and values the path it actually walks - exploration slip-ups included. It plays it safe.",
-     good:"Online learning where mistakes are costly. Finds a reliable route, not a reckless one."},
-    {key:"qlearning",badge:"Q",name:"Q-Learning",type:"Off-policy / TD learning",color:"#3b82f6",
-     tag:'"The bold optimist"',
-     desc:"Explores freely but always learns the value of the best move - so it chases the optimal path even while wandering.",
-     good:"Finding the best policy fast on table-sized worlds. Aggressive, sample-hungry, and reliably effective."},
-    {key:"dqn",badge:"DQN",name:"Deep Q-Network",type:"Deep RL / Neural Q",color:"#ef4444",
+     desc:"Plays whole episodes out to the end, then learns from the real final score - no model, no mid-game guessing.",
+     algos:[
+       {name:"MC Prediction",blurb:"Averages the real returns seen after each state."},
+       {name:"MC Control",blurb:"e-greedy improvement from sampled episode returns."},
+     ]},
+    {key:"td",badge:"TD",name:"Temporal Difference",type:"Model-free / Bootstrapping",color:"#22c55e",
+     tag:'"Learns on every step"',
+     desc:"Updates its estimates from the very next step instead of waiting for the episode to end - the bridge between MC and DP.",
+     algos:[
+       {name:"SARSA",blurb:"On-policy: learns the path it actually walks."},
+       {name:"Q-Learning",blurb:"Off-policy: always learns the value of the best move."},
+       {name:"Expected-SARSA",blurb:"Averages over next actions - same idea, lower variance."},
+     ]},
+    {key:"deep",badge:"DRL",name:"Deep Value-Based",type:"Function Approximation",color:"#ef4444",
      tag:'"Q-Learning, supersized"',
-     desc:"Swaps the lookup table for a neural network, with experience replay and a target net to stay stable.",
-     good:"Huge or pixel-based worlds where a table would never fit. The heavyweight of the bracket."},
+     desc:"Swaps the lookup table for a neural network so value-based RL can scale to huge or pixel-based worlds.",
+     algos:[
+       {name:"DQN",blurb:"Neural Q with experience replay + a target network."},
+       {name:"DQN from Frames",blurb:"Learns Q straight from raw pixels with a CNN (Atari-style)."},
+     ]},
+    {key:"pg",badge:"PG",name:"Policy Gradient",type:"Policy-based",color:"#3b82f6",
+     tag:'"Tunes the policy itself"',
+     desc:"Skips value tables and nudges the policy's own parameters directly toward higher expected return.",
+     algos:[
+       {name:"REINFORCE",blurb:"The basic policy gradient - simple, but high variance."},
+       {name:"Actor-Critic",blurb:"An actor acts while a critic judges via the advantage."},
+       {name:"PPO",blurb:"Clipped, stable policy steps. The modern workhorse."},
+     ]},
   ];
   const PMICONS = [
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><g fill="currentColor" stroke="none"><circle cx="8" cy="8" r="1.4"/><circle cx="16" cy="8" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="8" cy="16" r="1.4"/><circle cx="16" cy="16" r="1.4"/></g></svg>',
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 19 5.3V11c0 4.7-3.4 8-7 9.5C8.4 19 5 15.7 5 11V5.3z"/><path d="M9 11.8l2.2 2.2L15 10"/></svg>',
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.4 2.2"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="12.5" y2="12"/><line x1="6" y1="18" x2="12.5" y2="12"/><line x1="12.5" y1="12" x2="19" y2="12"/><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="12.5" cy="12" r="2.3"/><circle cx="19" cy="12" r="2.3"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5l5.5-5.5 3.5 3.5 8.5-8.5"/><path d="M20.5 6v5M20.5 6h-5"/></svg>',
   ];
   const algosEl = document.createElement("div");
   algosEl.id = "rl-algos";
   algosEl.innerHTML =
     `<div class="arow">` +
-    ALGOS.map((a, i) =>
-      `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
+    TYPES.map((t, i) =>
+      `<div class="acard-slot" style="--c:${t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
       `<div class="acard">` +
       `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
-      `<div class="pc-stamp">${a.badge}</div>` +
+      `<div class="pc-stamp">${t.badge}</div>` +
       `<div class="pc-paper">` +
       `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
-      `<div class="pc-name">${a.name}</div>` +
-      `<div class="pc-type">${a.type}</div>` +
-      `<div class="pc-tag">${a.tag}</div>` +
-      `<p class="pc-msg">${a.desc}</p>` +
+      `<div class="pc-name">${t.name}</div>` +
+      `<div class="pc-type">${t.type}</div>` +
+      `<div class="pc-tag">${t.tag}</div>` +
+      `<p class="pc-msg">${t.desc}</p>` +
       `<div class="pc-rule"></div>` +
-      `<div class="pc-good"><span class="pc-good-lbl">Good for</span>${a.good}</div>` +
+      `<div class="pc-good"><span class="pc-good-lbl">Inside</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
       `</div></div></div>`,
     ).join("") +
     `</div>`;
