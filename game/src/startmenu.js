@@ -1698,9 +1698,9 @@ export function createStartMenu({
       border:3px solid #fbf8f0;outline:2px dashed rgba(255,255,255,.85);outline-offset:-4px;
       transform:rotate(6deg);box-shadow:0 2px 7px rgba(0,0,0,.24);}
     .acard .pc-postmark{position:absolute;top:calc(15px + var(--pmy,0px));right:calc(70px + var(--pmx,0px));z-index:4;width:58px;height:58px;
-      border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(calc(-14deg + var(--pmr,0deg)));}
-    .acard .pc-postmark::after{content:"★";position:absolute;inset:0;display:grid;
-      place-items:center;color:rgba(55,48,40,.42);font-size:20px;}
+      border:2.5px solid rgba(55,48,40,.4);border-radius:50%;transform:rotate(calc(-14deg + var(--pmr,0deg)));
+      display:grid;place-items:center;color:rgba(55,48,40,.5);}
+    .acard .pc-postmark svg{width:34px;height:34px;}
     .acard .pc-name{padding:0 19px;font-family:Georgia,"Times New Roman",serif;font-weight:800;
       font-size:31px;line-height:1.03;color:#2c2722;letter-spacing:-.3px;padding-right:80px;
       min-height:2.06em;}
@@ -1779,6 +1779,13 @@ export function createStartMenu({
      desc:"Swaps the lookup table for a neural network, with experience replay and a target net to stay stable.",
      good:"Huge or pixel-based worlds where a table would never fit. The heavyweight of the bracket."},
   ];
+  const PMICONS = [
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><g fill="currentColor" stroke="none"><circle cx="8" cy="8" r="1.4"/><circle cx="16" cy="8" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="8" cy="16" r="1.4"/><circle cx="16" cy="16" r="1.4"/></g></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 19 5.3V11c0 4.7-3.4 8-7 9.5C8.4 19 5 15.7 5 11V5.3z"/><path d="M9 11.8l2.2 2.2L15 10"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="12.5" y2="12"/><line x1="6" y1="18" x2="12.5" y2="12"/><line x1="12.5" y1="12" x2="19" y2="12"/><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="12.5" cy="12" r="2.3"/><circle cx="19" cy="12" r="2.3"/></svg>',
+  ];
   const algosEl = document.createElement("div");
   algosEl.id = "rl-algos";
   algosEl.innerHTML =
@@ -1786,7 +1793,7 @@ export function createStartMenu({
     ALGOS.map((a, i) =>
       `<div class="acard-slot" style="--c:${a.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, -4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
       `<div class="acard">` +
-      `<span class="pc-postmark"></span>` +
+      `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
       `<div class="pc-stamp">${a.badge}</div>` +
       `<div class="pc-paper">` +
       `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
