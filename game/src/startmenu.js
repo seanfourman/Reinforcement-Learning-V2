@@ -26,6 +26,124 @@ const CHARACTERS = [
   { name: "Parabones", file: "parabones/parabones.dae" },
 ];
 
+// PLACEHOLDER opponent data: Player 2 is the COMPUTER. Each character is a static,
+// pre-trained opponent of increasing difficulty (Mario easiest -> Parabones hardest),
+// with 5 algorithms it "knows" (one per level) and a strength 1-5 for each. The
+// player must beat these. (These models are STATIC - they do NOT train live.)
+// Tune freely; this is just first-pass flavour until the 5 levels are designed.
+const OPPONENTS = [
+  {
+    tier: 1,
+    label: "Rookie",
+    picks: [
+      ["Value Iteration", 2],
+      ["MC Prediction", 1],
+      ["SARSA", 2],
+      ["REINFORCE", 1],
+      ["DQN", 2],
+    ],
+  }, // Mario
+  {
+    tier: 1,
+    label: "Rookie",
+    picks: [
+      ["Policy Iteration", 2],
+      ["MC Control", 2],
+      ["SARSA", 2],
+      ["REINFORCE", 2],
+      ["DQN", 2],
+    ],
+  }, // Luigi
+  {
+    tier: 2,
+    label: "Amateur",
+    picks: [
+      ["Value Iteration", 3],
+      ["MC Control", 2],
+      ["Q-Learning", 3],
+      ["Actor-Critic", 2],
+      ["DQN", 2],
+    ],
+  }, // Yoshi
+  {
+    tier: 2,
+    label: "Amateur",
+    picks: [
+      ["Policy Iteration", 3],
+      ["MC Control", 3],
+      ["Expected-SARSA", 3],
+      ["REINFORCE", 2],
+      ["DQN", 3],
+    ],
+  }, // Toadette
+  {
+    tier: 3,
+    label: "Skilled",
+    picks: [
+      ["Value Iteration", 3],
+      ["MC Control", 3],
+      ["Q-Learning", 4],
+      ["Actor-Critic", 3],
+      ["DQN", 3],
+    ],
+  }, // Pauline
+  {
+    tier: 3,
+    label: "Skilled",
+    picks: [
+      ["Policy Iteration", 4],
+      ["MC Control", 3],
+      ["Q-Learning", 4],
+      ["Actor-Critic", 3],
+      ["DQN from Frames", 3],
+    ],
+  }, // Koopa
+  {
+    tier: 4,
+    label: "Veteran",
+    picks: [
+      ["Policy Iteration", 4],
+      ["Expected-SARSA", 4],
+      ["Q-Learning", 4],
+      ["PPO", 4],
+      ["DQN", 4],
+    ],
+  }, // Bowser
+  {
+    tier: 4,
+    label: "Veteran",
+    picks: [
+      ["Value Iteration", 4],
+      ["Expected-SARSA", 4],
+      ["Q-Learning", 5],
+      ["Actor-Critic", 4],
+      ["DQN from Frames", 4],
+    ],
+  }, // Peach
+  {
+    tier: 5,
+    label: "Master",
+    picks: [
+      ["Policy Iteration", 5],
+      ["Expected-SARSA", 4],
+      ["Q-Learning", 5],
+      ["PPO", 5],
+      ["DQN from Frames", 4],
+    ],
+  }, // Toad
+  {
+    tier: 5,
+    label: "Champion",
+    picks: [
+      ["Policy Iteration", 5],
+      ["Expected-SARSA", 5],
+      ["Q-Learning", 5],
+      ["PPO", 5],
+      ["DQN from Frames", 5],
+    ],
+  }, // Parabones
+];
+
 const JOINT_ALIASES = {
   mario: {
     Hip: "joint0",
@@ -667,12 +785,10 @@ export function createStartMenu({
       const meshSignature = [
         n,
         o.geometry?.name,
-        ...mats.flatMap((m) => [
-          m?.name,
-          m?.map?.name,
-          m?.map?.image?.src,
-        ]),
-      ].filter(Boolean).join(" ");
+        ...mats.flatMap((m) => [m?.name, m?.map?.name, m?.map?.image?.src]),
+      ]
+        .filter(Boolean)
+        .join(" ");
       const isParabonesWingMesh =
         charKey === "parabones" &&
         /(?:KaronWing__WingMT|WingMT|BodyWing)/i.test(meshSignature);
@@ -1532,6 +1648,37 @@ export function createStartMenu({
     #rl-select .side.left .pnum{color:#dc2b2b;}
     #rl-select .side.right .plab{background:#3360e6;}
     #rl-select .side.right .pnum{color:#2b54dc;}
+    #rl-select .plab.cpu{padding:6px 20px;}
+    /* the computer's static stat sheet (difficulty + per-algorithm strength) */
+    #rl-select .cpu-stats{width:340px;box-sizing:border-box;background:rgba(18,16,28,.86);
+      border:2px solid rgba(255,255,255,.18);border-radius:14px;padding:11px 14px 12px;color:#fff;
+      box-shadow:0 12px 34px rgba(0,0,0,.5);}
+    #rl-select .cpu-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+      padding-bottom:8px;margin-bottom:7px;border-bottom:1px solid rgba(255,255,255,.14);}
+    #rl-select .cpu-name{font-weight:900;font-size:18px;letter-spacing:.3px;}
+    #rl-select .cpu-tier{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;
+      font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#cdd2dc;}
+    #rl-select .cpu-stars{color:#ffd34d;font-size:13px;letter-spacing:1px;}
+    #rl-select .cpu-row{display:flex;align-items:center;gap:9px;margin:6px 0;}
+    #rl-select .cpu-algo{flex:none;width:124px;font-size:11.5px;font-weight:700;color:#e7eaf0;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    #rl-select .cpu-bar{flex:1;height:8px;border-radius:5px;background:rgba(255,255,255,.15);overflow:hidden;}
+    #rl-select .cpu-bar i{display:block;height:100%;border-radius:5px;}
+    /* slim "pick your algorithms first" sign */
+    #rl-gate{position:fixed;left:50%;bottom:10vh;z-index:64;display:flex;align-items:center;gap:9px;
+      transform:translateX(-50%) translateY(22px) scale(.85);transform-origin:bottom center;
+      background:linear-gradient(180deg,#ff5d4e 0%,#e22f22 100%);
+      border:2.5px solid #3a1410;border-radius:13px;padding:8px 16px;
+      box-shadow:0 3px 0 #3a1410,0 10px 20px rgba(0,0,0,.38);
+      font-family:"Segoe UI",system-ui,sans-serif;font-weight:800;color:#fff;
+      font-size:15px;line-height:1;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.35);
+      opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s ease;}
+    #rl-gate.show{opacity:1;animation:rl-gate-pop .45s cubic-bezier(.34,1.6,.5,1) both;}
+    @keyframes rl-gate-pop{0%{transform:translateX(-50%) translateY(22px) scale(.72);opacity:0;}
+      55%{opacity:1;}100%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;}}
+    #rl-gate .gate-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
+      background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
+      color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
     #rl-select .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:28px 34px;}
     #rl-select .tile{width:96px;height:112px;cursor:pointer;position:relative;}
     #rl-select.open .tile{transform-origin:28% 72%;
@@ -1599,7 +1746,8 @@ export function createStartMenu({
     `<div class="rows">` +
     `<div class="side left"><div class="plab"><span class="ptxt">Player</span><span class="pnum">1</span></div>` +
     `<div class="grid" data-side="-1"></div></div>` +
-    `<div class="side right"><div class="plab"><span class="ptxt">Player</span><span class="pnum">2</span></div>` +
+    `<div class="side right"><div class="plab cpu"><span class="ptxt">Computer</span></div>` +
+    `<div class="cpu-stats"></div>` +
     `<div class="grid" data-side="1"></div></div>` +
     `</div>` +
     `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
@@ -1617,12 +1765,34 @@ export function createStartMenu({
   // same model isn't reloaded.
   const shownIdx = { "-1": null, 1: null };
   function showInChair(side, idx) {
+    if (side === 1) renderCpuStats(idx); // the computer's stat sheet follows the preview
     if (shownIdx[side] === idx) return;
     shownIdx[side] = idx;
     seatCharacter(side, idx);
     // the cursor brackets follow whatever the chair is showing (the hover preview,
     // or the locked pick when not hovering) -> stays put across the inter-tile gaps
     sideTiles[side].forEach((t, i) => t.classList.toggle("preview", i === idx));
+  }
+  // the computer is a static, pre-trained opponent — show its difficulty + how
+  // strong each of its 5 algorithms is (the player has to beat this)
+  const cpuStatsEl = selectEl.querySelector(".cpu-stats");
+  const barColor = (s) =>
+    ["#6fcf6f", "#6fcf6f", "#9ccc4e", "#f2c14e", "#f2994a", "#eb5757"][s] ||
+    "#f2994a";
+  function renderCpuStats(idx) {
+    const opp = OPPONENTS[idx];
+    if (!cpuStatsEl || !opp) return;
+    const stars = "★".repeat(opp.tier) + "☆".repeat(5 - opp.tier);
+    cpuStatsEl.innerHTML =
+      `<div class="cpu-head"><span class="cpu-name">${CHARACTERS[idx].name}</span>` +
+      `<span class="cpu-tier"><span class="cpu-stars">${stars}</span>${opp.label}</span></div>` +
+      opp.picks
+        .map(
+          ([algo, s]) =>
+            `<div class="cpu-row"><span class="cpu-algo">${algo}</span>` +
+            `<span class="cpu-bar"><i style="width:${(s / 5) * 100}%;background:${barColor(s)}"></i></span></div>`,
+        )
+        .join("");
   }
   for (const side of [-1, 1]) {
     const strip = selectEl.querySelector(`.grid[data-side="${side}"]`);
@@ -1676,6 +1846,7 @@ export function createStartMenu({
     el.classList.add("shift"); // slide the main menu off to the left
     dropTitle(titleChars);
     refreshSelect();
+    renderCpuStats(picks[1]); // computer stat sheet for the current opponent
   }
 
   // ===== "How It Works" + "Algorithms" info screens (Nintendo flash-card style) =====
@@ -1837,43 +2008,109 @@ export function createStartMenu({
   document.head.appendChild(screenCSS);
 
   const TYPES = [
-    {key:"dp",badge:"DP",name:"Dynamic Programming",type:"Model-based / Planning",color:"#f59e0b",
-     tag:'"The all-knowing planner"',
-     desc:"Hand it the full rulebook - every outcome and reward - and it computes the perfect strategy before taking a single step.",
-     algos:[
-       {name:"Value Iteration",blurb:"Bellman optimality sweeps until V converges."},
-       {name:"Policy Iteration",blurb:"Evaluate, improve, repeat until the policy is stable."},
-     ]},
-    {key:"mc",badge:"MC",name:"Monte Carlo",type:"Model-free / Episodic",color:"#a855f7",
-     tag:'"The patient gambler"',
-     desc:"Plays whole episodes out to the end, then learns from the real final score - no model, no mid-game guessing.",
-     algos:[
-       {name:"MC Prediction",blurb:"Averages the real returns seen after each state."},
-       {name:"MC Control",blurb:"e-greedy improvement from sampled episode returns."},
-     ]},
-    {key:"td",badge:"TD",name:"Temporal Difference",type:"Model-free / Bootstrapping",color:"#22c55e",
-     tag:'"Learns on every step"',
-     desc:"Updates its estimates from the very next step instead of waiting for the episode to end - the bridge between MC and DP.",
-     algos:[
-       {name:"SARSA",blurb:"On-policy: learns the path it actually walks."},
-       {name:"Q-Learning",blurb:"Off-policy: always learns the value of the best move."},
-       {name:"Expected-SARSA",blurb:"Averages over next actions - same idea, lower variance."},
-     ]},
-    {key:"deep",badge:"DRL",name:"Deep Value Based",type:"Function Approximation",color:"#ef4444",
-     tag:'"Q-Learning, supersized"',
-     desc:"Swaps the lookup table for a neural network so value-based RL can scale to huge or pixel-based worlds.",
-     algos:[
-       {name:"DQN",blurb:"Neural Q with experience replay + a target network."},
-       {name:"DQN from Frames",blurb:"Learns Q straight from raw pixels with a CNN (Atari-style)."},
-     ]},
-    {key:"pg",badge:"PG",name:"Policy Gradient",type:"Policy-based",color:"#3b82f6",
-     tag:'"Tunes the policy itself"',
-     desc:"Skips value tables and nudges the policy's own parameters directly toward higher expected return.",
-     algos:[
-       {name:"REINFORCE",blurb:"The basic policy gradient - simple, but high variance."},
-       {name:"Actor-Critic",blurb:"An actor acts while a critic judges via the advantage."},
-       {name:"PPO",blurb:"Clipped, stable policy steps. The modern workhorse."},
-     ]},
+    {
+      key: "dp",
+      badge: "DP",
+      name: "Dynamic Programming",
+      type: "Model-based / Planning",
+      color: "#f59e0b",
+      tag: '"The all-knowing planner"',
+      desc: "Hand it the full rulebook - every outcome and reward - and it computes the perfect strategy before taking a single step.",
+      algos: [
+        {
+          name: "Value Iteration",
+          blurb: "Bellman optimality sweeps until V converges.",
+        },
+        {
+          name: "Policy Iteration",
+          blurb: "Evaluate, improve, repeat until the policy is stable.",
+        },
+      ],
+    },
+    {
+      key: "mc",
+      badge: "MC",
+      name: "Monte Carlo",
+      type: "Model-free / Episodic",
+      color: "#a855f7",
+      tag: '"The patient gambler"',
+      desc: "Plays whole episodes out to the end, then learns from the real final score - no model, no mid-game guessing.",
+      algos: [
+        {
+          name: "MC Prediction",
+          blurb: "Averages the real returns seen after each state.",
+        },
+        {
+          name: "MC Control",
+          blurb: "e-greedy improvement from sampled episode returns.",
+        },
+      ],
+    },
+    {
+      key: "td",
+      badge: "TD",
+      name: "Temporal Difference",
+      type: "Model-free / Bootstrapping",
+      color: "#22c55e",
+      tag: '"Learns on every step"',
+      desc: "Updates its estimates from the very next step instead of waiting for the episode to end - the bridge between MC and DP.",
+      algos: [
+        {
+          name: "SARSA",
+          blurb: "On-policy: learns the path it actually walks.",
+        },
+        {
+          name: "Q-Learning",
+          blurb: "Off-policy: always learns the value of the best move.",
+        },
+        {
+          name: "Expected-SARSA",
+          blurb: "Averages over next actions - same idea, lower variance.",
+        },
+      ],
+    },
+    {
+      key: "deep",
+      badge: "DRL",
+      name: "Deep Value Based",
+      type: "Function Approximation",
+      color: "#ef4444",
+      tag: '"Q-Learning, supersized"',
+      desc: "Swaps the lookup table for a neural network so value-based RL can scale to huge or pixel-based worlds.",
+      algos: [
+        {
+          name: "DQN",
+          blurb: "Neural Q with experience replay + a target network.",
+        },
+        {
+          name: "DQN from Frames",
+          blurb: "Learns Q straight from raw pixels with a CNN (Atari-style).",
+        },
+      ],
+    },
+    {
+      key: "pg",
+      badge: "PG",
+      name: "Policy Gradient",
+      type: "Policy-based",
+      color: "#3b82f6",
+      tag: '"Tunes the policy itself"',
+      desc: "Skips value tables and nudges the policy's own parameters directly toward higher expected return.",
+      algos: [
+        {
+          name: "REINFORCE",
+          blurb: "The basic policy gradient - simple, but high variance.",
+        },
+        {
+          name: "Actor-Critic",
+          blurb: "An actor acts while a critic judges via the advantage.",
+        },
+        {
+          name: "PPO",
+          blurb: "Clipped, stable policy steps. The modern workhorse.",
+        },
+      ],
+    },
   ];
   const PMICONS = [
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/></svg>',
@@ -1886,64 +2123,84 @@ export function createStartMenu({
   algosEl.id = "rl-algos";
   algosEl.innerHTML =
     `<div class="arow">` +
-    TYPES.map((t, i) =>
-      `<div class="acard-slot" style="--c:${t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
-      `<div class="acard-flip">` +
-      `<div class="acard pc-front">` +
-      `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
-      `<div class="pc-stamp">${t.badge}</div>` +
-      `<div class="pc-paper">` +
-      `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
-      `<div class="pc-name">${t.name}</div>` +
-      `<div class="pc-type">${t.type}</div>` +
-      `<div class="pc-tag">${t.tag}</div>` +
-      `<p class="pc-msg">${t.desc}</p>` +
-      `<div class="pc-rule"></div>` +
-      `<div class="pc-good"><span class="pc-good-lbl">Inside</span><span class="pc-good-names">${t.algos.map((x) => x.name).join(" &middot; ")}</span></div>` +
-      `</div></div>` +
-      `<div class="acard pc-back">` +
-      `<div class="pc-paper pc-back-paper">` +
-      `<div class="pc-back-head">` +
-      `<span class="pc-back-htext"><span class="pc-back-title">${t.name}</span><span class="pc-back-sub">${t.type}</span></span></div>` +
-      `<div class="pc-algos">` +
-      t.algos.map((x, k) => (k ? `<div class="pc-rip"></div>` : ``) +
-        `<button class="pc-algo"><span class="pc-algo-no">${k + 1}</span>` +
-        `<span class="pc-algo-txt"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></span>` +
-        `</button>`).join("") +
-      `</div>` +
-      `</div></div>` +
-      `</div></div>`,
+    TYPES.map(
+      (t, i) =>
+        `<div class="acard-slot" style="--c:${t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
+        `<div class="acard-flip">` +
+        `<div class="acard pc-front">` +
+        `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
+        `<div class="pc-stamp">${t.badge}</div>` +
+        `<div class="pc-paper">` +
+        `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
+        `<div class="pc-name">${t.name}</div>` +
+        `<div class="pc-type">${t.type}</div>` +
+        `<div class="pc-tag">${t.tag}</div>` +
+        `<p class="pc-msg">${t.desc}</p>` +
+        `<div class="pc-rule"></div>` +
+        `<div class="pc-good"><span class="pc-good-lbl">Inside</span><span class="pc-good-names">${t.algos.map((x) => x.name).join(" &middot; ")}</span></div>` +
+        `</div></div>` +
+        `<div class="acard pc-back">` +
+        `<div class="pc-paper pc-back-paper">` +
+        `<div class="pc-back-head">` +
+        `<span class="pc-back-htext"><span class="pc-back-title">${t.name}</span><span class="pc-back-sub">${t.type}</span></span></div>` +
+        `<div class="pc-algos">` +
+        t.algos
+          .map(
+            (x, k) =>
+              (k ? `<div class="pc-rip"></div>` : ``) +
+              `<button class="pc-algo"><span class="pc-algo-no">${k + 1}</span>` +
+              `<span class="pc-algo-txt"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></span>` +
+              `</button>`,
+          )
+          .join("") +
+        `</div>` +
+        `</div></div>` +
+        `</div></div>`,
     ).join("") +
     `</div>`;
   document.body.appendChild(algosEl);
   // draw a ragged "tear here" line into every rip divider (full card width)
   algosEl.querySelectorAll(".pc-rip").forEach((rip) => {
-    const W = 240, mid = 6, segs = 16;
+    const W = 240,
+      mid = 6,
+      segs = 16;
     let d = "M0 " + mid;
     const zig = [[0, mid]]; // remembered so the selection tint can tear along the same line
     for (let i = 1; i <= segs; i++) {
       const x = (W / segs) * i;
-      const y = mid + (Math.random() * 2 - 1) * 3 + (Math.random() < 0.22 ? (Math.random() * 2 - 1) * 4 : 0);
+      const y =
+        mid +
+        (Math.random() * 2 - 1) * 3 +
+        (Math.random() < 0.22 ? (Math.random() * 2 - 1) * 4 : 0);
       d += " L" + x.toFixed(1) + " " + y.toFixed(1);
       zig.push([x, y]);
     }
     rip._zig = zig;
     rip.innerHTML =
-      '<svg viewBox="0 0 ' + W + ' 12" preserveAspectRatio="none">' +
-      '<path d="' + d + '" fill="none" stroke="rgba(120,100,60,.5)" stroke-width="1.4" stroke-linejoin="round"/>' +
-      '<path d="' + d + '" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1" stroke-linejoin="round" transform="translate(0,1.4)"/>' +
+      '<svg viewBox="0 0 ' +
+      W +
+      ' 12" preserveAspectRatio="none">' +
+      '<path d="' +
+      d +
+      '" fill="none" stroke="rgba(120,100,60,.5)" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<path d="' +
+      d +
+      '" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1" stroke-linejoin="round" transform="translate(0,1.4)"/>' +
       "</svg>";
   });
   const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
-  let upCard = null;   // the card brought to the top (null = in the stack)
+  let upCard = null; // the card brought to the top (null = in the stack)
   let flipped = false; // upCard card is centred + flipped to its algorithms
-  let busy = false;    // an animation is mid-flight
+  let busy = false; // an animation is mid-flight
   let animTimer = 0;
-  let pending = null;  // a card queued to come up once the current animation ends
+  let pending = null; // a card queued to come up once the current animation ends
 
   function runPending() {
     if (!pending || busy) return;
-    if (upCard) { lowerCard(upCard); return; }
+    if (upCard) {
+      lowerCard(upCard);
+      return;
+    }
     const p = pending;
     pending = null;
     liftCard(p);
@@ -1954,9 +2211,14 @@ export function createStartMenu({
     slot.classList.remove("lower");
     slot.classList.add("lift");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = "50"; }, 160);
+    slot._z = setTimeout(() => {
+      slot.style.zIndex = "50";
+    }, 160);
     clearTimeout(animTimer);
-    animTimer = setTimeout(() => { busy = false; runPending(); }, 400);
+    animTimer = setTimeout(() => {
+      busy = false;
+      runPending();
+    }, 400);
   }
   function lowerCard(slot) {
     busy = true;
@@ -1964,7 +2226,9 @@ export function createStartMenu({
     slot.classList.remove("lift");
     slot.classList.add("lower");
     clearTimeout(slot._z);
-    slot._z = setTimeout(() => { slot.style.zIndex = ""; }, 200);
+    slot._z = setTimeout(() => {
+      slot.style.zIndex = "";
+    }, 200);
     clearTimeout(animTimer);
     animTimer = setTimeout(() => {
       slot.classList.remove("lower");
@@ -1981,19 +2245,30 @@ export function createStartMenu({
     // the deck (.arow) may be scaled down on small screens; the slot's transforms
     // live inside that scaled space, so convert viewport offsets back into it.
     let ds = 1;
-    try { ds = new DOMMatrixReadOnly(getComputedStyle(arow).transform).a || 1; } catch (e) { ds = 1; }
+    try {
+      ds = new DOMMatrixReadOnly(getComputedStyle(arow).transform).a || 1;
+    } catch (e) {
+      ds = 1;
+    }
     const r = slot.getBoundingClientRect();
-    const winW = window.innerWidth, winH = window.innerHeight;
+    const winW = window.innerWidth,
+      winH = window.innerHeight;
     // the card opens centred, but must clear the title at the top. Measure the
     // title's bottom edge and only push the card down if it would overlap it.
     let titleBottom = winH * 0.06;
     try {
       const tr = titleAlgos.getBoundingClientRect();
       if (tr.bottom > 0) titleBottom = tr.bottom + winH * 0.02;
-    } catch (e) { /* title not measured yet */ }
+    } catch (e) {
+      /* title not measured yet */
+    }
     const bandBottom = winH - winH * 0.04;
     // size to fit the band below the title, capped at a readable absolute scale
-    const fit = Math.min(1.16, (winW * 0.92) / 340, (bandBottom - titleBottom) / 432);
+    const fit = Math.min(
+      1.16,
+      (winW * 0.92) / 340,
+      (bandBottom - titleBottom) / 432,
+    );
     const cardH = 432 * fit;
     // keep it vertically centred; nudge down only if it would touch the title
     let targetY = winH / 2;
@@ -2013,7 +2288,13 @@ export function createStartMenu({
     slot.classList.add("expanded");
     void flip.offsetWidth; // commit the frozen start value
     flip.style.transform =
-      "translate(" + dx + "px," + dy + "px) scale(" + scale + ") rotateY(180deg)";
+      "translate(" +
+      dx +
+      "px," +
+      dy +
+      "px) scale(" +
+      scale +
+      ") rotateY(180deg)";
   }
   function unflip() {
     const slot = upCard;
@@ -2042,17 +2323,29 @@ export function createStartMenu({
     algoSlots.forEach((s) => {
       s.getAnimations().forEach((a) => a.cancel());
       const f = s.querySelector(".acard-flip");
-      if (f) { f.getAnimations().forEach((a) => a.cancel()); f.style.transition = "none"; f.style.transform = ""; f.style.visibility = ""; }
+      if (f) {
+        f.getAnimations().forEach((a) => a.cancel());
+        f.style.transition = "none";
+        f.style.transform = "";
+        f.style.visibility = "";
+      }
       s.classList.remove("expanded", "off-left", "off-right", "lift", "lower");
-      s.style.zIndex = ""; s.style.transform = "";
+      s.style.zIndex = "";
+      s.style.transform = "";
     });
     algosEl.classList.remove("drilled");
     void algosEl.offsetWidth; // commit the instant reset before re-dealing
-    algoSlots.forEach((s) => { const f = s.querySelector(".acard-flip"); if (f) f.style.transition = ""; });
-    flipped = false; upCard = null;
+    algoSlots.forEach((s) => {
+      const f = s.querySelector(".acard-flip");
+      if (f) f.style.transition = "";
+    });
+    flipped = false;
+    upCard = null;
     algosEl.classList.add("dealing"); // fly all five cards back in
     const dtok = ++algosDealTok;
-    setTimeout(() => { if (dtok === algosDealTok) algosEl.classList.remove("dealing"); }, 1100);
+    setTimeout(() => {
+      if (dtok === algosDealTok) algosEl.classList.remove("dealing");
+    }, 1100);
     busy = false;
   }
   // persist the player's algorithm picks (one per family) so the game knows what
@@ -2061,12 +2354,18 @@ export function createStartMenu({
     try {
       const o = JSON.parse(localStorage.getItem("rl-algos") || "{}");
       return o && typeof o === "object" && !Array.isArray(o) ? o : {};
-    } catch { return {}; }
+    } catch {
+      return {};
+    }
   }
   function saveAlgoChoice(type, algo) {
     const o = readAlgoChoices();
     o[type.key] = algo.name;
-    try { localStorage.setItem("rl-algos", JSON.stringify(o)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem("rl-algos", JSON.stringify(o));
+    } catch {
+      /* ignore */
+    }
   }
   // paint the current selection on a card's back: tint the chosen algorithm's
   // band, torn to the rip lines above & below it (not a rectangle).
@@ -2084,32 +2383,50 @@ export function createStartMenu({
       const next = band.nextElementSibling;
       const pz = prev && prev.classList.contains("pc-rip") ? prev._zig : null;
       const nz = next && next.classList.contains("pc-rip") ? next._zig : null;
-      const top = pz ? pz.map(([x, y]) => `${(x / 240 * 100).toFixed(2)}% ${y.toFixed(1)}px`)
-                     : ["0% 12px", "100% 12px"];
-      const bot = nz ? nz.slice().reverse().map(([x, y]) => `${(x / 240 * 100).toFixed(2)}% ${(h + 12 + y).toFixed(1)}px`)
-                     : [`100% ${h + 12}px`, `0% ${h + 12}px`];
+      const top = pz
+        ? pz.map(
+            ([x, y]) => `${((x / 240) * 100).toFixed(2)}% ${y.toFixed(1)}px`,
+          )
+        : ["0% 12px", "100% 12px"];
+      const bot = nz
+        ? nz
+            .slice()
+            .reverse()
+            .map(
+              ([x, y]) =>
+                `${((x / 240) * 100).toFixed(2)}% ${(h + 12 + y).toFixed(1)}px`,
+            )
+        : [`100% ${h + 12}px`, `0% ${h + 12}px`];
       const poly = "polygon(" + [...top, ...bot].join(",") + ")";
       const tint = document.createElement("span");
       tint.className = "pc-sel-tint";
-      tint.style.cssText = `top:-12px;bottom:-12px;background:color-mix(in srgb,${type.color} 26%,transparent);`
-        + `clip-path:${poly};-webkit-clip-path:${poly};`;
+      tint.style.cssText =
+        `top:-12px;bottom:-12px;background:color-mix(in srgb,${type.color} 26%,transparent);` +
+        `clip-path:${poly};-webkit-clip-path:${poly};`;
       band.insertBefore(tint, band.firstChild);
     });
   }
   async function ripSelect(ticketEl) {
     const slot = upCard;
     if (!slot || busy) return;
-    busy = true; flipped = false;
+    busy = true;
+    flipped = false;
     const flip = slot.querySelector(".acard-flip");
     const srcCard = slot.querySelector(".acard.pc-back");
-    if (!srcCard) { busy = false; return; }
-    const winW = window.innerWidth, winH = window.innerHeight;
-    const W = 340, H = 432; // the unscaled .acard size
+    if (!srcCard) {
+      busy = false;
+      return;
+    }
+    const winW = window.innerWidth,
+      winH = window.innerHeight;
+    const W = 340,
+      H = 432; // the unscaled .acard size
 
     const cardR = srcCard.getBoundingClientRect();
     const bandR = ticketEl.getBoundingClientRect();
     const ts = cardR.width / W; // how much the card is scaled on screen
-    const cardColor = getComputedStyle(slot).getPropertyValue("--c").trim() || "#f59e0b";
+    const cardColor =
+      getComputedStyle(slot).getPropertyValue("--c").trim() || "#f59e0b";
 
     // which algorithm is this? (saved only AFTER the torn paper is gone)
     const chosenType = TYPES[algoSlots.indexOf(slot)] || null;
@@ -2121,21 +2438,37 @@ export function createStartMenu({
     const topY = (bandR.top - cardR.top) / ts;
     const botY = (bandR.bottom - cardR.top) / ts;
     const ragged = (y) => {
-      const pts = [], n = 22;
+      const pts = [],
+        n = 22;
       for (let i = 0; i <= n; i++) {
         const x = Math.min((W / n) * i, W);
-        const j = (Math.random() * 2 - 1) * 5 + (Math.random() < 0.2 ? (Math.random() * 2 - 1) * 7 : 0);
+        const j =
+          (Math.random() * 2 - 1) * 5 +
+          (Math.random() < 0.2 ? (Math.random() * 2 - 1) * 7 : 0);
         pts.push([x, Math.max(0, Math.min(H, y + j))]);
       }
       return pts;
     };
-    const topLine = topY < 6 ? [[0, 0], [W, 0]] : ragged(topY);
-    const botLine = botY > H - 6 ? [[0, H], [W, H]] : ragged(botY);
+    const topLine =
+      topY < 6
+        ? [
+            [0, 0],
+            [W, 0],
+          ]
+        : ragged(topY);
+    const botLine =
+      botY > H - 6
+        ? [
+            [0, H],
+            [W, H],
+          ]
+        : ragged(botY);
     const rev = (a) => a.slice().reverse();
-    const P = (a) => a.map(([x, y]) => x.toFixed(1) + "px " + y.toFixed(1) + "px").join(",");
-    const topClip = P([[0, 0], [W, 0], ...rev(topLine)]);       // header + bands above
-    const midClip = P([...topLine, ...rev(botLine)]);            // the chosen band
-    const botClip = P([...botLine, [W, H], [0, H]]);             // bands below
+    const P = (a) =>
+      a.map(([x, y]) => x.toFixed(1) + "px " + y.toFixed(1) + "px").join(",");
+    const topClip = P([[0, 0], [W, 0], ...rev(topLine)]); // header + bands above
+    const midClip = P([...topLine, ...rev(botLine)]); // the chosen band
+    const botClip = P([...botLine, [W, H], [0, H]]); // bands below
 
     // each piece = a world-space "mover" (for tilt-pivot translate / fall / fly)
     // wrapping a "tilter" (rotate + scale around the card centre) wrapping the
@@ -2155,88 +2488,185 @@ export function createStartMenu({
         `clip-path:polygon(${clip});-webkit-clip-path:polygon(${clip});` +
         `filter:drop-shadow(0 3px 3px rgba(0,0,0,.32));`;
       inner.style.setProperty("--c", cardColor); // the airmail stripes need it
-      outer.appendChild(inner); mover.appendChild(outer);
+      outer.appendChild(inner);
+      mover.appendChild(outer);
       document.body.appendChild(mover);
       return { mover, outer };
     }
-    const pcTop = piece(topClip), pcMid = piece(midClip), pcBot = piece(botClip);
+    const pcTop = piece(topClip),
+      pcMid = piece(midClip),
+      pcBot = piece(botClip);
     flip.style.visibility = "hidden"; // hide the real card; only the torn pieces show
 
-    const ANG = -20;                                 // the whole card leans like "\"
-    const REST = -8;                                 // chosen band keeps a little angle at centre
-    const Ox = cardR.width / 2, Oy = cardR.height / 2;
-    const sep = Math.max(46, cardR.height * 0.18);   // how far the torn chunks pull apart
-    const T1 = 320, T2 = 380, T3 = 700;              // tilt / rip-apart / fly-away
-    const total = T1 + T2 + T3, o1 = T1 / total, o2 = (T1 + T2) / total;
+    const ANG = -20; // the whole card leans like "\"
+    const REST = -8; // chosen band keeps a little angle at centre
+    const Ox = cardR.width / 2,
+      Oy = cardR.height / 2;
+    const sep = Math.max(46, cardR.height * 0.18); // how far the torn chunks pull apart
+    const T1 = 320,
+      T2 = 380,
+      T3 = 700; // tilt / rip-apart / fly-away
+    const total = T1 + T2 + T3,
+      o1 = T1 / total,
+      o2 = (T1 + T2) / total;
     const tiltEase = "cubic-bezier(.3,.65,.3,1)";
 
     // TOP chunk: leans with the card, tears UP along the tilted axis, then tumbles off in 3D
-    pcTop.outer.animate([
-      { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
-      { transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`, offset: o1, easing: tiltEase },
-      { transform: `rotateZ(${ANG - 6}deg) rotateY(0deg) translateY(${-sep}px)`, offset: o2, easing: "ease-out" },
-      { transform: `rotateZ(${ANG - 26}deg) rotateY(46deg) translateY(${-sep}px)` },
-    ], { duration: total, fill: "forwards" });
-    pcTop.mover.animate([
-      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
-      { transform: `translate(-80px,${winH * 1.3}px)` },
-    ], { duration: total, easing: "cubic-bezier(.5,.05,.95,.5)", fill: "forwards" });
+    pcTop.outer.animate(
+      [
+        { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
+        {
+          transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`,
+          offset: o1,
+          easing: tiltEase,
+        },
+        {
+          transform: `rotateZ(${ANG - 6}deg) rotateY(0deg) translateY(${-sep}px)`,
+          offset: o2,
+          easing: "ease-out",
+        },
+        {
+          transform: `rotateZ(${ANG - 26}deg) rotateY(46deg) translateY(${-sep}px)`,
+        },
+      ],
+      { duration: total, fill: "forwards" },
+    );
+    pcTop.mover.animate(
+      [
+        { transform: "translate(0px,0px)" },
+        { transform: "translate(0px,0px)", offset: o2 },
+        { transform: `translate(-80px,${winH * 1.3}px)` },
+      ],
+      {
+        duration: total,
+        easing: "cubic-bezier(.5,.05,.95,.5)",
+        fill: "forwards",
+      },
+    );
 
     // BOTTOM chunk: mirror — tears DOWN, tumbles off in 3D
-    pcBot.outer.animate([
-      { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
-      { transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`, offset: o1, easing: tiltEase },
-      { transform: `rotateZ(${ANG + 6}deg) rotateY(0deg) translateY(${sep}px)`, offset: o2, easing: "ease-out" },
-      { transform: `rotateZ(${ANG + 28}deg) rotateY(-46deg) translateY(${sep}px)` },
-    ], { duration: total, fill: "forwards" });
-    pcBot.mover.animate([
-      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
-      { transform: `translate(80px,${winH * 1.3}px)` },
-    ], { duration: total, easing: "cubic-bezier(.5,.05,.95,.5)", fill: "forwards" });
+    pcBot.outer.animate(
+      [
+        { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
+        {
+          transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`,
+          offset: o1,
+          easing: tiltEase,
+        },
+        {
+          transform: `rotateZ(${ANG + 6}deg) rotateY(0deg) translateY(${sep}px)`,
+          offset: o2,
+          easing: "ease-out",
+        },
+        {
+          transform: `rotateZ(${ANG + 28}deg) rotateY(-46deg) translateY(${sep}px)`,
+        },
+      ],
+      { duration: total, fill: "forwards" },
+    );
+    pcBot.mover.animate(
+      [
+        { transform: "translate(0px,0px)" },
+        { transform: "translate(0px,0px)", offset: o2 },
+        { transform: `translate(80px,${winH * 1.3}px)` },
+      ],
+      {
+        duration: total,
+        easing: "cubic-bezier(.5,.05,.95,.5)",
+        fill: "forwards",
+      },
+    );
 
     // MIDDLE (chosen algorithm): leans with the card, holds while the others tear
     // away, then un-tilts + scales up as it flies to the centre, and stays there
-    const bandCx = (bandR.left + bandR.width / 2) - cardR.left;
-    const bandCy = (bandR.top + bandR.height / 2) - cardR.top;
-    const S = Math.min(1.32, (winW * 0.72) / cardR.width, (winH * 0.5) / bandR.height);
+    const bandCx = bandR.left + bandR.width / 2 - cardR.left;
+    const bandCy = bandR.top + bandR.height / 2 - cardR.top;
+    const S = Math.min(
+      1.32,
+      (winW * 0.72) / cardR.width,
+      (winH * 0.5) / bandR.height,
+    );
     // land the band centre at screen centre given the final tilt (REST) + scale
-    const ra = REST * Math.PI / 180;
-    const vx = S * (bandCx - Ox), vy = S * (bandCy - Oy);
-    const mtx = Math.round(winW / 2 - cardR.left - Ox - (vx * Math.cos(ra) - vy * Math.sin(ra)));
-    const mty = Math.round(winH / 2 - cardR.top - Oy - (vx * Math.sin(ra) + vy * Math.cos(ra)));
+    const ra = (REST * Math.PI) / 180;
+    const vx = S * (bandCx - Ox),
+      vy = S * (bandCy - Oy);
+    const mtx = Math.round(
+      winW / 2 - cardR.left - Ox - (vx * Math.cos(ra) - vy * Math.sin(ra)),
+    );
+    const mty = Math.round(
+      winH / 2 - cardR.top - Oy - (vx * Math.sin(ra) + vy * Math.cos(ra)),
+    );
     const midRest = `rotateZ(${REST}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})`;
-    pcMid.outer.animate([
-      { transform: "rotateZ(0deg) rotateX(0deg) rotateY(0deg) scale(1)" },
-      { transform: `rotateZ(${ANG}deg) rotateX(0deg) rotateY(0deg) scale(1)`, offset: o1, easing: tiltEase },
-      { transform: `rotateZ(${ANG}deg) rotateX(-48deg) rotateY(22deg) scale(1.05)`, offset: o2, easing: "ease-in-out" },
-      { transform: midRest },
-    ], { duration: total, easing: "cubic-bezier(.4,0,.3,1)", fill: "forwards" });
-    pcMid.mover.animate([
-      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
-      { transform: `translate(${mtx}px,${mty}px)` },
-    ], { duration: total, easing: "cubic-bezier(.34,1.25,.5,1)", fill: "forwards" });
+    pcMid.outer.animate(
+      [
+        { transform: "rotateZ(0deg) rotateX(0deg) rotateY(0deg) scale(1)" },
+        {
+          transform: `rotateZ(${ANG}deg) rotateX(0deg) rotateY(0deg) scale(1)`,
+          offset: o1,
+          easing: tiltEase,
+        },
+        {
+          transform: `rotateZ(${ANG}deg) rotateX(-48deg) rotateY(22deg) scale(1.05)`,
+          offset: o2,
+          easing: "ease-in-out",
+        },
+        { transform: midRest },
+      ],
+      { duration: total, easing: "cubic-bezier(.4,0,.3,1)", fill: "forwards" },
+    );
+    pcMid.mover.animate(
+      [
+        { transform: "translate(0px,0px)" },
+        { transform: "translate(0px,0px)", offset: o2 },
+        { transform: `translate(${mtx}px,${mty}px)` },
+      ],
+      {
+        duration: total,
+        easing: "cubic-bezier(.34,1.25,.5,1)",
+        fill: "forwards",
+      },
+    );
 
     await wait(total + 1250); // the chosen algorithm hangs on screen ~1.25s
     // then it DROPS out of view (not a pop) before the deck returns
     pcMid.outer.animate(
-      [{ transform: midRest }, { transform: `rotateZ(${REST + 15}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})` }],
-      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" });
+      [
+        { transform: midRest },
+        {
+          transform: `rotateZ(${REST + 15}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})`,
+        },
+      ],
+      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" },
+    );
     const drop = pcMid.mover.animate(
-      [{ transform: `translate(${mtx}px,${mty}px)` },
-       { transform: `translate(${mtx + 40}px,${mty + winH * 1.35}px)` }],
-      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" });
+      [
+        { transform: `translate(${mtx}px,${mty}px)` },
+        { transform: `translate(${mtx + 40}px,${mty + winH * 1.35}px)` },
+      ],
+      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" },
+    );
     await drop.finished.catch(() => {});
     if (chosenType && chosenAlgo) saveAlgoChoice(chosenType, chosenAlgo); // selection changes only now (paper gone)
     ripSelectReset(); // back to the full deck
   }
   algoSlots.forEach((slot) => {
     slot.addEventListener("click", () => {
-      if (flipped) { goBack(); return; } // click the open card to go back
-      if (slot === upCard) { if (!busy) flipCard(slot); return; } // 2nd click -> flip
+      if (flipped) {
+        goBack();
+        return;
+      } // click the open card to go back
+      if (slot === upCard) {
+        if (!busy) flipCard(slot);
+        return;
+      } // 2nd click -> flip
       pending = slot;
       if (busy) return; // it will come up once the running animation ends
-      if (upCard) lowerCard(upCard); // a different card was up: lower it, then lift this
-      else { pending = null; liftCard(slot); } // 1st click -> bring on top
+      if (upCard)
+        lowerCard(upCard); // a different card was up: lower it, then lift this
+      else {
+        pending = null;
+        liftCard(slot);
+      } // 1st click -> bring on top
     });
   });
   algosEl.querySelectorAll(".pc-algo").forEach((b) => {
@@ -2300,7 +2730,8 @@ export function createStartMenu({
       algosEl.classList.add("closing"); // let the cards fly out left, then hide
       const tok = ++algosCloseTok;
       setTimeout(() => {
-        if (tok === algosCloseTok) algosEl.classList.remove("open", "closing", "dealing");
+        if (tok === algosCloseTok)
+          algosEl.classList.remove("open", "closing", "dealing");
       }, 650);
     }
     howtoEl.classList.remove("open");
@@ -2315,7 +2746,9 @@ export function createStartMenu({
     algosEl.classList.remove("closing");
     algosEl.classList.add("open", "dealing");
     const dtok = ++algosDealTok;
-    setTimeout(() => { if (dtok === algosDealTok) algosEl.classList.remove("dealing"); }, 1100);
+    setTimeout(() => {
+      if (dtok === algosDealTok) algosEl.classList.remove("dealing");
+    }, 1100);
     el.classList.add("shift"); // slide the main menu off to the left
     dropTitle(titleAlgos);
     scrBack.classList.add("show");
@@ -2327,11 +2760,20 @@ export function createStartMenu({
     dropTitle(titleHowto);
     scrBack.classList.add("show");
   }
-  scrBack.addEventListener("click", () => { if (flipped || upCard) goBack(); else closeScreens(); });
+  scrBack.addEventListener("click", () => {
+    if (flipped || upCard) goBack();
+    else closeScreens();
+  });
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (flipped || upCard) { goBack(); return; }
-    if (algosEl.classList.contains("open") || howtoEl.classList.contains("open"))
+    if (flipped || upCard) {
+      goBack();
+      return;
+    }
+    if (
+      algosEl.classList.contains("open") ||
+      howtoEl.classList.contains("open")
+    )
       closeScreens();
   });
 
@@ -2423,11 +2865,30 @@ export function createStartMenu({
     select(best);
   }
   window.addEventListener("mousemove", onMove);
+  // can't start until an algorithm is chosen on every family card (one per level)
+  function selectionReady() {
+    const ch = readAlgoChoices();
+    return TYPES.every((t) => ch[t.key]);
+  }
+  const gateMsg = document.createElement("div");
+  gateMsg.id = "rl-gate";
+  gateMsg.innerHTML = `<span class="gate-ico">!</span><span class="gate-txt">Pick your 5 algorithms first!</span>`;
+  document.body.appendChild(gateMsg);
+  let gateTok = 0;
+  function warnStart() {
+    gateMsg.classList.add("show");
+    const tok = ++gateTok;
+    setTimeout(() => {
+      if (tok === gateTok) gateMsg.classList.remove("show");
+    }, 2600);
+  }
   for (const it of items) {
     it.addEventListener("click", () => {
       select(it);
-      if (it.dataset.go) runStart();
-      else if (it.dataset.open) openSelect();
+      if (it.dataset.go) {
+        if (selectionReady()) runStart();
+        else warnStart();
+      } else if (it.dataset.open) openSelect();
       else if (it.dataset.howto) openHowto();
       else if (it.dataset.algos) openAlgos();
     });
@@ -2492,6 +2953,7 @@ export function createStartMenu({
     if (actors?.group && prevActorsVisible !== null)
       actors.group.visible = prevActorsVisible;
     el.remove();
+    gateMsg.remove();
     style.remove();
   }
 
