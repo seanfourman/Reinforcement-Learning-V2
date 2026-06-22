@@ -1445,6 +1445,25 @@ export function createStartMenu({
   // ---- DOM overlay -----------------------------------------------------
   const style = document.createElement("style");
   style.textContent = `
+    /* ===== ONE responsive knob for the whole start-menu UI =====
+       --ui  scales the menu, character select, how-it-works + screen titles.
+       --card scales the fanned algorithm deck, which is wider so it shrinks a
+       little more to stay on screen. Both are driven from this single block,
+       so every part of the UI grows/shrinks together instead of one-by-one. */
+    :root{--ui:.95;--card:1;}
+    @media (max-width:1800px){:root{--ui:.9;--card:.92;}}
+    @media (max-width:1650px){:root{--ui:.84;--card:.84;}}
+    @media (max-width:1500px){:root{--ui:.78;--card:.76;}}
+    @media (max-width:1380px){:root{--ui:.72;--card:.7;}}
+    @media (max-width:1260px){:root{--ui:.67;--card:.63;}}
+    @media (max-width:1140px){:root{--ui:.62;--card:.56;}}
+    @media (max-width:1024px){:root{--ui:.58;--card:.5;}}
+    @media (max-width:900px){:root{--ui:.54;--card:.44;}}
+    @media (max-width:780px){:root{--ui:.5;--card:.38;}}
+    @media (max-width:660px){:root{--ui:.46;--card:.32;}}
+    @media (max-width:540px){:root{--ui:.42;--card:.27;}}
+    @media (max-width:440px){:root{--ui:.38;--card:.22;}}
+    @media (max-width:360px){:root{--ui:.34;--card:.18;}}
     #rl-menu{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
       align-items:flex-start;justify-content:flex-end;padding:0 0 13vh 3.5vw;pointer-events:none;
       perspective:1600px;font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
@@ -1456,10 +1475,12 @@ export function createStartMenu({
     #rl-menu.out{opacity:0;transition:opacity .5s ease;}
     /* slide ONLY the menu list off-screen while the selector is up (logo stays) */
     #rl-menu.shift .panel{transform:translateX(-160%) rotateY(32deg);}
-    #rl-menu .brand{position:absolute;top:2vh;left:2vw;margin:0;}
-    #rl-menu .brand img{display:block;width:340px;height:auto;
+    #rl-menu .brand{position:absolute;top:2vh;left:2vw;margin:0;
+      transform:scale(var(--ui));transform-origin:top left;}
+    #rl-menu .brand img{display:block;width:250px;height:auto;
       filter:drop-shadow(0 8px 20px rgba(0,0,0,.55));}
-    #rl-menu .items{display:flex;flex-direction:column;align-items:flex-start;gap:13px;}
+    #rl-menu .items{display:flex;flex-direction:column;align-items:flex-start;gap:13px;
+      transform:scale(var(--ui));transform-origin:left bottom;}
     #rl-menu .item{pointer-events:auto;cursor:pointer;border:none;background:none;text-align:left;
       display:flex;align-items:center;gap:16px;padding:9px 12px;opacity:.9;
       font:800 40px "Segoe UI",system-ui,sans-serif;color:#fff;
@@ -1476,10 +1497,12 @@ export function createStartMenu({
     /* character selector — slides up from the bottom; Player 1 on the left, Player 2
        on the right, the cabin fully visible between them (no backdrop) */
     #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 10vh;
-      display:flex;flex-direction:row;justify-content:center;align-items:flex-end;gap:5vw;
+      display:flex;flex-direction:row;justify-content:center;align-items:flex-end;
       pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;
       transform:translateY(118%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
     #rl-select.open{transform:translateY(0);}
+    #rl-select .rows{display:flex;flex-direction:row;justify-content:center;align-items:flex-end;
+      gap:5vw;transform:scale(var(--ui));transform-origin:bottom center;}
     #rl-select .side{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;}
     #rl-select .plab{display:inline-flex;align-items:center;gap:9px;
       padding:6px 8px 6px 18px;border-radius:999px;font-weight:900;
@@ -1573,10 +1596,12 @@ export function createStartMenu({
   const selectEl = document.createElement("div");
   selectEl.id = "rl-select";
   selectEl.innerHTML =
+    `<div class="rows">` +
     `<div class="side left"><div class="plab"><span class="ptxt">Player</span><span class="pnum">1</span></div>` +
     `<div class="grid" data-side="-1"></div></div>` +
     `<div class="side right"><div class="plab"><span class="ptxt">Player</span><span class="pnum">2</span></div>` +
     `<div class="grid" data-side="1"></div></div>` +
+    `</div>` +
     `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
   document.body.appendChild(selectEl);
 
@@ -1660,12 +1685,13 @@ export function createStartMenu({
       src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
     #rl-algos,#rl-howto{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;
       align-items:center;justify-content:center;gap:24px;padding:30px;box-sizing:border-box;
-      opacity:0;pointer-events:none;}
+      overflow:hidden;opacity:0;pointer-events:none;}
     #rl-algos.open,#rl-howto.open{opacity:1;pointer-events:auto;}
     #rl-algos .scr-head{text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.5);}
     #rl-algos .scr-title{font-size:34px;font-weight:900;letter-spacing:1px;}
     #rl-algos .scr-sub{font-size:15px;opacity:.85;margin-top:3px;}
-    #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;}
+    #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;
+      transform-origin:center center;transform:scale(var(--card));transition:transform .25s ease;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
     .acard-slot{position:relative;display:flex;flex:none;width:340px;height:432px;perspective:1700px;z-index:calc(20 - var(--i,0));}
@@ -1747,6 +1773,7 @@ export function createStartMenu({
     .acard .pc-algo:hover{border-color:var(--c);background:#fff;}
     .acard .pc-algo-name{font-weight:900;font-size:16px;color:#2c2722;}
     .acard .pc-algo-blurb{font-size:12.5px;line-height:1.35;color:#6a6253;}
+    #rl-howto .howto-wrap{transform:scale(var(--ui));transform-origin:center center;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
     #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
@@ -1776,11 +1803,12 @@ export function createStartMenu({
       100%{transform:translateX(-118vw) rotate(var(--rot,0deg));opacity:0;}}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
-      font-size:clamp(54px,9vw,110px);color:#fff;-webkit-text-stroke:6px #1f1f1f;paint-order:stroke fill;
-      transform:translateY(-260%);}
+      font-size:calc(96px * var(--ui));color:#fff;
+      -webkit-text-stroke:max(2px,calc(5px * var(--ui))) #1f1f1f;paint-order:stroke fill;
+      transform:translateY(calc(-100% - 13vh));}
     .big-title.show{animation:rl-title-drop .9s .1s both;}
     @keyframes rl-title-drop{
-      0%{transform:translateY(-260%) rotate(3deg);animation-timing-function:cubic-bezier(.55,.02,.9,.26);}
+      0%{transform:translateY(calc(-100% - 13vh)) rotate(3deg);animation-timing-function:cubic-bezier(.55,.02,.9,.26);}
       44%{transform:translateY(0) rotate(-7deg);animation-timing-function:ease-out;}
       62%{transform:translateY(-54px) rotate(0deg);animation-timing-function:ease-in;}
       78%{transform:translateY(0) rotate(-5deg);animation-timing-function:ease-out;}
@@ -1909,9 +1937,17 @@ export function createStartMenu({
   function flipCard(slot) {
     flipped = true;
     const flip = slot.querySelector(".acard-flip");
+    const arow = algosEl.querySelector(".arow");
+    // the deck (.arow) may be scaled down on small screens; the slot's transforms
+    // live inside that scaled space, so convert viewport offsets back into it.
+    let ds = 1;
+    try { ds = new DOMMatrixReadOnly(getComputedStyle(arow).transform).a || 1; } catch (e) { ds = 1; }
     const r = slot.getBoundingClientRect();
-    const dx = Math.round(window.innerWidth / 2 - (r.left + r.width / 2));
-    const dy = Math.round(window.innerHeight / 2 - (r.top + r.height / 2));
+    const dx = Math.round((window.innerWidth / 2 - (r.left + r.width / 2)) / ds);
+    const dy = Math.round((window.innerHeight / 2 - (r.top + r.height / 2)) / ds);
+    // pop the card to a readable absolute size that still fits the viewport
+    const fit = Math.min(1.16, (window.innerWidth * 0.92) / 340, (window.innerHeight * 0.92) / 432);
+    const scale = +(fit / ds).toFixed(3);
     const cur = getComputedStyle(flip).transform;
     flip.style.transform = cur && cur !== "none" ? cur : "";
     const idx = algoSlots.indexOf(slot);
@@ -1923,7 +1959,7 @@ export function createStartMenu({
     slot.classList.add("expanded");
     void flip.offsetWidth; // commit the frozen start value
     flip.style.transform =
-      "translate(" + dx + "px," + dy + "px) scale(1.16) rotateY(180deg)";
+      "translate(" + dx + "px," + dy + "px) scale(" + scale + ") rotateY(180deg)";
   }
   function unflip() {
     const slot = upCard;
@@ -1965,13 +2001,13 @@ export function createStartMenu({
   const howtoEl = document.createElement("div");
   howtoEl.id = "rl-howto";
   howtoEl.innerHTML =
-    `<div class="howto-card">` +
+    `<div class="howto-wrap"><div class="howto-card">` +
     `<p class="ht-lede">Rival Minds pits two reinforcement-learning brains against each other across themed rounds - Red vs Blue. Last mind standing takes the crown.</p>` +
     `<div class="ht-step" style="--c:#f59e0b"><div class="ht-n">1</div><div><b>Learn</b><span>Each agent learns by trial and error: try a move, earn a reward, and sharpen its strategy - its policy.</span></div></div>` +
     `<div class="ht-step" style="--c:#22c55e"><div class="ht-n">2</div><div><b>Face off</b><span>Both brains tackle the same map at once, one Red and one Blue, so every duel is fair and head-to-head.</span></div></div>` +
     `<div class="ht-step" style="--c:#3b82f6"><div class="ht-n">3</div><div><b>Score</b><span>Whoever solves the round better - faster, safer, higher reward - wins the point.</span></div></div>` +
     `<div class="ht-step" style="--c:#ef4444"><div class="ht-n">4</div><div><b>Crown</b><span>Take the most rounds across the bracket and you're the champion of Rival Minds.</span></div></div>` +
-    `<div class="ht-foot">Pick your fighters and your algorithm team, then watch them compete.</div></div>`;
+    `<div class="ht-foot">Pick your fighters and your algorithm team, then watch them compete.</div></div></div>`;
   document.body.appendChild(howtoEl);
 
   const titleAlgos = document.createElement("div");
