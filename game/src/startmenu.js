@@ -1794,15 +1794,19 @@ export function createStartMenu({
       letter-spacing:.5px;box-shadow:0 3px 12px rgba(0,0,0,.5);}
     #rl-scr-back .txt{font-weight:800;font-size:21px;text-shadow:0 2px 12px rgba(0,0,0,.75);}
     #rl-scr-back:hover{opacity:.85;}
-    @keyframes rl-card-throw{0%{transform:translateX(115vw) rotate(var(--rot,0deg)) scale(.96);opacity:0;}
-      100%{transform:translateX(0) rotate(var(--rot,0deg)) scale(1);opacity:1;}}
-    #rl-algos.dealing .acard-flip{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;
+    /* cards fly IN/OUT with NO fade. Distances are divided by the deck/UI scale so
+       they start & end fully off-screen at any size (no opacity needed to hide). */
+    @keyframes rl-deal-in{0%{transform:translateX(calc(118vw / var(--card))) rotate(var(--rot,0deg)) scale(.96);}
+      100%{transform:translateX(0) rotate(var(--rot,0deg)) scale(1);}}
+    @keyframes rl-deal-out{0%{transform:translateX(0) rotate(var(--rot,0deg));}
+      100%{transform:translateX(calc(-118vw / var(--card))) rotate(var(--rot,0deg));}}
+    #rl-algos.dealing .acard-flip{animation:rl-deal-in .55s cubic-bezier(.3,1.25,.5,1) backwards;
       animation-delay:calc(var(--i,0) * .09s);}
-    #rl-howto.open .howto-card{animation:rl-card-throw .55s cubic-bezier(.3,1.25,.5,1) backwards;}
-    #rl-algos.closing .acard-flip{animation:rl-card-fly-out .45s cubic-bezier(.5,0,.9,.35) forwards;
+    #rl-algos.closing .acard-flip{animation:rl-deal-out .45s cubic-bezier(.5,0,.9,.35) forwards;
       animation-delay:calc(var(--i,0) * .05s);}
-    @keyframes rl-card-fly-out{0%{transform:translateX(0) rotate(var(--rot,0deg));opacity:1;}
-      100%{transform:translateX(-118vw) rotate(var(--rot,0deg));opacity:0;}}
+    @keyframes rl-howto-in{0%{transform:translateX(calc(118vw / var(--ui))) scale(.96);}
+      100%{transform:translateX(0) scale(1);}}
+    #rl-howto.open .howto-card{animation:rl-howto-in .55s cubic-bezier(.3,1.25,.5,1) backwards;}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:calc(96px * var(--ui));color:#fff;
@@ -1946,20 +1950,23 @@ export function createStartMenu({
     try { ds = new DOMMatrixReadOnly(getComputedStyle(arow).transform).a || 1; } catch (e) { ds = 1; }
     const r = slot.getBoundingClientRect();
     const winW = window.innerWidth, winH = window.innerHeight;
-    // centre the opened card in the band BELOW the title (not the whole viewport),
-    // so it never runs up into "Algorithms", and size it to fit that band.
-    let bandTop = winH * 0.06;
+    // the card opens centred, but must clear the title at the top. Measure the
+    // title's bottom edge and only push the card down if it would overlap it.
+    let titleBottom = winH * 0.06;
     try {
       const tr = titleAlgos.getBoundingClientRect();
-      if (tr.bottom > 0) bandTop = tr.bottom + winH * 0.03;
+      if (tr.bottom > 0) titleBottom = tr.bottom + winH * 0.02;
     } catch (e) { /* title not measured yet */ }
     const bandBottom = winH - winH * 0.04;
+    // size to fit the band below the title, capped at a readable absolute scale
+    const fit = Math.min(1.16, (winW * 0.92) / 340, (bandBottom - titleBottom) / 432);
+    const cardH = 432 * fit;
+    // keep it vertically centred; nudge down only if it would touch the title
+    let targetY = winH / 2;
+    if (targetY - cardH / 2 < titleBottom) targetY = titleBottom + cardH / 2;
     const targetX = winW / 2;
-    const targetY = (bandTop + bandBottom) / 2;
     const dx = Math.round((targetX - (r.left + r.width / 2)) / ds);
     const dy = Math.round((targetY - (r.top + r.height / 2)) / ds);
-    // pop the card to a readable absolute size that still fits the band
-    const fit = Math.min(1.16, (winW * 0.92) / 340, (bandBottom - bandTop) / 432);
     const scale = +(fit / ds).toFixed(3);
     const cur = getComputedStyle(flip).transform;
     flip.style.transform = cur && cur !== "none" ? cur : "";
