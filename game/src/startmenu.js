@@ -1759,23 +1759,27 @@ export function createStartMenu({
     .acard-slot.off-left,.acard-slot.off-right{pointer-events:none;}
     .acard-flip{cursor:pointer;}
     /* --- back face: algorithm pick-list --- */
-    .acard .pc-back-paper{padding:0;}
-    .acard .pc-back-head{display:flex;align-items:center;gap:10px;
-      padding:15px 17px 12px;border-bottom:1.5px solid rgba(120,100,60,.3);}
-    .acard .pc-back-badge{flex:none;width:33px;height:33px;display:grid;place-items:center;
-      background:var(--c);color:#fff;font-weight:900;font-size:14px;border-radius:8px;}
+    .acard .pc-back-paper{padding:0;border-radius:13px;overflow:hidden;}
+    /* bold coloured header banner with a title + subtitle */
+    .acard .pc-back-head{display:flex;flex-direction:column;gap:4px;padding:16px 18px;
+      background:linear-gradient(135deg,color-mix(in srgb,var(--c) 86%,#000) 0%,var(--c) 100%);color:#fff;}
+    .acard .pc-back-htext{display:flex;flex-direction:column;gap:3px;min-width:0;}
     .acard .pc-back-title{font-family:Georgia,"Times New Roman",serif;font-weight:800;
-      font-size:19px;line-height:1.05;color:#2c2722;}
+      font-size:24px;line-height:1;color:#fff;letter-spacing:-.2px;}
+    .acard .pc-back-sub{font-size:11px;font-weight:800;letter-spacing:1.7px;text-transform:uppercase;color:rgba(255,255,255,.85);}
     /* the algorithms fill the whole card as full-width paper bands, divided by
        ragged "tear here" rip lines (the SVG zig-zag is generated in JS) */
     .acard .pc-algos{display:flex;flex-direction:column;flex:1;padding:0;}
     .acard .pc-back-foot{padding:6px 16px 13px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
-    .acard .pc-algo{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:3px;
-      width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;
-      background:transparent;border:none;padding:8px 18px;transition:background .13s ease;}
-    .acard .pc-algo:hover{background:rgba(255,255,255,.55);}
-    .acard .pc-algo-name{font-weight:900;font-size:16px;color:#2c2722;}
-    .acard .pc-algo-blurb{font-size:12.5px;line-height:1.35;color:#6a6253;}
+    .acard .pc-algo{flex:1;display:flex;flex-direction:row;align-items:center;gap:16px;
+      width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;overflow:hidden;
+      border:none;padding:12px 20px;background:transparent;transition:background .14s ease;}
+    .acard .pc-algo:hover{background:rgba(60,45,20,.05);}
+    .acard .pc-algo-no{flex:none;min-width:46px;text-align:center;font-family:Georgia,serif;font-weight:800;
+      font-size:46px;line-height:.9;color:var(--c);opacity:.4;}
+    .acard .pc-algo-txt{display:flex;flex-direction:column;gap:4px;min-width:0;}
+    .acard .pc-algo-name{font-weight:900;font-size:18px;color:#2c2722;letter-spacing:-.2px;}
+    .acard .pc-algo-blurb{font-size:12.5px;line-height:1.4;color:#6a6253;}
     .acard .pc-rip{position:relative;flex:none;height:12px;margin:0;line-height:0;pointer-events:none;}
     .acard .pc-rip svg{display:block;width:100%;height:12px;}
     /* a torn-off chunk of the card, flying during the rip animation */
@@ -1897,10 +1901,13 @@ export function createStartMenu({
       `</div></div>` +
       `<div class="acard pc-back">` +
       `<div class="pc-paper pc-back-paper">` +
-      `<div class="pc-back-head"><span class="pc-back-badge">${t.badge}</span><span class="pc-back-title">${t.name}</span></div>` +
+      `<div class="pc-back-head">` +
+      `<span class="pc-back-htext"><span class="pc-back-title">${t.name}</span><span class="pc-back-sub">${t.type}</span></span></div>` +
       `<div class="pc-algos">` +
       t.algos.map((x, k) => (k ? `<div class="pc-rip"></div>` : ``) +
-        `<button class="pc-algo"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></button>`).join("") +
+        `<button class="pc-algo"><span class="pc-algo-no">${k + 1}</span>` +
+        `<span class="pc-algo-txt"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></span>` +
+        `</button>`).join("") +
       `</div>` +
       `</div></div>` +
       `</div></div>`,
