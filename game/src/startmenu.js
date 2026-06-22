@@ -1766,15 +1766,20 @@ export function createStartMenu({
       background:var(--c);color:#fff;font-weight:900;font-size:14px;border-radius:8px;}
     .acard .pc-back-title{font-family:Georgia,"Times New Roman",serif;font-weight:800;
       font-size:19px;line-height:1.05;color:#2c2722;}
-    .acard .pc-algos{display:flex;flex-direction:column;justify-content:center;gap:10px;padding:12px 14px 5px;flex:1;}
-    .acard .pc-back-foot{padding:6px 16px 15px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
-    .acard .pc-algo{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;
-      text-align:left;font:inherit;color:inherit;cursor:pointer;
-      background:#fffdf6;border:1.6px solid rgba(120,100,60,.28);border-radius:11px;padding:10px 13px;
-      transition:transform .13s ease,border-color .13s ease,background .13s ease;}
-    .acard .pc-algo:hover{border-color:var(--c);background:#fff;}
+    /* the algorithms fill the whole card as full-width paper bands, divided by
+       ragged "tear here" rip lines (the SVG zig-zag is generated in JS) */
+    .acard .pc-algos{display:flex;flex-direction:column;flex:1;padding:0;}
+    .acard .pc-back-foot{padding:6px 16px 13px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
+    .acard .pc-algo{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:3px;
+      width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;
+      background:transparent;border:none;padding:8px 18px;transition:background .13s ease;}
+    .acard .pc-algo:hover{background:rgba(255,255,255,.55);}
     .acard .pc-algo-name{font-weight:900;font-size:16px;color:#2c2722;}
     .acard .pc-algo-blurb{font-size:12.5px;line-height:1.35;color:#6a6253;}
+    .acard .pc-rip{position:relative;flex:none;height:12px;margin:0;line-height:0;pointer-events:none;}
+    .acard .pc-rip svg{display:block;width:100%;height:12px;}
+    /* a torn-off chunk of the card, flying during the rip animation */
+    .rl-tear-piece{overflow:visible;will-change:transform;}
     #rl-howto .howto-wrap{transform:scale(var(--ui));transform-origin:center center;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
     #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
@@ -1894,13 +1899,29 @@ export function createStartMenu({
       `<div class="pc-paper pc-back-paper">` +
       `<div class="pc-back-head"><span class="pc-back-badge">${t.badge}</span><span class="pc-back-title">${t.name}</span></div>` +
       `<div class="pc-algos">` +
-      t.algos.map((x) => `<button class="pc-algo"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></button>`).join("") +
+      t.algos.map((x, k) => (k ? `<div class="pc-rip"></div>` : ``) +
+        `<button class="pc-algo"><span class="pc-algo-name">${x.name}</span><span class="pc-algo-blurb">${x.blurb}</span></button>`).join("") +
       `</div>` +
       `</div></div>` +
       `</div></div>`,
     ).join("") +
     `</div>`;
   document.body.appendChild(algosEl);
+  // draw a ragged "tear here" line into every rip divider (full card width)
+  algosEl.querySelectorAll(".pc-rip").forEach((rip) => {
+    const W = 240, mid = 6, segs = 16;
+    let d = "M0 " + mid;
+    for (let i = 1; i <= segs; i++) {
+      const x = (W / segs) * i;
+      const y = mid + (Math.random() * 2 - 1) * 3 + (Math.random() < 0.22 ? (Math.random() * 2 - 1) * 4 : 0);
+      d += " L" + x.toFixed(1) + " " + y.toFixed(1);
+    }
+    rip.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' 12" preserveAspectRatio="none">' +
+      '<path d="' + d + '" fill="none" stroke="rgba(120,100,60,.5)" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<path d="' + d + '" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1" stroke-linejoin="round" transform="translate(0,1.4)"/>' +
+      "</svg>";
+  });
   const algoSlots = [...algosEl.querySelectorAll(".acard-slot")];
   let upCard = null;   // the card brought to the top (null = in the stack)
   let flipped = false; // upCard card is centred + flipped to its algorithms
@@ -2000,6 +2021,154 @@ export function createStartMenu({
     if (flipped) unflip();
     else if (upCard && !busy) lowerCard(upCard);
   }
+  // ---- pick an algorithm: actually TEAR the card along the ragged rip lines
+  // above & below the chosen band. The torn-off chunks peel away and fall, the
+  // chosen algorithm lifts to the centre and stays, then the deck re-deals. ---
+  function ripSelectReset() {
+    document.querySelectorAll(".rl-tear-piece").forEach((p) => p.remove());
+    algoSlots.forEach((s) => {
+      s.getAnimations().forEach((a) => a.cancel());
+      const f = s.querySelector(".acard-flip");
+      if (f) { f.getAnimations().forEach((a) => a.cancel()); f.style.transition = "none"; f.style.transform = ""; f.style.visibility = ""; }
+      s.classList.remove("expanded", "off-left", "off-right", "lift", "lower");
+      s.style.zIndex = ""; s.style.transform = "";
+    });
+    algosEl.classList.remove("drilled");
+    void algosEl.offsetWidth; // commit the instant reset before re-dealing
+    algoSlots.forEach((s) => { const f = s.querySelector(".acard-flip"); if (f) f.style.transition = ""; });
+    flipped = false; upCard = null;
+    algosEl.classList.add("dealing"); // fly all five cards back in
+    const dtok = ++algosDealTok;
+    setTimeout(() => { if (dtok === algosDealTok) algosEl.classList.remove("dealing"); }, 1100);
+    busy = false;
+  }
+  async function ripSelect(ticketEl) {
+    const slot = upCard;
+    if (!slot || busy) return;
+    busy = true; flipped = false;
+    const flip = slot.querySelector(".acard-flip");
+    const srcCard = slot.querySelector(".acard.pc-back");
+    if (!srcCard) { busy = false; return; }
+    const winW = window.innerWidth, winH = window.innerHeight;
+    const W = 340, H = 432; // the unscaled .acard size
+
+    const cardR = srcCard.getBoundingClientRect();
+    const bandR = ticketEl.getBoundingClientRect();
+    const ts = cardR.width / W; // how much the card is scaled on screen
+    const cardColor = getComputedStyle(slot).getPropertyValue("--c").trim() || "#f59e0b";
+
+    // rip-line Y positions (unscaled card space), with a shared ragged edge so
+    // the torn edges of neighbouring pieces match exactly
+    const topY = (bandR.top - cardR.top) / ts;
+    const botY = (bandR.bottom - cardR.top) / ts;
+    const ragged = (y) => {
+      const pts = [], n = 22;
+      for (let i = 0; i <= n; i++) {
+        const x = Math.min((W / n) * i, W);
+        const j = (Math.random() * 2 - 1) * 5 + (Math.random() < 0.2 ? (Math.random() * 2 - 1) * 7 : 0);
+        pts.push([x, Math.max(0, Math.min(H, y + j))]);
+      }
+      return pts;
+    };
+    const topLine = topY < 6 ? [[0, 0], [W, 0]] : ragged(topY);
+    const botLine = botY > H - 6 ? [[0, H], [W, H]] : ragged(botY);
+    const rev = (a) => a.slice().reverse();
+    const P = (a) => a.map(([x, y]) => x.toFixed(1) + "px " + y.toFixed(1) + "px").join(",");
+    const topClip = P([[0, 0], [W, 0], ...rev(topLine)]);       // header + bands above
+    const midClip = P([...topLine, ...rev(botLine)]);            // the chosen band
+    const botClip = P([...botLine, [W, H], [0, H]]);             // bands below
+
+    // each piece = a world-space "mover" (for tilt-pivot translate / fall / fly)
+    // wrapping a "tilter" (rotate + scale around the card centre) wrapping the
+    // clipped card clone. Splitting the layers keeps the maths clean.
+    function piece(clip) {
+      const mover = document.createElement("div");
+      mover.className = "rl-tear-piece";
+      mover.style.cssText =
+        `position:fixed;left:${cardR.left}px;top:${cardR.top}px;width:${cardR.width}px;height:${cardR.height}px;` +
+        `z-index:97;pointer-events:none;perspective:1000px;`;
+      const outer = document.createElement("div");
+      outer.style.cssText = `position:absolute;inset:0;transform-origin:${cardR.width / 2}px ${cardR.height / 2}px;`;
+      const inner = srcCard.cloneNode(true);
+      inner.style.cssText =
+        `position:absolute;left:0;top:0;width:${W}px;height:${H}px;margin:0;` +
+        `transform:scale(${ts});transform-origin:top left;` +
+        `clip-path:polygon(${clip});-webkit-clip-path:polygon(${clip});` +
+        `filter:drop-shadow(0 3px 3px rgba(0,0,0,.32));`;
+      inner.style.setProperty("--c", cardColor); // the airmail stripes need it
+      outer.appendChild(inner); mover.appendChild(outer);
+      document.body.appendChild(mover);
+      return { mover, outer };
+    }
+    const pcTop = piece(topClip), pcMid = piece(midClip), pcBot = piece(botClip);
+    flip.style.visibility = "hidden"; // hide the real card; only the torn pieces show
+
+    const ANG = -20;                                 // the whole card leans like "\"
+    const REST = -8;                                 // chosen band keeps a little angle at centre
+    const Ox = cardR.width / 2, Oy = cardR.height / 2;
+    const sep = Math.max(46, cardR.height * 0.18);   // how far the torn chunks pull apart
+    const T1 = 320, T2 = 380, T3 = 700;              // tilt / rip-apart / fly-away
+    const total = T1 + T2 + T3, o1 = T1 / total, o2 = (T1 + T2) / total;
+    const tiltEase = "cubic-bezier(.3,.65,.3,1)";
+
+    // TOP chunk: leans with the card, tears UP along the tilted axis, then tumbles off in 3D
+    pcTop.outer.animate([
+      { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
+      { transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`, offset: o1, easing: tiltEase },
+      { transform: `rotateZ(${ANG - 6}deg) rotateY(0deg) translateY(${-sep}px)`, offset: o2, easing: "ease-out" },
+      { transform: `rotateZ(${ANG - 26}deg) rotateY(46deg) translateY(${-sep}px)` },
+    ], { duration: total, fill: "forwards" });
+    pcTop.mover.animate([
+      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
+      { transform: `translate(-80px,${winH * 1.3}px)` },
+    ], { duration: total, easing: "cubic-bezier(.5,.05,.95,.5)", fill: "forwards" });
+
+    // BOTTOM chunk: mirror — tears DOWN, tumbles off in 3D
+    pcBot.outer.animate([
+      { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
+      { transform: `rotateZ(${ANG}deg) rotateY(0deg) translateY(0px)`, offset: o1, easing: tiltEase },
+      { transform: `rotateZ(${ANG + 6}deg) rotateY(0deg) translateY(${sep}px)`, offset: o2, easing: "ease-out" },
+      { transform: `rotateZ(${ANG + 28}deg) rotateY(-46deg) translateY(${sep}px)` },
+    ], { duration: total, fill: "forwards" });
+    pcBot.mover.animate([
+      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
+      { transform: `translate(80px,${winH * 1.3}px)` },
+    ], { duration: total, easing: "cubic-bezier(.5,.05,.95,.5)", fill: "forwards" });
+
+    // MIDDLE (chosen algorithm): leans with the card, holds while the others tear
+    // away, then un-tilts + scales up as it flies to the centre, and stays there
+    const bandCx = (bandR.left + bandR.width / 2) - cardR.left;
+    const bandCy = (bandR.top + bandR.height / 2) - cardR.top;
+    const S = Math.min(1.32, (winW * 0.72) / cardR.width, (winH * 0.5) / bandR.height);
+    // land the band centre at screen centre given the final tilt (REST) + scale
+    const ra = REST * Math.PI / 180;
+    const vx = S * (bandCx - Ox), vy = S * (bandCy - Oy);
+    const mtx = Math.round(winW / 2 - cardR.left - Ox - (vx * Math.cos(ra) - vy * Math.sin(ra)));
+    const mty = Math.round(winH / 2 - cardR.top - Oy - (vx * Math.sin(ra) + vy * Math.cos(ra)));
+    const midRest = `rotateZ(${REST}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})`;
+    pcMid.outer.animate([
+      { transform: "rotateZ(0deg) rotateX(0deg) rotateY(0deg) scale(1)" },
+      { transform: `rotateZ(${ANG}deg) rotateX(0deg) rotateY(0deg) scale(1)`, offset: o1, easing: tiltEase },
+      { transform: `rotateZ(${ANG}deg) rotateX(-48deg) rotateY(22deg) scale(1.05)`, offset: o2, easing: "ease-in-out" },
+      { transform: midRest },
+    ], { duration: total, easing: "cubic-bezier(.4,0,.3,1)", fill: "forwards" });
+    pcMid.mover.animate([
+      { transform: "translate(0px,0px)" }, { transform: "translate(0px,0px)", offset: o2 },
+      { transform: `translate(${mtx}px,${mty}px)` },
+    ], { duration: total, easing: "cubic-bezier(.34,1.25,.5,1)", fill: "forwards" });
+
+    await wait(total + 3000); // the chosen algorithm hangs on screen ~3s
+    // then it DROPS out of view (not a pop) before the deck returns
+    pcMid.outer.animate(
+      [{ transform: midRest }, { transform: `rotateZ(${REST + 15}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})` }],
+      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" });
+    const drop = pcMid.mover.animate(
+      [{ transform: `translate(${mtx}px,${mty}px)` },
+       { transform: `translate(${mtx + 40}px,${mty + winH * 1.35}px)` }],
+      { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" });
+    await drop.finished.catch(() => {});
+    ripSelectReset(); // back to the full deck
+  }
   algoSlots.forEach((slot) => {
     slot.addEventListener("click", () => {
       if (flipped) { goBack(); return; } // click the open card to go back
@@ -2011,7 +2180,10 @@ export function createStartMenu({
     });
   });
   algosEl.querySelectorAll(".pc-algo").forEach((b) => {
-    b.addEventListener("click", (e) => e.stopPropagation());
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (flipped && !busy) ripSelect(b);
+    });
   });
   // click anywhere off a card -> go back
   algosEl.addEventListener("click", (e) => {
