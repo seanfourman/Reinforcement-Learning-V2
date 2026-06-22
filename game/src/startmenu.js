@@ -1748,6 +1748,7 @@ export function createStartMenu({
     .acard .pc-good{padding:0 20px;font-size:16px;line-height:1.5;}
     .acard .pc-good-lbl{display:block;font-weight:900;letter-spacing:1.5px;text-transform:uppercase;
       font-size:13px;color:var(--c);margin-bottom:5px;}
+    .acard .pc-good-names{display:block;white-space:nowrap;font-size:13.5px;letter-spacing:-.1px;}
     /* --- drill-in: click a type -> centre + flip, neighbours clear off --- */
     #rl-algos.drilled .acard-slot{cursor:default;}
     .acard-slot.expanded{z-index:90;}
@@ -1772,12 +1773,13 @@ export function createStartMenu({
     .acard .pc-algos{display:flex;flex-direction:column;flex:1;padding:0;}
     .acard .pc-back-foot{padding:6px 16px 13px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#a99c80;text-align:center;}
     .acard .pc-algo{flex:1;display:flex;flex-direction:row;align-items:center;gap:16px;
-      width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;overflow:hidden;
-      border:none;padding:12px 20px;background:transparent;transition:background .14s ease;}
-    .acard .pc-algo:hover{background:rgba(60,45,20,.05);}
-    .acard .pc-algo-no{flex:none;min-width:46px;text-align:center;font-family:Georgia,serif;font-weight:800;
+      width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;
+      border:none;padding:12px 20px;background:transparent;}
+    /* the "you picked this" tint — torn to the rip lines, sits behind the text */
+    .acard .pc-sel-tint{position:absolute;left:0;right:0;z-index:0;pointer-events:none;}
+    .acard .pc-algo-no{flex:none;min-width:46px;text-align:center;position:relative;z-index:1;font-family:Georgia,serif;font-weight:800;
       font-size:46px;line-height:.9;color:var(--c);opacity:.4;}
-    .acard .pc-algo-txt{display:flex;flex-direction:column;gap:4px;min-width:0;}
+    .acard .pc-algo-txt{display:flex;flex-direction:column;gap:4px;min-width:0;position:relative;z-index:1;}
     .acard .pc-algo-name{font-weight:900;font-size:18px;color:#2c2722;letter-spacing:-.2px;}
     .acard .pc-algo-blurb{font-size:12.5px;line-height:1.4;color:#6a6253;}
     .acard .pc-rip{position:relative;flex:none;height:12px;margin:0;line-height:0;pointer-events:none;}
@@ -1897,7 +1899,7 @@ export function createStartMenu({
       `<div class="pc-tag">${t.tag}</div>` +
       `<p class="pc-msg">${t.desc}</p>` +
       `<div class="pc-rule"></div>` +
-      `<div class="pc-good"><span class="pc-good-lbl">Inside</span>${t.algos.map((x) => x.name).join(" &middot; ")}</div>` +
+      `<div class="pc-good"><span class="pc-good-lbl">Inside</span><span class="pc-good-names">${t.algos.map((x) => x.name).join(" &middot; ")}</span></div>` +
       `</div></div>` +
       `<div class="acard pc-back">` +
       `<div class="pc-paper pc-back-paper">` +
@@ -1918,11 +1920,14 @@ export function createStartMenu({
   algosEl.querySelectorAll(".pc-rip").forEach((rip) => {
     const W = 240, mid = 6, segs = 16;
     let d = "M0 " + mid;
+    const zig = [[0, mid]]; // remembered so the selection tint can tear along the same line
     for (let i = 1; i <= segs; i++) {
       const x = (W / segs) * i;
       const y = mid + (Math.random() * 2 - 1) * 3 + (Math.random() < 0.22 ? (Math.random() * 2 - 1) * 4 : 0);
       d += " L" + x.toFixed(1) + " " + y.toFixed(1);
+      zig.push([x, y]);
     }
+    rip._zig = zig;
     rip.innerHTML =
       '<svg viewBox="0 0 ' + W + ' 12" preserveAspectRatio="none">' +
       '<path d="' + d + '" fill="none" stroke="rgba(120,100,60,.5)" stroke-width="1.4" stroke-linejoin="round"/>' +
@@ -1970,6 +1975,7 @@ export function createStartMenu({
   // second click: centre the card + flip it to its algorithms, sweep the neighbours off
   function flipCard(slot) {
     flipped = true;
+    paintSelection(slot); // show the current pick (if any) on this card's back
     const flip = slot.querySelector(".acard-flip");
     const arow = algosEl.querySelector(".arow");
     // the deck (.arow) may be scaled down on small screens; the slot's transforms
@@ -2049,6 +2055,47 @@ export function createStartMenu({
     setTimeout(() => { if (dtok === algosDealTok) algosEl.classList.remove("dealing"); }, 1100);
     busy = false;
   }
+  // persist the player's algorithm picks (one per family) so the game knows what
+  // they chose to play with. Stored as { typeKey: algoName } under "rl-algos".
+  function readAlgoChoices() {
+    try {
+      const o = JSON.parse(localStorage.getItem("rl-algos") || "{}");
+      return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+    } catch { return {}; }
+  }
+  function saveAlgoChoice(type, algo) {
+    const o = readAlgoChoices();
+    o[type.key] = algo.name;
+    try { localStorage.setItem("rl-algos", JSON.stringify(o)); } catch { /* ignore */ }
+  }
+  // paint the current selection on a card's back: tint the chosen algorithm's
+  // band, torn to the rip lines above & below it (not a rectangle).
+  function paintSelection(slot) {
+    const type = TYPES[algoSlots.indexOf(slot)];
+    const back = slot && slot.querySelector(".acard.pc-back");
+    if (!type || !back) return;
+    const chosen = readAlgoChoices()[type.key];
+    back.querySelectorAll(".pc-algo").forEach((band, i) => {
+      const old = band.querySelector(".pc-sel-tint");
+      if (old) old.remove();
+      if (!chosen || !type.algos[i] || type.algos[i].name !== chosen) return;
+      const h = band.offsetHeight || 70;
+      const prev = band.previousElementSibling;
+      const next = band.nextElementSibling;
+      const pz = prev && prev.classList.contains("pc-rip") ? prev._zig : null;
+      const nz = next && next.classList.contains("pc-rip") ? next._zig : null;
+      const top = pz ? pz.map(([x, y]) => `${(x / 240 * 100).toFixed(2)}% ${y.toFixed(1)}px`)
+                     : ["0% 12px", "100% 12px"];
+      const bot = nz ? nz.slice().reverse().map(([x, y]) => `${(x / 240 * 100).toFixed(2)}% ${(h + 12 + y).toFixed(1)}px`)
+                     : [`100% ${h + 12}px`, `0% ${h + 12}px`];
+      const poly = "polygon(" + [...top, ...bot].join(",") + ")";
+      const tint = document.createElement("span");
+      tint.className = "pc-sel-tint";
+      tint.style.cssText = `top:-12px;bottom:-12px;background:color-mix(in srgb,${type.color} 26%,transparent);`
+        + `clip-path:${poly};-webkit-clip-path:${poly};`;
+      band.insertBefore(tint, band.firstChild);
+    });
+  }
   async function ripSelect(ticketEl) {
     const slot = upCard;
     if (!slot || busy) return;
@@ -2063,6 +2110,11 @@ export function createStartMenu({
     const bandR = ticketEl.getBoundingClientRect();
     const ts = cardR.width / W; // how much the card is scaled on screen
     const cardColor = getComputedStyle(slot).getPropertyValue("--c").trim() || "#f59e0b";
+
+    // which algorithm is this? (saved only AFTER the torn paper is gone)
+    const chosenType = TYPES[algoSlots.indexOf(slot)] || null;
+    const ai = [...slot.querySelectorAll(".pc-algo")].indexOf(ticketEl);
+    const chosenAlgo = chosenType && ai >= 0 ? chosenType.algos[ai] : null;
 
     // rip-line Y positions (unscaled card space), with a shared ragged edge so
     // the torn edges of neighbouring pieces match exactly
@@ -2164,7 +2216,7 @@ export function createStartMenu({
       { transform: `translate(${mtx}px,${mty}px)` },
     ], { duration: total, easing: "cubic-bezier(.34,1.25,.5,1)", fill: "forwards" });
 
-    await wait(total + 3000); // the chosen algorithm hangs on screen ~3s
+    await wait(total + 1250); // the chosen algorithm hangs on screen ~1.25s
     // then it DROPS out of view (not a pop) before the deck returns
     pcMid.outer.animate(
       [{ transform: midRest }, { transform: `rotateZ(${REST + 15}deg) rotateX(0deg) rotateY(0deg) scale(${S.toFixed(3)})` }],
@@ -2174,6 +2226,7 @@ export function createStartMenu({
        { transform: `translate(${mtx + 40}px,${mty + winH * 1.35}px)` }],
       { duration: 640, easing: "cubic-bezier(.5,.05,.9,.4)", fill: "forwards" });
     await drop.finished.catch(() => {});
+    if (chosenType && chosenAlgo) saveAlgoChoice(chosenType, chosenAlgo); // selection changes only now (paper gone)
     ripSelectReset(); // back to the full deck
   }
   algoSlots.forEach((slot) => {
