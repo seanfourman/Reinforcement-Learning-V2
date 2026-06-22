@@ -1691,7 +1691,7 @@ export function createStartMenu({
     #rl-algos .scr-title{font-size:34px;font-weight:900;letter-spacing:1px;}
     #rl-algos .scr-sub{font-size:15px;opacity:.85;margin-top:3px;}
     #rl-algos .arow{display:flex;gap:0;flex-wrap:nowrap;justify-content:center;
-      transform-origin:center center;transform:scale(var(--card));transition:transform .25s ease;}
+      transform-origin:center center;transform:translateY(7vh) scale(var(--card));transition:transform .25s ease;}
         /* ===== algorithm POSTCARDS (rounded, airmail frame, fanned deck) ===== */
     /* stationary hover anchor: the slot never moves, the card inside animates */
     .acard-slot{position:relative;display:flex;flex:none;width:340px;height:432px;perspective:1700px;z-index:calc(20 - var(--i,0));}
@@ -1752,8 +1752,10 @@ export function createStartMenu({
     #rl-algos.drilled .acard-slot{cursor:default;}
     .acard-slot.expanded{z-index:90;}
     .acard-slot.expanded .acard-flip{transform:translate(var(--dx,0px),var(--dy,0px)) scale(1.16) rotateY(180deg);}
-    .acard-slot.off-left .acard-flip{transform:translateX(-120vw) rotate(-7deg);opacity:0;}
-    .acard-slot.off-right .acard-flip{transform:translateX(120vw) rotate(7deg);opacity:0;}
+    /* neighbours slide fully off-screen (no fade) when a card is opened; the
+       distance is divided by --card so they clear the edge at any deck scale. */
+    .acard-slot.off-left .acard-flip{transform:translateX(calc(-90vw / var(--card))) rotate(-7deg);}
+    .acard-slot.off-right .acard-flip{transform:translateX(calc(90vw / var(--card))) rotate(7deg);}
     .acard-slot.off-left,.acard-slot.off-right{pointer-events:none;}
     .acard-flip{cursor:pointer;}
     /* --- back face: algorithm pick-list --- */
@@ -1943,10 +1945,21 @@ export function createStartMenu({
     let ds = 1;
     try { ds = new DOMMatrixReadOnly(getComputedStyle(arow).transform).a || 1; } catch (e) { ds = 1; }
     const r = slot.getBoundingClientRect();
-    const dx = Math.round((window.innerWidth / 2 - (r.left + r.width / 2)) / ds);
-    const dy = Math.round((window.innerHeight / 2 - (r.top + r.height / 2)) / ds);
-    // pop the card to a readable absolute size that still fits the viewport
-    const fit = Math.min(1.16, (window.innerWidth * 0.92) / 340, (window.innerHeight * 0.92) / 432);
+    const winW = window.innerWidth, winH = window.innerHeight;
+    // centre the opened card in the band BELOW the title (not the whole viewport),
+    // so it never runs up into "Algorithms", and size it to fit that band.
+    let bandTop = winH * 0.06;
+    try {
+      const tr = titleAlgos.getBoundingClientRect();
+      if (tr.bottom > 0) bandTop = tr.bottom + winH * 0.03;
+    } catch (e) { /* title not measured yet */ }
+    const bandBottom = winH - winH * 0.04;
+    const targetX = winW / 2;
+    const targetY = (bandTop + bandBottom) / 2;
+    const dx = Math.round((targetX - (r.left + r.width / 2)) / ds);
+    const dy = Math.round((targetY - (r.top + r.height / 2)) / ds);
+    // pop the card to a readable absolute size that still fits the band
+    const fit = Math.min(1.16, (winW * 0.92) / 340, (bandBottom - bandTop) / 432);
     const scale = +(fit / ds).toFixed(3);
     const cur = getComputedStyle(flip).transform;
     flip.style.transform = cur && cur !== "none" ? cur : "";
