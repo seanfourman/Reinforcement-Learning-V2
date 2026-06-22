@@ -1744,7 +1744,7 @@ export function createStartMenu({
       text-align:left;font:inherit;color:inherit;cursor:pointer;
       background:#fffdf6;border:1.6px solid rgba(120,100,60,.28);border-radius:11px;padding:10px 13px;
       transition:transform .13s ease,border-color .13s ease,background .13s ease;}
-    .acard .pc-algo:hover{transform:translateX(5px);border-color:var(--c);background:#fff;}
+    .acard .pc-algo:hover{border-color:var(--c);background:#fff;}
     .acard .pc-algo-name{font-weight:900;font-size:16px;color:#2c2722;}
     .acard .pc-algo-blurb{font-size:12.5px;line-height:1.35;color:#6a6253;}
     #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
