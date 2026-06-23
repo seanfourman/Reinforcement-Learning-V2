@@ -1621,7 +1621,7 @@ export function createStartMenu({
       gap:5vw;transform:scale(var(--ui));transform-origin:bottom center;}
     #rl-select .side{display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:auto;}
     #rl-select .plab{display:inline-flex;align-items:center;gap:9px;
-      padding:6px 8px 6px 18px;border-radius:999px;font-weight:900;
+      padding:6px 20px;border-radius:999px;font-weight:900;
       text-transform:uppercase;color:#fff;border:2px solid rgba(255,255,255,.3);
       position:relative;overflow:hidden;}
     /* recurring light "glint" sweeping across each pill */
@@ -1644,10 +1644,10 @@ export function createStartMenu({
     #rl-select .plab .ptxt{font-size:17px;letter-spacing:3px;}
     #rl-select .plab .pnum{display:grid;place-items:center;width:30px;height:30px;
       box-sizing:border-box;padding-bottom:2px;border-radius:50%;font-size:19px;background:#fff;}
-    #rl-select .side.left .plab{background:#e23333;}
-    #rl-select .side.left .pnum{color:#dc2b2b;}
-    #rl-select .side.right .plab{background:#3360e6;}
-    #rl-select .side.right .pnum{color:#2b54dc;}
+    #rl-select .side.left .plab{background:#3360e6;}
+    #rl-select .side.left .pnum{color:#2b54dc;}
+    #rl-select .side.right .plab{background:#e23333;}
+    #rl-select .side.right .pnum{color:#dc2b2b;}
     #rl-select .plab.cpu{padding:6px 20px;}
     /* the computer's static stat sheet — its OWN Mario-style panel pinned right */
     #rl-cpu{position:fixed;right:2.5vw;top:50%;z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
@@ -1669,7 +1669,7 @@ export function createStartMenu({
       78%{transform:translate(0,-50%) scale(1);animation-timing-function:ease-out;}
       89%{transform:translate(13px,-50%) scale(1);animation-timing-function:ease-in;}
       100%{transform:translate(0,-50%) scale(1);}}
-    #rl-cpu .cpu-badge{position:absolute;top:-16px;left:18px;background:#3360e6;color:#fff;
+    #rl-cpu .cpu-badge{position:absolute;top:-16px;left:18px;background:#e23333;color:#fff;
       font-weight:900;font-size:13px;letter-spacing:2px;padding:4px 13px;border-radius:999px;
       border:3px solid #2a1c0c;box-shadow:0 3px 0 #2a1c0c;}
     #rl-cpu .cpu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -2022,7 +2022,17 @@ export function createStartMenu({
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:calc(96px * var(--ui));color:#fff;
-      -webkit-text-stroke:max(2px,calc(5px * var(--ui))) #1f1f1f;paint-order:stroke fill;
+      -webkit-text-stroke:max(3px,calc(7px * var(--ui))) #1f1f1f;paint-order:stroke fill;
+      /* diagonal 3D extrusion — stacked dark copies down-and-right, same look as the CPU card */
+      text-shadow:calc(1px * var(--ui)) calc(1px * var(--ui)) 0 #1f1f1f,
+        calc(2px * var(--ui)) calc(2px * var(--ui)) 0 #1f1f1f,
+        calc(3px * var(--ui)) calc(3px * var(--ui)) 0 #1f1f1f,
+        calc(4px * var(--ui)) calc(4px * var(--ui)) 0 #1f1f1f,
+        calc(5px * var(--ui)) calc(5px * var(--ui)) 0 #1f1f1f,
+        calc(6px * var(--ui)) calc(6px * var(--ui)) 0 #1f1f1f,
+        calc(7px * var(--ui)) calc(7px * var(--ui)) 0 #1f1f1f,
+        calc(8px * var(--ui)) calc(8px * var(--ui)) 0 #1f1f1f,
+        calc(9px * var(--ui)) calc(12px * var(--ui)) calc(10px * var(--ui)) rgba(0,0,0,.4);
       transform:translateY(calc(-100% - 13vh));}
     .big-title.show{animation:rl-title-drop .9s .1s both;}
     @keyframes rl-title-drop{
