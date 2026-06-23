@@ -1649,21 +1649,32 @@ export function createStartMenu({
     #rl-select .side.right .plab{background:#3360e6;}
     #rl-select .side.right .pnum{color:#2b54dc;}
     #rl-select .plab.cpu{padding:6px 20px;}
-    /* the computer's static stat sheet (difficulty + per-algorithm strength) */
-    #rl-select .cpu-stats{width:340px;box-sizing:border-box;background:rgba(18,16,28,.86);
-      border:2px solid rgba(255,255,255,.18);border-radius:14px;padding:11px 14px 12px;color:#fff;
-      box-shadow:0 12px 34px rgba(0,0,0,.5);}
-    #rl-select .cpu-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
-      padding-bottom:8px;margin-bottom:7px;border-bottom:1px solid rgba(255,255,255,.14);}
-    #rl-select .cpu-name{font-weight:900;font-size:18px;letter-spacing:.3px;}
-    #rl-select .cpu-tier{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;
-      font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#cdd2dc;}
-    #rl-select .cpu-stars{color:#ffd34d;font-size:13px;letter-spacing:1px;}
-    #rl-select .cpu-row{display:flex;align-items:center;gap:9px;margin:6px 0;}
-    #rl-select .cpu-algo{flex:none;width:124px;font-size:11.5px;font-weight:700;color:#e7eaf0;
+    /* the computer's static stat sheet — its OWN Mario-style panel pinned right */
+    #rl-cpu{position:fixed;right:2.5vw;top:50%;z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
+      transform:translate(46px,-50%) scale(.92);transform-origin:right center;
+      background:linear-gradient(180deg,#fff7e6 0%,#f3e3c0 100%);
+      border:4px solid #2a1c0c;border-radius:22px;padding:16px 18px 18px;color:#3a2a14;
+      box-shadow:0 7px 0 #2a1c0c,0 20px 36px rgba(0,0,0,.5);
+      font-family:"Segoe UI",system-ui,sans-serif;opacity:0;
+      transition:opacity .3s ease,transform .38s cubic-bezier(.34,1.5,.5,1);}
+    #rl-cpu.show{opacity:1;transform:translate(0,-50%) scale(1);}
+    #rl-cpu .cpu-badge{position:absolute;top:-16px;left:18px;background:#3360e6;color:#fff;
+      font-weight:900;font-size:13px;letter-spacing:2px;padding:4px 13px;border-radius:999px;
+      border:3px solid #2a1c0c;box-shadow:0 3px 0 #2a1c0c;}
+    #rl-cpu .cpu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:4px 0 11px;margin-bottom:10px;border-bottom:3px solid rgba(42,28,12,.22);}
+    #rl-cpu .cpu-name{font-weight:900;font-size:22px;letter-spacing:.2px;color:#2a1c0c;}
+    #rl-cpu .cpu-tier{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;
+      font-size:10px;font-weight:900;letter-spacing:1.3px;text-transform:uppercase;color:#9a6a25;}
+    #rl-cpu .cpu-stars{color:#f6b21b;font-size:16px;letter-spacing:1px;
+      -webkit-text-stroke:.6px #2a1c0c;paint-order:stroke fill;}
+    #rl-cpu .cpu-row{display:flex;align-items:center;gap:10px;margin:8px 0;}
+    #rl-cpu .cpu-algo{flex:1;font-size:13px;font-weight:800;color:#3a2a14;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    #rl-select .cpu-bar{flex:1;height:8px;border-radius:5px;background:rgba(255,255,255,.15);overflow:hidden;}
-    #rl-select .cpu-bar i{display:block;height:100%;border-radius:5px;}
+    #rl-cpu .cpu-pips{flex:none;display:flex;gap:5px;}
+    #rl-cpu .pip{width:14px;height:14px;border-radius:4px;border:2px solid #2a1c0c;
+      background:#e7d4a8;box-shadow:inset 0 -2px 0 rgba(0,0,0,.1);}
+    #rl-cpu .pip.on{background:linear-gradient(180deg,#ff8a4d,#e8352b);}
     /* slim "pick your algorithms first" sign */
     #rl-gate{position:fixed;left:50%;bottom:10vh;z-index:64;display:flex;align-items:center;gap:9px;
       transform:translateX(-50%) translateY(22px) scale(.85);transform-origin:bottom center;
@@ -1747,7 +1758,6 @@ export function createStartMenu({
     `<div class="side left"><div class="plab"><span class="ptxt">Player</span><span class="pnum">1</span></div>` +
     `<div class="grid" data-side="-1"></div></div>` +
     `<div class="side right"><div class="plab cpu"><span class="ptxt">Computer</span></div>` +
-    `<div class="cpu-stats"></div>` +
     `<div class="grid" data-side="1"></div></div>` +
     `</div>` +
     `<div class="back"><span class="key">ESC</span><span class="txt">Back</span></div>`;
@@ -1775,22 +1785,26 @@ export function createStartMenu({
   }
   // the computer is a static, pre-trained opponent — show its difficulty + how
   // strong each of its 5 algorithms is (the player has to beat this)
-  const cpuStatsEl = selectEl.querySelector(".cpu-stats");
-  const barColor = (s) =>
-    ["#6fcf6f", "#6fcf6f", "#9ccc4e", "#f2c14e", "#f2994a", "#eb5757"][s] ||
-    "#f2994a";
+  // the computer's stat sheet is its OWN fixed panel pinned to the right of the
+  // screen (kept out of the selector layout), shown only while the selector is up
+  const cpuStatsEl = document.createElement("div");
+  cpuStatsEl.id = "rl-cpu";
+  document.body.appendChild(cpuStatsEl);
   function renderCpuStats(idx) {
     const opp = OPPONENTS[idx];
     if (!cpuStatsEl || !opp) return;
     const stars = "★".repeat(opp.tier) + "☆".repeat(5 - opp.tier);
     cpuStatsEl.innerHTML =
+      `<div class="cpu-badge">CPU</div>` +
       `<div class="cpu-head"><span class="cpu-name">${CHARACTERS[idx].name}</span>` +
       `<span class="cpu-tier"><span class="cpu-stars">${stars}</span>${opp.label}</span></div>` +
       opp.picks
         .map(
           ([algo, s]) =>
             `<div class="cpu-row"><span class="cpu-algo">${algo}</span>` +
-            `<span class="cpu-bar"><i style="width:${(s / 5) * 100}%;background:${barColor(s)}"></i></span></div>`,
+            `<span class="cpu-pips">` +
+            [1, 2, 3, 4, 5].map((n) => `<span class="pip${n <= s ? " on" : ""}"></span>`).join("") +
+            `</span></div>`,
         )
         .join("");
   }
@@ -1837,6 +1851,7 @@ export function createStartMenu({
 
   function closeSelect() {
     selectEl.classList.remove("open");
+    cpuStatsEl.classList.remove("show");
     el.classList.remove("shift"); // bring the main menu back
     fallTitle(titleChars);
   }
@@ -1847,6 +1862,7 @@ export function createStartMenu({
     dropTitle(titleChars);
     refreshSelect();
     renderCpuStats(picks[1]); // computer stat sheet for the current opponent
+    cpuStatsEl.classList.add("show");
   }
 
   // ===== "How It Works" + "Algorithms" info screens (Nintendo flash-card style) =====
@@ -2954,6 +2970,7 @@ export function createStartMenu({
       actors.group.visible = prevActorsVisible;
     el.remove();
     gateMsg.remove();
+    cpuStatsEl.remove();
     style.remove();
   }
 
