@@ -1656,10 +1656,15 @@ export function createStartMenu({
       border:4px solid #2a1c0c;border-radius:22px;padding:16px 18px 18px;color:#3a2a14;
       box-shadow:2px 2px 0 #2a1c0c,4px 4px 0 #2a1c0c,6px 6px 0 #2a1c0c,8px 8px 0 #2a1c0c,
         9px 11px 0 #2a1c0c,9px 22px 34px rgba(0,0,0,.45);
-      font-family:"Segoe UI",system-ui,sans-serif;opacity:0;
-      transition:opacity .3s ease,transform .38s cubic-bezier(.34,1.5,.5,1);}
-    #rl-cpu.show{opacity:1;transform:translate(0,-50%) scale(1);
-      animation:rl-cpu-in .8s .06s both;}
+      font-family:"Segoe UI",system-ui,sans-serif;opacity:1;
+      transition:none;}
+    #rl-cpu.show{transform:translate(0,-50%) scale(1);animation:rl-cpu-in .8s .06s both;}
+    /* exit (.leaving added on close): small wind-up, then launches off the right edge */
+    #rl-cpu.leaving{animation:rl-cpu-out .5s both;}
+    @keyframes rl-cpu-out{
+      0%{transform:translate(0,-50%) scale(1);animation-timing-function:cubic-bezier(.3,0,.5,1);}
+      22%{transform:translate(-24px,-50%) scale(1.02);animation-timing-function:cubic-bezier(.55,0,.75,.2);}
+      100%{transform:translate(calc(100% + 7vw),-50%) scale(.94);}}
     /* slides in from off the right edge, slams into its resting "wall" and bounces
        a couple of times with decreasing recoil — mirrors the title's rl-title-drop */
     @keyframes rl-cpu-in{
@@ -1866,6 +1871,7 @@ export function createStartMenu({
   function closeSelect() {
     selectEl.classList.remove("open");
     cpuStatsEl.classList.remove("show");
+    cpuStatsEl.classList.add("leaving"); // fly the CPU card off to the right
     el.classList.remove("shift"); // bring the main menu back
     fallTitle(titleChars);
   }
@@ -1876,6 +1882,7 @@ export function createStartMenu({
     dropTitle(titleChars);
     refreshSelect();
     renderCpuStats(picks[1]); // computer stat sheet for the current opponent
+    cpuStatsEl.classList.remove("leaving"); // clear any in-progress fly-out
     cpuStatsEl.classList.add("show");
   }
 
