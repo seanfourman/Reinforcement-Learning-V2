@@ -1755,7 +1755,7 @@ export function createStartMenu({
   selectEl.id = "rl-select";
   selectEl.innerHTML =
     `<div class="rows">` +
-    `<div class="side left"><div class="plab"><span class="ptxt">Player</span><span class="pnum">1</span></div>` +
+    `<div class="side left"><div class="plab"><span class="ptxt">Player</span></div>` +
     `<div class="grid" data-side="-1"></div></div>` +
     `<div class="side right"><div class="plab cpu"><span class="ptxt">Computer</span></div>` +
     `<div class="grid" data-side="1"></div></div>` +
