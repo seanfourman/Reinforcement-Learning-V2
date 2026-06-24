@@ -1554,6 +1554,116 @@ export function createStartMenu({
     }
   }
 
+  // ===== Live 3D Cappy: the presenter on the How-It-Works wizard. He lives in his own
+  // small transparent WebGL canvas (own scene + lights + animation loop) inside the panel,
+  // spinning & nodding in real time. The loop runs only while the wizard is open. =====
+  let cappy3D = null; // {renderer,scene,camera,pivot,ready,running,raf,t0}
+  function initCappy3D() {
+    if (cappy3D || disposed) return;
+    const canvas = howtoEl.querySelector("canvas.hw-mascot");
+    if (!canvas) return;
+    // framing/lighting knobs — tweak live if he's mis-angled/too big/small/dark
+    const DIST = 2.05, LIFT = 0.04, SWAY = 0.5, NOD = 0.07, SPIN = 0.8;
+    const r = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    r.setClearColor(0x000000, 0);
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const w = canvas.clientWidth || 248, h = canvas.clientHeight || 296;
+    r.setSize(w, h, false);
+    if (THREE.SRGBColorSpace && "outputColorSpace" in r) r.outputColorSpace = THREE.SRGBColorSpace;
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x59606e, 3.0));
+    const dl = new THREE.DirectionalLight(0xfff3e6, 2.4);
+    dl.position.set(2, 4, 3);
+    sc.add(dl);
+    const cam = new THREE.PerspectiveCamera(30, w / h, 0.01, 100);
+    const pivot = new THREE.Group();
+    sc.add(pivot);
+    cappy3D = { renderer: r, scene: sc, camera: cam, pivot, ready: false, running: false, raf: 0, t0: 0, SWAY, NOD, SPIN };
+    collada
+      .loadAsync(CHARS + "cappy/cappy.dae")
+      .then((asset) => {
+        if (disposed) return;
+        const root = asset.scene;
+        // the rip bundles every eye state (open / half-shut / closed) as overlapping
+        // meshes — hide the closed & half ones so Cappy is wide-eyed
+        root.traverse((o) => {
+          if (o.isMesh && /Eye(Close|Half)/i.test(o.name + " " + (o.parent ? o.parent.name : ""))) {
+            o.visible = false;
+          }
+        });
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const s = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        // which way does he face? (eyes sit on the ±Z side)
+        let ez = 0, en = 0;
+        root.traverse((o) => {
+          if (o.isMesh && /eye/i.test(o.name) && !/lid|brow/i.test(o.name)) {
+            ez += new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()).z;
+            en++;
+          }
+        });
+        const dir = en ? Math.sign(ez / en - ctr.z) || 1 : 1;
+        root.position.sub(ctr); // centre him on the spin pivot
+        pivot.add(root);
+        const reach = Math.max(s.x, s.y, s.z);
+        cam.position.set(0, reach * LIFT, dir * reach * DIST);
+        cam.lookAt(0, 0, 0);
+        cappy3D.ready = true;
+      })
+      .catch((e) => console.warn("cappy 3D load failed:", e));
+  }
+  const CAPPY_RISE_MS = 1150;
+  function cappyTick() {
+    if (!cappy3D || !cappy3D.running) return;
+    cappy3D.raf = requestAnimationFrame(cappyTick);
+    if (!cappy3D.ready) return; // don't start the entrance until he's actually drawable
+    const now = performance.now();
+    const css = cappy3D.renderer.domElement.style;
+    // begin the fly-in on the first frame he can be drawn; stash the off-screen start
+    // (just below-left of the viewport) so the whole arc is one interpolation, in px
+    if (!cappy3D.entranceT0) {
+      cappy3D.entranceT0 = now;
+      cappy3D.sx = -window.innerWidth * 0.12;
+      cappy3D.sy = window.innerHeight * 0.55;
+    }
+    const e = Math.min(1, (now - cappy3D.entranceT0) / CAPPY_RISE_MS); // 0..1
+    if (e < 1) {
+      // easeOutCubic glide from below-left up to rest, + a small damped landing wobble
+      const ease = 1 - Math.pow(1 - e, 3);
+      const x = cappy3D.sx * (1 - ease);
+      const wob = Math.sin(e * Math.PI * 3) * (1 - e); // decays to 0 at e=1
+      const y = cappy3D.sy + (7 - cappy3D.sy) * ease - wob * 14;
+      const rot = -22 + 17 * ease + wob * 5;
+      css.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
+    } else {
+      // continuous hover, phase-locked to the entrance end (sin starts at 0 → no jump)
+      const ht = (now - cappy3D.entranceT0 - CAPPY_RISE_MS) / 1000;
+      const bob = Math.sin(ht * 1.85) * 9, tilt = Math.sin(ht * 1.85) * 4;
+      css.transform = `translate(0px,${(7 - bob).toFixed(1)}px) rotate(${(-5 + tilt).toFixed(2)}deg)`;
+    }
+    // gentle 3D life: sway around Y (keeps his face toward you) + a small nod
+    const t = (now - cappy3D.t0) / 1000;
+    cappy3D.pivot.rotation.y = Math.sin(t * cappy3D.SPIN) * cappy3D.SWAY;
+    cappy3D.pivot.rotation.x = Math.sin(t * 0.6) * cappy3D.NOD;
+    cappy3D.renderer.render(cappy3D.scene, cappy3D.camera);
+  }
+  function startCappy3D() {
+    initCappy3D();
+    if (cappy3D && !cappy3D.running) {
+      cappy3D.running = true;
+      cappy3D.t0 = performance.now();
+      cappy3D.entranceT0 = 0; // replay the fly-in from the start on (re)open
+      cappyTick();
+    }
+  }
+  function stopCappy3D() {
+    if (cappy3D) {
+      cappy3D.running = false;
+      cancelAnimationFrame(cappy3D.raf);
+    }
+  }
+
   load("HomeInside.dae", (room) => frame(room));
   load("HomeChairL.dae", () => showInChair(-1, picks[-1]), -1);
   load("HomeChairR.dae", () => showInChair(1, picks[1]), +1);
@@ -1760,7 +1870,7 @@ export function createStartMenu({
         <button class="item sel" type="button" data-go="1">${CAP}Start</button>
         <button class="item" type="button" data-algos="1">${CAP}Algorithms</button>
         <button class="item" type="button" data-open="1">${CAP}Characters</button>
-        <button class="item" type="button" data-howto="1">${CAP}How It Works</button>
+        <button class="item" type="button" data-howto="1">${CAP}How It Works?</button>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -1994,16 +2104,92 @@ export function createStartMenu({
     .acard .pc-rip svg{display:block;width:100%;height:12px;}
     /* a torn-off chunk of the card, flying during the rip animation */
     .rl-tear-piece{overflow:visible;will-change:transform;}
-    #rl-howto .howto-wrap{transform:scale(var(--ui));transform-origin:center center;}
-    #rl-howto .howto-card{width:min(640px,92vw);background:#fff;border-radius:22px;padding:28px 32px;}
-    #rl-howto .ht-title{font-size:29px;font-weight:900;color:#222;}
-    #rl-howto .ht-lede{font-size:14.5px;line-height:1.6;color:#555;margin:8px 0 14px;}
-    #rl-howto .ht-step{display:flex;gap:14px;align-items:flex-start;padding:11px 0;border-top:1px solid #eee;}
-    #rl-howto .ht-n{flex:none;width:32px;height:32px;border-radius:50%;background:var(--c);color:#fff;
-      display:grid;place-items:center;font-weight:900;font-size:15px;}
-    #rl-howto .ht-step b{display:block;color:#222;font-size:15px;}
-    #rl-howto .ht-step span{display:block;color:#586069;font-size:13px;line-height:1.5;margin-top:2px;}
-    #rl-howto .ht-foot{margin-top:14px;font-size:12.5px;color:#7b828b;font-style:italic;}
+    #rl-howto .howto-wrap{transform:scale(calc(var(--ui) * 1.12));transform-origin:center center;}
+    /* the animated flex row: presenter + panel slide in together */
+    #rl-howto .howto-card{display:flex;align-items:center;justify-content:center;}
+    /* ---- presenter: Cappy, free-floating and hovering on the left ---- */
+    #rl-howto .hw-mascot{flex:none;width:248px;height:296px;margin-right:-36px;z-index:3;
+      background-position:center;background-repeat:no-repeat;background-size:contain;
+      filter:drop-shadow(0 16px 11px rgba(0,0,0,.32));}
+    /* NOTE: the fly-in arc + hover are driven from JS (cappyTick), in lockstep with the 3D
+       render, so the canvas position can never get out of sync with what's drawn — no CSS
+       animation here on purpose. */
+    /* ---- main panel ---- */
+    #rl-howto .hw-panel{position:relative;width:min(560px,80vw);min-height:392px;box-sizing:border-box;
+      background:#fffdf6;border:4px solid #2a1c0c;border-radius:22px;padding:26px 30px 18px;
+      color:#2a1c0c;font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;
+      box-shadow:2px 2px 0 #2a1c0c,4px 4px 0 #2a1c0c,6px 6px 0 #2a1c0c,8px 8px 0 #2a1c0c,
+        9px 11px 0 #2a1c0c,9px 22px 34px rgba(0,0,0,.45);}
+    /* ---- tilted step banner ---- */
+    #rl-howto .hw-banner{align-self:flex-start;display:inline-flex;align-items:baseline;gap:11px;
+      background:linear-gradient(180deg,#8a6bff,#5b3df2);color:#fff;border:3px solid #2a1c0c;
+      border-radius:11px;padding:8px 17px 9px;transform:rotate(-2.2deg);box-shadow:0 4px 0 #2a1c0c;
+      margin:-2px 0 14px;font-family:"SuperMario256","Arial Black",sans-serif;}
+    #rl-howto .hw-step{font-size:22px;letter-spacing:1px;color:#d9ccff;}
+    #rl-howto .hw-title{font-size:22px;letter-spacing:1.5px;text-transform:uppercase;
+      -webkit-text-stroke:.6px #2a1c0c;paint-order:stroke fill;}
+    /* ---- paragraph (clean + readable) ---- */
+    #rl-howto .hw-para{font-family:"Segoe UI",system-ui,sans-serif;
+      font-size:17.5px;line-height:1.5;color:#33240f;margin:0 0 6px;font-weight:600;}
+    /* ---- illustration stage + marker annotations ---- */
+    #rl-howto .hw-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;
+      padding-top:30px;min-height:150px;}
+    #rl-howto .hw-anno{position:absolute;top:-2px;width:150px;display:flex;flex-direction:column;
+      align-items:center;gap:1px;font-family:"Segoe UI",system-ui,sans-serif;
+      color:#6a3df0;font-weight:900;font-size:14.5px;line-height:1.1;text-align:center;
+      letter-spacing:.3px;text-transform:uppercase;pointer-events:none;}
+    #rl-howto .hw-anno.tl{left:2px;}
+    #rl-howto .hw-anno.tr{right:2px;}
+    #rl-howto .hw-arrow{width:50px;height:36px;stroke:#6a3df0;fill:none;stroke-width:3.4;}
+    #rl-howto .hw-anno.tr .hw-arrow{transform:scaleX(-1);}
+    /* ---- nav: dots + prev/next ---- */
+    #rl-howto .hw-nav{display:flex;align-items:center;gap:12px;margin-top:auto;padding-top:12px;
+      border-top:2px solid rgba(42,28,12,.12);}
+    #rl-howto .hw-dots{display:flex;gap:7px;}
+    #rl-howto .hw-dot{width:10px;height:10px;border-radius:50%;background:#e7d9ba;border:2px solid #2a1c0c;}
+    #rl-howto .hw-dot.on{background:#5b3df2;}
+    #rl-howto .hw-prev,#rl-howto .hw-next{cursor:pointer;font-weight:900;font-size:13.5px;letter-spacing:1px;
+      text-transform:uppercase;border:3px solid #2a1c0c;border-radius:11px;padding:8px 16px;
+      box-shadow:0 3px 0 #2a1c0c;font-family:"Segoe UI",system-ui,sans-serif;}
+    #rl-howto .hw-next{margin-left:auto;background:#2a1c0c;color:#fff;}
+    #rl-howto .hw-prev{background:#fff3d6;color:#2a1c0c;}
+    #rl-howto .hw-prev[hidden]{display:none;}
+    #rl-howto .hw-next:active,#rl-howto .hw-prev:active{transform:translateY(2px);box-shadow:0 1px 0 #2a1c0c;}
+    /* ---- page-1: algorithm family chips ---- */
+    #rl-howto .hw-chips{display:flex;gap:9px;}
+    #rl-howto .hw-chip{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;
+      background:#fffaf0;border:2.5px solid #2a1c0c;border-radius:12px;padding:9px 4px;box-shadow:0 3px 0 #2a1c0c;}
+    #rl-howto .hw-chip .ci{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+      font-size:17px;color:#fff;font-weight:900;border:2px solid #2a1c0c;}
+    #rl-howto .hw-chip b{font-size:11px;color:#2a1c0c;}
+    /* ---- page-2: opponent ladder ---- */
+    #rl-howto .hw-ladder{display:flex;align-items:flex-end;gap:16px;}
+    #rl-howto .hw-opp{display:flex;flex-direction:column;align-items:center;gap:5px;}
+    #rl-howto .hw-opp .oa{width:52px;height:52px;border-radius:50%;border:3px solid #2a1c0c;
+      background-color:#fffaf0;background-size:cover;background-position:center;box-shadow:0 3px 0 #2a1c0c;}
+    #rl-howto .hw-opp:nth-child(2) .oa{width:60px;height:60px;}
+    #rl-howto .hw-opp:nth-child(3) .oa{width:70px;height:70px;}
+    #rl-howto .hw-opp .ostars{font-size:12px;color:#f6b21b;-webkit-text-stroke:.4px #2a1c0c;letter-spacing:1px;}
+    /* ---- page-3: VS arena ---- */
+    #rl-howto .vs-arena{position:relative;display:flex;align-items:stretch;justify-content:center;
+      width:330px;border:3px solid #2a1c0c;border-radius:16px;overflow:hidden;
+      background:linear-gradient(100deg,#d9e3ff 0 46%,#f6ead0 46% 54%,#ffdfda 54% 100%);
+      box-shadow:inset 0 3px 0 rgba(255,255,255,.45),inset 0 -5px 0 rgba(0,0,0,.07);}
+    #rl-howto .vs-fighter{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:13px 10px;}
+    #rl-howto .vs-ava{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+      font-size:27px;border:3px solid #2a1c0c;box-shadow:0 4px 0 #2a1c0c;}
+    #rl-howto .vs-fighter.blue .vs-ava{background:radial-gradient(circle at 38% 30%,#7e9dff,#2348c0);}
+    #rl-howto .vs-fighter.red .vs-ava{background:radial-gradient(circle at 38% 30%,#ff7164,#b81f1f);}
+    #rl-howto .vs-name{font-weight:900;font-size:16px;letter-spacing:1px;}
+    #rl-howto .vs-fighter.blue .vs-name{color:#2348c0;}
+    #rl-howto .vs-fighter.red .vs-name{color:#b81f1f;}
+    #rl-howto .vs-tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#7b6240;}
+    #rl-howto .vs-clash{flex:none;width:0;display:flex;align-items:center;justify-content:center;z-index:2;}
+    #rl-howto .vs-word{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;
+      background:#2a1c0c;color:#fff;font-weight:900;font-size:17px;font-style:italic;letter-spacing:1px;
+      box-shadow:0 0 0 4px #fffdf6,0 0 0 7px #2a1c0c,0 5px 0 rgba(0,0,0,.3);transform:rotate(-9deg);}
+    /* ---- page-4: trophy ---- */
+    #rl-howto .hw-trophy{font-size:92px;line-height:1;filter:drop-shadow(0 6px 0 rgba(0,0,0,.22));}
     #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
       gap:11px;cursor:pointer;color:#fff;pointer-events:none;
       transform:translateY(220%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
@@ -2025,7 +2211,7 @@ export function createStartMenu({
       animation-delay:calc(var(--i,0) * .05s);}
     @keyframes rl-howto-in{0%{transform:translateX(calc(118vw / var(--ui))) scale(.96);}
       100%{transform:translateX(0) scale(1);}}
-    #rl-howto.open .howto-card{animation:rl-howto-in .55s cubic-bezier(.3,1.25,.5,1) backwards;}
+    #rl-howto.open .hw-panel{animation:rl-howto-in .55s cubic-bezier(.3,1.25,.5,1) backwards;}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:calc(96px * var(--ui));color:#fff;
@@ -2731,13 +2917,93 @@ export function createStartMenu({
   howtoEl.id = "rl-howto";
   howtoEl.innerHTML =
     `<div class="howto-wrap"><div class="howto-card">` +
-    `<p class="ht-lede">Rival Minds pits two reinforcement-learning brains against each other across themed rounds - Red vs Blue. Last mind standing takes the crown.</p>` +
-    `<div class="ht-step" style="--c:#f59e0b"><div class="ht-n">1</div><div><b>Learn</b><span>Each agent learns by trial and error: try a move, earn a reward, and sharpen its strategy - its policy.</span></div></div>` +
-    `<div class="ht-step" style="--c:#22c55e"><div class="ht-n">2</div><div><b>Face off</b><span>Both brains tackle the same map at once, one Red and one Blue, so every duel is fair and head-to-head.</span></div></div>` +
-    `<div class="ht-step" style="--c:#3b82f6"><div class="ht-n">3</div><div><b>Score</b><span>Whoever solves the round better - faster, safer, higher reward - wins the point.</span></div></div>` +
-    `<div class="ht-step" style="--c:#ef4444"><div class="ht-n">4</div><div><b>Crown</b><span>Take the most rounds across the bracket and you're the champion of Rival Minds.</span></div></div>` +
-    `<div class="ht-foot">Pick your fighters and your algorithm team, then watch them compete.</div></div></div>`;
+    `<canvas class="hw-mascot"></canvas>` +
+    `<div class="hw-panel">` +
+    `<div class="hw-banner"><span class="hw-step">1/4</span><span class="hw-title">Build your team</span></div>` +
+    `<p class="hw-para"></p>` +
+    `<div class="hw-stage"></div>` +
+    `<div class="hw-nav"><div class="hw-dots"></div>` +
+    `<button class="hw-prev" type="button" hidden>&#9664; Back</button>` +
+    `<button class="hw-next" type="button">Next &#9654;</button></div>` +
+    `</div></div></div>`;
   document.body.appendChild(howtoEl);
+
+  // ===== How-It-Works wizard: paginated pages, each with a marker-annotated illustration =====
+  const HW_ARROW =
+    `<svg class="hw-arrow" viewBox="0 0 50 36" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M5 5 C 22 7, 33 15, 43 30"/><path d="M43 30 L 34 29"/><path d="M43 30 L 41 21"/></svg>`;
+  const hwAnno = (cls, text) => `<div class="hw-anno ${cls}"><span>${text}</span>${HW_ARROW}</div>`;
+  // page 1 — the five algorithm families
+  const HW_FAM = [["DP", "#3360e6", "Σ"], ["MC", "#e23333", "🎲"], ["TD", "#f6b21b", "Δ"],
+    ["Deep", "#7b3df2", "⚡"], ["PG", "#2bb673", "∇"]];
+  const hwChips = `<div class="hw-chips">` +
+    HW_FAM.map(([n, c, g]) => `<div class="hw-chip"><div class="ci" style="background:${c}">${g}</div><b>${n}</b></div>`).join("") +
+    `</div>`;
+  // page 2 — opponents getting tougher
+  const hwOpp = (key, stars) =>
+    `<div class="hw-opp"><div class="oa" style="background-image:url(./assets/icons/${key}.png)"></div>` +
+    `<div class="ostars">${"★".repeat(stars)}${"☆".repeat(5 - stars)}</div></div>`;
+  const hwLadder = `<div class="hw-ladder">${hwOpp("toad", 1)}${hwOpp("yoshi", 3)}${hwOpp("bowser", 5)}</div>`;
+  // page 3 — the red-vs-blue duel
+  const hwArena = `<div class="vs-arena">` +
+    `<div class="vs-fighter blue"><div class="vs-ava">🧠</div><div class="vs-name">YOU</div><div class="vs-tag">your team</div></div>` +
+    `<div class="vs-clash"><span class="vs-word">VS</span></div>` +
+    `<div class="vs-fighter red"><div class="vs-ava">🧠</div><div class="vs-name">RIVAL</div><div class="vs-tag">computer</div></div>` +
+    `</div>`;
+  // page 4 — the crown
+  const hwTrophy = `<div class="hw-trophy">🏆</div>`;
+
+  const HOWTO_PAGES = [
+    { frac: "1/4", title: "Build your team",
+      para: "First, draft your line-up of RL algorithms — one brain from each family. Value Iteration, SARSA, Q-Learning, DQN and more, each learns its own way.",
+      stage: hwAnno("tl", "Five families") + hwChips + hwAnno("tr", "Pick one each") },
+    { frac: "2/4", title: "Pick your rival",
+      para: "Then choose a computer character to battle. Work up the roster — every opponent you face is stronger and harder to beat than the last.",
+      stage: hwAnno("tl", "Climb the roster") + hwLadder + hwAnno("tr", "Tougher each time") },
+    { frac: "3/4", title: "Face off",
+      para: "Now the duel: your algorithm and the rival's tackle the very same map at once — one Red, one Blue — a fair, head-to-head test of who learned better.",
+      stage: hwAnno("tl", "Same map, at once") + hwArena + hwAnno("tr", "You = blue · rival = red") },
+    { frac: "4/4", title: "Take the crown",
+      para: "Out-score your rival — faster, safer, higher reward — to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
+      stage: hwAnno("tl", "Win the rounds") + hwTrophy + hwAnno("tr", "Be the champion") },
+  ];
+
+  const hwStepEl = howtoEl.querySelector(".hw-step");
+  const hwTitleEl = howtoEl.querySelector(".hw-title");
+  const hwParaEl = howtoEl.querySelector(".hw-para");
+  const hwStageEl = howtoEl.querySelector(".hw-stage");
+  const hwDotsEl = howtoEl.querySelector(".hw-dots");
+  const hwPrevBtn = howtoEl.querySelector(".hw-prev");
+  const hwNextBtn = howtoEl.querySelector(".hw-next");
+  let hwPage = 0;
+  hwDotsEl.innerHTML = HOWTO_PAGES.map(() => `<span class="hw-dot"></span>`).join("");
+  function renderHowto() {
+    const p = HOWTO_PAGES[hwPage];
+    hwStepEl.textContent = p.frac;
+    hwTitleEl.textContent = p.title;
+    hwParaEl.textContent = p.para;
+    hwStageEl.innerHTML = p.stage;
+    hwDotsEl.querySelectorAll(".hw-dot").forEach((d, i) => d.classList.toggle("on", i === hwPage));
+    hwPrevBtn.hidden = hwPage === 0;
+    hwNextBtn.innerHTML = hwPage === HOWTO_PAGES.length - 1 ? "Got it &#10003;" : "Next &#9654;";
+  }
+  function hwGo(d) {
+    const next = hwPage + d;
+    if (next < 0) return;
+    if (next >= HOWTO_PAGES.length) { closeScreens(); return; }
+    hwPage = next;
+    renderHowto();
+  }
+  hwNextBtn.addEventListener("click", () => hwGo(1));
+  hwPrevBtn.addEventListener("click", () => hwGo(-1));
+  window.addEventListener("keydown", (e) => {
+    if (!howtoEl.classList.contains("open")) return;
+    if (e.key === "ArrowRight") hwGo(1);
+    else if (e.key === "ArrowLeft") hwGo(-1);
+  });
+  // pre-load Cappy in the background so he's ready before the wizard opens and flies the
+  // FULL arc instead of snapping in late
+  setTimeout(() => initCappy3D(), 400);
 
   const titleAlgos = document.createElement("div");
   titleAlgos.className = "big-title";
@@ -2749,7 +3015,7 @@ export function createStartMenu({
   document.body.appendChild(titleChars);
   const titleHowto = document.createElement("div");
   titleHowto.className = "big-title";
-  titleHowto.textContent = "How It Works";
+  titleHowto.textContent = "How It Works?";
   document.body.appendChild(titleHowto);
   let algosCloseTok = 0;
   let algosDealTok = 0;
@@ -2782,6 +3048,7 @@ export function createStartMenu({
       }, 650);
     }
     howtoEl.classList.remove("open");
+    stopCappy3D(); // pause the live 3D presenter while the wizard is closed
     el.classList.remove("shift");
     fallTitle(titleAlgos);
     fallTitle(titleHowto);
@@ -2802,10 +3069,13 @@ export function createStartMenu({
   }
   function openHowto() {
     closeScreens();
+    hwPage = 0;
+    renderHowto();
     howtoEl.classList.add("open");
     el.classList.add("shift");
     dropTitle(titleHowto);
     scrBack.classList.add("show");
+    startCappy3D(); // spin up the live 3D presenter
   }
   scrBack.addEventListener("click", () => {
     if (flipped || upCard) goBack();
@@ -2980,6 +3250,8 @@ export function createStartMenu({
     window.removeEventListener("keydown", onSelectKey);
     disposeSeated(-1);
     disposeSeated(1);
+    stopCappy3D();
+    cappy3D?.renderer?.dispose?.(); // free the presenter's WebGL context
     selectEl.remove();
     scene.remove(group);
     scene.remove(menuLights);
