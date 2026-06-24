@@ -2270,6 +2270,10 @@ export function createStartMenu({
     @keyframes rl-howto-in{0%{transform:translateX(calc(118vw / var(--ui))) scale(.96);}
       100%{transform:translateX(0) scale(1);}}
     #rl-howto.open .hw-panel{animation:rl-howto-in .55s cubic-bezier(.3,1.25,.5,1) backwards;}
+    /* on close: throw the panel back out to the right (mirror of the entry) */
+    @keyframes rl-howto-out{0%{transform:translateX(0) scale(1);}
+      100%{transform:translateX(calc(118vw / var(--ui))) scale(.94);}}
+    #rl-howto.closing .hw-panel{animation:rl-howto-out .5s cubic-bezier(.5,0,.85,.3) forwards;}
     .big-title{position:fixed;top:11vh;left:0;right:0;text-align:center;z-index:62;pointer-events:none;
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:calc(96px * var(--ui));color:#fff;
@@ -3107,11 +3111,12 @@ export function createStartMenu({
       }, 650);
     }
     if (howtoEl.classList.contains("open")) {
-      exitCappy3D(); // fly Cappy off to the top-right, THEN hide the panel
+      exitCappy3D(); // Cappy flips off the top
+      howtoEl.classList.add("closing"); // panel throws back out to the right
       const tok = ++howtoCloseTok;
       setTimeout(() => {
         if (tok === howtoCloseTok) {
-          howtoEl.classList.remove("open");
+          howtoEl.classList.remove("open", "closing");
           stopCappy3D();
         }
       }, CAPPY_EXIT_MS);
@@ -3139,6 +3144,7 @@ export function createStartMenu({
   function openHowto() {
     closeScreens();
     howtoCloseTok++; // cancel any pending deferred close from a quick re-open
+    howtoEl.classList.remove("closing"); // clear any in-progress throw-out
     hwPage = 0;
     renderHowto();
     howtoEl.classList.add("open");
