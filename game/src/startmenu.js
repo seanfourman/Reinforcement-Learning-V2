@@ -1622,13 +1622,30 @@ export function createStartMenu({
       })
       .catch((e) => console.warn("cappy 3D load failed:", e));
   }
-  const CAPPY_RISE_MS = 1500;
+  const CAPPY_RISE_MS = 1500, CAPPY_EXIT_MS = 780;
   function cappyTick() {
     if (!cappy3D || !cappy3D.running) return;
     cappy3D.raf = requestAnimationFrame(cappyTick);
     if (!cappy3D.ready) return; // don't start the entrance until he's actually drawable
     const now = performance.now();
     const css = cappy3D.renderer.domElement.style;
+    // ----- exit: the fly-in, MIRRORED — sent straight up and off the top, with the same
+    // side-to-side wave and a full flip, but accelerating away (the entrance eased in) and
+    // the wave growing as he leaves (it faded as he arrived). -----
+    if (cappy3D.exiting) {
+      const p = Math.min(1, (now - cappy3D.exitT0) / CAPPY_EXIT_MS);
+      const acc = p * p; // easeIn — mirror of the entrance's easeOut
+      const wig = Math.sin(p * Math.PI * 5); // same weave as the entrance
+      const x = wig * 15 * p; // wavy around a straight-up path, growing as he leaves
+      const y = 7 + (-window.innerHeight * 0.85 - 7) * acc; // up and off the top
+      const rot = -5 - 17 * acc; // mirror of the entrance lean (-22 → -5)
+      css.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
+      const t = (now - cappy3D.t0) / 1000;
+      cappy3D.pivot.rotation.y = Math.sin(t * cappy3D.SPIN) * cappy3D.SWAY + acc * Math.PI * 2; // one flip
+      cappy3D.renderer.render(cappy3D.scene, cappy3D.camera);
+      if (p >= 1) { cappy3D.running = false; cancelAnimationFrame(cappy3D.raf); }
+      return;
+    }
     // begin the fly-in on the first frame he can be drawn; stash the off-screen start
     // (just below-left of the viewport) so the whole arc is one interpolation, in px
     if (!cappy3D.entranceT0) {
@@ -1681,17 +1698,27 @@ export function createStartMenu({
   }
   function startCappy3D() {
     initCappy3D();
-    if (cappy3D && !cappy3D.running) {
+    if (!cappy3D) return;
+    cappy3D.exiting = false; // clear any in-progress exit (e.g. reopened mid-fly-off)
+    cappy3D.entranceT0 = 0; // replay the fly-in from the start on (re)open
+    cappy3D.t0 = performance.now();
+    if (!cappy3D.running) {
       cappy3D.running = true;
-      cappy3D.t0 = performance.now();
-      cappy3D.entranceT0 = 0; // replay the fly-in from the start on (re)open
       cappyTick();
     }
   }
   function stopCappy3D() {
     if (cappy3D) {
       cappy3D.running = false;
+      cappy3D.exiting = false;
       cancelAnimationFrame(cappy3D.raf);
+    }
+  }
+  // trigger the fly-off; the loop keeps running and stops itself when he's off-screen
+  function exitCappy3D() {
+    if (cappy3D && cappy3D.running) {
+      cappy3D.exiting = true;
+      cappy3D.exitT0 = performance.now();
     }
   }
 
@@ -3050,6 +3077,7 @@ export function createStartMenu({
   document.body.appendChild(titleHowto);
   let algosCloseTok = 0;
   let algosDealTok = 0;
+  let howtoCloseTok = 0;
   function dropTitle(t) {
     t._fallTok = (t._fallTok || 0) + 1; // cancel any pending fall-cleanup
     t.classList.remove("show", "fall");
@@ -3078,8 +3106,18 @@ export function createStartMenu({
           algosEl.classList.remove("open", "closing", "dealing");
       }, 650);
     }
-    howtoEl.classList.remove("open");
-    stopCappy3D(); // pause the live 3D presenter while the wizard is closed
+    if (howtoEl.classList.contains("open")) {
+      exitCappy3D(); // fly Cappy off to the top-right, THEN hide the panel
+      const tok = ++howtoCloseTok;
+      setTimeout(() => {
+        if (tok === howtoCloseTok) {
+          howtoEl.classList.remove("open");
+          stopCappy3D();
+        }
+      }, CAPPY_EXIT_MS);
+    } else {
+      stopCappy3D();
+    }
     el.classList.remove("shift");
     fallTitle(titleAlgos);
     fallTitle(titleHowto);
@@ -3100,6 +3138,7 @@ export function createStartMenu({
   }
   function openHowto() {
     closeScreens();
+    howtoCloseTok++; // cancel any pending deferred close from a quick re-open
     hwPage = 0;
     renderHowto();
     howtoEl.classList.add("open");
