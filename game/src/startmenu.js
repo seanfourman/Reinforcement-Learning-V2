@@ -1821,9 +1821,9 @@ export function createStartMenu({
     #rl-cpu{position:fixed;right:2.5vw;top:50%;z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
       transform:translate(calc(100% + 6vw),-50%) scale(.96);transform-origin:right center;
       background:linear-gradient(180deg,#fff7e6 0%,#f3e3c0 100%);
-      border:4px solid #2a1c0c;border-radius:22px;padding:16px 18px 18px;color:#3a2a14;
-      box-shadow:2px 2px 0 #2a1c0c,4px 4px 0 #2a1c0c,6px 6px 0 #2a1c0c,8px 8px 0 #2a1c0c,
-        9px 11px 0 #2a1c0c,9px 22px 34px rgba(0,0,0,.45);
+      border:4px solid #000;border-radius:22px;padding:16px 18px 18px;color:#3a2a14;
+      box-shadow:2px 2px 0 #000,4px 4px 0 #000,6px 6px 0 #000,8px 8px 0 #000,
+        9px 11px 0 #000,9px 22px 34px rgba(0,0,0,.45);
       font-family:"Segoe UI",system-ui,sans-serif;opacity:1;
       transition:none;}
     #rl-cpu.show{transform:translate(0,-50%) scale(1);animation:rl-cpu-in .8s .06s both;}
@@ -1844,20 +1844,20 @@ export function createStartMenu({
       100%{transform:translate(0,-50%) scale(1);}}
     #rl-cpu .cpu-badge{position:absolute;top:-16px;left:18px;background:#e23333;color:#fff;
       font-weight:900;font-size:13px;letter-spacing:2px;padding:4px 13px;border-radius:999px;
-      border:3px solid #2a1c0c;box-shadow:0 3px 0 #2a1c0c;}
+      border:3px solid #000;box-shadow:0 3px 0 #000;}
     #rl-cpu .cpu-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
       padding:4px 0 11px;margin-bottom:10px;border-bottom:3px solid rgba(42,28,12,.22);}
-    #rl-cpu .cpu-name{font-weight:900;font-size:22px;letter-spacing:.2px;color:#2a1c0c;}
+    #rl-cpu .cpu-name{font-weight:900;font-size:22px;letter-spacing:.2px;color:#000;}
     #rl-cpu .cpu-tier{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;
       font-size:10px;font-weight:900;letter-spacing:1.3px;text-transform:uppercase;color:#9a6a25;}
     #rl-cpu .cpu-stars{font-size:16px;letter-spacing:1px;paint-order:stroke fill;margin-top:-3px;}
-    #rl-cpu .cpu-stars .sf{color:#f6b21b;-webkit-text-stroke:.6px #2a1c0c;}
+    #rl-cpu .cpu-stars .sf{color:#f6b21b;-webkit-text-stroke:.6px #000;}
     #rl-cpu .cpu-stars .se{color:rgba(42,28,12,.17);-webkit-text-stroke:0;}
     #rl-cpu .cpu-row{display:flex;align-items:center;gap:10px;margin:8px 0;}
     #rl-cpu .cpu-algo{flex:1;font-size:13px;font-weight:800;color:#3a2a14;
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     #rl-cpu .cpu-pips{flex:none;display:flex;gap:5px;}
-    #rl-cpu .pip{width:14px;height:14px;border-radius:4px;border:2px solid #2a1c0c;
+    #rl-cpu .pip{width:14px;height:14px;border-radius:4px;border:2px solid #000;
       background:#e7d4a8;box-shadow:inset 0 -2px 0 rgba(0,0,0,.1);}
     #rl-cpu .pip.on{background:linear-gradient(180deg,#ff8a4d,#e8352b);}
     /* slim "pick your algorithms first" sign */
@@ -2174,18 +2174,18 @@ export function createStartMenu({
        animation here on purpose. */
     /* ---- main panel ---- */
     #rl-howto .hw-panel{position:relative;width:min(560px,80vw);min-height:392px;box-sizing:border-box;
-      background:#fffdf6;border:4px solid #2a1c0c;border-radius:22px;padding:26px 30px 18px;
-      color:#2a1c0c;font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;
-      box-shadow:2px 2px 0 #2a1c0c,4px 4px 0 #2a1c0c,6px 6px 0 #2a1c0c,8px 8px 0 #2a1c0c,
-        9px 11px 0 #2a1c0c,9px 22px 34px rgba(0,0,0,.45);}
+      background:#fffdf6;border:4px solid #000;border-radius:22px;padding:26px 30px 18px;
+      color:#000;font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;
+      box-shadow:2px 2px 0 #000,4px 4px 0 #000,6px 6px 0 #000,8px 8px 0 #000,
+        9px 11px 0 #000,9px 22px 34px rgba(0,0,0,.45);}
     /* ---- tilted step banner ---- */
     #rl-howto .hw-banner{align-self:flex-start;display:inline-flex;align-items:baseline;gap:11px;
-      background:linear-gradient(180deg,#8a6bff,#5b3df2);color:#fff;border:3px solid #2a1c0c;
-      border-radius:11px;padding:8px 17px 9px;transform:rotate(-2.2deg);box-shadow:0 4px 0 #2a1c0c;
+      background:linear-gradient(180deg,#8a6bff,#5b3df2);color:#fff;border:3px solid #000;
+      border-radius:11px;padding:8px 17px 9px;transform:rotate(-2.2deg);box-shadow:0 4px 0 #000;
       margin:-2px 0 14px;font-family:"SuperMario256","Arial Black",sans-serif;}
     #rl-howto .hw-step{font-size:22px;letter-spacing:1px;color:#d9ccff;}
     #rl-howto .hw-title{font-size:22px;letter-spacing:1.5px;text-transform:uppercase;
-      -webkit-text-stroke:.6px #2a1c0c;paint-order:stroke fill;}
+      -webkit-text-stroke:.6px #000;paint-order:stroke fill;}
     /* ---- paragraph (clean + readable) ---- */
     #rl-howto .hw-para{font-family:"Segoe UI",system-ui,sans-serif;
       font-size:17.5px;line-height:1.5;color:#33240f;margin:0 0 6px;font-weight:600;}
@@ -2193,9 +2193,9 @@ export function createStartMenu({
     #rl-howto .hw-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;
       padding-top:30px;min-height:150px;}
     #rl-howto .hw-anno{position:absolute;top:-2px;width:150px;display:flex;flex-direction:column;
-      align-items:center;gap:1px;font-family:"Segoe UI",system-ui,sans-serif;
-      color:#6a3df0;font-weight:900;font-size:14.5px;line-height:1.1;text-align:center;
-      letter-spacing:.3px;text-transform:uppercase;pointer-events:none;}
+      align-items:center;gap:1px;font-family:"Segoe Print","Bradley Hand","Ink Free","Comic Sans MS",cursive;
+      color:#6a3df0;font-weight:700;font-size:15px;line-height:1.14;text-align:center;
+      letter-spacing:.2px;text-transform:uppercase;pointer-events:none;}
     #rl-howto .hw-anno.tl{left:2px;}
     #rl-howto .hw-anno.tr{right:2px;}
     #rl-howto .hw-arrow{width:50px;height:36px;stroke:#6a3df0;fill:none;stroke-width:3.4;}
@@ -2204,38 +2204,39 @@ export function createStartMenu({
     #rl-howto .hw-nav{display:flex;align-items:center;gap:12px;margin-top:auto;padding-top:12px;
       border-top:2px solid rgba(42,28,12,.12);}
     #rl-howto .hw-dots{display:flex;gap:7px;}
-    #rl-howto .hw-dot{width:10px;height:10px;border-radius:50%;background:#e7d9ba;border:2px solid #2a1c0c;}
+    #rl-howto .hw-dot{width:10px;height:10px;border-radius:50%;background:#e7d9ba;border:2px solid #000;}
     #rl-howto .hw-dot.on{background:#5b3df2;}
     #rl-howto .hw-prev,#rl-howto .hw-next{cursor:pointer;font-weight:900;font-size:13.5px;letter-spacing:1px;
-      text-transform:uppercase;border:3px solid #2a1c0c;border-radius:11px;padding:8px 16px;
-      box-shadow:0 3px 0 #2a1c0c;font-family:"Segoe UI",system-ui,sans-serif;}
-    #rl-howto .hw-next{margin-left:auto;background:#2a1c0c;color:#fff;}
-    #rl-howto .hw-prev{background:#fff3d6;color:#2a1c0c;}
+      text-transform:uppercase;border:3px solid #000;border-radius:11px;padding:8px 16px;
+      box-shadow:0 3px 0 #000;font-family:"Segoe UI",system-ui,sans-serif;}
+    #rl-howto .hw-next{margin-left:auto;background:#000;color:#fff;}
+    #rl-howto .hw-prev{background:#fff3d6;color:#000;}
     #rl-howto .hw-prev[hidden]{display:none;}
-    #rl-howto .hw-next:active,#rl-howto .hw-prev:active{transform:translateY(2px);box-shadow:0 1px 0 #2a1c0c;}
+    #rl-howto .hw-next:active,#rl-howto .hw-prev:active{transform:translateY(2px);box-shadow:0 1px 0 #000;}
     /* ---- page-1: algorithm family chips ---- */
     #rl-howto .hw-chips{display:flex;gap:9px;}
     #rl-howto .hw-chip{display:flex;flex-direction:column;align-items:center;gap:4px;width:64px;
-      background:#fffaf0;border:2.5px solid #2a1c0c;border-radius:12px;padding:9px 4px;box-shadow:0 3px 0 #2a1c0c;}
+      background:#fffaf0;border:2.5px solid #000;border-radius:12px;padding:9px 4px;box-shadow:0 3px 0 #000;}
     #rl-howto .hw-chip .ci{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
-      font-size:17px;color:#fff;font-weight:900;border:2px solid #2a1c0c;}
-    #rl-howto .hw-chip b{font-size:11px;color:#2a1c0c;}
+      font-size:17px;color:#fff;font-weight:900;border:2px solid #000;}
+    #rl-howto .hw-chip .ci svg{width:20px;height:20px;}
+    #rl-howto .hw-chip b{font-size:11px;color:#000;}
     /* ---- page-2: opponent ladder ---- */
     #rl-howto .hw-ladder{display:flex;align-items:flex-end;gap:16px;}
     #rl-howto .hw-opp{display:flex;flex-direction:column;align-items:center;gap:5px;}
-    #rl-howto .hw-opp .oa{width:52px;height:52px;border-radius:50%;border:3px solid #2a1c0c;
-      background-color:#fffaf0;background-size:cover;background-position:center;box-shadow:0 3px 0 #2a1c0c;}
+    #rl-howto .hw-opp .oa{width:52px;height:52px;border-radius:50%;border:3px solid #000;
+      background-color:#fffaf0;background-size:cover;background-position:center;box-shadow:0 3px 0 #000;}
     #rl-howto .hw-opp:nth-child(2) .oa{width:60px;height:60px;}
     #rl-howto .hw-opp:nth-child(3) .oa{width:70px;height:70px;}
-    #rl-howto .hw-opp .ostars{font-size:12px;color:#f6b21b;-webkit-text-stroke:.4px #2a1c0c;letter-spacing:1px;}
+    #rl-howto .hw-opp .ostars{font-size:12px;color:#f6b21b;-webkit-text-stroke:.4px #000;letter-spacing:1px;}
     /* ---- page-3: VS arena ---- */
     #rl-howto .vs-arena{position:relative;display:flex;align-items:stretch;justify-content:center;
-      width:330px;border:3px solid #2a1c0c;border-radius:16px;overflow:hidden;
+      width:330px;border:3px solid #000;border-radius:16px;overflow:hidden;
       background:linear-gradient(100deg,#d9e3ff 0 46%,#f6ead0 46% 54%,#ffdfda 54% 100%);
       box-shadow:inset 0 3px 0 rgba(255,255,255,.45),inset 0 -5px 0 rgba(0,0,0,.07);}
     #rl-howto .vs-fighter{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:13px 10px;}
     #rl-howto .vs-ava{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
-      font-size:27px;border:3px solid #2a1c0c;box-shadow:0 4px 0 #2a1c0c;}
+      font-size:27px;border:3px solid #000;box-shadow:0 4px 0 #000;}
     #rl-howto .vs-fighter.blue .vs-ava{background:radial-gradient(circle at 38% 30%,#7e9dff,#2348c0);}
     #rl-howto .vs-fighter.red .vs-ava{background:radial-gradient(circle at 38% 30%,#ff7164,#b81f1f);}
     #rl-howto .vs-name{font-weight:900;font-size:16px;letter-spacing:1px;}
@@ -2244,8 +2245,8 @@ export function createStartMenu({
     #rl-howto .vs-tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#7b6240;}
     #rl-howto .vs-clash{flex:none;width:0;display:flex;align-items:center;justify-content:center;z-index:2;}
     #rl-howto .vs-word{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;
-      background:#2a1c0c;color:#fff;font-weight:900;font-size:17px;font-style:italic;letter-spacing:1px;
-      box-shadow:0 0 0 4px #fffdf6,0 0 0 7px #2a1c0c,0 5px 0 rgba(0,0,0,.3);transform:rotate(-9deg);}
+      background:#000;color:#fff;font-weight:900;font-size:17px;font-style:italic;letter-spacing:1px;
+      box-shadow:0 0 0 4px #fffdf6,0 0 0 7px #000,0 5px 0 rgba(0,0,0,.3);transform:rotate(-9deg);}
     /* ---- page-4: trophy ---- */
     #rl-howto .hw-trophy{font-size:92px;line-height:1;filter:drop-shadow(0 6px 0 rgba(0,0,0,.22));}
     #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
@@ -2996,10 +2997,11 @@ export function createStartMenu({
     `<path d="M5 5 C 22 7, 33 15, 43 30"/><path d="M43 30 L 34 29"/><path d="M43 30 L 41 21"/></svg>`;
   const hwAnno = (cls, text) => `<div class="hw-anno ${cls}"><span>${text}</span>${HW_ARROW}</div>`;
   // page 1 — the five algorithm families
-  const HW_FAM = [["DP", "#3360e6", "Σ"], ["MC", "#e23333", "🎲"], ["TD", "#f6b21b", "Δ"],
-    ["Deep", "#7b3df2", "⚡"], ["PG", "#2bb673", "∇"]];
+  // labels here, but colors + icons come straight from the algorithm tab (TYPES + PMICONS,
+  // same order: DP, MC, TD, Deep, PG) so they stay in sync with it
+  const HW_FAM = ["DP", "MC", "TD", "Deep", "PG"];
   const hwChips = `<div class="hw-chips">` +
-    HW_FAM.map(([n, c, g]) => `<div class="hw-chip"><div class="ci" style="background:${c}">${g}</div><b>${n}</b></div>`).join("") +
+    HW_FAM.map((n, i) => `<div class="hw-chip"><div class="ci" style="background:${TYPES[i].color}">${PMICONS[i] ?? ""}</div><b>${n}</b></div>`).join("") +
     `</div>`;
   // page 2 — opponents getting tougher
   const hwOpp = (key, stars) =>
@@ -3017,16 +3019,16 @@ export function createStartMenu({
 
   const HOWTO_PAGES = [
     { frac: "1/4", title: "Build your team",
-      para: "First, draft your line-up of RL algorithms — one brain from each family. Value Iteration, SARSA, Q-Learning, DQN and more, each learns its own way.",
+      para: "First, draft your line-up of RL algorithms, one brain from each family. Value Iteration, SARSA, Q-Learning, DQN and more, each learns its own way.",
       stage: hwAnno("tl", "Five families") + hwChips + hwAnno("tr", "Pick one each") },
     { frac: "2/4", title: "Pick your rival",
-      para: "Then choose a computer character to battle. Work up the roster — every opponent you face is stronger and harder to beat than the last.",
+      para: "Then choose a computer character to battle. Work up the roster: every opponent you face is stronger and harder to beat than the last.",
       stage: hwAnno("tl", "Climb the roster") + hwLadder + hwAnno("tr", "Tougher each time") },
     { frac: "3/4", title: "Face off",
-      para: "Now the duel: your algorithm and the rival's tackle the very same map at once — one Red, one Blue — a fair, head-to-head test of who learned better.",
+      para: "Now the duel: your algorithm and the rival's tackle the very same map at once, one Red and one Blue, a fair head-to-head test of who learned better.",
       stage: hwAnno("tl", "Same map, at once") + hwArena + hwAnno("tr", "You = blue · rival = red") },
     { frac: "4/4", title: "Take the crown",
-      para: "Out-score your rival — faster, safer, higher reward — to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
+      para: "Out-score your rival (faster, safer, higher reward) to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
       stage: hwAnno("tl", "Win the rounds") + hwTrophy + hwAnno("tr", "Be the champion") },
   ];
 
