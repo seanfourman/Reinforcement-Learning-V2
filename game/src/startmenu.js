@@ -1563,7 +1563,7 @@ export function createStartMenu({
     const canvas = howtoEl.querySelector("canvas.hw-mascot");
     if (!canvas) return;
     // framing/lighting knobs — tweak live if he's mis-angled/too big/small/dark
-    const DIST = 2.05, LIFT = 0.04, SWAY = 0.5, NOD = 0.07, SPIN = 0.8;
+    const DIST = 2.05, LIFT = 0.04, SWAY = 0.14, NOD = 0.05, SPIN = 0.8;
     const r = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     r.setClearColor(0x000000, 0);
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1613,7 +1613,7 @@ export function createStartMenu({
       })
       .catch((e) => console.warn("cappy 3D load failed:", e));
   }
-  const CAPPY_RISE_MS = 1150;
+  const CAPPY_RISE_MS = 1500;
   function cappyTick() {
     if (!cappy3D || !cappy3D.running) return;
     cappy3D.raf = requestAnimationFrame(cappyTick);
@@ -1624,17 +1624,20 @@ export function createStartMenu({
     // (just below-left of the viewport) so the whole arc is one interpolation, in px
     if (!cappy3D.entranceT0) {
       cappy3D.entranceT0 = now;
-      cappy3D.sx = -window.innerWidth * 0.12;
-      cappy3D.sy = window.innerHeight * 0.55;
+      cappy3D.sx = -window.innerWidth * 0.05; // smaller horizontal offset = more vertical
+      cappy3D.sy = window.innerHeight * 0.72; // start fully below the bottom edge, off-screen
     }
     const e = Math.min(1, (now - cappy3D.entranceT0) / CAPPY_RISE_MS); // 0..1
+    const ease = e < 1 ? 1 - Math.pow(1 - e, 3) : 1; // easeOutCubic — shared by move + spin
     if (e < 1) {
-      // easeOutCubic glide from below-left up to rest, + a small damped landing wobble
-      const ease = 1 - Math.pow(1 - e, 3);
-      const x = cappy3D.sx * (1 - ease);
-      const wob = Math.sin(e * Math.PI * 3) * (1 - e); // decays to 0 at e=1
-      const y = cappy3D.sy + (7 - cappy3D.sy) * ease - wob * 14;
-      const rot = -22 + 17 * ease + wob * 5;
+      // glide up (easeOutCubic) along a WAVY path — the trajectory weaves side-to-side,
+      // but Cappy himself just keeps a steady, smoothly-levelling tilt (no per-wiggle bank).
+      // the weave decays to 0 as he arrives so it settles cleanly into the hover.
+      const decay = 1 - e;
+      const wig = Math.sin(e * Math.PI * 5); // ~2.5 side-to-side cycles on the way up
+      const x = cappy3D.sx * (1 - ease) + wig * 15 * decay;
+      const y = cappy3D.sy + (7 - cappy3D.sy) * ease;
+      const rot = -22 + 17 * ease; // steady, smooth lean to rest — no wiggle on HIM
       css.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
     } else {
       // continuous hover, phase-locked to the entrance end (sin starts at 0 → no jump)
@@ -1642,9 +1645,12 @@ export function createStartMenu({
       const bob = Math.sin(ht * 1.85) * 9, tilt = Math.sin(ht * 1.85) * 4;
       css.transform = `translate(0px,${(7 - bob).toFixed(1)}px) rotate(${(-5 + tilt).toFixed(2)}deg)`;
     }
-    // gentle 3D life: sway around Y (keeps his face toward you) + a small nod
+    // gentle 3D life: sway around Y + a small nod. During the fly-in he also spins like a
+    // thrown cap, unwinding into the idle sway as he lands.
     const t = (now - cappy3D.t0) / 1000;
-    cappy3D.pivot.rotation.y = Math.sin(t * cappy3D.SPIN) * cappy3D.SWAY;
+    let yaw = Math.sin(t * cappy3D.SPIN) * cappy3D.SWAY;
+    if (e < 1) yaw += (1 - ease) * Math.PI * 2; // spin eased like his flight → ends as he lands
+    cappy3D.pivot.rotation.y = yaw;
     cappy3D.pivot.rotation.x = Math.sin(t * 0.6) * cappy3D.NOD;
     cappy3D.renderer.render(cappy3D.scene, cappy3D.camera);
   }
