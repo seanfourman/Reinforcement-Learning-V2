@@ -1585,12 +1585,21 @@ export function createStartMenu({
         if (disposed) return;
         const root = asset.scene;
         // the rip bundles every eye state (open / half-shut / closed) as overlapping
-        // meshes — hide the closed & half ones so Cappy is wide-eyed
+        // meshes. Group them so cappyTick can blink (open→half→closed→open); pupils ride
+        // with the open eyes. Start wide-eyed.
+        const eyes = { open: [], half1: [], half2: [], half3: [], close: [] };
         root.traverse((o) => {
-          if (o.isMesh && /Eye(Close|Half)/i.test(o.name + " " + (o.parent ? o.parent.name : ""))) {
-            o.visible = false;
-          }
+          if (!o.isMesh) return;
+          const n = o.name + " " + (o.parent ? o.parent.name : "");
+          if (/EyeClose/i.test(n)) eyes.close.push(o);
+          else if (/EyeHalf1/i.test(n)) eyes.half1.push(o);
+          else if (/EyeHalf2/i.test(n)) eyes.half2.push(o);
+          else if (/EyeHalf3/i.test(n)) eyes.half3.push(o);
+          else if (/EyeOpen/i.test(n) || /EyePupil/i.test(n)) eyes.open.push(o);
         });
+        for (const k in eyes) for (const m of eyes[k]) m.visible = k === "open";
+        cappy3D.eyes = eyes;
+        cappy3D.eyeState = "open";
         root.updateMatrixWorld(true);
         const box = new THREE.Box3().setFromObject(root);
         const s = box.getSize(new THREE.Vector3());
@@ -1649,9 +1658,25 @@ export function createStartMenu({
     // thrown cap, unwinding into the idle sway as he lands.
     const t = (now - cappy3D.t0) / 1000;
     let yaw = Math.sin(t * cappy3D.SPIN) * cappy3D.SWAY;
-    if (e < 1) yaw += (1 - ease) * Math.PI * 2; // spin eased like his flight → ends as he lands
+    if (e < 1) yaw += (1 - ease) * Math.PI * 2; // entrance spin, eased like his flight
     cappy3D.pivot.rotation.y = yaw;
     cappy3D.pivot.rotation.x = Math.sin(t * 0.6) * cappy3D.NOD;
+    // blink: a quick close→open every few seconds, stepping through the half states
+    if (cappy3D.eyes) {
+      const BLINK_PERIOD = 3.6, BLINK_DUR = 0.16;
+      const since = (t + 1.2) % BLINK_PERIOD; // offset so he doesn't blink the instant he loads
+      let eye = "open";
+      if (since < BLINK_DUR) {
+        const p = since / BLINK_DUR;
+        const f = p < 0.5 ? p * 2 : (1 - p) * 2; // 0(open) → 1(closed) → 0(open)
+        eye = f < 0.2 ? "open" : f < 0.45 ? "half1" : f < 0.7 ? "half2" : f < 0.9 ? "half3" : "close";
+      }
+      if (eye !== cappy3D.eyeState) {
+        const E = cappy3D.eyes;
+        for (const k in E) { const v = k === eye; for (const m of E[k]) m.visible = v; }
+        cappy3D.eyeState = eye;
+      }
+    }
     cappy3D.renderer.render(cappy3D.scene, cappy3D.camera);
   }
   function startCappy3D() {
