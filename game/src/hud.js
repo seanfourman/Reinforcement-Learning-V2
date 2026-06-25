@@ -33,7 +33,7 @@ const STYLE = `
 .fb-side{flex:none;display:flex;align-items:center;gap:0;}
 .fb-side.red{flex-direction:row-reverse;}
 /* character portrait at the corner (on top, so the bar tucks in behind it) */
-.fb-port{position:relative;z-index:10;height:112px;width:auto;filter:drop-shadow(0 5px 9px rgba(0,0,0,.6));}
+.fb-port{position:relative;z-index:10;height:98px;width:auto;filter:drop-shadow(0 5px 9px rgba(0,0,0,.6));}
 .fb-side.blue .fb-port{transform:scaleX(-1);} /* flip the left one to face inward */
 /* name tag (above) + meter (below), beside the character */
 .fb-col{flex:none;display:flex;flex-direction:column;gap:0;}
@@ -142,7 +142,7 @@ export function initHud() {
   // re-read saved picks; re-apply a portrait only when its character actually changed, so
   // switching characters in the menu updates the HUD without a page reload.
   // a few cropped icons sit slightly off-centre; nudge these toward their own corner (px)
-  const NUDGE = { mario: 14, luigi: 14, koopa: 4 };
+  const NUDGE = { mario: 10, luigi: 10, koopa: 6 };
   let appliedB = null,
     appliedR = null;
   const applyPortrait = (side, url, dir) => {
