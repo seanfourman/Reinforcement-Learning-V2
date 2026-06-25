@@ -1,7 +1,8 @@
 // Fighting-game tournament HUD (Tekken-style top bar): a character portrait in each top
 // corner with a slanted name tag, two skewed glossy meters charging toward the centre that
 // show each side's RECENT win share (same data as the M panel's "Contest (recent)" bar),
-// and a centre block with the round number + tournament-score pips (rounds won).
+// 5 round-win dots under each bar (a point lights for the side that won each round), and a
+// centre block with the round number.
 //
 // Event-driven: 'rl-snapshot' (stats = { round:{title,index,total,labelBlue,labelRed},
 // score:{blue,red} = rounds won, recentRate:{red,blue,draw} = recent win shares, algoBlue, algoRed }).
@@ -36,7 +37,7 @@ const STYLE = `
 .fb-port{position:relative;z-index:10;height:98px;width:auto;filter:drop-shadow(0 5px 9px rgba(0,0,0,.6));}
 .fb-side.blue .fb-port{transform:scaleX(-1);} /* flip the left one to face inward */
 /* name tag (above) + meter (below), beside the character */
-.fb-col{flex:none;display:flex;flex-direction:column;gap:0;}
+.fb-col{position:relative;flex:none;display:flex;flex-direction:column;gap:0;}
 .fb-side.blue .fb-col{align-items:flex-start;}
 .fb-side.red .fb-col{align-items:flex-end;}
 /* slanted fighting-game name tag */
@@ -49,12 +50,12 @@ const STYLE = `
   white-space:nowrap;letter-spacing:.3px;text-shadow:0 1px 2px rgba(0,0,0,.6);}
 .fb-side.blue .fb-nm{background:linear-gradient(180deg,#4f97ff,#1d4fc6);}
 .fb-side.red .fb-nm{background:linear-gradient(180deg,#ff6a5d,#bf1c1c);}
-/* skewed glossy meter, grows toward the centre to that side's recent win share */
-.fb-meter{position:relative;z-index:5;width:300px;height:18px;border:2.5px solid #000;border-radius:3px;
-  background:rgba(6,8,20,.92);box-shadow:0 3px 8px rgba(0,0,0,.55);}
+/* BLACK track + thick black cartoonish border + 3D shadow; blue/red glossy fill kept */
+.fb-meter{position:relative;z-index:5;width:300px;height:18px;border:3px solid #000;border-radius:5px;
+  background:#0b0b0b;box-shadow:0 3px 0 #000,inset 0 2px 4px rgba(0,0,0,.7);}
 .fb-side.blue .fb-meter{transform:skewX(12deg);left:-22px;}
 .fb-side.red .fb-meter{transform:skewX(-12deg);left:22px;}
-.fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:240% 100%;
+.fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:240% 100%;border-radius:2px;
   animation:fb-shimmer 1.2s linear infinite;transition:width .55s cubic-bezier(.3,1.3,.5,1);}
 .fb-side.red .fb-fill{left:auto;right:0;}
 .fb-side.blue .fb-fill{background-image:linear-gradient(90deg,#1f53c8,#5aa6ff,#cfe6ff,#5aa6ff,#1f53c8);
@@ -65,16 +66,20 @@ const STYLE = `
 .fb-rate{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;}
 .fb-side.blue .fb-rate{right:6px;} .fb-side.red .fb-rate{left:6px;}
-/* centre block: round + tournament-score pips */
+/* centre block: round number */
 #fb-center{flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;color:#fff;}
 #fb-center .rnd{font-size:13px;font-weight:900;letter-spacing:2px;text-transform:uppercase;
   background:rgba(16,18,34,.82);border:2px solid rgba(255,255,255,.2);border-radius:8px;padding:4px 13px;
   box-shadow:0 4px 14px rgba(0,0,0,.5);white-space:nowrap;}
-#fb-center .pips{display:flex;gap:5px;}
-#fb-center .pips i{width:11px;height:11px;border-radius:50%;border:2px solid #000;background:#2c3146;
-  box-shadow:0 1px 3px rgba(0,0,0,.5);}
-#fb-center .pips i.b{background:radial-gradient(circle at 35% 30%,#8fc0ff,#2f6bd6);}
-#fb-center .pips i.r{background:radial-gradient(circle at 35% 30%,#ff9a8e,#d8392c);}
+/* round-win dots under each bar — absolute so they don't change the column layout */
+.fb-dots{position:absolute;top:100%;margin-top:7px;display:flex;gap:8px;}
+.fb-side.blue .fb-dots{left:8px;}
+.fb-side.red .fb-dots{right:8px;flex-direction:row-reverse;}
+/* cartoonish dot: BLACK when not won + thick black border + 3D shadow; lights the side colour */
+.fb-dots i{width:14px;height:14px;border-radius:50%;border:2.5px solid #000;background:#0c0c0c;
+  box-shadow:0 2px 0 #000;transition:background .2s;}
+.fb-side.blue .fb-dots i.on{background:radial-gradient(circle at 35% 30%,#7fb4ff,#2f6bd6);}
+.fb-side.red .fb-dots i.on{background:radial-gradient(circle at 35% 30%,#ff8d80,#d8392c);}
 `;
 
 export function initHud() {
@@ -90,11 +95,12 @@ export function initHud() {
       <div class="fb-col">
         <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">—</span></div>
         <div class="fb-meter"><div class="fb-fill" id="fb-fill-${side}"></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
+        <div class="fb-dots" id="fb-dots-${side}"></div>
       </div>
     </div>`;
   hud.innerHTML =
     sideHTML("blue", "P1") +
-    `<div id="fb-center"><div class="rnd" id="fb-round">Round 1 / 1</div><div class="pips" id="fb-pips"></div></div>` +
+    `<div id="fb-center"><div class="rnd" id="fb-round">Round 1 / 1</div></div>` +
     sideHTML("red", "CPU");
   document.body.appendChild(hud);
 
@@ -165,15 +171,10 @@ export function initHud() {
   };
   refreshPortraits();
 
-  let pipTotal = -1;
-  const buildPips = (total) => {
-    if (total === pipTotal) return;
-    pipTotal = total;
-    $("#fb-pips").innerHTML = Array.from(
-      { length: total },
-      () => "<i></i>",
-    ).join("");
-  };
+  // 5 round-win dots under each bar (5-round tournament)
+  const dotCells = Array.from({ length: 5 }, () => "<i></i>").join("");
+  $("#fb-dots-blue").innerHTML = dotCells;
+  $("#fb-dots-red").innerHTML = dotCells;
 
   window.addEventListener("rl-snapshot", (e) => {
     const s = e.detail.stats;
@@ -181,7 +182,6 @@ export function initHud() {
     refreshPortraits(); // pick up character switches without a reload
     const r = s.round || {};
     const total = Math.max(1, r.total ?? 1);
-    buildPips(total);
     $("#fb-round").textContent = `Round ${(r.index ?? 0) + 1} / ${total}`;
     $("#fb-algo-blue").textContent = r.labelBlue || s.algoBlue || "";
     $("#fb-algo-red").textContent = r.labelRed || s.algoRed || "";
@@ -193,14 +193,11 @@ export function initHud() {
     $("#fb-fill-red").style.width = `${Math.round(rd * 100)}%`;
     $("#fb-rate-blue").textContent = `${Math.round(rb * 100)}%`;
     $("#fb-rate-red").textContent = `${Math.round(rd * 100)}%`;
-    // pips = rounds won so far (blue from the left, red from the right)
+    // round-win dots: a point lights under each character for every round they won
     const sb = s.score?.blue ?? 0,
       sr = s.score?.red ?? 0;
-    $("#fb-pips")
-      .querySelectorAll("i")
-      .forEach((pip, i) => {
-        pip.className = i < sb ? "b" : i >= total - sr ? "r" : "";
-      });
+    $("#fb-dots-blue").querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < sb));
+    $("#fb-dots-red").querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < sr));
   });
 
   return { el: hud };
