@@ -142,7 +142,7 @@ export function initHud() {
   // re-read saved picks; re-apply a portrait only when its character actually changed, so
   // switching characters in the menu updates the HUD without a page reload.
   // a few cropped icons sit slightly off-centre; nudge these toward their own corner (px)
-  const NUDGE = { mario: 10, luigi: 10, koopa: 6 };
+  const NUDGE = { mario: 10, luigi: 10, koopa: 6, parabones: 4 };
   let appliedB = null,
     appliedR = null;
   const applyPortrait = (side, url, dir) => {
