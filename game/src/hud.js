@@ -29,6 +29,8 @@ function charIcon(slot, fallbackKey) {
 }
 
 const STYLE = `
+/* Mario display font, re-declared here so the HUD has it even when the start menu is gone */
+@font-face{font-family:"SuperMario256";src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
 #rl-hud{position:fixed;top:0;left:0;right:0;z-index:8;pointer-events:none;display:flex;
   align-items:center;justify-content:center;gap:48px;padding:30px 16px 0;font-family:"Segoe UI",system-ui,sans-serif;}
 .fb-side{flex:none;display:flex;align-items:center;gap:0;}
@@ -72,11 +74,19 @@ const STYLE = `
 .fb-rate{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;}
 .fb-side.blue .fb-rate{right:6px;} .fb-side.red .fb-rate{left:6px;}
-/* centre block: round number */
-#fb-center{flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;color:#fff;}
-#fb-center .rnd{font-size:13px;font-weight:900;letter-spacing:2px;text-transform:uppercase;
-  background:rgba(16,18,34,.82);border:2px solid rgba(255,255,255,.2);border-radius:8px;padding:4px 13px;
-  box-shadow:0 4px 14px rgba(0,0,0,.5);white-space:nowrap;}
+/* centre block: fighting-game round counter — small "ROUND" over a big current / total */
+#fb-center{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  line-height:1;color:#fff;}
+/* Mario-style: thick black stroke (painted behind the fill) + a little 3D drop */
+.fb-rlabel{font-family:"SuperMario256","Arial Black",sans-serif;font-size:19px;letter-spacing:2px;
+  text-indent:2px;text-transform:uppercase;color:#ffd23f;
+  -webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 2px 0 rgba(0,0,0,.6);}
+.fb-rnum{display:flex;align-items:baseline;gap:7px;margin-top:7px;
+  font-family:"SuperMario256","Arial Black",sans-serif;font-variant-numeric:tabular-nums;
+  -webkit-text-stroke:4.5px #000;paint-order:stroke fill;text-shadow:1px 3px 0 rgba(0,0,0,.55);}
+.fb-rnum .i{font-size:56px;color:#fff;line-height:.9;}
+.fb-rnum .sep{font-size:38px;color:#8f98ad;}
+.fb-rnum .t{font-size:42px;color:#8f98ad;}
 /* round-win dots under each bar — absolute so they don't change the column layout */
 .fb-dots{position:absolute;top:100%;margin-top:7px;display:flex;gap:8px;}
 .fb-side.blue .fb-dots{left:8px;}
@@ -106,7 +116,8 @@ export function initHud() {
     </div>`;
   hud.innerHTML =
     sideHTML("blue", "P1") +
-    `<div id="fb-center"><div class="rnd" id="fb-round">Round 1 / 1</div></div>` +
+    `<div id="fb-center"><div class="fb-rlabel">Round</div>` +
+    `<div class="fb-rnum"><b class="i" id="fb-round-i">1</b><span class="sep">/</span><span class="t" id="fb-round-t">1</span></div></div>` +
     sideHTML("red", "CPU");
   document.body.appendChild(hud);
 
@@ -184,10 +195,14 @@ export function initHud() {
 
   // ease the fills toward their target every frame so they're fully fluid (no jumps) and
   // jumpy recent-rate data gets smoothed out.
-  const fillBlue = $("#fb-fill-blue"), fillRed = $("#fb-fill-red");
-  const glowBlue = $("#fb-glow-blue"), glowRed = $("#fb-glow-red");
-  const rateBlue = $("#fb-rate-blue"), rateRed = $("#fb-rate-red");
-  const barTarget = { blue: 0, red: 0 }, barCur = { blue: 0, red: 0 };
+  const fillBlue = $("#fb-fill-blue"),
+    fillRed = $("#fb-fill-red");
+  const glowBlue = $("#fb-glow-blue"),
+    glowRed = $("#fb-glow-red");
+  const rateBlue = $("#fb-rate-blue"),
+    rateRed = $("#fb-rate-red");
+  const barTarget = { blue: 0, red: 0 },
+    barCur = { blue: 0, red: 0 };
   // glow opacity ramps in as the bar fills (0 below ~45%, full at 100%) so it never pops
   const glowAmt = (val) => Math.max(0, Math.min(1, (val - 45) / 55));
   // fade the charging tip into the track (mask gradient), but not once the bar is full.
@@ -200,7 +215,10 @@ export function initHud() {
     const key = dist.toFixed(2);
     if (el.dataset.tip === key) return;
     el.dataset.tip = key;
-    const m = dist < 0.05 ? "none" : `linear-gradient(to ${dir},#000 calc(100% - min(${key}px,40%)),transparent)`;
+    const m =
+      dist < 0.05
+        ? "none"
+        : `linear-gradient(to ${dir},#000 calc(100% - min(${key}px,40%)),transparent)`;
     el.style.webkitMaskImage = m;
     el.style.maskImage = m;
   };
@@ -225,7 +243,8 @@ export function initHud() {
     refreshPortraits(); // pick up character switches without a reload
     const r = s.round || {};
     const total = Math.max(1, r.total ?? 1);
-    $("#fb-round").textContent = `Round ${(r.index ?? 0) + 1} / ${total}`;
+    $("#fb-round-i").textContent = (r.index ?? 0) + 1;
+    $("#fb-round-t").textContent = total;
     $("#fb-algo-blue").textContent = r.labelBlue || s.algoBlue || "";
     $("#fb-algo-red").textContent = r.labelRed || s.algoRed || "";
     // bars = each side's RECENT win share; the rAF loop eases the fill toward this smoothly
@@ -235,8 +254,12 @@ export function initHud() {
     // round-win dots: a point lights under each character for every round they won
     const sb = s.score?.blue ?? 0,
       sr = s.score?.red ?? 0;
-    $("#fb-dots-blue").querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < sb));
-    $("#fb-dots-red").querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < sr));
+    $("#fb-dots-blue")
+      .querySelectorAll("i")
+      .forEach((d, i) => d.classList.toggle("on", i < sb));
+    $("#fb-dots-red")
+      .querySelectorAll("i")
+      .forEach((d, i) => d.classList.toggle("on", i < sr));
   });
 
   return { el: hud };
