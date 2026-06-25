@@ -2173,7 +2173,7 @@ export function createStartMenu({
        render, so the canvas position can never get out of sync with what's drawn — no CSS
        animation here on purpose. */
     /* ---- main panel ---- */
-    #rl-howto .hw-panel{position:relative;width:min(560px,80vw);min-height:392px;box-sizing:border-box;
+    #rl-howto .hw-panel{position:relative;width:min(720px,88vw);min-height:392px;box-sizing:border-box;
       background:#fffdf6;border:4px solid #000;border-radius:22px;padding:26px 30px 18px;
       color:#000;font-family:"Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;
       box-shadow:2px 2px 0 #000,4px 4px 0 #000,6px 6px 0 #000,8px 8px 0 #000,
@@ -2191,13 +2191,17 @@ export function createStartMenu({
       font-size:17.5px;line-height:1.5;color:#33240f;margin:0 0 6px;font-weight:600;}
     /* ---- illustration stage + marker annotations ---- */
     #rl-howto .hw-stage{position:relative;flex:1;display:flex;align-items:center;justify-content:center;
-      padding-top:30px;min-height:150px;}
+      padding-top:30px;min-height:150px;width:min(100%,440px);align-self:center;}
     #rl-howto .hw-anno{position:absolute;top:-2px;width:150px;display:flex;flex-direction:column;
       align-items:center;gap:1px;font-family:"Segoe Print","Bradley Hand","Ink Free","Comic Sans MS",cursive;
       color:#6a3df0;font-weight:700;font-size:15px;line-height:1.14;text-align:center;
       letter-spacing:.2px;text-transform:uppercase;pointer-events:none;}
     #rl-howto .hw-anno.tl{left:2px;}
     #rl-howto .hw-anno.tr{right:2px;}
+    /* tighter placement for narrow illustrations — pulls the callouts in next to the content */
+    #rl-howto .hw-anno.tight{top:34px;}
+    #rl-howto .hw-anno.tight.tl{left:calc(50% - 172px);}
+    #rl-howto .hw-anno.tight.tr{right:calc(50% - 172px);}
     #rl-howto .hw-arrow{width:50px;height:36px;stroke:#6a3df0;fill:none;stroke-width:3.4;}
     #rl-howto .hw-anno.tr .hw-arrow{transform:scaleX(-1);}
     /* ---- nav: dots + prev/next ---- */
@@ -2247,8 +2251,19 @@ export function createStartMenu({
     #rl-howto .vs-word{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;
       background:#000;color:#fff;font-weight:900;font-size:17px;font-style:italic;letter-spacing:1px;
       box-shadow:0 0 0 4px #fffdf6,0 0 0 7px #000,0 5px 0 rgba(0,0,0,.3);transform:rotate(-9deg);}
-    /* ---- page-4: trophy ---- */
-    #rl-howto .hw-trophy{font-size:92px;line-height:1;filter:drop-shadow(0 6px 0 rgba(0,0,0,.22));}
+    /* ---- page-4: champion podium ---- */
+    #rl-howto .hw-podium{display:flex;align-items:flex-end;gap:8px;}
+    #rl-howto .pod{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+      border:2.5px solid #000;border-radius:9px 9px 0 0;box-shadow:0 3px 0 #000;color:#3a2a14;font-weight:900;}
+    #rl-howto .pod .pn{font-size:19px;padding-bottom:4px;}
+    #rl-howto .pod.p1{width:82px;height:96px;background:linear-gradient(180deg,#ffdc5c,#f6b21b);}
+    #rl-howto .pod.p2{width:66px;height:66px;background:linear-gradient(180deg,#eef1f6,#bcc6d4);}
+    #rl-howto .pod.p3{width:66px;height:48px;background:linear-gradient(180deg,#f3b483,#cd7f32);}
+    #rl-howto .pod .ptrophy{position:absolute;top:-46px;font-size:48px;filter:drop-shadow(0 4px 0 rgba(0,0,0,.2));}
+    /* TEMP placeholder box for pages whose visual isn't built yet */
+    #rl-howto .hw-ph{display:grid;place-items:center;width:300px;height:118px;box-sizing:border-box;
+      border:3px dashed rgba(0,0,0,.3);border-radius:16px;background:rgba(0,0,0,.035);
+      color:rgba(0,0,0,.42);font-weight:800;font-size:15px;letter-spacing:2px;text-transform:uppercase;}
     #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
       gap:11px;cursor:pointer;color:#fff;pointer-events:none;
       transform:translateY(220%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
@@ -3015,7 +3030,14 @@ export function createStartMenu({
     `<div class="vs-fighter red"><div class="vs-ava">🧠</div><div class="vs-name">RIVAL</div><div class="vs-tag">computer</div></div>` +
     `</div>`;
   // page 4 — the crown
-  const hwTrophy = `<div class="hw-trophy">🏆</div>`;
+  const hwPodium = `<div class="hw-podium">` +
+    `<div class="pod p2"><span class="pn">2</span></div>` +
+    `<div class="pod p1"><span class="ptrophy">🏆</span><span class="pn">1</span></div>` +
+    `<div class="pod p3"><span class="pn">3</span></div>` +
+    `</div>`;
+  // TEMP: placeholder for the face-off + champion visuals (real designs coming later;
+  // hwArena / hwPodium above are kept for when we wire the real thing back in)
+  const hwPlaceholder = `<div class="hw-ph">Placeholder</div>`;
 
   const HOWTO_PAGES = [
     { frac: "1/4", title: "Build your team",
@@ -3026,10 +3048,10 @@ export function createStartMenu({
       stage: hwAnno("tl", "Climb the roster") + hwLadder + hwAnno("tr", "Tougher each time") },
     { frac: "3/4", title: "Face off",
       para: "Now the duel: your algorithm and the rival's tackle the very same map at once, one Red and one Blue, a fair head-to-head test of who learned better.",
-      stage: hwAnno("tl", "Same map, at once") + hwArena + hwAnno("tr", "You = blue · rival = red") },
+      stage: hwPlaceholder },
     { frac: "4/4", title: "Take the crown",
       para: "Out-score your rival (faster, safer, higher reward) to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
-      stage: hwAnno("tl", "Win the rounds") + hwTrophy + hwAnno("tr", "Be the champion") },
+      stage: hwPlaceholder },
   ];
 
   const hwStepEl = howtoEl.querySelector(".hw-step");
