@@ -125,19 +125,13 @@ export function initPanel() {
     </section>`;
   document.body.appendChild(panel);
 
-  const tab = document.createElement('div');
-  tab.id = 'rl-tab';
-  tab.textContent = '☰ Panel (M)';
-  document.body.appendChild(tab);
-
   // learning curves + replay sections (built by graphs.js)
   initGraphs(panel);
 
   const $ = (id) => panel.querySelector(id);
 
-  // ---- toggle ----
+  // ---- toggle (M key only; the on-screen tab was removed) ----
   const toggle = () => panel.classList.toggle('open');
-  tab.addEventListener('click', toggle);
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyM' && !/input|select|textarea/i.test(e.target.tagName)) toggle();
