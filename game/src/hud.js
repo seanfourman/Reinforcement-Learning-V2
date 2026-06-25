@@ -59,7 +59,8 @@ const STYLE = `
   animation:fb-shimmer 1.4s linear infinite;}
 .fb-side.red .fb-fill{left:auto;right:0;}
 .fb-side.blue .fb-fill{background-image:linear-gradient(90deg,#1f53c8,#5aa6ff,#cfe6ff,#5aa6ff,#1f53c8);
-  box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35),0 0 15px #57a0ff;}
+  box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35),0 0 15px #57a0ff;
+  animation-direction:reverse;} /* left shimmer flows the opposite way to the right side */
 .fb-side.red .fb-fill{background-image:linear-gradient(90deg,#bf1c1c,#ff7a6c,#ffd6cf,#ff7a6c,#bf1c1c);
   box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35),0 0 15px #ff7060;}
 @keyframes fb-shimmer{0%{background-position:0 0}100%{background-position:200% 0}}
@@ -181,6 +182,18 @@ export function initHud() {
   const fillBlue = $("#fb-fill-blue"), fillRed = $("#fb-fill-red");
   const rateBlue = $("#fb-rate-blue"), rateRed = $("#fb-rate-red");
   const barTarget = { blue: 0, red: 0 }, barCur = { blue: 0, red: 0 };
+  // fade the charging tip into the track (mask gradient), but not once the bar is full.
+  // the mask is relative to the fill width, so it auto-tracks the tip; only re-set on toggle.
+  const setTipFade = (el, val, dir) => {
+    // the fade length shrinks to 0 over the last ~8% so the tip blends out smoothly into a
+    // solid end instead of popping at 100.
+    const dist = Math.round(38 * Math.min(1, Math.max(0, (100 - val) / 8)));
+    if (el.dataset.tip === String(dist)) return;
+    el.dataset.tip = String(dist);
+    const m = dist <= 0 ? "none" : `linear-gradient(to ${dir},#000 calc(100% - ${dist}px),transparent)`;
+    el.style.webkitMaskImage = m;
+    el.style.maskImage = m;
+  };
   const tickBars = () => {
     barCur.blue += (barTarget.blue - barCur.blue) * 0.08;
     barCur.red += (barTarget.red - barCur.red) * 0.08;
@@ -188,6 +201,8 @@ export function initHud() {
     fillRed.style.width = `${barCur.red.toFixed(2)}%`;
     rateBlue.textContent = `${Math.round(barCur.blue)}%`;
     rateRed.textContent = `${Math.round(barCur.red)}%`;
+    setTipFade(fillBlue, barCur.blue, "right"); // blue charges right, fade the right tip
+    setTipFade(fillRed, barCur.red, "left"); // red charges left, fade the left tip
     requestAnimationFrame(tickBars);
   };
   requestAnimationFrame(tickBars);
