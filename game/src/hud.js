@@ -46,10 +46,10 @@ const STYLE = `
 .fb-tag{display:inline-flex;border:2.5px solid #000;border-radius:3px;overflow:hidden;box-shadow:0 3px 7px rgba(0,0,0,.55);}
 .fb-side.blue .fb-tag{transform:skewX(12deg);position:relative;z-index:3;left:-12px;}
 .fb-side.red .fb-tag{transform:skewX(-12deg);flex-direction:row-reverse;position:relative;z-index:3;left:12px;}
-.fb-px{padding:2px 8px;display:flex;align-items:center;font-weight:900;font-size:11px;letter-spacing:.5px;
-  color:#1a1207;background:linear-gradient(180deg,#ffe171,#ffbf17);}
-.fb-nm{padding:2px 13px;display:flex;align-items:center;font-weight:900;font-size:13.5px;color:#fff;
-  white-space:nowrap;letter-spacing:.3px;text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.fb-px{padding:0 8px;display:flex;align-items:center;font-weight:900;font-size:11px;letter-spacing:.5px;
+  line-height:1.5;color:#1a1207;background:linear-gradient(180deg,#ffe171,#ffbf17);}
+.fb-nm{padding:0 13px;display:flex;align-items:center;font-weight:900;font-size:13.5px;color:#fff;
+  white-space:nowrap;letter-spacing:.3px;line-height:1.5;text-shadow:0 1px 2px rgba(0,0,0,.6);}
 .fb-side.blue .fb-nm{background:linear-gradient(180deg,#4f97ff,#1d4fc6);}
 .fb-side.red .fb-nm{background:linear-gradient(180deg,#ff6a5d,#bf1c1c);}
 /* BLACK track + thick black cartoonish border + 3D shadow; blue/red glossy fill kept */
