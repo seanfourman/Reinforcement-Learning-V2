@@ -55,14 +55,14 @@ const STYLE = `
   background:#0b0b0b;box-shadow:0 3px 0 #000,inset 0 2px 4px rgba(0,0,0,.7);}
 .fb-side.blue .fb-meter{transform:skewX(12deg);left:-22px;}
 .fb-side.red .fb-meter{transform:skewX(-12deg);left:22px;}
-.fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:240% 100%;border-radius:2px;
-  animation:fb-shimmer 1.2s linear infinite;transition:width .55s cubic-bezier(.3,1.3,.5,1);}
+.fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:200% 100%;border-radius:2px;
+  animation:fb-shimmer 1.4s linear infinite;}
 .fb-side.red .fb-fill{left:auto;right:0;}
 .fb-side.blue .fb-fill{background-image:linear-gradient(90deg,#1f53c8,#5aa6ff,#cfe6ff,#5aa6ff,#1f53c8);
   box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35),0 0 15px #57a0ff;}
 .fb-side.red .fb-fill{background-image:linear-gradient(90deg,#bf1c1c,#ff7a6c,#ffd6cf,#ff7a6c,#bf1c1c);
   box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35),0 0 15px #ff7060;}
-@keyframes fb-shimmer{0%{background-position:0 0}100%{background-position:240% 0}}
+@keyframes fb-shimmer{0%{background-position:0 0}100%{background-position:200% 0}}
 .fb-rate{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;}
 .fb-side.blue .fb-rate{right:6px;} .fb-side.red .fb-rate{left:6px;}
@@ -176,6 +176,22 @@ export function initHud() {
   $("#fb-dots-blue").innerHTML = dotCells;
   $("#fb-dots-red").innerHTML = dotCells;
 
+  // ease the fills toward their target every frame so they're fully fluid (no jumps) and
+  // jumpy recent-rate data gets smoothed out.
+  const fillBlue = $("#fb-fill-blue"), fillRed = $("#fb-fill-red");
+  const rateBlue = $("#fb-rate-blue"), rateRed = $("#fb-rate-red");
+  const barTarget = { blue: 0, red: 0 }, barCur = { blue: 0, red: 0 };
+  const tickBars = () => {
+    barCur.blue += (barTarget.blue - barCur.blue) * 0.08;
+    barCur.red += (barTarget.red - barCur.red) * 0.08;
+    fillBlue.style.width = `${barCur.blue.toFixed(2)}%`;
+    fillRed.style.width = `${barCur.red.toFixed(2)}%`;
+    rateBlue.textContent = `${Math.round(barCur.blue)}%`;
+    rateRed.textContent = `${Math.round(barCur.red)}%`;
+    requestAnimationFrame(tickBars);
+  };
+  requestAnimationFrame(tickBars);
+
   window.addEventListener("rl-snapshot", (e) => {
     const s = e.detail.stats;
     if (!s) return;
@@ -185,14 +201,10 @@ export function initHud() {
     $("#fb-round").textContent = `Round ${(r.index ?? 0) + 1} / ${total}`;
     $("#fb-algo-blue").textContent = r.labelBlue || s.algoBlue || "";
     $("#fb-algo-red").textContent = r.labelRed || s.algoRed || "";
-    // bars = each side's RECENT win share (same as the M panel's contest bar)
+    // bars = each side's RECENT win share; the rAF loop eases the fill toward this smoothly
     const rr = s.recentRate || {};
-    const rb = rr.blue ?? 0,
-      rd = rr.red ?? 0;
-    $("#fb-fill-blue").style.width = `${Math.round(rb * 100)}%`;
-    $("#fb-fill-red").style.width = `${Math.round(rd * 100)}%`;
-    $("#fb-rate-blue").textContent = `${Math.round(rb * 100)}%`;
-    $("#fb-rate-red").textContent = `${Math.round(rd * 100)}%`;
+    barTarget.blue = (rr.blue ?? 0) * 100;
+    barTarget.red = (rr.red ?? 0) * 100;
     // round-win dots: a point lights under each character for every round they won
     const sb = s.score?.blue ?? 0,
       sr = s.score?.red ?? 0;
