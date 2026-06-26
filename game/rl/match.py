@@ -103,6 +103,9 @@ class Match:
         self.last_episode = None                # most recent finished episode
         self.best_episode = None                # shortest WINNING episode so far
         self._best_len = 10 ** 9
+        # per-cell visit counts per side (the "where do they travel" heatmap)
+        self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
+        self.blue_visits = [[0] * self.env.W for _ in range(self.env.H)]
 
     def _apply_epsilon(self):
         # each side follows its own schedule, but a DP planner ignores epsilon and
@@ -142,6 +145,11 @@ class Match:
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
             self.total_steps += 1
+            for pos, vis in ((self.env.red_pos, self.red_visits),
+                             (self.env.blue_pos, self.blue_visits)):
+                r, c = pos
+                if 0 <= r < self.env.H and 0 <= c < self.env.W:
+                    vis[r][c] += 1
             if len(self._frames) < FRAME_CAP:
                 self._frames.append(self.env.snapshot())
             self.s_red, self.s_blue = ns_red, ns_blue
@@ -173,6 +181,7 @@ class Match:
             "ep": self.episode,
             "steps": self.total_steps,
             "eps": round(self.epsilon, 3),
+            "redEps": round(self.red_epsilon, 3),
             "len": self.env.steps,
             "rateRed": round(recent.count("red") / n, 3),
             "rateBlue": round(recent.count("blue") / n, 3),
@@ -409,6 +418,31 @@ class Match:
                 v = a.state_value(state)
                 grid[r][c] = round(v, 4) if v is not None else None
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
+
+    def visit_grid(self, agent):
+        """Per-cell visit counts for the agent (the 'where do they travel' heatmap).
+        Floor cells carry their count (0 if never stepped on); walls stay None."""
+        with self.lock:
+            vis = self.red_visits if agent == "red" else self.blue_visits
+            grid = [[None] * self.env.W for _ in range(self.env.H)]
+            for (r, c) in self.env.floor_cells:
+                grid[r][c] = vis[r][c]
+            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "visits"}
+
+    def q_grid(self, agent):
+        """Per-action Q for EVERY tile (the 'numbers on tiles' value overlay), in the
+        agent's current context: [qN, qS, qW, qE, qUse], or None on walls / unlearned
+        cells. Action order matches env.ACTIONS (North, South, West, East, Use)."""
+        with self.lock:
+            a = self._agent(agent)
+            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
+            grid = [[None] * self.env.W for _ in range(self.env.H)]
+            for (r, c), idx in self.env.cell_index.items():
+                state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
+                if a.state_value(state) is None:        # leave unlearned tiles blank
+                    continue
+                grid[r][c] = [round(x, 2) for x in a.q_values(state)]
+            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "q"}
 
     def q_at(self, agent, r, c):
         """Per-action Q for one tile in the current context (the Q inspector)."""

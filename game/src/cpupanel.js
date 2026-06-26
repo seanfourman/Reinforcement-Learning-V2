@@ -8,6 +8,7 @@
 
 import { PARAMS, DP_ALGOS, DQN_ALGOS, NAMES } from './panel.js';
 import { getCpuName } from './startmenu.js';
+import { initCurves } from './graphs.js';
 
 const GLOBAL_KEYS = new Set(['maxSteps', 'targetEpisodes']);   // shared by both models
 const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 'Master' };
@@ -58,6 +59,19 @@ const STYLE = `
 #rl-cpanel .stat:last-child{border-bottom:0;}
 #rl-cpanel .stat>span{color:#54565c;}
 #rl-cpanel .stat b{font-variant-numeric:tabular-nums;font-weight:700;}
+#rl-cpanel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
+#rl-cpanel .seg button{width:auto;flex:1;border:0;border-right:1px solid #d7dade;border-radius:0;background:#fff;}
+#rl-cpanel .seg button:last-child{border-right:0;}
+#rl-cpanel .seg button.active{background:#1f1f21;color:#fff;}
+#rl-cpanel .hint{font-size:11px;color:#a2a5ac;margin-top:7px;line-height:1.45;}
+/* per-side learning curves (built by graphs.js initCurves) */
+#rl-cpanel .chart{margin:0 0 14px;}
+#rl-cpanel .chart:last-child{margin-bottom:0;}
+#rl-cpanel .chart .ct{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+#rl-cpanel .chart .ct h3{margin:0;font-size:11.5px;font-weight:700;color:#3a3b40;}
+#rl-cpanel .chart .ct .lg{font-size:9.5px;color:#9a9da4;display:flex;gap:10px;}
+#rl-cpanel .chart .ct .lg i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px;}
+#rl-cpanel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 `;
 
 export function initCpuPanel() {
@@ -99,10 +113,37 @@ export function initCpuPanel() {
       <h2>CPU stats</h2>
       <div class="stat"><span>Exploration ε</span><b id="rl-cp-eps">-</b></div>
       <div class="stat"><span>Learned states</span><b id="rl-cp-q">-</b></div>
+    </section>
+    <section>
+      <h2>Value map · CPU</h2>
+      <div class="seg">
+        <button id="rl-cp-h-off" class="active">Off</button>
+        <button id="rl-cp-h-value">Value</button>
+        <button id="rl-cp-h-visits">Visits</button>
+      </div>
+      <p class="hint">Value: each tile shows the CPU's Q for N / S / W / E. Visits: where the CPU
+        travels (red = most, blue = least). Zoom in to read the numbers.</p>
     </section>`;
   document.body.appendChild(panel);
+  initCurves(panel, 'red');   // Red's learning curves at the bottom of this panel
 
   const $ = (id) => panel.querySelector(id);
+
+  // value map: this panel always shows the CPU model (Red), modes Off / Value / Visits
+  const hb = { off: $('#rl-cp-h-off'), value: $('#rl-cp-h-value'), visits: $('#rl-cp-h-visits') };
+  const setHeat = (m) => {
+    for (const k in hb) hb[k].classList.toggle('active', k === m);
+    window.RL.setHeatmap(m === 'off' ? null : 'red', m);
+  };
+  hb.off.addEventListener('click', () => setHeat('off'));
+  hb.value.addEventListener('click', () => setHeat('value'));
+  hb.visits.addEventListener('click', () => setHeat('visits'));
+  // one shared overlay: if the player panel grabs it, fall back to Off here
+  window.addEventListener('rl-heatmap', (e) => {
+    if ((e.detail || {}).agent !== 'red') {
+      for (const k in hb) hb[k].classList.toggle('active', k === 'off');
+    }
+  });
   const paintRange = (el) => {
     const min = +el.min, max = +el.max, v = +el.value;
     const pct = max > min ? ((v - min) / (max - min)) * 100 : 0;

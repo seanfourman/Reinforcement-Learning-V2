@@ -199,13 +199,14 @@ export function initPanel() {
       <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section>
-      <h2>Value map</h2>
+      <h2>Value map · your model</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
-        <button id="rl-h-red">Red</button>
-        <button id="rl-h-blue">Blue</button>
+        <button id="rl-h-value">Value</button>
+        <button id="rl-h-visits">Visits</button>
       </div>
-      <p class="hint">Brighter = higher expected reward V(s). Click a tile to inspect its Q-values.</p>
+      <p class="hint">Value: each tile shows its Q for N / S / W / E (the greedy one in blue).
+        Visits: where it travels (red = most stepped on, blue = least). Zoom in to read the numbers.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
     </section>`;
   document.body.appendChild(panel);
@@ -288,17 +289,23 @@ export function initPanel() {
   };
 
   // ---- value-map mode ----
-  const hbtns = { off: $('#rl-h-off'), red: $('#rl-h-red'), blue: $('#rl-h-blue') };
-  const setHeat = (mode) => {
-    for (const k in hbtns) hbtns[k].classList.toggle('active', k === mode);
-    window.RL.setHeatmap(mode === 'off' ? null : mode);
-    if (mode === 'off') $('#rl-qinspect').innerHTML = '';
+  // value map: this panel always shows OUR model (Blue), modes Off / Value / Visits
+  const hbtns = { off: $('#rl-h-off'), value: $('#rl-h-value'), visits: $('#rl-h-visits') };
+  const setMode = (m) => {
+    for (const k in hbtns) hbtns[k].classList.toggle('active', k === m);
+    if (m === 'off') { window.RL.setHeatmap(null); $('#rl-qinspect').innerHTML = ''; }
+    else window.RL.setHeatmap('blue', m);
   };
-  hbtns.off.addEventListener('click', () => setHeat('off'));
-  hbtns.red.addEventListener('click', () => setHeat('red'));
-  hbtns.blue.addEventListener('click', () => setHeat('blue'));
-  const _hp = new URLSearchParams(location.search).get('heat');
-  if (_hp === 'red' || _hp === 'blue') setHeat(_hp);
+  hbtns.off.addEventListener('click', () => setMode('off'));
+  hbtns.value.addEventListener('click', () => setMode('value'));
+  hbtns.visits.addEventListener('click', () => setMode('visits'));
+  // one shared overlay: if the CPU panel grabs it, fall back to Off here
+  window.addEventListener('rl-heatmap', (e) => {
+    if ((e.detail || {}).agent !== 'blue') {
+      for (const k in hbtns) hbtns[k].classList.toggle('active', k === 'off');
+      $('#rl-qinspect').innerHTML = '';
+    }
+  });
 
   // ---- live stats ----
   window.addEventListener('rl-snapshot', (e) => {

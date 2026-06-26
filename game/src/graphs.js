@@ -1,62 +1,41 @@
 // Learning-curve charts + single-episode replay player (both spec requirements).
 //
-// * The charts poll /api/history and plot the training signals the tabular
-//   self-play produces: per-episode return, the rolling win rate of each side,
-//   the exploration rate ε, and episode length - so you watch learning and
-//   exploration progress across training.
-// * The replay player fetches /api/replay (last or best episode), then feeds the
-//   recorded frames back through the SAME live actors via window.RL.playFrame,
-//   with play/pause + a scrubber, so you can study what a model actually did.
+// * initCurves(parent, side) polls /api/history and plots ONLY that side's signals
+//   (Blue on the player panel, Red on the CPU panel): its per-episode return, its
+//   rolling win rate, its exploration epsilon, and the shared episode length.
+// * initReplay(parent) builds the replay player (one shared replay): it fetches
+//   /api/replay (last or best episode) and feeds the recorded frames back through
+//   the live actors via window.RL.playFrame, with play/pause + a scrubber.
 //
-// Builds its own DOM into a parent element provided by the panel.
+// initGraphs(parent) = initCurves(parent, 'blue') + initReplay(parent), the
+// player's left panel. The CPU panel calls initCurves(panel, 'red') on its own.
 
 const REPLAY_FPS = 12;
 
-const CHARTS = [
-  { id: 'rl-ch-return', title: 'Episode return',
-    legend: [['#e60012', 'Red'], ['#1f5fd0', 'Blue']],
-    series: [{ key: 'retRed', color: '#e60012' }, { key: 'retBlue', color: '#1f5fd0' }],
-    fmt: (v) => v.toFixed(1) },
-  { id: 'rl-ch-rate', title: 'Win rate · recent',
-    legend: [['#e60012', 'Red'], ['#1f5fd0', 'Blue']],
-    series: [{ key: 'rateRed', color: '#e60012' }, { key: 'rateBlue', color: '#1f5fd0' }],
-    min: 0, max: 1, fmt: (v) => v.toFixed(1) },
-  { id: 'rl-ch-eps', title: 'Exploration ε',
-    legend: [['#7c4dd0', 'ε']],
-    series: [{ key: 'eps', color: '#7c4dd0' }],
-    min: 0, max: 1, fmt: (v) => v.toFixed(2) },
-  { id: 'rl-ch-len', title: 'Episode length',
-    legend: [['#1f9d63', 'steps']],
-    series: [{ key: 'len', color: '#1f9d63' }],
-    fmt: (v) => v.toFixed(0) },
-];
+// the four charts for one side; only that model's series are plotted
+function chartsFor(side) {
+  const isRed = side === 'red';
+  const c = isRed ? '#e60012' : '#1f5fd0';
+  const label = isRed ? 'Red' : 'Blue';
+  return [
+    { id: `return-${side}`, title: 'Episode return', legend: [[c, label]],
+      series: [{ key: isRed ? 'retRed' : 'retBlue', color: c }], fmt: (v) => v.toFixed(1) },
+    { id: `rate-${side}`, title: 'Win rate · recent', legend: [[c, label]],
+      series: [{ key: isRed ? 'rateRed' : 'rateBlue', color: c }], min: 0, max: 1, fmt: (v) => v.toFixed(1) },
+    { id: `eps-${side}`, title: 'Exploration ε', legend: [['#7c4dd0', 'ε']],
+      series: [{ key: isRed ? 'redEps' : 'eps', color: '#7c4dd0' }], min: 0, max: 1, fmt: (v) => v.toFixed(2) },
+    { id: `len-${side}`, title: 'Episode length', legend: [['#1f9d63', 'steps']],
+      series: [{ key: 'len', color: '#1f9d63' }], fmt: (v) => v.toFixed(0) },
+  ];
+}
 
 function chartBlock(c) {
-  const lg = c.legend
-    .map(([col, t]) => `<i style="background:${col}"></i>${t}`).join('');
+  const lg = c.legend.map(([col, t]) => `<i style="background:${col}"></i>${t}`).join('');
   return `
     <div class="chart">
       <div class="ct"><h3>${c.title}</h3><span class="lg">${lg}</span></div>
-      <canvas id="${c.id}"></canvas>
+      <canvas id="rl-ch-${c.id}"></canvas>
     </div>`;
-}
-
-function buildDom(parent) {
-  parent.insertAdjacentHTML('beforeend', `
-    <section>
-      <h2>Learning curves</h2>
-      ${CHARTS.map(chartBlock).join('')}
-    </section>
-    <section>
-      <h2>Episode replay</h2>
-      <div class="btns">
-        <button id="rl-rep-last">▶ Last</button>
-        <button id="rl-rep-best">★ Best</button>
-        <button id="rl-rep-stop">⏹ Live</button>
-      </div>
-      <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="margin-top:12px;--fill:#8a8d94">
-      <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">No replay loaded</span><b id="rl-rep-frame"></b></div>
-    </section>`);
 }
 
 // a small auto-scaling line chart on a crisp (dpr-aware) canvas
@@ -75,7 +54,6 @@ function makeChart(canvas, cfg) {
     if (!W) resize();
     ctx.clearRect(0, 0, W, H);
     const padT = 9, padB = 9, x0 = 5, x1 = W - 5, y0 = padT, y1 = H - padB;
-    // y-range: fixed for bounded signals, auto for the rest
     let lo, hi;
     if (cfg.min != null && cfg.max != null) { lo = cfg.min; hi = cfg.max; }
     else {
@@ -91,19 +69,16 @@ function makeChart(canvas, cfg) {
     }
     const span = hi - lo || 1;
     const yOf = (v) => y1 - ((v - lo) / span) * (y1 - y0);
-    // horizontal gridlines
     ctx.strokeStyle = '#edeff2'; ctx.lineWidth = 1;
     for (let g = 0; g <= 2; g++) {
       const yy = Math.round(y0 + (g / 2) * (y1 - y0)) + 0.5;
       ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
     }
-    // a stronger zero line when the range straddles zero (returns can be +/-)
     if (lo < 0 && hi > 0) {
       ctx.strokeStyle = '#d6dae0';
       const yz = Math.round(yOf(0)) + 0.5;
       ctx.beginPath(); ctx.moveTo(x0, yz); ctx.lineTo(x1, yz); ctx.stroke();
     }
-    // series
     if (points && points.length >= 2) {
       const cols = Math.max(2, Math.floor(x1 - x0));
       const step = Math.max(1, Math.floor(points.length / cols));
@@ -126,7 +101,6 @@ function makeChart(canvas, cfg) {
         ctx.stroke();
       }
     }
-    // y min/max labels
     ctx.fillStyle = '#a2a5ac'; ctx.font = '9px system-ui,sans-serif';
     ctx.textBaseline = 'top'; ctx.fillText(cfg.fmt(hi), 5, 2);
     ctx.textBaseline = 'bottom'; ctx.fillText(cfg.fmt(lo), 5, H - 1);
@@ -134,8 +108,36 @@ function makeChart(canvas, cfg) {
   return { draw, resize };
 }
 
-export function initGraphs(parent) {
-  buildDom(parent);
+// ---- per-side learning curves ----
+export function initCurves(parent, side) {
+  const CH = chartsFor(side);
+  parent.insertAdjacentHTML('beforeend',
+    `<section><h2>Learning curves</h2>${CH.map(chartBlock).join('')}</section>`);
+  const charts = CH.map((c) => makeChart(parent.querySelector(`#rl-ch-${c.id}`), c));
+  window.addEventListener('resize', () => charts.forEach((c) => c.resize()));
+  async function refresh() {
+    try {
+      const h = await (await fetch('/api/history', { cache: 'no-store' })).json();
+      charts.forEach((c) => c.draw(h.points));
+    } catch (e) { /* server warming up */ }
+  }
+  setInterval(refresh, 1000);
+  refresh();
+}
+
+// ---- shared episode replay ----
+export function initReplay(parent) {
+  parent.insertAdjacentHTML('beforeend', `
+    <section>
+      <h2>Episode replay</h2>
+      <div class="btns">
+        <button id="rl-rep-last">▶ Last</button>
+        <button id="rl-rep-best">★ Best</button>
+        <button id="rl-rep-stop">⏹ Live</button>
+      </div>
+      <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="margin-top:12px;--fill:#8a8d94">
+      <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">No replay loaded</span><b id="rl-rep-frame"></b></div>
+    </section>`);
   const $ = (id) => parent.querySelector(id);
   const paintRange = (el) => {
     const min = +el.min, max = +el.max, v = +el.value;
@@ -143,20 +145,6 @@ export function initGraphs(parent) {
     const fill = el.style.getPropertyValue('--fill') || '#8a8d94';
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
-
-  // ---- learning curves ----
-  const charts = CHARTS.map((c) => ({ cfg: c, chart: makeChart($(`#${c.id}`), c) }));
-  window.addEventListener('resize', () => charts.forEach((c) => c.chart.resize()));
-  async function refresh() {
-    try {
-      const h = await (await fetch('/api/history', { cache: 'no-store' })).json();
-      charts.forEach((c) => c.chart.draw(h.points));
-    } catch (e) { /* server warming up */ }
-  }
-  setInterval(refresh, 1000);
-  refresh();
-
-  // ---- replay player ----
   const seek = $('#rl-rep-seek');
   const info = $('#rl-rep-info');
   const frameLbl = $('#rl-rep-frame');
@@ -184,7 +172,7 @@ export function initGraphs(parent) {
       frames = r.frames || [];
       seek.max = Math.max(0, frames.length - 1);
       info.textContent = `${which} · ${r.winner || 'draw'} in ${r.steps} steps`;
-      window.RL?.setReplay?.(true);   // take the scene off live frames
+      window.RL?.setReplay?.(true);
       stopPlayback(false);
       idx = 0; showFrame(0);
       timer = setInterval(() => {
@@ -200,8 +188,13 @@ export function initGraphs(parent) {
   seek.addEventListener('input', () => {
     paintRange(seek);
     if (!frames.length) return;
-    if (timer) { clearInterval(timer); timer = null; }   // scrubbing pauses autoplay
+    if (timer) { clearInterval(timer); timer = null; }
     window.RL?.setReplay?.(true);
     showFrame(+seek.value);
   });
+}
+
+export function initGraphs(parent) {
+  initCurves(parent, 'blue');
+  initReplay(parent);
 }

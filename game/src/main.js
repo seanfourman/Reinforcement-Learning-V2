@@ -197,7 +197,8 @@ async function control(body) {
   } catch (e) { /* server not up yet */ }
 }
 
-let heatAgent = null;      // 'red' | 'blue' | null - which value map to overlay
+let heatAgent = null;      // 'red' | 'blue' | null - which model's overlay to show
+let heatMode = 'value';    // 'value' (V(s)) | 'visits' (where it travels)
 let pollCount = 0;
 let polling = false;
 let replayActive = false;  // while replaying a recorded episode, ignore live frames
@@ -220,10 +221,14 @@ async function poll() {
     latestFrame = snap.frame;
     if (!replayActive) actors.onFrame(snap.frame);
     window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
-    // value heatmap is heavier (whole grid) - refresh it a few times a second
+    // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
-      const v = await (await fetch(`${API}/api/values?agent=${heatAgent}`, { cache: 'no-store' })).json();
-      if (v.grid) heatmap.setGrid(v.grid);
+      const m = heatMode === 'value' ? 'q' : 'visits';
+      const v = await (await fetch(`${API}/api/values?agent=${heatAgent}&mode=${m}`, { cache: 'no-store' })).json();
+      if (v.grid) {
+        if (heatMode === 'value') heatmap.setNumbers(v.grid);
+        else heatmap.setGrid(v.grid);
+      }
     }
     pollCount++;
   } catch (e) { /* transient */ }
@@ -258,7 +263,15 @@ renderer.domElement.addEventListener('click', async (e) => {
 window.RL = {
   control,
   getStats: () => latestStats,
-  setHeatmap: (agent) => { heatAgent = agent; if (agent) heatmap.show(); else heatmap.hide(); },
+  setHeatmap: (agent, mode) => {
+    heatAgent = agent;
+    heatMode = mode || 'value';
+    if (!agent) heatmap.hide();
+    else if (heatMode === 'value') heatmap.showNumbers();
+    else heatmap.showColors();
+    // broadcast so the two panels stay mutually exclusive (one overlay)
+    window.dispatchEvent(new CustomEvent('rl-heatmap', { detail: { agent, mode: heatMode } }));
+  },
   playFrame: (frame) => { latestFrame = frame; actors.onFrame(frame); },
   setReplay: (on) => { replayActive = !!on; },
 };

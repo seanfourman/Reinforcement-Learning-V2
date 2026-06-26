@@ -96,6 +96,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if "cell" in q:
                 r, c = (int(x) for x in q["cell"][0].split(","))
                 return self._json(match.q_at(agent, r, c) or {})
+            mode = q.get("mode", [""])[0]
+            if mode == "visits":
+                return self._json(match.visit_grid(agent))
+            if mode == "q":
+                return self._json(match.q_grid(agent))
             return self._json(match.value_grid(agent))
         if route == "/api/history":
             return self._json(match.history())
