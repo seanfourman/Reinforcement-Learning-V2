@@ -13,12 +13,13 @@ import { createLiveActors } from './live.js';
 import { createMechanics } from './mechanics.js';
 import { createHeatmap } from './heatmap.js';
 import { initPanel } from './panel.js';
+import { initCpuPanel } from './cpupanel.js';
 import { createCameraRig } from './camera.js';
 import { createPostFX } from './postfx.js';
 import { getTheme } from './themes/index.js';
 import { initHud } from './hud.js';
 import { createTransition } from './transition.js';
-import { createStartMenu } from './startmenu.js';
+import { createStartMenu, getCpuTier } from './startmenu.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const app = document.getElementById('app');
@@ -33,7 +34,7 @@ app.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(PALETTE.fog, 34, 78);
 
-// soft vertical sky gradient — rebuilt per theme via setSky()
+// soft vertical sky gradient - rebuilt per theme via setSky()
 let skyTex = null;   // only our own gradient is disposed here, never a cached HDRI
 function setSky(stops) {
   const c = document.createElement('canvas');
@@ -196,7 +197,7 @@ async function control(body) {
   } catch (e) { /* server not up yet */ }
 }
 
-let heatAgent = null;      // 'red' | 'blue' | null — which value map to overlay
+let heatAgent = null;      // 'red' | 'blue' | null - which value map to overlay
 let pollCount = 0;
 let polling = false;
 let replayActive = false;  // while replaying a recorded episode, ignore live frames
@@ -219,7 +220,7 @@ async function poll() {
     latestFrame = snap.frame;
     if (!replayActive) actors.onFrame(snap.frame);
     window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
-    // value heatmap is heavier (whole grid) — refresh it a few times a second
+    // value heatmap is heavier (whole grid) - refresh it a few times a second
     if (heatAgent && pollCount % 5 === 0) {
       const v = await (await fetch(`${API}/api/values?agent=${heatAgent}`, { cache: 'no-store' })).json();
       if (v.grid) heatmap.setGrid(v.grid);
@@ -230,7 +231,7 @@ async function poll() {
 }
 // ------------------------------------------------------------------ input
 window.addEventListener('keydown', (e) => {
-  // fixed curated world now — R resets the two models (relearn from scratch)
+  // fixed curated world now - R resets the two models (relearn from scratch)
   if (e.code === 'KeyR' && !/input|select|textarea/i.test(e.target.tagName)) control({ cmd: 'reset' });
 });
 
@@ -262,6 +263,7 @@ window.RL = {
   setReplay: (on) => { replayActive = !!on; },
 };
 initPanel();
+initCpuPanel();
 
 // ------------------------------------------------------------------ post fx
 const fx = createPostFX(renderer, scene, camera);
@@ -271,9 +273,10 @@ const fx = createPostFX(renderer, scene, camera);
 menu = createStartMenu({
   scene, camera, renderer, actors, heatmap, fx,
   // boot the live match, then resolve once the world is built AND every asset has
-  // finished loading — the menu keeps the screen black (iris) until this resolves,
+  // finished loading - the menu keeps the screen black (iris) until this resolves,
   // so the player never sees the scene pop in.
   onStart: () => new Promise((resolve) => {
+    control({ cmd: 'cpuTier', value: getCpuTier() });  // Red's strength = chosen CPU character's tier
     setInterval(poll, 33);
     poll();
     const t0 = performance.now();

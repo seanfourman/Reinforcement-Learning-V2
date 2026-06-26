@@ -1,7 +1,7 @@
 import { GRID, CRYSTAL_COLORS } from './config.js';
 
 // World layout: a single-thickness maze that fills the ENTIRE board, with the
-// castle's curtain wall as its outer boundary — no inner ring, no courtyard
+// castle's curtain wall as its outer boundary - no inner ring, no courtyard
 // moat. The maze runs flush up against the stone walls on every side.
 //
 // The lattice puts the walkable "cells" on ODD coords (1,3,..,19) and the
@@ -9,7 +9,7 @@ import { GRID, CRYSTAL_COLORS } from './config.js';
 // perfectly (10 cells + 10 wall lines = 20), so there is no leftover edge to
 // fudge: coord 0 is a wall line pressed against the north/west castle wall, and
 // coord 19 is a corridor line against the south/east wall. Because every
-// odd/odd cell is guaranteed open, no 2x2 block of wall can ever form — the
+// odd/odd cell is guaranteed open, no 2x2 block of wall can ever form - the
 // walls always read as clean single-thickness corridors.
 //
 // The only cells forced open are those carrying the wall-mounted torches and
@@ -110,7 +110,7 @@ export function generateWorld(seed = (Math.random() * 1e9) | 0) {
   for (const [x, z] of fixtures) {
     wall[x][z] = false;
     // an (even,even) cell has no lattice neighbour of its own, so on its own it
-    // would be a sealed pocket — tuck it one step inward so the torch sits in a
+    // would be a sealed pocket - tuck it one step inward so the torch sits in a
     // connected alcove instead of an island
     if (x % 2 === 0 && z % 2 === 0) {
       if (x === 0) wall[1][z] = false;

@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { cellToWorld } from './layout.js';
 
 // Set-decoration for the castle interior: instead of scattering loose props, the
-// big empty hall is laid out as FURNISHED ZONES, like real castle rooms —
-//   * a LIBRARY (walls of bookcases + a reading table)        — top-left of the hall
-//   * a MUSIC corner with a grand PIANO + bench                — top-right
-//   * a LOUNGE: sofas + coffee table around a FIREPLACE        — right side
+// big empty hall is laid out as FURNISHED ZONES, like real castle rooms -
+//   * a LIBRARY (walls of bookcases + a reading table)        - top-left of the hall
+//   * a MUSIC corner with a grand PIANO + bench                - top-right
+//   * a LOUNGE: sofas + coffee table around a FIREPLACE        - right side
 //   * marble STATUES on pedestals flanking the central path
 //   * elegant STANDING LAMPS (torchères) lighting the aisles
-//   * a tiered stone FOUNTAIN as the courtyard centrepiece     — living room
+//   * a tiered stone FOUNTAIN as the courtyard centrepiece     - living room
 //   * potted topiary trees + rugs tying each area together
 //
 // Everything here is purely visual (it never touches the RL grid), so it can sit
@@ -133,7 +133,7 @@ export function createDressing(scene, world) {
     mesh.receiveShadow = true;
     group.add(mesh);
   };
-  // The upper half is now a BARE MAZE (no rugs/props up there) — all decoration
+  // The upper half is now a BARE MAZE (no rugs/props up there) - all decoration
   // lives in the PALACE on the bottom half, where the agents start.
   rug(6.6, 3.8, 0x6e4150, 9.5, 15.2, 0.113);   // central palace-hall rug
   rug(7, 3.0, 0x6a4a2c, 9.5, 18.2, 0.118);     // dining rug

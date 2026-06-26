@@ -6,8 +6,8 @@ import { updateWalker } from './characters.js';
 // characters cell-to-cell with smooth interpolation + walk cycles, floats the
 // three keys, hands the gold key to whoever holds it, and shows who won.
 //
-// The board itself is stripped to bare tiles — no walls, gates, pads or
-// pedestal — so the only things on it are the King, the Princess and the keys.
+// The board itself is stripped to bare tiles - no walls, gates, pads or
+// pedestal - so the only things on it are the King, the Princess and the keys.
 //
 // trajectory frames are discrete sim ticks; we interpolate between consecutive
 // ticks over STEP_DUR seconds so motion reads as continuous walking.
@@ -17,7 +17,7 @@ const END_HOLD = 2.5;   // pause on the final frame before looping
 
 function keyMesh(color, _emissive, gemColor) {
   // a chunky ornate key: ornate bow (ring + 4 lobes + a faceted gem), thick
-  // shaft, and proper bit teeth. Solid polished metal — NO self-illumination
+  // shaft, and proper bit teeth. Solid polished metal - NO self-illumination
   // (it just catches the scene light), so it doesn't shine weirdly.
   const g = new THREE.Group();
   const metal = new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.8 });
@@ -81,11 +81,11 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     const { x, z } = cellToWorld(cell.r, cell.c);
     obj.position.set(x, y, z);
   };
-  // cross rounds (the hedge maze) carry no key tiles — skip the initial placement
+  // cross rounds (the hedge maze) carry no key tiles - skip the initial placement
   if (layout.redKey) place(redKey.group, layout.redKey, FLOAT_Y);
   if (layout.blueKey) place(blueKey.group, layout.blueKey, FLOAT_Y);
 
-  // a warm torch-glow at the escape gate — neutral, never tinted by who wins
+  // a warm torch-glow at the escape gate - neutral, never tinted by who wins
   const escapeCell = layout.escape[0];
   const escGlow = new THREE.PointLight(0xffcf8a, 1.2, 6, 2);
   const eW = cellToWorld(escapeCell.r, escapeCell.c);
@@ -192,7 +192,7 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     if (i >= last && trajectory.winner) {
       const win = trajectory.winner;
       escGlow.intensity = 2 + Math.sin(elapsed * 6) * 1.0;
-      banner.textContent = win === 'red' ? '👑  The King escapes — RED wins!' : '👑  The Princess escapes — BLUE wins!';
+      banner.textContent = win === 'red' ? '👑  The King escapes - RED wins!' : '👑  The Princess escapes - BLUE wins!';
       banner.style.color = win === 'red' ? '#ffd2d2' : '#d2e2ff';
       banner.style.opacity = '1';
     } else {

@@ -1,11 +1,11 @@
-"""Two-agent competitive grid world — the live RL environment (Gymnasium API).
+"""Two-agent competitive grid world - the live RL environment (Gymnasium API).
 
 Both agents have the IDENTICAL task and compete on it:
   1. pick up YOUR colored key (in your sealed bedroom; the room's door is locked
-     until you hold it — the two bedrooms are sealed so colored keys can't be
+     until you hold it - the two bedrooms are sealed so colored keys can't be
      stolen),
   2. leave into the shared ARENA up north,
-  3. grab the single GOLD key (the only stealable one — step onto the holder to
+  3. grab the single GOLD key (the only stealable one - step onto the holder to
      take it),
   4. reach the north ESCAPE gate holding the gold key. First one out WINS.
 
@@ -67,13 +67,13 @@ CLIFF_PENALTY = -0.5   # "cross" worlds: fall into an open manhole, then respawn
 
 # Difference-of-potentials shaping: F = Φ(s') − Φ(s), with Φ = −W·(remaining path
 # length to the goal through the required sub-goals). Progress earns +W, standing
-# still 0, backtracking −W — a DENSE signal so the long key→gold→escape chain is
+# still 0, backtracking −W - a DENSE signal so the long key→gold→escape chain is
 # learnable without first completing it by luck (this is what makes Monte-Carlo,
 # which can't bootstrap, viable here, and it speeds up the TD methods too).
 #
 # NOTE: we deliberately use Φ'−Φ, NOT the discounted γΦ'−Φ. The discounted form
-# makes standing still pay (γ−1)·Φ > 0 — a "survival bonus" that grows with
-# distance from the goal — so agents learn to dawdle. The difference form gives
+# makes standing still pay (γ−1)·Φ > 0 - a "survival bonus" that grows with
+# distance from the goal - so agents learn to dawdle. The difference form gives
 # zero for no-progress and cannot be farmed. W is kept small so shaping never
 # dwarfs the actual win.
 SHAPE_W = 0.02
@@ -87,6 +87,7 @@ class GridWorld(gym.Env):
         super().__init__()
         self._seed = seed
         self.round_id = round_id
+        self.max_steps = MAX_STEPS      # per-episode step cap (tunable from the panel)
         self.world = None
         self.rng = random.Random(seed)   # the ENVIRONMENT's own stochasticity (slips)
         self.action_space = spaces.Discrete(N_ACTIONS)
@@ -97,12 +98,12 @@ class GridWorld(gym.Env):
     def _install(self, world):
         self.world = world
         # "race" (key->gold->escape) vs "cross" (Cliff Walking: start->goal over a
-        # manhole cliff). Set early — the shaping BFS below branches on it.
+        # manhole cliff). Set early - the shaping BFS below branches on it.
         self.objective = getattr(world, "objective", "race")
         self.goal_set = {tuple(e) for e in world.escape}
         g = world.grid
         self.H, self.W = world.H, world.W
-        # every non-wall cell is a graph node (doors included — passability is
+        # every non-wall cell is a graph node (doors included - passability is
         # checked per step). Verticality (phase 4) will append catwalk nodes.
         self.floor_cells = [(r, c) for r in range(self.H) for c in range(self.W)
                             if g[r][c] != WALL]
@@ -170,7 +171,7 @@ class GridWorld(gym.Env):
                 nr, nc = r + dr, c + dc
                 if not self._static_passable(agent, nr, nc):
                     continue
-                # stepping onto a mirror pad lands you on its partner — so the
+                # stepping onto a mirror pad lands you on its partner - so the
                 # shaping potential is aware of the teleport shortcut
                 arrive = self.mirror_map.get((nr, nc), (nr, nc))
                 if arrive in dist:
@@ -305,11 +306,11 @@ class GridWorld(gym.Env):
             npos = (nr, nc)
             # teleporter mirrors warp you to the paired pad
             return self.mirror_map.get(npos, npos)
-        # blocked by a wall — but a ladder may climb over THIS wall to the far side
+        # blocked by a wall - but a ladder may climb over THIS wall to the far side
         return self.climb_map.get((pos, direction), pos)
 
     def move_dist(self, agent, pos, action, passable=None):
-        """P(next cell | pos, action) — the KNOWN transition model. Deterministic
+        """P(next cell | pos, action) - the KNOWN transition model. Deterministic
         everywhere except on a slippery tile, where the move slides to a
         perpendicular direction with probability ``slip_prob`` (split evenly).
         Returns a list of (prob, cell). USE / non-moves stay put."""
@@ -337,7 +338,7 @@ class GridWorld(gym.Env):
         return dist[-1][1]
 
     def _best_dir(self, agent, pos):
-        """The optimal move direction toward the goal from pos — the env's
+        """The optimal move direction toward the goal from pos - the env's
         privileged knowledge, read off the precomputed escape-distance map."""
         dist = self.dist_escape[agent]
         best_a, best_d = None, _UNREACH + 1
@@ -354,7 +355,7 @@ class GridWorld(gym.Env):
         """Maze transition. On a normal cell the move is deterministic. On a
         SLIPPERY junction the agent loses control: 75% it's shoved the BEST way
         (the optimal direction only the env knows), 10% left / 10% right / 5%
-        backward of that — and if the shoved direction hits a bush it stays put.
+        backward of that - and if the shoved direction hits a bush it stays put.
         That makes risky junctions genuinely dangerous but still learnable."""
         if action not in MOVE_ACTIONS:
             return pos
@@ -407,7 +408,7 @@ class GridWorld(gym.Env):
             reward[agent] += self._potential(agent) - phi0[agent]
 
         truncated = False
-        if not self.done and self.steps >= MAX_STEPS:
+        if not self.done and self.steps >= self.max_steps:
             self.done = True
             truncated = True
             self.winner = None
@@ -427,7 +428,7 @@ class GridWorld(gym.Env):
         self.red_pos = self._move("red", self.red_pos, a_red)
         self.blue_pos = self._move("blue", self.blue_pos, a_blue)
 
-        # 2) colored keys (one-time, never contested — rooms are sealed)
+        # 2) colored keys (one-time, never contested - rooms are sealed)
         if not self.red_key and self.red_pos == self.world.red_key:
             self.red_key = True
             reward["red"] += KEY_BONUS
@@ -457,7 +458,7 @@ class GridWorld(gym.Env):
             reward["blue"] += GOLD_BONUS
 
         # 3b) drop-traps: carrying the gold onto one knocks it loose, and it
-        #     warps back to its pedestal — a real setback for a careless carrier
+        #     warps back to its pedestal - a real setback for a careless carrier
         if self.gold_holder is not None and self._pos(self.gold_holder) in self.drop_set:
             reward[self.gold_holder] += TRAP_PENALTY
             self.gold_holder = None
@@ -500,7 +501,7 @@ class GridWorld(gym.Env):
             reward[agent] += self._potential(agent) - phi0[agent]
 
         truncated = False
-        if not self.done and self.steps >= MAX_STEPS:
+        if not self.done and self.steps >= self.max_steps:
             self.done = True
             truncated = True
             self.winner = None  # draw / timeout

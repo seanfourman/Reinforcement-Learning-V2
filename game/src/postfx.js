@@ -12,9 +12,9 @@ export function createPostFX(renderer, scene, camera) {
 
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.7, // strength — a touch more glow/atmosphere
+    0.7, // strength - a touch more glow/atmosphere
     0.6, // radius
-    0.75 // threshold — emissives (crystals, pedestal) bloom
+    0.75 // threshold - emissives (crystals, pedestal) bloom
   );
   composer.addPass(bloom);
 

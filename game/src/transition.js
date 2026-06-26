@@ -1,5 +1,5 @@
 // Video-game-style arena transition. A full-screen curtain wipes in, the world
-// is rebuilt while the screen is covered, a "Round N — <Theme>" card flips up,
+// is rebuilt while the screen is covered, a "Round N - <Theme>" card flips up,
 // then the curtain wipes away to reveal the new arena.
 //
 // Pure DOM/CSS (independent of the three.js scene), so it works regardless of

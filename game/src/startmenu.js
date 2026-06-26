@@ -1,9 +1,9 @@
-// Start menu — the Super Mario Odyssey ship cabin (HomeInside) used as a
+// Start menu - the Super Mario Odyssey ship cabin (HomeInside) used as a
 // cinematic 3D background, with a title card + Start button. main.js shows this
 // before booting the live match; clicking Start tears it down and starts the game.
 //
 // The cabin models are the vendored Odyssey "HomeInside" pack (Y-up, so no axis
-// fix needed). They're loaded once and shown as-is (bind pose) — no cloning.
+// fix needed). They're loaded once and shown as-is (bind pose) - no cloning.
 
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
@@ -143,6 +143,30 @@ const OPPONENTS = [
     ],
   }, // Parabones
 ];
+
+// the CPU's difficulty tier (1=easiest .. 5=hardest) from whichever character sits
+// in the Computer chair (slot "1" of the saved picks). main.js sends this to the
+// trainer so Red's strength matches the chosen opponent.
+export function getCpuTier() {
+  try {
+    const p = JSON.parse(localStorage.getItem("rl-chars") || "{}");
+    const opp = OPPONENTS[p["1"]];
+    return opp ? opp.tier : 1;
+  } catch (e) {
+    return 1;
+  }
+}
+
+// the CPU (Computer chair, slot "1") character's display name, for the CPU panel
+export function getCpuName() {
+  try {
+    const p = JSON.parse(localStorage.getItem("rl-chars") || "{}");
+    const c = CHARACTERS[p["1"]];
+    return c ? c.name : "";
+  } catch (e) {
+    return "";
+  }
+}
 
 const JOINT_ALIASES = {
   mario: {
@@ -313,7 +337,7 @@ const JOINT_ALIASES = {
     HandR: "joint53",
   },
   peach: {
-    // PeachSwimwear rig (83 joints) — beach look (towel/sarong, flower, sunglasses)
+    // PeachSwimwear rig (83 joints) - beach look (towel/sarong, flower, sunglasses)
     LegL1: "joint2",
     LegL2: "joint3",
     FootL: "joint30",
@@ -353,7 +377,7 @@ const JOINT_ALIASES = {
     HandR: "joint23",
   },
   parabones: {
-    // KaronWing rig — bones use their real names (legs/head/feet found directly);
+    // KaronWing rig - bones use their real names (legs/head/feet found directly);
     // only the arms differ (ArmL/ElbowL instead of ArmL1/ArmL2)
     LegL1: "LegL1",
     LegL2: "LegL2",
@@ -382,12 +406,12 @@ const CHAR_ROT = 0.0; // extra Y rotation (radians) on top of the chair's facing
 const CHAR_SEAT_OFFSETS = {
   pauline: { scale: 1.25, y: -0.55, z: -0.2 },
   toadette: { y: 0.24, z: -0.12 },
-  toad: { y: 0.25 }, // sits low — lift him onto the cushion
-  peach: { scale: 1.25, y: -0.5, z: -0.2 }, // swimwear sits a touch high — drop her onto the cushion
-  parabones: { y: 0.35 }, // winged — hovers above the seat
+  toad: { y: 0.25 }, // sits low - lift him onto the cushion
+  peach: { scale: 1.25, y: -0.5, z: -0.2 }, // swimwear sits a touch high - drop her onto the cushion
+  parabones: { y: 0.35 }, // winged - hovers above the seat
 };
 
-// seated pose is computed GEOMETRICALLY — the rip rigs name every bone joint0..N,
+// seated pose is computed GEOMETRICALLY - the rip rigs name every bone joint0..N,
 // JOINT_ALIASES maps those runtime names back to hips, legs, arms, and head.
 // SEAT_FACE flips which way is "forward" for future assets if needed.
 const SEAT_FACE = 1; // +1 or -1
@@ -438,7 +462,7 @@ export function createStartMenu({
   }
   fx?.setVignette?.(false);
 
-  // turn OFF the game's bright daylight while the menu's warm interior is up —
+  // turn OFF the game's bright daylight while the menu's warm interior is up -
   // otherwise the sun (intensity ~1.9) + my lights double up and blow the light
   // cream cabinet out to white. Restored in dispose().
   const dimmedLights = [];
@@ -451,7 +475,7 @@ export function createStartMenu({
   const prevExposure = renderer.toneMappingExposure;
   renderer.toneMappingExposure = 1.1;
   // gentle, NORMAL scene glow: low strength + high threshold so only the very
-  // brightest background (the window) blooms a little — books never glow. Reset in
+  // brightest background (the window) blooms a little - books never glow. Reset in
   // dispose().
   fx?.setBloom?.({ strength: 0.2, radius: 0.7, threshold: 0.42 });
 
@@ -824,7 +848,7 @@ export function createStartMenu({
         if (open) face.eyes.push({ mesh: o, baseVisible: true });
         if (closed) face.eyelids.push({ mesh: o });
       } else if (charKey === "bowser" && /MarioEye/i.test(n)) {
-        // stray blue Mario-pupil overlay sits over his real KoopaEye — hide it here
+        // stray blue Mario-pupil overlay sits over his real KoopaEye - hide it here
         // (NOT via the costume chain, or the blink idle re-shows it every frame)
         o.visible = false;
       } else if (lower.includes("eyelid")) {
@@ -840,7 +864,7 @@ export function createStartMenu({
       }
       if (charKey === "luigi") {
         if (/bag/i.test(n)) o.visible = false; // remove the backpack
-        // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) —
+        // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) -
         // keep only the 00 pose so the hand doesn't render doubled
         if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
       } else if (charKey === "yoshi") {
@@ -1184,13 +1208,13 @@ export function createStartMenu({
       posed = aim.vector(upper, lower, upperTarget) || posed;
       posed = aim.vector(lower, hand, lowerTarget) || posed;
     };
-    // Parabones' thin skeletal arms get tucked into the body by the seated aim —
+    // Parabones' thin skeletal arms get tucked into the body by the seated aim -
     // rotate the bind T-pose arms down to the sides with a simple local roll instead
     if (charKey !== "parabones") {
       arm("L", -1);
       arm("R", 1);
     } else {
-      // remove the arms — collapse the arm bones so the geometry shrinks into the body
+      // remove the arms - collapse the arm bones so the geometry shrinks into the body
       [
         rig.armL1,
         rig.armL2,
@@ -1422,7 +1446,7 @@ export function createStartMenu({
         // so verify the model stands (height is the dominant axis) and undo it if
         // it ended up tipped over. Bowser is a genuine Z-up that DOES stand after the
         // loader's fix, but his arm span makes him wider-than-tall and trips this test
-        // (which would tip him onto his back) — so skip the undo for him.
+        // (which would tip him onto his back) - so skip the undo for him.
         root.updateMatrixWorld(true);
         let box = new THREE.Box3().setFromObject(root);
         let s = box.getSize(new THREE.Vector3());
@@ -1482,7 +1506,7 @@ export function createStartMenu({
       }
       tuneChar(root, def.file.split("/")[0]);
       const ctr = box.getCenter(new THREE.Vector3());
-      // the face is on the +Z or -Z side — find it from the eye meshes
+      // the face is on the +Z or -Z side - find it from the eye meshes
       let ez = 0,
         en = 0;
       root.traverse((o) => {
@@ -1562,7 +1586,7 @@ export function createStartMenu({
     if (cappy3D || disposed) return;
     const canvas = howtoEl.querySelector("canvas.hw-mascot");
     if (!canvas) return;
-    // framing/lighting knobs — tweak live if he's mis-angled/too big/small/dark
+    // framing/lighting knobs - tweak live if he's mis-angled/too big/small/dark
     const DIST = 2.05, LIFT = 0.04, SWAY = 0.14, NOD = 0.05, SPIN = 0.8;
     const r = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     r.setClearColor(0x000000, 0);
@@ -1629,12 +1653,12 @@ export function createStartMenu({
     if (!cappy3D.ready) return; // don't start the entrance until he's actually drawable
     const now = performance.now();
     const css = cappy3D.renderer.domElement.style;
-    // ----- exit: the fly-in, MIRRORED — sent straight up and off the top, with the same
+    // ----- exit: the fly-in, MIRRORED - sent straight up and off the top, with the same
     // side-to-side wave and a full flip, but accelerating away (the entrance eased in) and
     // the wave growing as he leaves (it faded as he arrived). -----
     if (cappy3D.exiting) {
       const p = Math.min(1, (now - cappy3D.exitT0) / CAPPY_EXIT_MS);
-      const acc = p * p; // easeIn — mirror of the entrance's easeOut
+      const acc = p * p; // easeIn - mirror of the entrance's easeOut
       const wig = Math.sin(p * Math.PI * 5); // same weave as the entrance
       const x = wig * 15 * p; // wavy around a straight-up path, growing as he leaves
       const y = 7 + (-window.innerHeight * 0.85 - 7) * acc; // up and off the top
@@ -1654,16 +1678,16 @@ export function createStartMenu({
       cappy3D.sy = window.innerHeight * 0.72; // start fully below the bottom edge, off-screen
     }
     const e = Math.min(1, (now - cappy3D.entranceT0) / CAPPY_RISE_MS); // 0..1
-    const ease = e < 1 ? 1 - Math.pow(1 - e, 3) : 1; // easeOutCubic — shared by move + spin
+    const ease = e < 1 ? 1 - Math.pow(1 - e, 3) : 1; // easeOutCubic - shared by move + spin
     if (e < 1) {
-      // glide up (easeOutCubic) along a WAVY path — the trajectory weaves side-to-side,
+      // glide up (easeOutCubic) along a WAVY path - the trajectory weaves side-to-side,
       // but Cappy himself just keeps a steady, smoothly-levelling tilt (no per-wiggle bank).
       // the weave decays to 0 as he arrives so it settles cleanly into the hover.
       const decay = 1 - e;
       const wig = Math.sin(e * Math.PI * 5); // ~2.5 side-to-side cycles on the way up
       const x = cappy3D.sx * (1 - ease) + wig * 15 * decay;
       const y = cappy3D.sy + (7 - cappy3D.sy) * ease;
-      const rot = -22 + 17 * ease; // steady, smooth lean to rest — no wiggle on HIM
+      const rot = -22 + 17 * ease; // steady, smooth lean to rest - no wiggle on HIM
       css.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) rotate(${rot.toFixed(2)}deg)`;
     } else {
       // continuous hover, phase-locked to the entrance end (sin starts at 0 → no jump)
@@ -1778,7 +1802,7 @@ export function createStartMenu({
       box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
     #rl-menu .item.sel .cap{width:62px;}
-    /* character selector — slides up from the bottom; Player 1 on the left, Player 2
+    /* character selector - slides up from the bottom; Player 1 on the left, Player 2
        on the right, the cabin fully visible between them (no backdrop) */
     #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 10vh;
       display:flex;flex-direction:row;justify-content:center;align-items:flex-end;
@@ -1817,7 +1841,7 @@ export function createStartMenu({
     #rl-select .side.right .plab{background:#e23333;}
     #rl-select .side.right .pnum{color:#dc2b2b;}
     #rl-select .plab.cpu{padding:6px 20px;}
-    /* the computer's static stat sheet — its OWN Mario-style panel pinned right */
+    /* the computer's static stat sheet - its OWN Mario-style panel pinned right */
     #rl-cpu{position:fixed;right:2.5vw;top:50%;z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
       transform:translate(calc(100% + 6vw),-50%) scale(.96);transform-origin:right center;
       background:linear-gradient(180deg,#fff7e6 0%,#f3e3c0 100%);
@@ -1834,7 +1858,7 @@ export function createStartMenu({
       22%{transform:translate(-24px,-50%) scale(1.02);animation-timing-function:cubic-bezier(.55,0,.75,.2);}
       100%{transform:translate(calc(100% + 7vw),-50%) scale(.94);}}
     /* slides in from off the right edge, slams into its resting "wall" and bounces
-       a couple of times with decreasing recoil — mirrors the title's rl-title-drop */
+       a couple of times with decreasing recoil - mirrors the title's rl-title-drop */
     @keyframes rl-cpu-in{
       0%{transform:translate(calc(100% + 6vw),-50%) scale(.96);animation-timing-function:cubic-bezier(.5,.02,.9,.3);}
       46%{transform:translate(0,-50%) scale(1);animation-timing-function:ease-out;}
@@ -1968,7 +1992,7 @@ export function createStartMenu({
     // or the locked pick when not hovering) -> stays put across the inter-tile gaps
     sideTiles[side].forEach((t, i) => t.classList.toggle("preview", i === idx));
   }
-  // the computer is a static, pre-trained opponent — show its difficulty + how
+  // the computer is a static, pre-trained opponent - show its difficulty + how
   // strong each of its 5 algorithms is (the player has to beat this)
   // the computer's stat sheet is its OWN fixed panel pinned to the right of the
   // screen (kept out of the selector layout), shown only while the selector is up
@@ -2151,7 +2175,7 @@ export function createStartMenu({
     .acard .pc-algo{flex:1;display:flex;flex-direction:row;align-items:center;gap:16px;
       width:100%;box-sizing:border-box;text-align:left;font:inherit;color:inherit;cursor:pointer;position:relative;
       border:none;padding:12px 20px;background:transparent;}
-    /* the "you picked this" tint — torn to the rip lines, sits behind the text */
+    /* the "you picked this" tint - torn to the rip lines, sits behind the text */
     .acard .pc-sel-tint{position:absolute;left:0;right:0;z-index:0;pointer-events:none;}
     .acard .pc-algo-no{flex:none;min-width:46px;text-align:center;position:relative;z-index:1;font-family:Georgia,serif;font-weight:800;
       font-size:46px;line-height:.9;color:var(--c);opacity:.4;}
@@ -2170,7 +2194,7 @@ export function createStartMenu({
       background-position:center;background-repeat:no-repeat;background-size:contain;
       filter:drop-shadow(0 16px 11px rgba(0,0,0,.32));}
     /* NOTE: the fly-in arc + hover are driven from JS (cappyTick), in lockstep with the 3D
-       render, so the canvas position can never get out of sync with what's drawn — no CSS
+       render, so the canvas position can never get out of sync with what's drawn - no CSS
        animation here on purpose. */
     /* ---- main panel ---- */
     #rl-howto .hw-panel{position:relative;width:min(720px,88vw);min-height:392px;box-sizing:border-box;
@@ -2198,7 +2222,7 @@ export function createStartMenu({
       letter-spacing:.2px;text-transform:uppercase;pointer-events:none;}
     #rl-howto .hw-anno.tl{left:2px;}
     #rl-howto .hw-anno.tr{right:2px;}
-    /* tighter placement for narrow illustrations — pulls the callouts in next to the content */
+    /* tighter placement for narrow illustrations - pulls the callouts in next to the content */
     #rl-howto .hw-anno.tight{top:34px;}
     #rl-howto .hw-anno.tight.tl{left:calc(50% - 172px);}
     #rl-howto .hw-anno.tight.tr{right:calc(50% - 172px);}
@@ -2294,7 +2318,7 @@ export function createStartMenu({
       font-family:"SuperMario256","Arial Black",sans-serif;font-weight:normal;
       font-size:calc(96px * var(--ui));color:#fff;
       -webkit-text-stroke:max(3px,calc(7px * var(--ui))) #1f1f1f;paint-order:stroke fill;
-      /* diagonal 3D extrusion — stacked dark copies down-and-right, same look as the CPU card */
+      /* diagonal 3D extrusion - stacked dark copies down-and-right, same look as the CPU card */
       text-shadow:calc(1px * var(--ui)) calc(1px * var(--ui)) 0 #1f1f1f,
         calc(2px * var(--ui)) calc(2px * var(--ui)) 0 #1f1f1f,
         calc(3px * var(--ui)) calc(3px * var(--ui)) 0 #1f1f1f,
@@ -2855,7 +2879,7 @@ export function createStartMenu({
       },
     );
 
-    // BOTTOM chunk: mirror — tears DOWN, tumbles off in 3D
+    // BOTTOM chunk: mirror - tears DOWN, tumbles off in 3D
     pcBot.outer.animate(
       [
         { transform: "rotateZ(0deg) rotateY(0deg) translateY(0px)" },
@@ -3011,25 +3035,25 @@ export function createStartMenu({
     `<svg class="hw-arrow" viewBox="0 0 50 36" stroke-linecap="round" stroke-linejoin="round">` +
     `<path d="M5 5 C 22 7, 33 15, 43 30"/><path d="M43 30 L 34 29"/><path d="M43 30 L 41 21"/></svg>`;
   const hwAnno = (cls, text) => `<div class="hw-anno ${cls}"><span>${text}</span>${HW_ARROW}</div>`;
-  // page 1 — the five algorithm families
+  // page 1 - the five algorithm families
   // labels here, but colors + icons come straight from the algorithm tab (TYPES + PMICONS,
   // same order: DP, MC, TD, Deep, PG) so they stay in sync with it
   const HW_FAM = ["DP", "MC", "TD", "Deep", "PG"];
   const hwChips = `<div class="hw-chips">` +
     HW_FAM.map((n, i) => `<div class="hw-chip"><div class="ci" style="background:${TYPES[i].color}">${PMICONS[i] ?? ""}</div><b>${n}</b></div>`).join("") +
     `</div>`;
-  // page 2 — opponents getting tougher
+  // page 2 - opponents getting tougher
   const hwOpp = (key, stars) =>
     `<div class="hw-opp"><div class="oa" style="background-image:url(./assets/icons/${key}.png)"></div>` +
     `<div class="ostars">${"★".repeat(stars)}${"☆".repeat(5 - stars)}</div></div>`;
   const hwLadder = `<div class="hw-ladder">${hwOpp("toad", 1)}${hwOpp("yoshi", 3)}${hwOpp("bowser", 5)}</div>`;
-  // page 3 — the red-vs-blue duel
+  // page 3 - the red-vs-blue duel
   const hwArena = `<div class="vs-arena">` +
     `<div class="vs-fighter blue"><div class="vs-ava">🧠</div><div class="vs-name">YOU</div><div class="vs-tag">your team</div></div>` +
     `<div class="vs-clash"><span class="vs-word">VS</span></div>` +
     `<div class="vs-fighter red"><div class="vs-ava">🧠</div><div class="vs-name">RIVAL</div><div class="vs-tag">computer</div></div>` +
     `</div>`;
-  // page 4 — the crown
+  // page 4 - the crown
   const hwPodium = `<div class="hw-podium">` +
     `<div class="pod p2"><span class="pn">2</span></div>` +
     `<div class="pod p1"><span class="ptrophy">🏆</span><span class="pn">1</span></div>` +
@@ -3257,7 +3281,7 @@ export function createStartMenu({
     for (const x of items) x.classList.toggle("sel", x === it);
   }
   // move the pill to whichever item the cursor is vertically nearest, so it flips
-  // at the midpoint between items — the selection heads to the next one as soon as
+  // at the midpoint between items - the selection heads to the next one as soon as
   // you move toward it, not only once you're fully over it
   function onMove(e) {
     if (starting || disposed) return;

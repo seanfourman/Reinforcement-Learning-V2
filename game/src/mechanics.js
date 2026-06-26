@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { cellToWorld } from './layout.js';
 
 // 3D for the interactive mechanics the agents learn around:
-//   * teleporter mirrors — a glowing rune portal; step on one, warp to its twin
-//   * lever            — a wall-style pull lever; pulling it toggles the trap
-//   * snare trap       — floor spikes that rise + glow red when the lever arms it
+//   * teleporter mirrors - a glowing rune portal; step on one, warp to its twin
+//   * lever            - a wall-style pull lever; pulling it toggles the trap
+//   * snare trap       - floor spikes that rise + glow red when the lever arms it
 //
 // createMechanics(scene, world) reads the static world JSON to build everything,
 // then update(frame, t) animates shimmer and reflects the live trapArmed state.

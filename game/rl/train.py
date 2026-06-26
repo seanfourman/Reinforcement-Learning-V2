@@ -52,7 +52,7 @@ def main():
         print("quick smoke test (q-learning, 1 world, 4000 episodes):")
         run("qlearning", seed=1, episodes=4000)
         return
-    print("learning smoke test — episode length should DROP and decisive% should RISE:\n")
+    print("learning smoke test - episode length should DROP and decisive% should RISE:\n")
     for algo in ALGORITHMS:
         for seed in (1, 2):
             run(algo, seed=seed, episodes=5000)

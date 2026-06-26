@@ -44,7 +44,7 @@ export function buildWorld(world, T) {
   const tint = (hex, jitter = 0.04) =>
     new THREE.Color(hex).offsetHSL(0, 0, (rng() - 0.5) * jitter * 2);
 
-  // smooth value noise on a FIXED lattice — large-scale ground variation that
+  // smooth value noise on a FIXED lattice - large-scale ground variation that
   // is identical every regeneration
   const noiseN = 48;
   const noiseGrid = new Float32Array(noiseN * noiseN);
@@ -136,7 +136,7 @@ export function buildWorld(world, T) {
   // ------------------------------------------------------------ inner walls
   // Rough rocky rubble instead of clean blocks: a handful of pre-deformed
   // low-poly chunks, then each cell picks one and gets its own rotation,
-  // scale and tint — so the maze reads as natural stone and never looks
+  // scale and tint - so the maze reads as natural stone and never looks
   // grid-perfect or repetitive, while still sitting on its cell.
   const wallHash = (x, y, z) => {
     const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
@@ -230,7 +230,7 @@ export function buildWorld(world, T) {
   const GAP = 2.2; // half-width of the gate opening (north-wall centre)
   const doorH = 1.45; // gate opening height (arch crown)
   // north wall runs end 0.4 INSIDE the gatehouse towers (never flush with the
-  // tower faces — coplanar faces z-fight)
+  // tower faces - coplanar faces z-fight)
   const segW = size / 2 - GAP + 0.6;
   const segLcx = (-1 + size / 2 - GAP - 0.4) / 2;
   const segRcx = (size / 2 + GAP + 0.4 + size + 1) / 2;
@@ -345,7 +345,7 @@ export function buildWorld(world, T) {
     const B = (len, h, th, along, y, perp, m) =>
       addBox(geo(new THREE.BoxGeometry(...dim(len, h, th))), m, ...at(along, y, perp));
     // plinth footing: ledge on the OUTSIDE only. The inner face tucks 0.06
-    // INSIDE the wall (recessed, never flush — coplanar faces z-fight) so the
+    // INSIDE the wall (recessed, never flush - coplanar faces z-fight) so the
     // outer ring of grid tiles stays fully visible with no band at the base.
     B(ax ? r.L + 0.6 : r.L, PL, TH + 0.09, 0, PL / 2 - 0.06, 0.105 * r.out, plinthMat);
     B(r.L, H, TH, 0, H / 2 + 0.02, 0, r.m); // wall body
@@ -420,7 +420,7 @@ export function buildWorld(world, T) {
       windows.push({ x, y: 2.3, z: tz + 0.88, ry: 0 }); // lit window toward the courtyard
       sills.push({ x, y: 2.05, z: tz + 0.9, ry: 0 });
     }
-    // bridge chamber over the doorway (each face on its own plane — no two
+    // bridge chamber over the doorway (each face on its own plane - no two
     // pieces share one, that flickers)
     addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.4, 1.3, 1.15)), bridgeMat, cxg, 2.1, northZ - 0.14);
     addBox(geo(new THREE.BoxGeometry(2 * GAP + 1.5, 0.12, 1.1)), walkMatX, cxg, 2.81, northZ - 0.125); // walk floor between the parapets
@@ -431,9 +431,9 @@ export function buildWorld(world, T) {
         merlons.push({ x: cxg + a, y: 3.22, z: bz, ry: 0, color: tint(0xffffff, 0.05) });
       }
     }
-    // doorway: one brick panel with the arch cut out of it — full-height side
+    // doorway: one brick panel with the arch cut out of it - full-height side
     // legs down to the ground and curved spandrels above, no separate trim
-    const SPRING = 0.5; // arch springing height — low, so the curve is tall and round
+    const SPRING = 0.5; // arch springing height - low, so the curve is tall and round
     const archShape = new THREE.Shape();
     archShape.moveTo(-GAP - 0.45, doorH + 0.12);
     archShape.lineTo(-GAP - 0.45, -0.05);
@@ -459,7 +459,7 @@ export function buildWorld(world, T) {
     for (const s of [-1, 1]) {
       const hinge = new THREE.Group();
       // hinged on the INNER (courtyard) jamb so the pivot is on the camera's
-      // side of the wall, but the leaf swings OUTWARD through the archway —
+      // side of the wall, but the leaf swings OUTWARD through the archway -
       // its inner face stays angled toward the camera, fully visible.
       hinge.position.set(cxg + s * GAP, 0.02, northZ + 0.35);
       hinge.rotation.y = s < 0 ? 1.05 : Math.PI - 1.05; // ~60° open outward
@@ -478,7 +478,7 @@ export function buildWorld(world, T) {
     buildBanner(cxg, 2.66, northZ + 0.48, 0, bcol(0));
   }
 
-  // --- torches on the inner faces (unchanged — these were the keepers) -------
+  // --- torches on the inner faces (unchanged - these were the keepers) -------
   const flameGeo = geo(new THREE.ConeGeometry(0.12, 0.34, 7));
   const flameMat = mat({ color: 0xffce86, emissive: 0xff9a3c, emissiveIntensity: 1.5 });
   const bracketGeo = geo(new THREE.BoxGeometry(0.12, 0.16, 0.18));
@@ -669,7 +669,7 @@ export function buildWorld(world, T) {
 
   // Deform a primitive into an organic shape. Critically the displacement is a
   // function of the *original vertex position*, so the duplicated vertices that
-  // a non-indexed icosahedron shares all move identically — no tearing/spikes.
+  // a non-indexed icosahedron shares all move identically - no tearing/spikes.
   const hash3 = (x, y, z) => {
     const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
     return s - Math.floor(s);
@@ -712,8 +712,8 @@ export function buildWorld(world, T) {
   const WALL = size / 2 + 1; // outer wall distance from centre along an axis
   const placed = []; // footprints of big objects {x,z,r}
   const treeAnchors = []; // tree bases, used to clump nearby props
-  const lakes = []; // {x, z, r} — defined just below, props avoid them
-  const clearings = []; // {x, z, r} — keep-clear spots (e.g. the shrine)
+  const lakes = []; // {x, z, r} - defined just below, props avoid them
+  const clearings = []; // {x, z, r} - keep-clear spots (e.g. the shrine)
   const outsideBy = (x, z, m) => Math.abs(x - cx0) >= WALL + m || Math.abs(z - cz0) >= WALL + m;
   const inAny = (list, x, z, pad) =>
     list.some((L) => {
@@ -939,7 +939,7 @@ export function buildWorld(world, T) {
     hilt.position.set(sx, rockTopY + 1.4, sz);
     group.add(hilt);
     // a sparse ring of moss tufts just OUTSIDE the stones, framing not burying
-    // (spaced against each other only — the shrine's own keep-out zone would
+    // (spaced against each other only - the shrine's own keep-out zone would
     // otherwise reject them all)
     const mossLocal = [];
     for (let i = 0; i < 14; i++) {
@@ -1039,14 +1039,14 @@ export function buildWorld(world, T) {
     if (!spot) continue;
     logs.push({ x: spot[0], y: GY + 0.2, z: spot[1], rx: Math.PI / 2, ry: rng() * 6.28, color: tint(0x6b4a33, 0.08) });
   }
-  // bushes / shrubs as ground cover — spaced like everything else (no touching)
+  // bushes / shrubs as ground cover - spaced like everything else (no touching)
   for (let i = 0; i < 380; i++) {
     const s = 0.28 + rng() * 0.55;
     const spot = freeSpot(s * 0.95 + 0.12, 1.8, 16, 0.5, 1.8);
     if (!spot) continue;
     shrubs.push({ x: spot[0], y: GY + s * 0.42, z: spot[1], sx: s, sy: s * (0.7 + rng() * 0.3), sz: s, ry: rng() * 6.28, color: pickGreen() });
   }
-  // little mushroom clusters — the cluster is spaced, mushrooms within it sit together
+  // little mushroom clusters - the cluster is spaced, mushrooms within it sit together
   for (let c = 0; c < 24; c++) {
     const center = freeSpot(0.7, 1.4, 14, 0.6, 1.4);
     if (!center) continue;

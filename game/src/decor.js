@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CRYSTAL_COLORS } from './config.js';
 import { TILE, cellToWorld } from './layout.js';
 
-// Glowing crystal clusters — the reference art's signature — tucked into the
+// Glowing crystal clusters - the reference art's signature - tucked into the
 // maze's dead-end cells so they add colour and light without blocking paths.
 
 const ORTHO = [[-1, 0], [1, 0], [0, -1], [0, 1]];

@@ -74,7 +74,7 @@ const STYLE = `
 .fb-rate{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;}
 .fb-side.blue .fb-rate{right:6px;} .fb-side.red .fb-rate{left:6px;}
-/* centre block: fighting-game round counter — small "ROUND" over a big current / total */
+/* centre block: fighting-game round counter - small "ROUND" over a big current / total */
 #fb-center{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
   line-height:1;color:#fff;}
 /* Mario-style: thick black stroke (painted behind the fill) + a little 3D drop */
@@ -87,7 +87,7 @@ const STYLE = `
 .fb-rnum .i{font-size:56px;color:#fff;line-height:.9;}
 .fb-rnum .sep{font-size:38px;color:#8f98ad;}
 .fb-rnum .t{font-size:42px;color:#8f98ad;}
-/* round-win dots under each bar — absolute so they don't change the column layout */
+/* round-win dots under each bar - absolute so they don't change the column layout */
 .fb-dots{position:absolute;top:100%;margin-top:7px;display:flex;gap:8px;}
 .fb-side.blue .fb-dots{left:8px;}
 .fb-side.red .fb-dots{right:8px;flex-direction:row-reverse;}
@@ -109,7 +109,7 @@ export function initHud() {
     `<div class="fb-side ${side}">
       <img class="fb-port" id="fb-port-${side}" alt="" />
       <div class="fb-col">
-        <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">—</span></div>
+        <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">-</span></div>
         <div class="fb-meter"><div class="fb-glow" id="fb-glow-${side}"></div><div class="fb-fill" id="fb-fill-${side}"></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
         <div class="fb-dots" id="fb-dots-${side}"></div>
       </div>
@@ -122,7 +122,7 @@ export function initHud() {
   document.body.appendChild(hud);
 
   const $ = (id) => hud.querySelector(id);
-  // crop each icon's transparent padding so the image box edge IS the character edge — then
+  // crop each icon's transparent padding so the image box edge IS the character edge - then
   // the bar/tag offsets sit the same relative to the character for every roster pick.
   const fitPortrait = (img, url) => {
     img.dataset.fit = "";

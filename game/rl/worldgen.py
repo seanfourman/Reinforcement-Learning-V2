@@ -1,4 +1,4 @@
-"""Back-compat shim — the world layouts now live in the ``worlds/`` package.
+"""Back-compat shim - the world layouts now live in the ``worlds/`` package.
 
 Historically this module *was* the single fixed castle. It has been split into
 ``worlds/grid.py`` (shared core) + ``worlds/medieval.py`` (the castle) + the

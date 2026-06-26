@@ -126,9 +126,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif cmd == "play":
             _paused = False
         elif cmd == "speed":
-            _speed = max(2.0, min(12000.0, float(body.get("value", 60))))
+            _speed = max(2.0, min(15000.0, float(body.get("value", 60))))
         elif cmd == "sideAlgo":
             match.set_side_algo(body.get("side", "red"), body.get("value", "qlearning"))
+        elif cmd == "setParams":
+            match.set_params(body.get("params", {}))
+        elif cmd == "setRedParams":
+            match.set_red_params(body.get("params", {}))
+        elif cmd == "cpuTier":
+            match.set_cpu_tier(body.get("value", 1))
         elif cmd == "nextRound":
             match.next_round()
         elif cmd == "setRound":

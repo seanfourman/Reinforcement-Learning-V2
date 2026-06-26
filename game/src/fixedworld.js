@@ -1,5 +1,5 @@
 // Adapts the fixed RL map into the exact shape buildWorld() already expects,
-// so the gorgeous castle/wall/nature rendering is reused untouched — we just
+// so the gorgeous castle/wall/nature rendering is reused untouched - we just
 // feed it our hand-authored layout instead of the old random generator.
 //
 // buildWorld() destructures { size, wall, gates, crystals, decals, outerGate,
@@ -12,7 +12,7 @@ import { mulberry32 } from './generate.js';
 export function buildFixedWorld(rows) {
   const size = rows.length; // 20
   // We render the maze walls ourselves (castle masonry, see mazewalls.js), so
-  // buildWorld gets an EMPTY wall grid — it still lays the floor, the castle
+  // buildWorld gets an EMPTY wall grid - it still lays the floor, the castle
   // shell, lighting and the outside nature, just no rocky rubble walls.
   const wall = Array.from({ length: size }, () => new Array(size).fill(false));
   return {

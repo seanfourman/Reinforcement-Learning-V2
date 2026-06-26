@@ -251,13 +251,13 @@ function waterCanvas() {
       }
     }
   };
-  // big soft light patches — calm and pastel, not busy
+  // big soft light patches - calm and pastel, not busy
   for (let i = 0; i < 28; i++) blot(rand(0, S), rand(0, S), rand(60, 140), 'rgba(170,215,235,0.22)');
   for (let i = 0; i < 22; i++) blot(rand(0, S), rand(0, S), rand(40, 90), 'rgba(70,140,175,0.20)');
   return c;
 }
 
-// cobblestone path (tiles along its length) — flat, low-contrast stones so it
+// cobblestone path (tiles along its length) - flat, low-contrast stones so it
 // reads as worn paving, not shiny bubbles
 function pathCanvas() {
   const S = 256;

@@ -1,4 +1,4 @@
-"""Dynamic-Programming planners for Round 1 — the MODEL-KNOWN room.
+"""Dynamic-Programming planners for Round 1 - the MODEL-KNOWN room.
 
 Because the slippery transition model P(s'|s,a) is *known* (see
 ``env.move_dist``), we don't need to learn from experience: we **plan** the
@@ -8,9 +8,9 @@ Each agent's quest is three sequential sub-MDPs (a known stochastic shortest
 path each): **reach my key -> reach the gold -> reach an escape tile**. We solve
 each phase over the 20x20 grid with the slip model baked in, using either:
 
-  * ``ValueIteration``  — Bellman-optimality sweeps until V converges, then read
+  * ``ValueIteration``  - Bellman-optimality sweeps until V converges, then read
     off the greedy policy (Red).
-  * ``PolicyIteration`` — alternate full policy *evaluation* with greedy
+  * ``PolicyIteration`` - alternate full policy *evaluation* with greedy
     *improvement* until the policy stops changing (Blue).
 
 Both converge to the SAME optimal policy (the contrast Benny teaches is *how* and
@@ -18,7 +18,7 @@ Both converge to the SAME optimal policy (the contrast Benny teaches is *how* an
 who wins is not a foregone conclusion. The planners conform to the agent
 interface (``policy_action`` / ``learn_step`` / ``value`` / ``q_values`` /
 ``set_epsilon`` / ``reset_learning``) so ``match.py`` and the heatmap reuse them
-unchanged. ``learn_step``/``end_episode`` are no-ops — a planner already knows.
+unchanged. ``learn_step``/``end_episode`` are no-ops - a planner already knows.
 """
 
 from env import MOVE_ACTIONS, N_ACTIONS, GOLD_ME
@@ -130,7 +130,7 @@ class _DPBase:
     def learned_count(self):
         return sum(len(v) for v in self.V if v)
 
-    # planners don't learn — these are deliberate no-ops
+    # planners don't learn - these are deliberate no-ops
     def learn_step(self, s, a, r, ns, na, done):
         pass
 

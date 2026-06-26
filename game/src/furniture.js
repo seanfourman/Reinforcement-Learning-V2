@@ -116,7 +116,7 @@ export function createFurniture(scene, world) {
     return g;
   }
 
-  // grand piano — built shifted +0.5 in x so, placed on its left cell, it spans
+  // grand piano - built shifted +0.5 in x so, placed on its left cell, it spans
   // the two centre cells (the right cell is filled by an invisible "block").
   function piano() {
     const g = new THREE.Group();

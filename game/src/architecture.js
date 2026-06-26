@@ -3,7 +3,7 @@ import { TILE } from './layout.js';
 
 // Castle interior architecture: the STRUCTURAL walls (room enclosures, the central
 // keep wall, the door wall) rendered as smooth PLASTERED wall runs with a stone
-// skirting + cornice — not the old grid of identical stone cubes. Isolated
+// skirting + cornice - not the old grid of identical stone cubes. Isolated
 // structural cells (the hall pillars) become round stone columns.
 //
 // Furniture cells and door cells are NOT drawn here (furniture.js / doors.js do
@@ -43,7 +43,7 @@ export function buildArchitecture(world) {
   };
 
   // every structural cell becomes plaster wall (merged into runs below). We do
-  // NOT render lone cells as round columns any more — an isolated wall stub next
+  // NOT render lone cells as round columns any more - an isolated wall stub next
   // to a door or furniture should read as a normal wall, not a pillar.
   const wallCells = [];
   for (let r = 0; r < size; r++) {

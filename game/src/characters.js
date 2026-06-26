@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
 // Procedural royal characters built entirely from three.js primitives (no
-// downloaded models — the project stays self-contained). Each character is a
+// downloaded models - the project stays self-contained). Each character is a
 // THREE.Group whose feet sit at local y = 0, with hip/shoulder PIVOT groups so
 // a walk cycle is just swinging those pivots. A `hand` anchor marks where the
 // carried gold key attaches.
 
-const FLOOR_Y = 0.16; // top of a floor tile — characters stand here
+const FLOOR_Y = 0.16; // top of a floor tile - characters stand here
 
 function limb(geo, mat, y) {
   // a limb mesh hung BELOW a pivot, so rotating the pivot about x swings it
@@ -22,7 +22,7 @@ function pivotAt(x, y, z) {
   return p;
 }
 
-// A smooth, rounded shoe — replaces the old hard box "block" feet. Built from a
+// A smooth, rounded shoe - replaces the old hard box "block" feet. Built from a
 // capsule laid on its side, flattened and stretched so it reads as a boot toe.
 function bootGeometry(s) {
   const g = new THREE.CapsuleGeometry(0.05, 0.1, 8, 18);
@@ -162,7 +162,7 @@ export function updateWalker(w, dt, moving) {
 // ----------------------------------------------------------------- the King
 export function makeKing() {
   // a SHORT belted tunic (not a gown) over dark trousers + big boots, with
-  // broad shoulders — clearly a king, not a dress.
+  // broad shoulders - clearly a king, not a dress.
   const w = buildBiped({
     skin: 0xe6b48c,
     robe: 0x8f2a2a, robeTrim: 0xe8c168,

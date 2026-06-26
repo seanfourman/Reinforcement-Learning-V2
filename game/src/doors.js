@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { cellToWorld } from './layout.js';
 
 // Wooden arched doors. Two kinds:
-//   * EXIT doors (the 'D'/'d' tiles, in the row-12 wall) — key-locked: they swing
+//   * EXIT doors (the 'D'/'d' tiles, in the row-12 wall) - key-locked: they swing
 //     open once their owner holds that colored key (frame.redKey / blueKey).
-//   * ROOM doors (world.roomDoors, in the bedroom side walls) — open on CONTACT:
+//   * ROOM doors (world.roomDoors, in the bedroom side walls) - open on CONTACT:
 //     they swing open whenever an agent is on/next to them, so you just walk in.
 //
 // The arch is modelled in the XY plane facing +Z (fits a horizontal E-W wall);

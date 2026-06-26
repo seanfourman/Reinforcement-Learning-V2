@@ -1,12 +1,12 @@
 """One-time authoring tool: writes the PERMANENT fixed world.txt.
 
-NOT runtime randomness — fixed seeds produce one frozen map that is committed
+NOT runtime randomness - fixed seeds produce one frozen map that is committed
 and never regenerated at play time.
 
 Design goals baked in here:
   * Rooms reach ALL THE WAY to the castle walls: the maze sits on an EVEN-cell
     lattice (corridors on even coords, single-thickness walls on odd), and the
-    grid boundary is floor — the castle's curtain wall is the only outer wall,
+    grid boundary is floor - the castle's curtain wall is the only outer wall,
     so no redundant inner ring and the floor runs flush to the stone.
   * SINGLE-THICKNESS walls only: never two walls stacked. The two bedrooms are
     split by ONE wall column (col 9); the arena/bedroom split is ONE wall row
@@ -35,7 +35,7 @@ RED_ENTRY, BLUE_ENTRY = (10, 4), (10, 14)    # room cell just inside each door
 GOLD = (4, 9)
 ESCAPE = [(0, 9), (0, 10)]
 # teleport targets sit low and central (far from the escape at the top), so
-# being teleported there is a real setback — and well away from the pads
+# being teleported there is a real setback - and well away from the pads
 ALT_A, ALT_C = (8, 6), (8, 12)
 
 
@@ -123,7 +123,7 @@ def build(seed_red, seed_blue):
     carve(g, 10, 18, 10, 18, seed_blue, braid=0.10)      # blue bedroom
 
     # boundary is floor so rooms run flush to the castle wall (col/row 19 are the
-    # odd leftover edge — open them up rather than leave a redundant wall line)
+    # odd leftover edge - open them up rather than leave a redundant wall line)
     for i in range(SIZE):
         g[19][i] = '.' if g[18][i] != '#' or g[17][i] != '#' else g[19][i]
         g[i][19] = '.' if g[i][18] != '#' or g[i][17] != '#' else g[i][19]
@@ -162,7 +162,7 @@ def assert_single_thickness(g):
     for r in range(SIZE - 1):
         for c in range(SIZE - 1):
             if all(g[r + dr][c + dc] == '#' for dr in (0, 1) for dc in (0, 1)):
-                raise AssertionError(f"2x2 wall block at ({r},{c}) — not single-thickness")
+                raise AssertionError(f"2x2 wall block at ({r},{c}) - not single-thickness")
 
 
 def main():

@@ -1,4 +1,4 @@
-"""Tabular self-play agents — the learnable "models".
+"""Tabular self-play agents - the learnable "models".
 
 Every agent shares one interface so the match loop and the M-panel can swap
 algorithms at runtime:
@@ -9,10 +9,10 @@ algorithms at runtime:
     agent.value(state) / agent.q_values(state)   # for the heatmap / Q inspector
 
 Implemented (all "capture" a concept from the syllabus):
-  * QLearning      — off-policy TD control (bootstraps on max_a Q)
-  * Sarsa          — on-policy TD control (bootstraps on the action actually taken)
-  * ExpectedSarsa  — TD control bootstrapping on the policy's EXPECTED next value
-  * MonteCarlo     — every-visit MC control (learns from full episode returns)
+  * QLearning      - off-policy TD control (bootstraps on max_a Q)
+  * Sarsa          - on-policy TD control (bootstraps on the action actually taken)
+  * ExpectedSarsa  - TD control bootstrapping on the policy's EXPECTED next value
+  * MonteCarlo     - every-visit MC control (learns from full episode returns)
 
 Q-tables are plain dicts keyed by the observation tuple, so they reset to empty
 the instant a new world is generated (both models "start untrained" again).
@@ -43,7 +43,7 @@ class Tabular:
         return r
 
     def greedy_action(self, state):
-        # break ties RANDOMLY — otherwise an all-zero (unlearned) state always
+        # break ties RANDOMLY - otherwise an all-zero (unlearned) state always
         # returns action 0, so a barely-trained greedy policy walks into the same
         # wall forever. Random ties keep exploring blank states (vital for MC).
         r = self.row(state)

@@ -5,7 +5,7 @@ import { updateWalker } from './characters.js';
 // Live actor driver: the King, the Queen and the three keys, driven by frames
 // polled from the Python backend (/api/snapshot). Unlike the old playback.js
 // (which indexed a fully-recorded trajectory), frames arrive one at a time, so
-// we smooth the rendered position toward the latest frame's target each tick —
+// we smooth the rendered position toward the latest frame's target each tick -
 // slow sim speed reads as walking, fast speed as a blur (you watch the panel).
 
 const FLOAT_Y = 0.62;
@@ -87,7 +87,7 @@ export function createLiveActors(scene, walkers) {
   function setWorld(lay, cross = false) {
     layout = lay;
     isCross = cross;
-    // no keys / gold in a cross round — hide them outright so they never appear
+    // no keys / gold in a cross round - hide them outright so they never appear
     redKey.group.visible = !cross;
     blueKey.group.visible = !cross;
     goldKey.group.visible = !cross;
@@ -154,7 +154,7 @@ export function createLiveActors(scene, walkers) {
       const dx = tg.x - r.x, dz = tg.z - r.z;
       const moving = Math.abs(dx) + Math.abs(dz) > 0.02;
       if (Math.hypot(dx, dz) > 1.5) {
-        // a teleport (mirror) or ladder climb — snap instead of sliding through walls
+        // a teleport (mirror) or ladder climb - snap instead of sliding through walls
         r.x = tg.x; r.z = tg.z;
       } else {
         r.x += dx * k;
@@ -198,8 +198,8 @@ export function createLiveActors(scene, walkers) {
     if (frame.winner) {
       escGlow.intensity = 2 + Math.sin(t * 6) * 1.0;
       banner.textContent = frame.winner === 'red'
-        ? '👑  The King escapes — RED wins!'
-        : '👑  The Queen escapes — BLUE wins!';
+        ? '👑  The King escapes - RED wins!'
+        : '👑  The Queen escapes - BLUE wins!';
       banner.style.color = frame.winner === 'red' ? '#ffd2d2' : '#d2e2ff';
       banner.style.opacity = '1';
     } else {
