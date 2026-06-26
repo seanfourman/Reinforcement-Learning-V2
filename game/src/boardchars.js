@@ -13,7 +13,11 @@ const BOARD_HEIGHT = 1.2;   // model height in group-local units; live.js then s
 
 // per-character board tweaks (facing offset / scale) and special behaviour
 const TWEAK = {
-  // mario: { face: Math.PI, scale: 1.0 },
+  // face/scale per character, plus armOut (how far the arms hang out from the body;
+  // wider/rounder characters need more so the arms don't clip into the body).
+  yoshi: { armOut: 0.5 },
+  toadette: { armOut: 0.5 },
+  toad: { armOut: 0.85 },
 };
 const CHAR_CONFIG = {
   parabones: { fly: true, hideLimbs: true },
@@ -26,14 +30,17 @@ const collada = new ColladaLoader();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _cur = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _pq = new THREE.Quaternion();
 const _DOWN = new THREE.Vector3(0, -1, 0);
-function aimDown(bone, child) {
+const _FWD = new THREE.Vector3(0, 0, 1);
+// aim a bone's limb (bone -> child) toward a world-space target, then bake. Rig-
+// agnostic (uses the real limb direction), same idea as the menu's bone aimer.
+function aimTo(bone, child, target) {
   if (!bone || !child) return;
   bone.getWorldPosition(_a);
   child.getWorldPosition(_b);
   _cur.copy(_b).sub(_a);
   if (_cur.lengthSq() < 1e-8) return;
   _cur.normalize();
-  _q.setFromUnitVectors(_cur, _DOWN);
+  _q.setFromUnitVectors(_cur, target.clone().normalize());
   bone.parent.getWorldQuaternion(_pq);
   bone.quaternion.copy(_pq.clone().invert().multiply(_q).multiply(_pq).multiply(bone.quaternion));
   bone.updateMatrixWorld(true);
@@ -84,9 +91,21 @@ export async function loadBoardWalker(idx) {
     if (cfg.hideLimbs) for (const bn of [rig.legL1, rig.legR1, rig.armL1, rig.armR1]) if (bn) bn.scale.setScalar(0.0001);
     parts = { wingL1: rig.wingL1, wingR1: rig.wingR1, wingL2: rig.wingL2, wingR2: rig.wingR2 };
   } else {
-    // T/A-pose rips: drop the arms to the sides before capturing the rest
-    aimDown(rig.armL1, rig.armL2 || rig.handL);
-    aimDown(rig.armR1, rig.armR2 || rig.handR);
+    // hang the arms down-and-slightly-out using the shoulder side-axis (like the
+    // menu's seated aim), so they sit at the sides instead of clipping into the body,
+    // then straighten the forearm. Capture rest from this pose; the walk swings it.
+    const sl = rig.shoulderL || rig.armL1, sr = rig.shoulderR || rig.armR1;
+    const sideAxis = (sl && sr)
+      ? sl.getWorldPosition(new THREE.Vector3()).sub(sr.getWorldPosition(new THREE.Vector3())).normalize()
+      : new THREE.Vector3(1, 0, 0);
+    const out = tweak.armOut ?? 0.22;
+    const armTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * out)
+      .addScaledVector(_DOWN, 1.0).addScaledVector(_FWD, 0.07);
+    const foreTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.06).addScaledVector(_DOWN, 1.0);
+    aimTo(rig.armL1, rig.armL2 || rig.handL, armTgt(1));
+    aimTo(rig.armL2, rig.handL, foreTgt(1));
+    aimTo(rig.armR1, rig.armR2 || rig.handR, armTgt(-1));
+    aimTo(rig.armR2, rig.handR, foreTgt(-1));
     parts = { hipL: rig.legL1, hipR: rig.legR1, shL: rig.armL1, shR: rig.armR1 };
   }
   const rest = {};

@@ -192,7 +192,7 @@ export function updateWalker(w, dt, moving) {
     // left-right axis (in world), so legs/arms pivot forward-back as it faces.
     const hy = w.group.rotation.y;
     _ax.set(Math.cos(hy), 0, -Math.sin(hy));
-    const la = amp * 0.9, aa = amp * 0.6;
+    const la = amp, aa = amp * 0.95;
     swingBone(w.parts.hipL, w.rest.hipL, _ax, s * la);
     swingBone(w.parts.hipR, w.rest.hipR, _ax, -s * la);
     swingBone(w.parts.shL, w.rest.shL, _ax, -s * aa);
