@@ -27,6 +27,14 @@ const sliderToSpeed = (v) => Math.round(2 * Math.pow(7500, v / 100));
 export const DP_ALGOS = new Set(['value_iteration', 'policy_iteration']);
 export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
 
+// transport icons: centred SVGs that take the button's colour via currentColor
+const SVG = {
+  prev: '<svg viewBox="0 0 24 24"><path d="M6 5h2.2v14H6z"/><path d="M18 5 8.5 12 18 19z"/></svg>',
+  next: '<svg viewBox="0 0 24 24"><path d="M6 5 15.5 12 6 19z"/><path d="M15.8 5H18v14h-2.2z"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M7.5 5v14L18 12z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><path d="M7 5h3.2v14H7z"/><path d="M13.8 5h3.2v14h-3.2z"/></svg>',
+};
+
 // slider fill colours: blue = tunes OUR model (Blue); gray = global / both models
 const C_OURS = '#1f5fd0';
 const C_GLOBAL = '#8a8d94';
@@ -81,6 +89,15 @@ const STYLE = `
 #rl-panel button.primary{background:#1f5fd0;border-color:#1a52b8;color:#fff;}
 #rl-panel button.primary:hover{background:#1a52b8;}
 #rl-panel button.active{background:#1f1f21;border-color:#1f1f21;color:#fff;}
+/* media-player transport: prev round | play/pause | next round */
+#rl-panel .transport{display:flex;align-items:center;justify-content:center;gap:20px;margin-top:2px;}
+#rl-panel .transport button{flex:none;padding:0;display:flex;align-items:center;justify-content:center;}
+#rl-panel .tbtn{width:44px;height:44px;border-radius:50%;border:1.5px solid #d7dade;background:#fff;color:#3a3d44;}
+#rl-panel .tbtn:hover{background:#f0f1f3;border-color:#c4c8ce;}
+#rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#1f5fd0;color:#fff;}
+#rl-panel .tplay:hover{background:#1a52b8;}
+#rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
+#rl-panel .tplay svg{width:21px;height:21px;}
 
 /* sliders (speed + every hyperparameter) */
 #rl-panel .ctl{margin:0 0 13px;}
@@ -157,13 +174,14 @@ export function initPanel() {
     </div>
     <section>
       <h2>Playback</h2>
-      <div class="btns">
-        <button id="rl-play" class="primary">⏸ Pause</button>
-        <button id="rl-reset">↺ Reset</button>
+      <div class="transport">
+        <button id="rl-prev" class="tbtn" title="Previous round">${SVG.prev}</button>
+        <button id="rl-play" class="tplay" title="Play / Pause">${SVG.pause}</button>
+        <button id="rl-next" class="tbtn" title="Next round">${SVG.next}</button>
       </div>
-      <div class="btns">
-        <button id="rl-regen">New world</button>
-        <button id="rl-next">Next round ⏭</button>
+      <div class="btns" style="margin-top:14px;">
+        <button id="rl-reset" title="Reset learning, keep this world">↺ Reset</button>
+        <button id="rl-regen" title="New world + reset everything">⟳ New world</button>
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>
@@ -205,8 +223,9 @@ export function initPanel() {
         <button id="rl-h-value">Value</button>
         <button id="rl-h-visits">Visits</button>
       </div>
-      <p class="hint">Value: each tile shows its Q for N / S / W / E (the greedy one in blue).
-        Visits: where it travels (red = most stepped on, blue = least). Zoom in to read the numbers.</p>
+      <p class="hint">Value: each tile shows its Q for N / S / W / E, greedy action in blue (a blue
+        number in the center means "Use / stay" is best). Visits: where it travels (red = most
+        stepped on, blue = least). Zoom in to read the numbers.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
     </section>`;
   document.body.appendChild(panel);
@@ -234,6 +253,7 @@ export function initPanel() {
 
   // ---- playback ----
   let paused = false;
+  $('#rl-prev').addEventListener('click', () => window.RL.control({ cmd: 'prevRound' }));
   $('#rl-next').addEventListener('click', () => window.RL.control({ cmd: 'nextRound' }));
   const speed = $('#rl-speed');
   const showSpeed = () => {
@@ -246,8 +266,7 @@ export function initPanel() {
   $('#rl-play').addEventListener('click', () => {
     paused = !paused;
     window.RL.control({ cmd: paused ? 'pause' : 'play' });
-    $('#rl-play').textContent = paused ? '▶ Play' : '⏸ Pause';
-    $('#rl-play').classList.toggle('primary', !paused);
+    $('#rl-play').innerHTML = paused ? SVG.play : SVG.pause;
   });
   $('#rl-regen').addEventListener('click', () => window.RL.control({ cmd: 'regenerate' }));
   $('#rl-reset').addEventListener('click', () => window.RL.control({ cmd: 'reset' }));

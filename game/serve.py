@@ -140,6 +140,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             match.set_red_params(body.get("params", {}))
         elif cmd == "cpuTier":
             match.set_cpu_tier(body.get("value", 1))
+        elif cmd == "prevRound":
+            match.prev_round()
         elif cmd == "nextRound":
             match.next_round()
         elif cmd == "setRound":

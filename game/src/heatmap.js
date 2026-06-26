@@ -82,9 +82,10 @@ export function createHeatmap(scene) {
   numPlane.visible = false;
   scene.add(numPlane);
 
-  function bestDir(q) {
+  // the TRUE greedy action over ALL actions (may be 4 = Use, which is no move)
+  function bestAction(q) {
     let bi = 0, bv = q[0];
-    for (let i = 1; i < 4; i++) if (q[i] > bv) { bv = q[i]; bi = i; }
+    for (let i = 1; i < q.length; i++) if (q[i] > bv) { bv = q[i]; bi = i; }
     return bi;
   }
 
@@ -105,7 +106,7 @@ export function createHeatmap(scene) {
         const q = grid[r] && grid[r][c];
         if (!q) continue;
         const cx = (c + 0.5) * tw, cy = (r + 0.5) * th;
-        const best = bestDir(q);
+        const best = bestAction(q);           // 0..3 = a move, 4 = Use (no arrow)
         for (let d = 0; d < 4; d++) {
           const x = cx + off[d][0], y = cy + off[d][1];
           cctx.font = `${d === best ? '800 ' : '600 '}${f}px system-ui,Arial,sans-serif`;
@@ -114,6 +115,15 @@ export function createHeatmap(scene) {
           cctx.strokeText(q[d].toFixed(1), x, y);
           cctx.fillStyle = d === best ? '#123fb0' : '#2a2d34';
           cctx.fillText(q[d].toFixed(1), x, y);
+        }
+        // greedy action is Use/stay: show it in the centre (blue) so no arrow is wrongly blue
+        if (best === 4 && q.length > 4) {
+          cctx.font = `800 ${Math.round(f * 0.82)}px system-ui,Arial,sans-serif`;
+          cctx.lineWidth = Math.max(2, f * 0.2);
+          cctx.strokeStyle = 'rgba(12,14,18,0.55)';
+          cctx.strokeText(q[4].toFixed(1), cx, cy);
+          cctx.fillStyle = '#123fb0';
+          cctx.fillText(q[4].toFixed(1), cx, cy);
         }
       }
     }

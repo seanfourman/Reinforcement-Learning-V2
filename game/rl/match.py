@@ -329,6 +329,13 @@ class Match:
             self._reset_stats()
             self._new_episode()
 
+    def prev_round(self):
+        """Step back to the previous round (navigation only; leaves the score as-is)."""
+        with self.lock:
+            order = worlds.ROUNDS
+            i = order.index(self.round_id) if self.round_id in order else 0
+            self.set_round(order[(i - 1) % len(order)], keep_score=True)
+
     def next_round(self):
         """Finalize the current round into the tournament score (leader of the
         recent contest wins the round), then advance to the next round (wraps)."""
