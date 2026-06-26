@@ -46,11 +46,24 @@ export function createLiveActors(scene, walkers) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const king = walkers.red;
-  const princess = walkers.blue;
+  let king = walkers.red;
+  let princess = walkers.blue;
   king.group.scale.setScalar(1.2);
   princess.group.scale.setScalar(1.2);
   group.add(king.group, princess.group);
+
+  // swap in different walker models at runtime (e.g. the chosen menu characters)
+  function setWalkers(next) {
+    for (const side of ['red', 'blue']) {
+      const w = next[side];
+      if (!w) continue;
+      const old = side === 'red' ? king : princess;
+      if (old && old.group) group.remove(old.group);
+      w.group.scale.setScalar(1.2);
+      group.add(w.group);
+      if (side === 'red') king = w; else princess = w;
+    }
+  }
 
   const redKey = keyMesh(0xff4d6a, 0xff9aa8);
   const blueKey = keyMesh(0x5b8dff, 0xb9d2ff);
@@ -208,5 +221,5 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
-  return { setWorld, onFrame, update, group };
+  return { setWorld, onFrame, update, group, setWalkers };
 }

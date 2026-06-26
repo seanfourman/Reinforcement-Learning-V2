@@ -141,18 +141,69 @@ function buildBiped(opts) {
   };
 }
 
+// swing an imported bone around a WORLD axis, relative to its rest pose. Using a
+// world (character left-right) axis works no matter how each rig's local bone
+// frame is oriented, so all the different character rips walk the same way.
+const _wq = new THREE.Quaternion();
+const _sw = new THREE.Quaternion();
+const _out = new THREE.Quaternion();
+function swingBone(bone, restQ, axisWorld, angle) {
+  if (!bone || !restQ) return;
+  bone.parent.getWorldQuaternion(_wq);            // parent orientation (1 frame stale, fine)
+  _sw.setFromAxisAngle(axisWorld, angle);
+  _out.copy(_wq).invert().multiply(_sw).multiply(_wq).multiply(restQ);
+  bone.quaternion.copy(_out);
+}
+const _ax = new THREE.Vector3();
+
+// flap a wing bone around its LOCAL Y axis, relative to rest (matches the menu's
+// applyIdle: bone.quaternion = rest * euler(0, y, 0)).
+const _e = new THREE.Euler();
+const _fq = new THREE.Quaternion();
+function flapWing(bone, restQ, y) {
+  if (!bone || !restQ) return;
+  _e.set(0, y, 0, 'XYZ');
+  _fq.setFromEuler(_e);
+  bone.quaternion.copy(restQ).multiply(_fq);
+}
+
 // Advance the walk cycle. `moving` ramps the swing amplitude up/down so starts
 // and stops ease instead of snapping.
 export function updateWalker(w, dt, moving) {
   w.moveAmt += ((moving ? 1 : 0) - w.moveAmt) * Math.min(1, dt * 10);
   if (moving) w.phase += dt * w.cadence;
   const amp = 0.6 * w.moveAmt;
-  const legAmp = amp * (w.legSwing ?? 1); // a floor-length gown swings its legs less
   const s = Math.sin(w.phase);
-  w.parts.hipL.rotation.x = s * legAmp;
-  w.parts.hipR.rotation.x = -s * legAmp;
-  w.parts.shL.rotation.x = -s * amp * 0.85;
-  w.parts.shR.rotation.x = s * amp * 0.85;
+  if (w.fly) {
+    // flying character (e.g. Parabones): hover + beat the wings (no legs/arms). Same
+    // flap as the menu: local-Y swing of each wing bone, the outer tips lagging.
+    const tt = performance.now() * 0.001;
+    const flap = (Math.sin(tt * 6.5) + 1) * 0.5;
+    const flapTip = (Math.sin(tt * 6.5 - 0.6) + 1) * 0.5;
+    flapWing(w.parts.wingL1, w.rest.wingL1, -flap * 0.5);
+    flapWing(w.parts.wingR1, w.rest.wingR1, flap * 0.5);
+    flapWing(w.parts.wingL2, w.rest.wingL2, -flapTip * 0.34);
+    flapWing(w.parts.wingR2, w.rest.wingR2, flapTip * 0.34);
+    w.group.position.y = w.baseY + Math.sin(tt * 1.7) * 0.06;
+    return;
+  }
+  if (w.bones) {
+    // imported character rig: swing the leg/arm bones about the character's local
+    // left-right axis (in world), so legs/arms pivot forward-back as it faces.
+    const hy = w.group.rotation.y;
+    _ax.set(Math.cos(hy), 0, -Math.sin(hy));
+    const la = amp * 0.9, aa = amp * 0.6;
+    swingBone(w.parts.hipL, w.rest.hipL, _ax, s * la);
+    swingBone(w.parts.hipR, w.rest.hipR, _ax, -s * la);
+    swingBone(w.parts.shL, w.rest.shL, _ax, -s * aa);
+    swingBone(w.parts.shR, w.rest.shR, _ax, s * aa);
+  } else {
+    const legAmp = amp * (w.legSwing ?? 1); // a floor-length gown swings its legs less
+    w.parts.hipL.rotation.x = s * legAmp;
+    w.parts.hipR.rotation.x = -s * legAmp;
+    w.parts.shL.rotation.x = -s * amp * 0.85;
+    w.parts.shR.rotation.x = s * amp * 0.85;
+  }
   // a subtle bob + breathing so an idle character isn't frozen
   const bob = Math.abs(Math.sin(w.phase)) * 0.045 * w.moveAmt;
   const breathe = Math.sin(performance.now() * 0.002) * 0.004 * (1 - w.moveAmt);

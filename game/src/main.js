@@ -20,6 +20,7 @@ import { getTheme } from './themes/index.js';
 import { initHud } from './hud.js';
 import { createTransition } from './transition.js';
 import { createStartMenu, getCpuTier } from './startmenu.js';
+import { loadBoardWalkers } from './boardchars.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const app = document.getElementById('app');
@@ -290,6 +291,11 @@ menu = createStartMenu({
   // so the player never sees the scene pop in.
   onStart: () => new Promise((resolve) => {
     control({ cmd: 'cpuTier', value: getCpuTier() });  // Red's strength = chosen CPU character's tier
+    // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
+    let walkersReady = false;
+    loadBoardWalkers()
+      .then((w) => { actors.setWalkers(w); walkersReady = true; })
+      .catch((e) => { console.warn('board characters failed to load:', e); walkersReady = true; });
     setInterval(poll, 33);
     poll();
     const t0 = performance.now();
@@ -297,7 +303,7 @@ menu = createStartMenu({
       const mgr = THREE.DefaultLoadingManager;
       const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
       const built = themeScene != null || current != null;
-      if (built && idle && performance.now() - t0 > 600) {
+      if (built && idle && walkersReady && performance.now() - t0 > 600) {
         requestAnimationFrame(() => requestAnimationFrame(resolve)); // a couple frames to settle
       } else {
         requestAnimationFrame(ready);

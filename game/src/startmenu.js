@@ -9,11 +9,11 @@ import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 
 const ASSETS = "./assets/models/home-inside/";
-const CHARS = "./assets/models/characters/";
+export const CHARS = "./assets/models/characters/";
 
 // the cast copied into game/assets/models/characters/ (from the repo-root
 // characters/ rips). Each is a single base-pose Collada model.
-const CHARACTERS = [
+export const CHARACTERS = [
   { name: "Mario", file: "mario/mario.dae" },
   { name: "Luigi", file: "luigi/luigi.dae" },
   { name: "Yoshi", file: "yoshi/yoshi.dae" },
@@ -168,7 +168,7 @@ export function getCpuName() {
   }
 }
 
-const JOINT_ALIASES = {
+export const JOINT_ALIASES = {
   mario: {
     Hip: "joint0",
     LegL1: "joint1",
@@ -427,6 +427,254 @@ const LOOK_H = 0.1; // look-at height (lower = camera angles down), fraction of 
 const CHAIR_X = 90.0; // horizontal offset from centre, in chair-widths (left/right)
 const CHAIR_BACK = 90.0; // how far back toward the window, in chair-depths
 const CHAIR_ANGLE = Math.PI / 4; // turn-in angle toward the centre/camera
+
+  const PARABONES_LOOSE_LIMB_SKIN_JOINTS = new Set([
+    2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16,
+  ]);
+  function stripParabonesLooseLimbGeometry(mesh) {
+    const geo = mesh.geometry;
+    const pos = geo?.getAttribute?.("position");
+    const skinIndex = geo?.getAttribute?.("skinIndex");
+    const skinWeight = geo?.getAttribute?.("skinWeight");
+    if (!pos || !skinIndex || !skinWeight) return;
+
+    const drop = new Uint8Array(pos.count);
+    const idxArray = skinIndex.array;
+    const weightArray = skinWeight.array;
+    const idxSize = skinIndex.itemSize;
+    const weightSize = skinWeight.itemSize;
+    for (let i = 0; i < pos.count; i++) {
+      let limbWeight = 0;
+      for (let j = 0; j < Math.min(idxSize, weightSize); j++) {
+        const joint = idxArray[i * idxSize + j];
+        if (PARABONES_LOOSE_LIMB_SKIN_JOINTS.has(joint)) {
+          limbWeight += weightArray[i * weightSize + j] || 0;
+        }
+      }
+      if (limbWeight > 0.2) drop[i] = 1;
+    }
+
+    const index = geo.getIndex?.();
+    if (index) {
+      const src = index.array;
+      const kept = [];
+      for (let i = 0; i < src.length; i += 3) {
+        const a = src[i];
+        const b = src[i + 1];
+        const c = src[i + 2];
+        if (!drop[a] && !drop[b] && !drop[c]) kept.push(a, b, c);
+      }
+      if (kept.length === src.length) return;
+      const IndexArray = pos.count > 65535 ? Uint32Array : Uint16Array;
+      geo.setIndex(new THREE.BufferAttribute(new IndexArray(kept), 1));
+      geo.clearGroups();
+      geo.addGroup(0, kept.length, 0);
+    } else {
+      for (let i = 0; i < pos.count; i += 3) {
+        if (!drop[i] && !drop[i + 1] && !drop[i + 2]) continue;
+        pos.setXYZ(i, 0, 0, 0);
+        pos.setXYZ(i + 1, 0, 0, 0);
+        pos.setXYZ(i + 2, 0, 0, 0);
+      }
+      pos.needsUpdate = true;
+    }
+    geo.computeBoundingBox?.();
+    geo.computeBoundingSphere?.();
+  }
+
+export function tuneChar(root, charKey, maxAniso = 8) {
+    const face = { eyelids: [], eyes: [] };
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const n = o.name || "";
+      const lower = n.toLowerCase();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const meshSignature = [
+        n,
+        o.geometry?.name,
+        ...mats.flatMap((m) => [m?.name, m?.map?.name, m?.map?.image?.src]),
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const isParabonesWingMesh =
+        charKey === "parabones" &&
+        /(?:KaronWing__WingMT|WingMT|BodyWing)/i.test(meshSignature);
+      if (charKey === "parabones" && !isParabonesWingMesh) {
+        stripParabonesLooseLimbGeometry(o);
+      }
+      // the iris/eyeball meshes use the eye material (…__EyeMT / __EyePupil…) and the
+      // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
+      const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
+      const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(
+        n,
+      );
+      const yoshiEye = charKey === "yoshi" && /^Eye[0-2]__/.test(n);
+      const peachEye =
+        charKey === "peach" && /^Eye(?:Open|Close|Half|Smile)[LR]__/.test(n);
+      if (charKey === "koopa" && koopaEye) {
+        const open = /^EyeOpen__/.test(n);
+        const closed = /^EyeClose__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (yoshiEye) {
+        const open = /^Eye0__/.test(n);
+        const closed = /^Eye2__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (peachEye) {
+        // show only the open-eye meshes; hide the close/half/smile expressions
+        const open = /^EyeOpen[LR]__/.test(n);
+        const closed = /^EyeClose[LR]__/.test(n);
+        o.visible = open;
+        if (open) face.eyes.push({ mesh: o, baseVisible: true });
+        if (closed) face.eyelids.push({ mesh: o });
+      } else if (charKey === "bowser" && /MarioEye/i.test(n)) {
+        // stray blue Mario-pupil overlay sits over his real KoopaEye - hide it here
+        // (NOT via the costume chain, or the blink idle re-shows it every frame)
+        o.visible = false;
+      } else if (lower.includes("eyelid")) {
+        o.visible = false;
+        if (charKey !== "mario" || lower.includes("eyelidclose")) {
+          face.eyelids.push({ mesh: o });
+        }
+      } else if (
+        (lower.includes("eye") || lower.includes("pupil")) &&
+        !lower.includes("brow")
+      ) {
+        face.eyes.push({ mesh: o, baseVisible: o.visible });
+      }
+      if (charKey === "luigi") {
+        if (/bag/i.test(n)) o.visible = false; // remove the backpack
+        // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) -
+        // keep only the 00 pose so the hand doesn't render doubled
+        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
+      } else if (charKey === "yoshi") {
+        if (/^(?:YoshiTongue|Mustache)__/.test(n)) o.visible = false;
+        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
+      } else if (
+        charKey === "mario" &&
+        (/mario_(?:tongue|tooth)/i.test(n) || /^Hair__/i.test(n) || /^CaptainCap/i.test(n))
+      ) {
+        // hide the full hair (it pokes through the cap) and the spare Captain cap
+        // (the model ships two hats); the "cap-on" hair (CapHair__HairMT) and the
+        // regular Cap stay, so he keeps one hat and isn't bald under it
+        o.visible = false;
+      } else if (charKey === "pauline" && /HairCapOn/i.test(n)) {
+        // the small top clump pokes through the hat; her real hair (HairBase) stays
+        o.visible = false;
+      } else if (charKey === "parabones" && /^Mustache/i.test(n)) {
+        o.visible = false; // remove the mustache
+      } else if (charKey === "parabones" && /MarioEye/i.test(n)) {
+        // glowing yellow eyes
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!m) continue;
+          m.map = null;
+          m.color?.set?.(0xffe11a);
+          m.emissive?.set?.(0xffd000);
+          if ("emissiveIntensity" in m) m.emissiveIntensity = 0.7;
+        }
+      } else if (charKey === "bowser" && /Mustache/i.test(n)) {
+        o.visible = false; // drop his mustache (the Mario-eye overlay is hidden above)
+      }
+      o.castShadow = true;
+      o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
+      o.userData.excludeBloom = true; // characters are kept out of the menu bloom
+      for (const m of mats) {
+        if (!m) continue;
+        if (m.map) {
+          m.map.colorSpace = THREE.SRGBColorSpace;
+          m.map.anisotropy = maxAniso;
+        }
+        if (eyeMesh && charKey !== "yoshi") {
+          // the eye texture is set to repeat -> it tiles; clamp so the single eye
+          // image just stretches across the UVs instead
+          for (const t of [m.map, m.normalMap, m.roughnessMap]) {
+            if (!t) continue;
+            t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+            t.needsUpdate = true;
+          }
+        }
+        // matte like the cabin textures: no shiny specular highlights / reflections
+        m.specular?.set?.(0x000000);
+        if ("shininess" in m) m.shininess = 0;
+        if ("reflectivity" in m) m.reflectivity = 0;
+        m.envMap = null;
+        if ("envMapIntensity" in m) m.envMapIntensity = 0;
+        // Pauline's eyeball maps to a red patch of the shared skin texture -> force
+        // a clean white sclera (her blue iris is a separate mesh rendered on top)
+        if (charKey === "pauline" && /eyeball/i.test(n)) {
+          m.map = null;
+          m.color?.set?.(0xffffff);
+          m.emissive?.set?.(0x000000);
+          m.needsUpdate = true;
+        }
+      }
+    });
+    return face;
+  }
+
+export function collectRig(root, charKey) {
+    const bones = new Map();
+    const aliases = JOINT_ALIASES[charKey] ?? {};
+    root.traverse((o) => {
+      if (o.isBone) bones.set(o.name, o);
+      else if (o.isSkinnedMesh && o.skeleton) {
+        o.skeleton.bones.forEach((b) => bones.set(b.name, b));
+      }
+    });
+    const bone = (...names) => {
+      for (const n of names) {
+        const b = bones.get(n) || bones.get(aliases[n]);
+        if (b) return b;
+      }
+      return null;
+    };
+    return {
+      bones: [...bones.values()],
+      hip: bone("Hip"),
+      spine1: bone("Spine1"),
+      spine2: bone("Spine2"),
+      head: bone("Head"),
+      shoulderL: bone("ShoulderL"),
+      shoulderR: bone("ShoulderR"),
+      armL1: bone("ArmL1"),
+      armR1: bone("ArmR1"),
+      armL2: bone("ArmL2"),
+      armR2: bone("ArmR2"),
+      handL: bone("HandL"),
+      handR: bone("HandR"),
+      fingerL: bone("FingerL"),
+      fingerR: bone("FingerR"),
+      legL1: bone("LegL1"),
+      legR1: bone("LegR1"),
+      legL2: bone("LegL2"),
+      legR2: bone("LegR2"),
+      footL: bone("FootL"),
+      footR: bone("FootR"),
+      toeL: bone("ToeL"),
+      toeR: bone("ToeR"),
+      tail: bone("Tail"),
+      wingL1: bone("WingL1"),
+      wingL2: bone("WingL2"),
+      wingR1: bone("WingR1"),
+      wingR2: bone("WingR2"),
+      hairL1: bone("HairL1"),
+      hairR1: bone("HairR1"),
+      eyelidLA: bone("EyelidLA"),
+      eyelidLB: bone("EyelidLB"),
+      eyelidRA: bone("EyelidRA"),
+      eyelidRB: bone("EyelidRB"),
+      jaw: bone("Jaw", "JoeUnder"),
+      lipUpper: bone("LipUpper"),
+      lipLowerCenter: bone("LipLowerCenter"),
+      lipLowerL: bone("LipLowerL", "LipLowerLeft"),
+      lipLowerR: bone("LipLowerR", "LipLowerRight"),
+      mouthCornerL: bone("MouthCornerL", "JoeLeft"),
+      mouthCornerR: bone("MouthCornerR", "JoeRight"),
+    };
+  }
 
 export function createStartMenu({
   scene,
@@ -743,253 +991,6 @@ export function createStartMenu({
     } catch {
       /* ignore */
     }
-  }
-
-  const PARABONES_LOOSE_LIMB_SKIN_JOINTS = new Set([
-    2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16,
-  ]);
-  function stripParabonesLooseLimbGeometry(mesh) {
-    const geo = mesh.geometry;
-    const pos = geo?.getAttribute?.("position");
-    const skinIndex = geo?.getAttribute?.("skinIndex");
-    const skinWeight = geo?.getAttribute?.("skinWeight");
-    if (!pos || !skinIndex || !skinWeight) return;
-
-    const drop = new Uint8Array(pos.count);
-    const idxArray = skinIndex.array;
-    const weightArray = skinWeight.array;
-    const idxSize = skinIndex.itemSize;
-    const weightSize = skinWeight.itemSize;
-    for (let i = 0; i < pos.count; i++) {
-      let limbWeight = 0;
-      for (let j = 0; j < Math.min(idxSize, weightSize); j++) {
-        const joint = idxArray[i * idxSize + j];
-        if (PARABONES_LOOSE_LIMB_SKIN_JOINTS.has(joint)) {
-          limbWeight += weightArray[i * weightSize + j] || 0;
-        }
-      }
-      if (limbWeight > 0.2) drop[i] = 1;
-    }
-
-    const index = geo.getIndex?.();
-    if (index) {
-      const src = index.array;
-      const kept = [];
-      for (let i = 0; i < src.length; i += 3) {
-        const a = src[i];
-        const b = src[i + 1];
-        const c = src[i + 2];
-        if (!drop[a] && !drop[b] && !drop[c]) kept.push(a, b, c);
-      }
-      if (kept.length === src.length) return;
-      const IndexArray = pos.count > 65535 ? Uint32Array : Uint16Array;
-      geo.setIndex(new THREE.BufferAttribute(new IndexArray(kept), 1));
-      geo.clearGroups();
-      geo.addGroup(0, kept.length, 0);
-    } else {
-      for (let i = 0; i < pos.count; i += 3) {
-        if (!drop[i] && !drop[i + 1] && !drop[i + 2]) continue;
-        pos.setXYZ(i, 0, 0, 0);
-        pos.setXYZ(i + 1, 0, 0, 0);
-        pos.setXYZ(i + 2, 0, 0, 0);
-      }
-      pos.needsUpdate = true;
-    }
-    geo.computeBoundingBox?.();
-    geo.computeBoundingSphere?.();
-  }
-
-  function tuneChar(root, charKey) {
-    const face = { eyelids: [], eyes: [] };
-    root.traverse((o) => {
-      if (!o.isMesh) return;
-      const n = o.name || "";
-      const lower = n.toLowerCase();
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      const meshSignature = [
-        n,
-        o.geometry?.name,
-        ...mats.flatMap((m) => [m?.name, m?.map?.name, m?.map?.image?.src]),
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const isParabonesWingMesh =
-        charKey === "parabones" &&
-        /(?:KaronWing__WingMT|WingMT|BodyWing)/i.test(meshSignature);
-      if (charKey === "parabones" && !isParabonesWingMesh) {
-        stripParabonesLooseLimbGeometry(o);
-      }
-      // the iris/eyeball meshes use the eye material (…__EyeMT / __EyePupil…) and the
-      // rip sets that texture to repeat, so the iris tiles -> clamp it (stretch)
-      const eyeMesh = /eyemt|eyepupil|eyeball/i.test(n);
-      const koopaEye = /^Eye(?:Angry|Close|HalfClose|Open|QuarterClose)__/.test(
-        n,
-      );
-      const yoshiEye = charKey === "yoshi" && /^Eye[0-2]__/.test(n);
-      const peachEye =
-        charKey === "peach" && /^Eye(?:Open|Close|Half|Smile)[LR]__/.test(n);
-      if (charKey === "koopa" && koopaEye) {
-        const open = /^EyeOpen__/.test(n);
-        const closed = /^EyeClose__/.test(n);
-        o.visible = open;
-        if (open) face.eyes.push({ mesh: o, baseVisible: true });
-        if (closed) face.eyelids.push({ mesh: o });
-      } else if (yoshiEye) {
-        const open = /^Eye0__/.test(n);
-        const closed = /^Eye2__/.test(n);
-        o.visible = open;
-        if (open) face.eyes.push({ mesh: o, baseVisible: true });
-        if (closed) face.eyelids.push({ mesh: o });
-      } else if (peachEye) {
-        // show only the open-eye meshes; hide the close/half/smile expressions
-        const open = /^EyeOpen[LR]__/.test(n);
-        const closed = /^EyeClose[LR]__/.test(n);
-        o.visible = open;
-        if (open) face.eyes.push({ mesh: o, baseVisible: true });
-        if (closed) face.eyelids.push({ mesh: o });
-      } else if (charKey === "bowser" && /MarioEye/i.test(n)) {
-        // stray blue Mario-pupil overlay sits over his real KoopaEye - hide it here
-        // (NOT via the costume chain, or the blink idle re-shows it every frame)
-        o.visible = false;
-      } else if (lower.includes("eyelid")) {
-        o.visible = false;
-        if (charKey !== "mario" || lower.includes("eyelidclose")) {
-          face.eyelids.push({ mesh: o });
-        }
-      } else if (
-        (lower.includes("eye") || lower.includes("pupil")) &&
-        !lower.includes("brow")
-      ) {
-        face.eyes.push({ mesh: o, baseVisible: o.visible });
-      }
-      if (charKey === "luigi") {
-        if (/bag/i.test(n)) o.visible = false; // remove the backpack
-        // the model ships 4 overlapping hand-pose meshes per side (HandL00..03) -
-        // keep only the 00 pose so the hand doesn't render doubled
-        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
-      } else if (charKey === "yoshi") {
-        if (/^(?:YoshiTongue|Mustache)__/.test(n)) o.visible = false;
-        if (/^Hand[LR]0[1-9]/i.test(n)) o.visible = false;
-      } else if (
-        charKey === "mario" &&
-        (/mario_(?:tongue|tooth)/i.test(n) || /^Hair__/i.test(n))
-      ) {
-        // hide the full hair (it pokes through the cap); the "cap-on" hair
-        // (CapHair__HairMT) stays so he's not bald under the hat
-        o.visible = false;
-      } else if (charKey === "pauline" && /HairCapOn/i.test(n)) {
-        // the small top clump pokes through the hat; her real hair (HairBase) stays
-        o.visible = false;
-      } else if (charKey === "parabones" && /^Mustache/i.test(n)) {
-        o.visible = false; // remove the mustache
-      } else if (charKey === "parabones" && /MarioEye/i.test(n)) {
-        // glowing yellow eyes
-        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-          if (!m) continue;
-          m.map = null;
-          m.color?.set?.(0xffe11a);
-          m.emissive?.set?.(0xffd000);
-          if ("emissiveIntensity" in m) m.emissiveIntensity = 0.7;
-        }
-      } else if (charKey === "bowser" && /Mustache/i.test(n)) {
-        o.visible = false; // drop his mustache (the Mario-eye overlay is hidden above)
-      }
-      o.castShadow = true;
-      o.frustumCulled = false; // skinned bounds can be wrong -> keep it visible
-      o.userData.excludeBloom = true; // characters are kept out of the menu bloom
-      for (const m of mats) {
-        if (!m) continue;
-        if (m.map) {
-          m.map.colorSpace = THREE.SRGBColorSpace;
-          m.map.anisotropy = maxAniso;
-        }
-        if (eyeMesh && charKey !== "yoshi") {
-          // the eye texture is set to repeat -> it tiles; clamp so the single eye
-          // image just stretches across the UVs instead
-          for (const t of [m.map, m.normalMap, m.roughnessMap]) {
-            if (!t) continue;
-            t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
-            t.needsUpdate = true;
-          }
-        }
-        // matte like the cabin textures: no shiny specular highlights / reflections
-        m.specular?.set?.(0x000000);
-        if ("shininess" in m) m.shininess = 0;
-        if ("reflectivity" in m) m.reflectivity = 0;
-        m.envMap = null;
-        if ("envMapIntensity" in m) m.envMapIntensity = 0;
-        // Pauline's eyeball maps to a red patch of the shared skin texture -> force
-        // a clean white sclera (her blue iris is a separate mesh rendered on top)
-        if (charKey === "pauline" && /eyeball/i.test(n)) {
-          m.map = null;
-          m.color?.set?.(0xffffff);
-          m.emissive?.set?.(0x000000);
-          m.needsUpdate = true;
-        }
-      }
-    });
-    return face;
-  }
-
-  function collectRig(root, charKey) {
-    const bones = new Map();
-    const aliases = JOINT_ALIASES[charKey] ?? {};
-    root.traverse((o) => {
-      if (o.isBone) bones.set(o.name, o);
-      else if (o.isSkinnedMesh && o.skeleton) {
-        o.skeleton.bones.forEach((b) => bones.set(b.name, b));
-      }
-    });
-    const bone = (...names) => {
-      for (const n of names) {
-        const b = bones.get(n) || bones.get(aliases[n]);
-        if (b) return b;
-      }
-      return null;
-    };
-    return {
-      bones: [...bones.values()],
-      hip: bone("Hip"),
-      spine1: bone("Spine1"),
-      spine2: bone("Spine2"),
-      head: bone("Head"),
-      shoulderL: bone("ShoulderL"),
-      shoulderR: bone("ShoulderR"),
-      armL1: bone("ArmL1"),
-      armR1: bone("ArmR1"),
-      armL2: bone("ArmL2"),
-      armR2: bone("ArmR2"),
-      handL: bone("HandL"),
-      handR: bone("HandR"),
-      fingerL: bone("FingerL"),
-      fingerR: bone("FingerR"),
-      legL1: bone("LegL1"),
-      legR1: bone("LegR1"),
-      legL2: bone("LegL2"),
-      legR2: bone("LegR2"),
-      footL: bone("FootL"),
-      footR: bone("FootR"),
-      toeL: bone("ToeL"),
-      toeR: bone("ToeR"),
-      tail: bone("Tail"),
-      wingL1: bone("WingL1"),
-      wingL2: bone("WingL2"),
-      wingR1: bone("WingR1"),
-      wingR2: bone("WingR2"),
-      hairL1: bone("HairL1"),
-      hairR1: bone("HairR1"),
-      eyelidLA: bone("EyelidLA"),
-      eyelidLB: bone("EyelidLB"),
-      eyelidRA: bone("EyelidRA"),
-      eyelidRB: bone("EyelidRB"),
-      jaw: bone("Jaw", "JoeUnder"),
-      lipUpper: bone("LipUpper"),
-      lipLowerCenter: bone("LipLowerCenter"),
-      lipLowerL: bone("LipLowerL", "LipLowerLeft"),
-      lipLowerR: bone("LipLowerR", "LipLowerRight"),
-      mouthCornerL: bone("MouthCornerL", "JoeLeft"),
-      mouthCornerR: bone("MouthCornerR", "JoeRight"),
-    };
   }
 
   function makeBoneAimer(root) {
@@ -1454,7 +1455,7 @@ export function createStartMenu({
           root.rotation.set(0, 0, 0);
         }
         const rig = poseSeated(root, charKey); // bend the legs into a sit
-        const face = tuneChar(root, charKey); // matte materials + neutral face parts
+        const face = tuneChar(root, charKey, maxAniso); // matte materials + neutral face parts
         // re-measure AFTER posing so the seated figure sits feet-on-floor
         root.updateMatrixWorld(true);
         box = new THREE.Box3().setFromObject(root);
@@ -1504,7 +1505,7 @@ export function createStartMenu({
         box = new THREE.Box3().setFromObject(root);
         s = box.getSize(new THREE.Vector3());
       }
-      tuneChar(root, def.file.split("/")[0]);
+      tuneChar(root, def.file.split("/")[0], maxAniso);
       const ctr = box.getCenter(new THREE.Vector3());
       // the face is on the +Z or -Z side - find it from the eye meshes
       let ez = 0,
