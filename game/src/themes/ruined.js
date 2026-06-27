@@ -180,7 +180,7 @@ export const ruined = {
         if (disposed || !proto) return;
         const inner = proto.clone(true);
         if (opts.zUp) {
-          inner.rotation.x = -Math.PI / 2; // dais: drum axis (Z) -> up
+          inner.rotation.x = Math.PI / 2; // Z-up models stand upright (was flipped: down-up)
         } else if (opts.standUp) {
           // these ruins use inconsistent up-axes (tower = long Z, wall = long X,
           // with stray helper verts). Auto-stand: rotate the LONGEST real axis to Y.
