@@ -1,17 +1,15 @@
-// Round 3 — Fossil Falls (Cascade Kingdom), a prehistoric canyon basin.
+// Round 3 — Fossil Falls (Cascade Kingdom), stripped to its core pieces.
 //
-// The 20x20 RL grid is a GRASSY PLATEAU on the y=0 board plane where the actors,
-// gold/keys and value heatmap live (see live.js / heatmap.js). Wall ('#') cells
-// become clusters of faceted ROCK; slippery ('S') cells become wet-rock POOLS;
-// the goal cells host a floating POWER MOON. Going outward from the board: a low
-// rock rim, then a ring of canyon cliffs, with a WATERFALL crashing down on the
-// north side behind the moon. Dinosaur bones, floating islands, boulders and
-// ferns dress the rim.
+// Just the essentials float in the sky: the 20x20 RL board (a GRASSY PLATEAU on
+// the y=0 plane where the actors / value heatmap live) sitting on its own
+// floating ROCK ISLAND, plus 4 of the Cascade FLOATER ISLANDS off the left and
+// right sides. The board still carries its gameplay layer - rock-maze shelves on
+// '#' cells, wet-rock POOLS on slippery ('S') cells, and the floating POWER MOON
+// over the goal. The surrounding diorama (canyon cliffs, waterfall, dino bones,
+// rim rocks, scattered plants) has been removed.
 //
-// Nothing may cover the y=0 board surface: rock/greenery only stands on wall
-// cells and every gameplay marker is a thin decal/low pedestal. Models come from
-// the vendored Cascade Kingdom Collada pack in assets/models/fossil-falls
-// (DJ_Fox11 / The Models Resource).
+// Nothing may cover the y=0 board surface. Models come from the vendored Cascade
+// Kingdom Collada pack in assets/models/fossil-falls (DJ_Fox11 / Models Resource).
 
 import * as THREE from 'three';
 import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
@@ -21,9 +19,7 @@ const GRID = 20;
 const CTR = GRID / 2;
 const ASSETS = './assets/models/fossil-falls/';
 const ISLAND_GRASS = './assets/models/city-newdonk/GroundLawn00_alb.png';
-const PARK_H = 10;        // board edge half-extent
 const GRASS_TOP = 0.04;   // raised plateau surface, kept below decals/heatmap
-const GRASS_THICK = 0.055;
 
 function hash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
@@ -229,8 +225,6 @@ export const fossilfalls = {
     }
 
     // ---- materials -------------------------------------------------------
-    const dirtMat = pbr('HomeDirtrBody00', 24, 24, 0x6f5a40);     // far canyon floor
-    const soilMat = pbr('GroundBaseRock00', 10, 10, 0x8a7c66);    // base under the grass
     const grassTileTex = assetTexture('GroundGrass00_alb.png', 1.3, 1.3);
     const grassTopMats = [
       0x83c25a, 0x77b84f, 0x8fcb68, 0x6fae47, 0x88c861, 0x6aa642,
@@ -270,15 +264,8 @@ export const fossilfalls = {
       0x5a4a32, 0x6b5638, 0x4f4029, 0x73603f,   // earthy dirt sides
     ].map((color) => solid(color, { roughness: 1 }));
 
-    // faceted boulder materials (flat-shaded) for loose rim rocks
-    const rockChunkMats = [
-      track(new THREE.MeshStandardMaterial({ color: 0xb98760, roughness: 0.96, metalness: 0, flatShading: true })),
-      track(new THREE.MeshStandardMaterial({ color: 0xd0a16f, roughness: 0.97, metalness: 0, flatShading: true })),
-      track(new THREE.MeshStandardMaterial({ color: 0x7d8f55, roughness: 0.95, metalness: 0, flatShading: true })),
-    ];
-    // textured rock for the big canyon cliffs (large flat faces read the texture)
+    // textured rock for the board island's sides (large flat faces read the texture)
     const cliffMat = pbr('RockWall00', 3, 4, 0xc77d55);
-    const cliffMat2 = pbr('GroundBaseRock00', 4, 5, 0xb27652);
 
     // ---- cartoon water (slip pools + the falls) --------------------------
     const waterNrm = assetTexture('Water00_nrm.png', 2.2, 2.2, false);
@@ -336,55 +323,9 @@ export const fossilfalls = {
       return s;
     }
 
-    // vertical white-teal streaks for the falling sheet (scrolls down in update)
-    function fallCanvas() {
-      const S = 128;
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = S;
-      const ctx = canvas.getContext('2d');
-      const img = ctx.createImageData(S, S);
-      const d = img.data;
-      for (let x = 0; x < S; x++) {
-        // per-column brightness = a few overlaid sine streaks
-        const u = x / S;
-        const streak = 0.5 + 0.5 * Math.sin(2 * Math.PI * u * 9 + Math.sin(u * 40));
-        for (let y = 0; y < S; y++) {
-          const v = y / S;
-          const flow = 0.5 + 0.5 * Math.sin(2 * Math.PI * v * 3 + u * 20);
-          const b = Math.min(1, 0.45 + streak * 0.5 + flow * 0.18);
-          const i = (y * S + x) * 4;
-          d[i] = 150 + b * 95;
-          d[i + 1] = 200 + b * 50;
-          d[i + 2] = 220 + b * 35;
-          d[i + 3] = 255;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
-      return canvas;
-    }
-    const fallTex = trackTexture(new THREE.CanvasTexture(fallCanvas()));
-    fallTex.colorSpace = THREE.SRGBColorSpace;
-    fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
-    fallTex.repeat.set(2.4, 3.0);
-    const fallMat = track(new THREE.MeshStandardMaterial({
-      color: 0xffffff, map: fallTex, transparent: true, opacity: 0.9,
-      roughness: 0.2, metalness: 0.0, emissive: 0x9fd6ec, emissiveIntensity: 0.25,
-      side: THREE.DoubleSide, depthWrite: false,
-    }));
-
-    // ---- stacked canyon island shell -------------------------------------
+    // ---- island + board shells -------------------------------------------
     const shelfGrassMat = grassTopMats[2];
-    const boneMat = solid(0xe6d39c, { roughness: 0.82 });
     const mazeSideMat = solid(0x5c4a32, { roughness: 0.96 });
-
-    function ground(half, y, mat, cx = CTR, cz = CTR) {
-      const m = new THREE.Mesh(track(new THREE.PlaneGeometry(half * 2, half * 2)), mat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(cx, y, cz);
-      m.receiveShadow = true;
-      group.add(m);
-      return m;
-    }
 
     function plateauShape(w, d, seed, steps = 7, jag = 0.55) {
       const pts = [];
@@ -447,67 +388,11 @@ export const fossilfalls = {
       return mesh;
     }
 
-    function addBoneSpikes(cx, cz, count, radiusX, radiusZ, baseY, seed) {
-      const geo = track(new THREE.ConeGeometry(0.11, 0.52, 7));
-      const mesh = new THREE.InstancedMesh(geo, boneMat, count);
-      const dummy = new THREE.Object3D();
-      for (let i = 0; i < count; i++) {
-        const h = hash(seed + i * 31, 4400 + i * 17);
-        const a = (i / count) * Math.PI * 2 + (h % 30) * 0.01;
-        dummy.position.set(
-          cx + Math.cos(a) * radiusX * (0.85 + (h % 17) / 120),
-          baseY + 0.26,
-          cz + Math.sin(a) * radiusZ * (0.85 + (h % 19) / 120)
-        );
-        dummy.rotation.set((hashFloat(seed, i, 41) - 0.5) * 0.18, h * 0.01, (hashFloat(seed, i, 43) - 0.5) * 0.18);
-        dummy.scale.setScalar(0.82 + (h % 21) / 100);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-      }
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-    }
-
-    function addRibCage(cx, cz, baseY, count, spacing, scale, ry) {
-      const wrap = new THREE.Group();
-      const ribGeo = track(new THREE.TorusGeometry(0.56 * scale, 0.045 * scale, 8, 28, Math.PI));
-      for (let i = 0; i < count; i++) {
-        const rib = new THREE.Mesh(ribGeo, boneMat);
-        rib.position.set((i - (count - 1) * 0.5) * spacing, baseY + 0.05, 0);
-        rib.castShadow = true;
-        rib.receiveShadow = true;
-        wrap.add(rib);
-      }
-      const spine = new THREE.Mesh(track(new THREE.CylinderGeometry(0.055 * scale, 0.055 * scale, spacing * (count + 0.6), 8)), boneMat);
-      spine.rotation.z = Math.PI / 2;
-      spine.position.set(0, baseY + 0.04, -0.36 * scale);
-      spine.castShadow = true;
-      wrap.add(spine);
-      wrap.rotation.y = ry;
-      wrap.position.set(cx, 0, cz);
-      group.add(wrap);
-    }
-
-    ground(95, -5.45, dirtMat);
-
-    [
-      { x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -4.95, seed: 100, topMat: shelfGrassMat, sideMat: cliffMat, jag: 0.42, steps: 9 },
-      { x: CTR, z: -4.6, w: 15.2, d: 6.8, topY: 2.05, bottomY: -4.45, seed: 120, topMat: shelfGrassMat, sideMat: cliffMat2, jag: 0.62 },
-      { x: -4.2, z: -0.6, w: 7.2, d: 6.2, topY: 0.72, bottomY: -4.8, seed: 130, topMat: shelfGrassMat, sideMat: cliffMat },
-      { x: 24.2, z: -0.7, w: 7.4, d: 6.4, topY: 0.86, bottomY: -4.7, seed: 131, topMat: shelfGrassMat, sideMat: cliffMat },
-      { x: -5.0, z: 10.2, w: 7.0, d: 10.8, topY: -0.42, bottomY: -5.2, seed: 140, topMat: shelfGrassMat, sideMat: cliffMat2, jag: 0.5 },
-      { x: 25.2, z: 9.6, w: 8.4, d: 11.0, topY: -0.32, bottomY: -5.35, seed: 141, topMat: shelfGrassMat, sideMat: cliffMat2, jag: 0.5 },
-      { x: 2.6, z: 23.6, w: 11.2, d: 7.6, topY: -0.66, bottomY: -5.55, seed: 150, topMat: shelfGrassMat, sideMat: cliffMat },
-      { x: 17.6, z: 24.3, w: 12.8, d: 8.2, topY: -0.34, bottomY: -5.55, seed: 151, topMat: shelfGrassMat, sideMat: cliffMat },
-      { x: -8.5, z: 4.6, w: 4.8, d: 4.2, topY: 1.55, bottomY: -3.2, seed: 160, topMat: shelfGrassMat, sideMat: cliffMat },
-    ].forEach(addPlateau);
-
-    addBoneSpikes(2.4, 23.4, 12, 4.8, 2.9, -0.28, 700);
-    addBoneSpikes(23.8, 9.5, 10, 3.0, 4.0, 0.02, 740);
-    addBoneSpikes(10.0, -4.7, 16, 6.1, 2.2, 2.08, 780);
-    addRibCage(23.2, 6.4, 0.18, 7, 0.42, 1.25, -0.78);
-    addRibCage(10.4, -3.9, 2.18, 5, 0.45, 1.1, 0.08);
+    // the floating rock island the board sits on
+    addPlateau({
+      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -4.95,
+      seed: 100, topMat: shelfGrassMat, sideMat: cliffMat, jag: 0.42, steps: 9,
+    });
 
     // ---- board grass: one continuous playable surface, no spreadsheet grid
     addPlateau({
@@ -629,41 +514,12 @@ export const fossilfalls = {
       moon = { mesh: wrap, mat: moonMat, light: glow, baseY: 1.25 };
     }
 
-    // ---- waterfall and fossil crown behind the moon ----------------------
-    const FALL_X = CTR, FALL_Z = -2.55;
-    for (const off of [-1.55, 1.55]) {
-      const sheet = new THREE.Mesh(track(new THREE.PlaneGeometry(2.8, 5.2)), fallMat);
-      sheet.position.set(FALL_X + off, 1.35, FALL_Z + 0.25);
-      sheet.renderOrder = 2;
-      group.add(sheet);
-    }
-    const poolGeo = track(new THREE.CircleGeometry(3.1, 44));
-    const pool = new THREE.Mesh(poolGeo, waterMat);
-    pool.rotation.x = -Math.PI / 2;
-    pool.position.set(FALL_X, -0.02, FALL_Z + 0.25);
-    pool.renderOrder = 3;
-    group.add(pool);
-    const mistMat = track(new THREE.MeshBasicMaterial({
-      color: 0xeaf6ff, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide,
-    }));
-    const mist = new THREE.Mesh(track(new THREE.PlaneGeometry(7.5, 3.3)), mistMat);
-    mist.position.set(FALL_X, 0.8, FALL_Z + 0.4);
-    group.add(mist);
-
-    place('WaterfallWorldHomeBone000.dae', CTR + 0.2, -4.9, { baseY: 2.08, footprint: 12.4, ry: 0.02 });
-    place('WaterfallWorldHomeBone001.dae', CTR - 4.8, -3.9, { baseY: 2.12, footprint: 6.2, ry: 0.38 });
-    place('WaterfallWorldHomeBreakBone000.dae', 23.7, 0.0, { baseY: 0.9, footprint: 4.5, ry: -0.65 });
-    place('WaterfallWorldHomeBreakBone001.dae', 23.8, 3.0, { baseY: 0.9, footprint: 4.0, ry: -0.55 });
-
-    // repeat the actual Cascade floating-island assets around the board; these
-    // are the pieces that read closest to the reference image from this camera.
+    // ---- the 4 Cascade floater islands on the left and right sides -------
     [
       ['WaterfallWorldHomeFloaterIsland000.dae', -8.2, 4.8, 3.3, 4.8, 0.55, 0.0],
       ['WaterfallWorldHomeFloaterIsland001.dae', 26.7, 13.6, 2.6, 5.6, -0.45, 2.1],
       ['WaterfallWorldHomeFloaterIsland000.dae', -7.2, 18.4, 1.8, 5.4, -0.2, 1.2],
       ['WaterfallWorldHomeFloaterIsland001.dae', 27.0, 2.6, 2.1, 4.9, 0.35, 2.8],
-      ['WaterfallWorldHomeFloaterIsland000.dae', 4.1, -9.0, 2.8, 5.2, -0.65, 3.6],
-      ['WaterfallWorldHomeFloaterIsland001.dae', 18.2, -8.2, 3.6, 6.0, 0.15, 4.4],
     ].forEach(([name, x, z, y, foot, ry, ph]) =>
       place(name, x, z, {
         baseY: y,
@@ -676,48 +532,6 @@ export const fossilfalls = {
       })
     );
 
-    const rimRocks = [
-      ['WaterfallWorldHomeRock000.dae', -4.4, 10.4, -0.32, 2.7, 0.2],
-      ['WaterfallWorldHomeRock001.dae', 25.0, 8.0, -0.22, 3.0, -0.7],
-      ['WaterfallWorldHomeRock002.dae', 17.8, 24.4, -0.22, 3.4, 1.1],
-      ['WaterfallWorldHomeRock000.dae', 2.4, 23.0, -0.52, 2.5, 2.0],
-      ['WaterfallWorldHomeRock001Break.dae', -4.2, -0.8, 0.78, 2.4, -0.3],
-      ['WaterfallWorldHomeRock002.dae', 24.0, -1.0, 0.92, 2.5, 0.5],
-    ];
-    for (const [name, x, z, y, foot, ry] of rimRocks) {
-      place(name, x, z, { baseY: y, footprint: foot, ry });
-    }
-    place('WaterfallWorldHomeStoneBridge.dae', 18.2, 23.1, { baseY: -0.22, footprint: 5.0, ry: 0.45 });
-    place('WaterfallWorldHomeBreakPartsTrace000.dae', 2.4, 22.8, { baseY: -0.5, footprint: 5.2, ry: -0.3 });
-
-    for (let i = 0; i < 34; i++) {
-      const h = hash(i * 41 + 5, 3300);
-      const ring = i % 4;
-      let x, z, baseY;
-      if (ring === 0) {
-        const ang = (i / 34) * Math.PI * 2 + (h % 100) / 500;
-        const rad = PARK_H + 1.2 + (h % 3) * 0.45;
-        x = CTR + Math.cos(ang) * rad;
-        z = CTR + Math.sin(ang) * rad * 0.95;
-        baseY = -0.02;
-      } else if (ring === 1) {
-        x = -4.8 + (h % 48) / 10;
-        z = 4.2 + ((h >>> 5) % 88) / 10;
-        baseY = -0.35;
-      } else if (ring === 2) {
-        x = 22.0 + (h % 54) / 10;
-        z = -0.8 + ((h >>> 4) % 128) / 10;
-        baseY = -0.25;
-      } else {
-        x = 1.4 + (h % 176) / 10;
-        z = 21.0 + ((h >>> 4) % 48) / 10;
-        baseY = -0.45;
-      }
-      if (x > -0.25 && x < GRID + 0.25 && z > -0.25 && z < GRID + 0.25) continue;
-      const plant = `WaterfallWorldHomePlant${String(h % 13).padStart(3, '0')}.dae`;
-      place(plant, x, z, { baseY, height: 0.58 + (h % 5) * 0.11, ry: (h % 360) * Math.PI / 180 });
-    }
-
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       waterMat.opacity = 0.84 + 0.04 * Math.sin(t * 1.4);
@@ -725,8 +539,6 @@ export const fossilfalls = {
       waterNrm.offset.y = t * 0.011;
       waterTex.offset.x = t * 0.02;
       waterTex.offset.y = t * 0.014;
-      fallTex.offset.y = -t * 1.1;                 // sheet rushes downward
-      fallTex.offset.x = Math.sin(t * 0.7) * 0.02;
       if (moon) {
         moon.mesh.rotation.y = t * 0.9;
         moon.mesh.position.y = moon.baseY + Math.sin(t * 1.8) * 0.12;
