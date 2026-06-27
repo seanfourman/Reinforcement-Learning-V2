@@ -264,8 +264,13 @@ export const fossilfalls = {
       0x5a4a32, 0x6b5638, 0x4f4029, 0x73603f,   // earthy dirt sides
     ].map((color) => solid(color, { roughness: 1 }));
 
-    // textured rock for the board island's sides (large flat faces read the texture)
-    const cliffMat = pbr('RockWall00', 3, 4, 0xc77d55);
+    // strata'd rock for the island sides. Low repeat: extrude side UVs are in
+    // WORLD units, so a small number tiles the rock at a readable scale instead
+    // of mushing it. A faint warm emissive keeps the shadowed underside (it
+    // faces away from the sun) from going pure black.
+    const cliffMat = pbr('RockWallBase03', 0.2, 0.2, 0xffffff, {
+      roughness: 0.95, emissive: 0x3a2418, emissiveIntensity: 0.6,
+    });
     // sandy / dry-mud ground for the island + board top
     const sandyTopMat = pbr('GroundBaseRock00', 0.5, 0.5, 0xe6d6b0);
 
@@ -393,7 +398,7 @@ export const fossilfalls = {
     // the floating rock island the board sits on: dirt/mud top, rocky sides,
     // dropping deep below the board
     addPlateau({
-      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -8.5,
+      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -12.0,
       seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, steps: 9,
     });
 
