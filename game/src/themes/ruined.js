@@ -91,7 +91,9 @@ export const ruined = {
     }
     function upgradeMat(m) {
       if (!m) return m;
-      if (/wire/i.test(m.name || "")) {
+      // hide the wire helper AND any grass/plant/flower cards (e.g. Step000's
+      // PlantsTower) - we don't want greenery in the ruined arena.
+      if (/wire|grass|plant|flower|leaf|weed/i.test(m.name || "")) {
         m.transparent = true;
         m.opacity = 0;
         m.depthWrite = false;
@@ -131,6 +133,19 @@ export const ruined = {
               if (obj)
                 obj.traverse((o) => {
                   if (!o.isMesh) return;
+                  const ms = Array.isArray(o.material) ? o.material : [o.material];
+                  // a mesh that's entirely wire/grass/plant: hide it OUTRIGHT so it
+                  // casts no shadow either (opacity 0 alone still shadows).
+                  if (
+                    ms.every((m) =>
+                      /wire|grass|plant|flower|leaf|weed/i.test(m?.name || ""),
+                    )
+                  ) {
+                    o.visible = false;
+                    o.castShadow = false;
+                    o.receiveShadow = false;
+                    return;
+                  }
                   o.castShadow = true;
                   o.receiveShadow = true;
                   o.material = Array.isArray(o.material)
@@ -264,11 +279,15 @@ export const ruined = {
     const FLOOR_R = 16.5;
     const floor = new THREE.Mesh(
       track(new THREE.CircleGeometry(FLOOR_R, 96)),
-      track(new THREE.MeshStandardMaterial({
-        map: tex("rockplateattack04_alb.png", 4, 4),
-        normalMap: tex("rockplateattack04_nrm.png", 4, 4, false),
-        color: 0xd8d0c4, roughness: 0.82, metalness: 0,
-      })),
+      track(
+        new THREE.MeshStandardMaterial({
+          map: tex("rockplateattack04_alb.png", 4, 4),
+          normalMap: tex("rockplateattack04_nrm.png", 4, 4, false),
+          color: 0xd8d0c4,
+          roughness: 0.82,
+          metalness: 0,
+        }),
+      ),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(C, 0.02, C);
@@ -279,10 +298,11 @@ export const ruined = {
     // circle, and the detailed drum sides show below the rim.
     place(PLATFORM, C, C, { zUp: true, footprint: PLATFORM_DIAM, topAt: 0 });
 
-    // ---- broken WALL parapet around the dais rim (sits ON the platform) --
+    // ---- broken WALL parapet around the rim (one gap = the open gate) -----
+    const RING_ROT = (4 * Math.PI) / 180; // 4 deg spin of the whole ring
     for (let i = 0; i < WALL_COUNT; i++) {
-      if (i % 5 === 4) continue; // gaps = ruined
-      const ang = (i / WALL_COUNT) * Math.PI * 2;
+      if (i % 5 === 4) continue; // gaps = ruined (one is the open gate)
+      const ang = (i / WALL_COUNT) * Math.PI * 2 + RING_ROT;
       const x = C + Math.cos(ang) * WALL_RING_R;
       const z = C + Math.sin(ang) * WALL_RING_R;
       place(WALL_MODELS[i % WALL_MODELS.length], x, z, {
@@ -306,19 +326,7 @@ export const ruined = {
       });
     }
 
-    // ---- stone rubble on the gameplay obstacles -------------------------
-    // Same Stone000 model as before; just lowered (it sits high, so STONE_Y drops
-    // it onto the floor). Tune STONE_Y if it needs to go down/up more.
-    const STONE_Y = -0.45;
-    for (let i = 0; i < obstacles.length; i++) {
-      const [ox, oz, r] = obstacles[i];
-      place("BossRaidWorldHomeStone000", ox, oz, {
-        zUp: true,
-        footprint: r * 2.0,
-        baseY: STONE_Y,
-        ry: i * 1.3,
-      });
-    }
+    // obstacles are invisible gameplay collisions only - no rock/grass markers.
 
     // ---- glowing goal ring ----------------------------------------------
     const goalRing = new THREE.Group();
