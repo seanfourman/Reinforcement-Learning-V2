@@ -266,6 +266,8 @@ export const fossilfalls = {
 
     // textured rock for the board island's sides (large flat faces read the texture)
     const cliffMat = pbr('RockWall00', 3, 4, 0xc77d55);
+    // sandy / dry-mud ground for the island + board top
+    const sandyTopMat = pbr('GroundBaseRock00', 0.5, 0.5, 0xe6d6b0);
 
     // ---- cartoon water (slip pools + the falls) --------------------------
     const waterNrm = assetTexture('Water00_nrm.png', 2.2, 2.2, false);
@@ -388,16 +390,17 @@ export const fossilfalls = {
       return mesh;
     }
 
-    // the floating rock island the board sits on
+    // the floating rock island the board sits on: dirt/mud top, rocky sides,
+    // dropping deep below the board
     addPlateau({
-      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -4.95,
-      seed: 100, topMat: shelfGrassMat, sideMat: cliffMat, jag: 0.42, steps: 9,
+      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -8.5,
+      seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, steps: 9,
     });
 
-    // ---- board grass: one continuous playable surface, no spreadsheet grid
+    // ---- board surface: one continuous playable plateau, sandy/dirt top -----
     addPlateau({
       x: CTR, z: CTR, w: 20.9, d: 20.9, topY: GRASS_TOP,
-      bottomY: -0.14, seed: 210, topMat: grassTopMats[4],
+      bottomY: -0.14, seed: 210, topMat: sandyTopMat,
       sideMat: grassEdgeMats[1], jag: 0.28, steps: 10,
     });
 
