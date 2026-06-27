@@ -20,7 +20,7 @@ const AGENT_Y = 0.55;
 
 // ---- tunable layout knobs ------------------------------------------------
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
-const PLATFORM_DIAM = 29; // a touch bigger than the 20x20 play area
+const PLATFORM_DIAM = 31; // matches the floor disc (FLOOR_R 15.5)
 // a broken parapet of walls rings the dais rim; a few tall towers accent it.
 const WALL_RING_R = 15.0; // walls out at the rim of the circle
 const WALL_COUNT = 12; // around the ring (some skipped = ruined gaps)
@@ -262,7 +262,6 @@ export const ruined = {
       return t;
     };
     const FLOOR_R = 15.5;
-    const DRUM_H = 3.6;
     const floor = new THREE.Mesh(
       track(new THREE.CircleGeometry(FLOOR_R, 96)),
       track(new THREE.MeshStandardMaterial({
@@ -275,24 +274,10 @@ export const ruined = {
     floor.position.set(C, 0.02, C);
     floor.receiveShadow = true;
     group.add(floor);
-    const drum = new THREE.Mesh(
-      track(new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.95, DRUM_H, 96, 1, true)),
-      track(new THREE.MeshStandardMaterial({
-        map: tex("brockwalltower00_alb.png", 26, 3),
-        normalMap: tex("brockwalltower00_nrm.png", 26, 3, false),
-        color: 0xbcb5ac, roughness: 0.92, side: THREE.DoubleSide,
-      })),
-    );
-    drum.position.set(C, 0.02 - DRUM_H / 2, C);
-    drum.receiveShadow = true;
-    group.add(drum);
-    const cap = new THREE.Mesh(
-      track(new THREE.CircleGeometry(FLOOR_R * 0.95, 96)),
-      track(new THREE.MeshStandardMaterial({ color: 0x35313f, roughness: 1 })),
-    );
-    cap.rotation.x = Math.PI / 2;
-    cap.position.set(C, 0.02 - DRUM_H, C);
-    group.add(cap);
+    // the decorated Step000 drum back as the PEDESTAL under the clean floor disc:
+    // its top tucks just under the disc (topAt 0) so the floor stays a clean
+    // circle, and the detailed drum sides show below the rim.
+    place(PLATFORM, C, C, { zUp: true, footprint: PLATFORM_DIAM, topAt: 0 });
 
     // ---- broken WALL parapet around the dais rim (sits ON the platform) --
     for (let i = 0; i < WALL_COUNT; i++) {
