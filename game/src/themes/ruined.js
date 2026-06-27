@@ -20,12 +20,12 @@ const AGENT_Y = 0.55;
 
 // ---- tunable layout knobs ------------------------------------------------
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
-const PLATFORM_DIAM = 31; // matches the floor disc (FLOOR_R 15.5)
+const PLATFORM_DIAM = 33; // matches the floor disc (FLOOR_R 16.5)
 // a broken parapet of walls rings the dais rim; a few tall towers accent it.
-const WALL_RING_R = 15.0; // walls out at the rim of the circle
+const WALL_RING_R = 15.7; // walls out at the rim, clear of the play area
 const WALL_COUNT = 12; // around the ring (some skipped = ruined gaps)
 const WALL_LEN = 9.0; // each wall ~this long; heights vary (ruined look)
-const TOWER_RING_R = 15.3; // towers at the rim, just behind the walls
+const TOWER_RING_R = 16.0; // towers at the rim, just behind the walls
 const TOWER_H = 18.0; // tall, imposing backdrop
 const WALL_MODELS = [
   "BossRaidWorldHomeWall000",
@@ -261,7 +261,7 @@ export const ruined = {
       if (srgb) t.colorSpace = THREE.SRGBColorSpace; // normal maps must stay linear
       return t;
     };
-    const FLOOR_R = 15.5;
+    const FLOOR_R = 16.5;
     const floor = new THREE.Mesh(
       track(new THREE.CircleGeometry(FLOOR_R, 96)),
       track(new THREE.MeshStandardMaterial({
