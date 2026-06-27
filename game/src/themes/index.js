@@ -4,11 +4,13 @@
 
 import { medieval } from './medieval.js';
 import { city } from './city.js';
+import { fossilfalls } from './fossilfalls.js';
 
 const THEMES = {
   medieval,
   city,
-  // paris, harbor, asteroid — added in Phases C-E
+  fossilfalls,
+  // paris, harbor — added in Phases D-E
 };
 
 export function getTheme(name) {

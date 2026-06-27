@@ -8,32 +8,55 @@ import { CAMERA, GRID } from './config.js';
 export function createCameraRig(camera, dom) {
   const target = new THREE.Vector3(GRID / 2, 0, GRID / 2 + 1);
   const goal = target.clone();
-  let dist = CAMERA.startDist;
+  let view = { ...CAMERA };
+  let dist = view.startDist;
   let distGoal = dist;
 
   // Clamp the *visible* ground footprint, not just the look-at point: the
   // edge of the screen may reach at most panMargin units past the outer
   // walls, no matter the zoom level or window shape.
-  const halfFov = THREE.MathUtils.degToRad(CAMERA.fov / 2);
-  const B0 = -1 - CAMERA.panMargin; // outer walls sit at -1 and GRID+1
-  const B1 = GRID + 1 + CAMERA.panMargin;
   const clampGoal = () => {
-    distGoal = THREE.MathUtils.clamp(distGoal, CAMERA.minDist, CAMERA.maxDist);
-    const p = CAMERA.pitch;
+    distGoal = THREE.MathUtils.clamp(distGoal, view.minDist, view.maxDist);
+    const halfFov = THREE.MathUtils.degToRad(view.fov / 2);
+    const B0 = -1 - view.panMargin; // outer walls sit at -1 and GRID+1
+    const B1 = GRID + 1 + view.panMargin;
+    const p = view.pitch;
     const h = distGoal * Math.sin(p);
     const halfW = distGoal * Math.tan(halfFov) * camera.aspect;
     const farZ = h / Math.tan(p - halfFov) - h / Math.tan(p); // ground seen above the target
     const nearZ = h / Math.tan(p) - h / Math.tan(p + halfFov); // ground seen below it
     const c = GRID / 2;
     // sides: footprint clamp, but never tighter than ±minSidePan of drift
-    const loX = Math.min(B0 + halfW, c - CAMERA.minSidePan);
-    const hiX = Math.max(B1 - halfW, c + CAMERA.minSidePan);
+    const loX = Math.min(B0 + halfW, c - view.minSidePan);
+    const hiX = Math.max(B1 - halfW, c + view.minSidePan);
     // top gets a little extra reach; bottom stays exact
-    const loZ = Math.min(B0 + farZ - CAMERA.topReach, c - CAMERA.minSidePan);
-    const hiZ = Math.max(B1 - nearZ, c + CAMERA.minSidePan);
+    const loZ = Math.min(B0 + farZ - view.topReach, c - view.minSidePan);
+    const hiZ = Math.max(B1 - nearZ, c + view.minSidePan);
     goal.x = THREE.MathUtils.clamp(goal.x, loX, hiX);
     goal.z = THREE.MathUtils.clamp(goal.z, loZ, hiZ);
   };
+
+  function placeCamera() {
+    camera.position.set(
+      target.x,
+      target.y + Math.sin(view.pitch) * dist,
+      target.z + Math.cos(view.pitch) * dist
+    );
+    camera.lookAt(target);
+  }
+
+  function setView(next) {
+    view = { ...CAMERA, ...(next || {}) };
+    camera.fov = view.fov;
+    camera.updateProjectionMatrix();
+    const t = view.target || [GRID / 2, 0, GRID / 2 + 1];
+    goal.set(t[0], t[1] ?? 0, t[2]);
+    target.copy(goal);
+    distGoal = view.startDist;
+    clampGoal();
+    dist = distGoal;
+    placeCamera();
+  }
 
   // --- mouse drag pan -------------------------------------------------------
   let dragging = false;
@@ -50,7 +73,7 @@ export function createCameraRig(camera, dom) {
     if (!dragging) return;
     const f = (dist * 1.35) / dom.clientHeight;
     goal.x -= (e.clientX - lastX) * f;
-    goal.z -= ((e.clientY - lastY) * f) / Math.sin(CAMERA.pitch);
+    goal.z -= ((e.clientY - lastY) * f) / Math.sin(view.pitch);
     lastX = e.clientX;
     lastY = e.clientY;
     clampGoal();
@@ -87,13 +110,10 @@ export function createCameraRig(camera, dom) {
     target.lerp(goal, k);
     dist += (distGoal - dist) * k;
 
-    camera.position.set(
-      target.x,
-      target.y + Math.sin(CAMERA.pitch) * dist,
-      target.z + Math.cos(CAMERA.pitch) * dist
-    );
-    camera.lookAt(target);
+    placeCamera();
   }
 
-  return { update, target };
+  setView();
+
+  return { update, target, setView };
 }

@@ -13,20 +13,22 @@ from .grid import (  # re-exported for convenience / back-compat
 )
 from . import medieval
 from . import city
+from . import fossilfalls
 
 # round_id -> module (must expose generate / THEME / ROUND_ID / TITLE)
 ROUND_MODULES = {
     1: medieval,
     2: city,
+    3: fossilfalls,
 }
 # tournament running order
-ROUNDS = [1, 2]
+ROUNDS = [1, 2, 3]
 
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
     1: ("value_iteration", "policy_iteration"),
     2: ("sarsa", "qlearning"),         # the cliff: on-policy vs off-policy
-    # 3: ("qlearning", "monte_carlo"), # added in Phase C
+    3: ("qlearning", "monte_carlo"),   # falls: TD bootstrapping vs episodic returns
     # 4: ("dqn", "double_dqn"),        # added in Phase D
     # 5: ("dqn", "dueling_dqn"),       # added in Phase E
 }
