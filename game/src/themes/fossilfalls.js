@@ -363,6 +363,43 @@ export const fossilfalls = {
       return mesh;
     }
 
+    // Like addPlateau, but the side + bottom vertices are pushed in/out by
+    // layered noise so the walls read as craggy ROCK instead of a flat cliff.
+    // Displacement fades to 0 at the top, so the board still sits flush on it.
+    function addBumpyRockIsland({ x, z, w, d, topY, bottomY, seed, topMat, sideMat,
+      jag = 0.5, outlineSteps = 14, extrudeSteps = 12, amp = 1.1 }) {
+      const depth = Math.max(0.2, topY - bottomY);
+      const geo = track(new THREE.ExtrudeGeometry(plateauShape(w, d, seed, outlineSteps, jag), {
+        depth, steps: extrudeSteps, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.035, bevelSegments: 1,
+      }));
+      geo.rotateX(Math.PI / 2);
+      geo.translate(x, topY, z);
+      const pos = geo.attributes.position;
+      const span = Math.max(0.001, topY - bottomY);
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+        const df = Math.min(1, Math.max(0, (topY - vy) / span));   // 0 top .. 1 bottom
+        if (df <= 0.002) continue;                                 // keep the top rim crisp
+        const dx = vx - x, dz = vz - z, r = Math.hypot(dx, dz) || 1;
+        const lump =
+          0.55 * Math.sin(vx * 0.85 + vy * 0.6 + seed) +
+          0.45 * Math.sin(vz * 1.05 - vy * 0.5 + seed * 0.3) +
+          0.30 * Math.sin((vx + vz) * 0.7 + vy * 1.2 + seed * 0.7);
+        const jitter = hashFloat(Math.round(vx * 6) + 200, Math.round(vz * 6) + 90, Math.round(vy * 6)) - 0.5;
+        const off = (lump + jitter * 0.8) * amp * df;
+        pos.setX(i, vx + (dx / r) * off);
+        pos.setZ(i, vz + (dz / r) * off);
+        pos.setY(i, vy + jitter * 0.5 * df);                       // a little vertical crag
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, [topMat, sideMat]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    }
+
     function ridgeShape(w, d, seed, jag = 0.08) {
       const pts = [];
       const hw = w * 0.5, hd = d * 0.5;
@@ -395,11 +432,11 @@ export const fossilfalls = {
       return mesh;
     }
 
-    // the floating rock island the board sits on: dirt/mud top, rocky sides,
-    // dropping deep below the board
-    addPlateau({
+    // the floating rock island the board sits on: dirt/mud top, craggy bumpy
+    // rock sides, dropping deep below the board
+    addBumpyRockIsland({
       x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -12.0,
-      seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, steps: 9,
+      seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, amp: 1.1,
     });
 
     // ---- board surface: one continuous playable plateau, sandy/dirt top -----
