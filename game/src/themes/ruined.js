@@ -45,12 +45,12 @@ export const ruined = {
   fog: 0x44405a,
   fogNear: 44,
   fogFar: 175,
-  hemi: [0xaab4dc, 0x322e46, 0.55], // dim ambient
+  hemi: [0xaab4dc, 0x322e46, 0.68], // ambient
   sun: 0xffefcf, // warm key, kept for contrast in the dark
-  sunIntensity: 3.2,
+  sunIntensity: 3.5,
   fill: 0x8ea0d8,
-  fillIntensity: 0.18,
-  exposure: 0.86, // overall darker
+  fillIntensity: 0.22,
+  exposure: 1.0, // a bit brighter than the dark pass
   bloom: { strength: 0.34, radius: 0.5, threshold: 0.72 }, // goal/agents glow pops
   redName: "DQN",
   blueName: "Double-DQN",
