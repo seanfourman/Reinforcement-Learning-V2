@@ -22,11 +22,11 @@ const AGENT_Y = 0.55;
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
 const PLATFORM_DIAM = 29; // a touch bigger than the 20x20 play area
 // a broken parapet of walls rings the dais rim; a few tall towers accent it.
-const WALL_RING_R = 14.6; // walls out at the rim of the circle
-const WALL_COUNT = 16; // around the ring (some skipped = ruined gaps)
-const WALL_LEN = 5.0; // each wall ~this long; heights vary (ruined look)
-const TOWER_RING_R = 15.2; // towers at the rim, just behind the walls
-const TOWER_H = 8.0;
+const WALL_RING_R = 15.0; // walls out at the rim of the circle
+const WALL_COUNT = 12; // around the ring (some skipped = ruined gaps)
+const WALL_LEN = 9.0; // each wall ~this long; heights vary (ruined look)
+const TOWER_RING_R = 15.3; // towers at the rim, just behind the walls
+const TOWER_H = 18.0; // tall, imposing backdrop
 const WALL_MODELS = [
   "BossRaidWorldHomeWall000",
   "BossRaidWorldHomeWall001",
@@ -45,13 +45,13 @@ export const ruined = {
   fog: 0x7c7793,
   fogNear: 46,
   fogFar: 170,
-  hemi: [0xc4cdea, 0x4c4660, 1.05],
-  sun: 0xf6f0ff,
-  sunIntensity: 3.4,
-  fill: 0x97a3d8,
-  fillIntensity: 0.4,
-  exposure: 1.14,
-  bloom: { strength: 0.3, radius: 0.5, threshold: 0.72 },
+  hemi: [0xbcc8ee, 0x423d58, 0.85], // gentle ambient, shadows still read
+  sun: 0xfff4e6, // soft warm key
+  sunIntensity: 3.7,
+  fill: 0x8ea0d8,
+  fillIntensity: 0.3,
+  exposure: 1.1,
+  bloom: { strength: 0.28, radius: 0.5, threshold: 0.75 },
   redName: "DQN",
   blueName: "Double-DQN",
 
@@ -101,7 +101,9 @@ export const ruined = {
                     m.opacity = 1;
                     m.depthWrite = true;
                     if (m.color) m.color.setRGB(1, 1, 1); // pack Kd (0.588) dims the texture
-                    if (m.emissive) m.emissive.setRGB(0.05, 0.05, 0.06); // faint lift so shadowed sides aren't black
+                    if (m.emissive) m.emissive.setRGB(0.03, 0.03, 0.04); // gentle lift, not harsh black
+                    if ("shininess" in m) m.shininess = 12;
+                    if (m.specular) m.specular.setRGB(0.07, 0.07, 0.09); // faint stone sheen
                     if (m.map) {
                       m.map.colorSpace = THREE.SRGBColorSpace;
                       m.map.anisotropy = maxAniso;
@@ -237,7 +239,7 @@ export const ruined = {
     const floor = new THREE.Mesh(
       track(new THREE.CircleGeometry(FLOOR_R, 96)),
       track(new THREE.MeshStandardMaterial({
-        map: tex("rockplateattack04_alb.png", 4, 4), color: 0xd8d0c4, roughness: 0.95, metalness: 0,
+        map: tex("rockplateattack04_alb.png", 4, 4), color: 0xd8d0c4, roughness: 0.82, metalness: 0,
       })),
     );
     floor.rotation.x = -Math.PI / 2;
@@ -247,7 +249,7 @@ export const ruined = {
     const drum = new THREE.Mesh(
       track(new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.95, DRUM_H, 96, 1, true)),
       track(new THREE.MeshStandardMaterial({
-        map: tex("brockwalltower00_alb.png", 26, 3), color: 0xbcb5ac, roughness: 1, side: THREE.DoubleSide,
+        map: tex("brockwalltower00_alb.png", 26, 3), color: 0xbcb5ac, roughness: 0.92, side: THREE.DoubleSide,
       })),
     );
     drum.position.set(C, 0.02 - DRUM_H / 2, C);
