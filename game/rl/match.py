@@ -17,9 +17,19 @@ import threading
 from collections import deque
 
 from env import GridWorld, N_ACTIONS
+from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
 import worlds
+
+# The DQN agents (Round 4) need PyTorch. Import them LAZILY (inside _make_one)
+# so the server still boots and runs the tabular / DP rounds in a Python that
+# doesn't have torch installed - only building a DQN agent requires it.
+DQN_ALGOS = ("dqn", "double_dqn")
+
+
+def is_dqn(algo):
+    return algo in DQN_ALGOS
 
 FRAME_CAP = 800            # max frames recorded for one replayable episode
 HISTORY_CAP = 4000         # max learning-curve points kept per round
@@ -49,7 +59,7 @@ class Match:
         self.lock = threading.RLock()
         self.seed = seed
         self.round_id = round_id
-        self.env = GridWorld(seed, round_id=round_id)
+        self.env = self._make_env(round_id)
         self.world_version = 1
         self.score = {"red": 0, "blue": 0}     # cumulative tournament round-wins
         # tunable hyperparameters for OUR model, Blue (driven from the M panel).
@@ -67,10 +77,22 @@ class Match:
         self._new_episode()
 
     # ------------------------------------------------------------------ setup
+    def _make_env(self, round_id):
+        """Pick the env class for a round: continuous arena for a CONTINUOUS round
+        (Round 4), the tabular grid world otherwise."""
+        mod = worlds.ROUND_MODULES.get(round_id)
+        if getattr(mod, "CONTINUOUS", False):
+            return ContinuousArena(self.seed, round_id=round_id)
+        return GridWorld(self.seed, round_id=round_id)
+
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
             return make_dp(algo, self.env, color, gamma=gamma)
-        return make_agent(algo, n_actions=N_ACTIONS, seed=seed, alpha=alpha, gamma=gamma)
+        if is_dqn(algo):
+            from dqn import make_dqn   # lazy: only Round 4 needs PyTorch
+            return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
+                            seed=seed, alpha=alpha, gamma=gamma)
+        return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
         """(Re)derive Red's params from its tier. Manual overrides via set_red_params
@@ -145,11 +167,12 @@ class Match:
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
             self.total_steps += 1
-            for pos, vis in ((self.env.red_pos, self.red_visits),
-                             (self.env.blue_pos, self.blue_visits)):
-                r, c = pos
-                if 0 <= r < self.env.H and 0 <= c < self.env.W:
-                    vis[r][c] += 1
+            if self.env.objective != "arena":   # arena positions are floats, not cells
+                for pos, vis in ((self.env.red_pos, self.red_visits),
+                                 (self.env.blue_pos, self.blue_visits)):
+                    r, c = pos
+                    if 0 <= r < self.env.H and 0 <= c < self.env.W:
+                        vis[r][c] += 1
             if len(self._frames) < FRAME_CAP:
                 self._frames.append(self.env.snapshot())
             self.s_red, self.s_blue = ns_red, ns_blue
@@ -320,7 +343,7 @@ class Match:
         learning. Tournament score is preserved unless told otherwise."""
         with self.lock:
             self.round_id = round_id
-            self.env.set_round(round_id)
+            self.env = self._make_env(round_id)   # rebuild: round may switch env class
             self.world_version += 1
             self.algo_red, self.algo_blue = worlds.round_algos(round_id)
             if not keep_score:
@@ -394,7 +417,7 @@ class Match:
                 "stats": self.stats(),
             }
             if include_world:
-                out["world"] = self.env.world.to_json()
+                out["world"] = self.env.to_json()
             return out
 
     def history(self):
@@ -412,11 +435,22 @@ class Match:
     def _agent(self, agent):
         return self.red if agent == "red" else self.blue
 
+    def _blank_grid(self, agent, mode=None):
+        """Empty H x W grid - the arena round has no cells, so the grid overlays
+        render nothing (the value-surface viz is added with the frontend)."""
+        g = [[None] * self.env.W for _ in range(self.env.H)]
+        out = {"agent": agent, "grid": g, "H": self.env.H, "W": self.env.W}
+        if mode:
+            out["mode"] = mode
+        return out
+
     def value_grid(self, agent):
         """V(s) per tile, holding the agent's CURRENT non-position context fixed.
         Uses the agent's ``state_value`` so it works for both tabular Q-tables
         (None where unvisited) and DP planners (the solved value field)."""
         with self.lock:
+            if self.env.objective == "arena":
+                return self._blank_grid(agent)
             a = self._agent(agent)
             _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
@@ -430,6 +464,8 @@ class Match:
         """Per-cell visit counts for the agent (the 'where do they travel' heatmap).
         Floor cells carry their count (0 if never stepped on); walls stay None."""
         with self.lock:
+            if self.env.objective == "arena":
+                return self._blank_grid(agent, mode="visits")
             vis = self.red_visits if agent == "red" else self.blue_visits
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c) in self.env.floor_cells:
@@ -441,6 +477,8 @@ class Match:
         agent's current context: [qN, qS, qW, qE, qUse], or None on walls / unlearned
         cells. Action order matches env.ACTIONS (North, South, West, East, Use)."""
         with self.lock:
+            if self.env.objective == "arena":
+                return self._blank_grid(agent, mode="q")
             a = self._agent(agent)
             _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
@@ -454,6 +492,8 @@ class Match:
     def q_at(self, agent, r, c):
         """Per-action Q for one tile in the current context (the Q inspector)."""
         with self.lock:
+            if self.env.objective == "arena":
+                return None
             a = self._agent(agent)
             if (r, c) not in self.env.cell_index:
                 return None

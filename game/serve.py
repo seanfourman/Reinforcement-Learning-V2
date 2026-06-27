@@ -90,7 +90,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(match.snapshot())
         if route == "/api/world":
             return self._json({"worldVersion": match.world_version,
-                               "world": match.env.world.to_json()})
+                               "world": match.env.to_json()})
         if route == "/api/values":
             agent = q.get("agent", ["red"])[0]
             if "cell" in q:

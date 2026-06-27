@@ -14,22 +14,26 @@ from .grid import (  # re-exported for convenience / back-compat
 from . import medieval
 from . import city
 from . import fossilfalls
+from . import ruined
 
-# round_id -> module (must expose generate / THEME / ROUND_ID / TITLE)
+# round_id -> module (must expose THEME / ROUND_ID / TITLE; grid rounds also
+# expose generate(). A module flagged CONTINUOUS=True has no grid World - its env
+# is rl/continuous.ContinuousArena, built directly by match.py.)
 ROUND_MODULES = {
     1: medieval,
     2: city,
     3: fossilfalls,
+    4: ruined,
 }
 # tournament running order
-ROUNDS = [1, 2, 3]
+ROUNDS = [1, 2, 3, 4]
 
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
     1: ("value_iteration", "policy_iteration"),
     2: ("sarsa", "qlearning"),         # the cliff: on-policy vs off-policy
     3: ("qlearning", "monte_carlo"),   # falls: TD bootstrapping vs episodic returns
-    # 4: ("dqn", "double_dqn"),        # added in Phase D
+    4: ("dqn", "double_dqn"),          # ruins: function approximation, off-policy NN
     # 5: ("dqn", "dueling_dqn"),       # added in Phase E
 }
 

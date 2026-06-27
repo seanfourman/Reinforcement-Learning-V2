@@ -221,5 +221,9 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
-  return { setWorld, onFrame, update, group, setWalkers };
+  // arena (continuous) rounds render their own agents in the theme, so hide the
+  // grid actors / keys / escape glow entirely.
+  function setHidden(h) { group.visible = !h; }
+
+  return { setWorld, onFrame, update, group, setWalkers, setHidden };
 }

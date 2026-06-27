@@ -5,12 +5,13 @@
 import { medieval } from './medieval.js';
 import { city } from './city.js';
 import { fossilfalls } from './fossilfalls.js';
+import { ruined } from './ruined.js';
 
 const THEMES = {
   medieval,
   city,
   fossilfalls,
-  // paris, harbor — added in Phases D-E
+  ruined,        // Round 4: continuous DQN arena
 };
 
 export function getTheme(name) {

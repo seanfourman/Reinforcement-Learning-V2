@@ -91,6 +91,7 @@ class GridWorld(gym.Env):
         self.world = None
         self.rng = random.Random(seed)   # the ENVIRONMENT's own stochasticity (slips)
         self.action_space = spaces.Discrete(N_ACTIONS)
+        self.n_actions = N_ACTIONS        # match.py reads this off the env (grid=5)
         # obs: (cell index, own-key, gold loc, opp region, opp adjacent, trap armed)
         self._install(worldgen.generate(seed, round_id))
 
@@ -508,6 +509,11 @@ class GridWorld(gym.Env):
 
         obs = (self.observe("red"), self.observe("blue"))
         return obs, reward, self.done, truncated, {"winner": self.winner}
+
+    def to_json(self):
+        """World descriptor for the viewer (/api/world). Grid rounds delegate to
+        the generated World; the continuous round has its own descriptor."""
+        return self.world.to_json()
 
     # --------------------------------------------------------------- snapshot
     def snapshot(self):

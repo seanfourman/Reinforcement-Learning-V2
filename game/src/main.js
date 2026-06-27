@@ -145,6 +145,7 @@ let doors = null;       // arched bedroom doors
 let dressing = null;    // carpet + rugs
 let mechanics = null;   // mirrors, levers, traps
 let themeScene = null;  // a theme that ships its own geometry (e.g. the city)
+let arenaMode = false;  // round 4 (continuous arena): the theme renders its own agents
 let worldVersion = -1;  // last world we built
 let latestStats = null;
 let latestFrame = null;
@@ -184,7 +185,9 @@ function rebuildWorld(worldJson) {
     dressing = createDressing(scene, worldJson);    // carpet + rugs
     mechanics = createMechanics(scene, worldJson);
   }
-  actors.setWorld(parseLayout(rows), worldJson.objective === 'cross');
+  arenaMode = worldJson.objective === 'arena';
+  actors.setHidden(arenaMode);   // continuous round renders its own agents in the theme
+  if (!arenaMode) actors.setWorld(parseLayout(rows), worldJson.objective === 'cross');
 }
 
 // ------------------------------------------------------------------ live polling
@@ -220,7 +223,7 @@ async function poll() {
     }
     latestStats = snap.stats;
     latestFrame = snap.frame;
-    if (!replayActive) actors.onFrame(snap.frame);
+    if (!replayActive && !arenaMode) actors.onFrame(snap.frame);
     window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
@@ -372,6 +375,6 @@ renderer.setAnimationLoop(() => {
   if (doors && latestFrame) doors.update(latestFrame, t);
   if (dressing) dressing.update(t);
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
-  actors.update(dt, t);
+  if (!arenaMode) actors.update(dt, t);
   fx.composer.render();
 });
