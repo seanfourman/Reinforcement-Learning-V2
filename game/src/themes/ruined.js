@@ -328,26 +328,7 @@ export const ruined = {
 
     // obstacles are invisible gameplay collisions only - no rock/grass markers.
 
-    // ---- glowing goal ring ----------------------------------------------
-    const goalRing = new THREE.Group();
-    const ring = new THREE.Mesh(
-      track(new THREE.TorusGeometry(goalR, 0.16, 16, 44)),
-      track(
-        new THREE.MeshStandardMaterial({
-          color: 0xffe9a0,
-          emissive: 0xffc23a,
-          emissiveIntensity: 0.85,
-          roughness: 0.4,
-        }),
-      ),
-    );
-    ring.rotation.x = -Math.PI / 2;
-    goalRing.add(ring);
-    goalRing.position.set(goalPos[0], 0.08, goalPos[1]);
-    group.add(goalRing);
-    const goalGlow = track(new THREE.PointLight(0xffd866, 1.2, 9, 2));
-    goalGlow.position.set(goalPos[0], 1.3, goalPos[1]);
-    group.add(goalGlow);
+    // (goal marker removed - no glowing ring on the arena)
 
     // ---- the two agents (from the continuous frame) ----------------------
     function makeOrb(color, emissive) {
@@ -383,8 +364,6 @@ export const ruined = {
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
-      goalRing.rotation.y += dt * 0.7;
-      goalGlow.intensity = 0.9 + 0.3 * Math.sin(t * 2.0);
       if (frame && frame.continuous) {
         const k = 1 - Math.exp(-dt * 14);
         for (const side of ["red", "blue"]) {
