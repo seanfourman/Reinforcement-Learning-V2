@@ -41,17 +41,17 @@ const TOWER_MODELS = [
 export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
-  sky: ["#2f2c44", "#585473", "#9f99b6"],
-  fog: 0x7c7793,
-  fogNear: 46,
-  fogFar: 170,
-  hemi: [0xbcc8ee, 0x423d58, 0.85], // gentle ambient, shadows still read
-  sun: 0xfff4e6, // soft warm key
-  sunIntensity: 3.7,
+  sky: ["#121020", "#27243c", "#46425f"], // deep, moody dusk
+  fog: 0x44405a,
+  fogNear: 44,
+  fogFar: 175,
+  hemi: [0xaab4dc, 0x322e46, 0.55], // dim ambient
+  sun: 0xffefcf, // warm key, kept for contrast in the dark
+  sunIntensity: 3.2,
   fill: 0x8ea0d8,
-  fillIntensity: 0.3,
-  exposure: 1.1,
-  bloom: { strength: 0.28, radius: 0.5, threshold: 0.75 },
+  fillIntensity: 0.18,
+  exposure: 0.86, // overall darker
+  bloom: { strength: 0.34, radius: 0.5, threshold: 0.72 }, // goal/agents glow pops
   redName: "DQN",
   blueName: "Double-DQN",
 
@@ -74,6 +74,53 @@ export const ruined = {
     };
 
     // ---- OBJ pipeline ----------------------------------------------------
+    // MTLLoader only loads the albedo, so the stone is flat/dull. Upgrade each
+    // material to PBR and load the pack's sibling _nrm normal map (named like the
+    // albedo) - the surface relief is what makes the stone read as stone.
+    const auxTex = new THREE.TextureLoader().setPath(ASSETS);
+    function siblingTex(albMap, suffix) {
+      const src = albMap.image?.src || albMap.source?.data?.src || "";
+      const file = src.split("/").pop().split("?")[0];
+      if (!file || !/_alb\.png$/i.test(file)) return null;
+      const t = track(auxTex.load(file.replace(/_alb\.png$/i, suffix)));
+      t.wrapS = albMap.wrapS;
+      t.wrapT = albMap.wrapT;
+      t.repeat.copy(albMap.repeat);
+      t.anisotropy = maxAniso;
+      return t;
+    }
+    function upgradeMat(m) {
+      if (!m) return m;
+      if (/wire/i.test(m.name || "")) {
+        m.transparent = true;
+        m.opacity = 0;
+        m.depthWrite = false;
+        return m;
+      }
+      const map = m.map || null;
+      if (map) {
+        map.colorSpace = THREE.SRGBColorSpace;
+        map.anisotropy = maxAniso;
+      }
+      const std = track(
+        new THREE.MeshStandardMaterial({
+          map,
+          color: 0xffffff,
+          roughness: 0.85,
+          metalness: 0.0,
+          emissive: new THREE.Color(0.02, 0.02, 0.03),
+        }),
+      );
+      if (map) {
+        const nrm = siblingTex(map, "_nrm.png");
+        if (nrm) {
+          std.normalMap = nrm;
+          std.normalScale.set(1.3, 1.3);
+        }
+      }
+      std.name = m.name;
+      return std;
+    }
     const protos = new Map();
     function loadObj(name) {
       if (!protos.has(name)) {
@@ -86,29 +133,9 @@ export const ruined = {
                   if (!o.isMesh) return;
                   o.castShadow = true;
                   o.receiveShadow = true;
-                  const ms = Array.isArray(o.material)
-                    ? o.material
-                    : [o.material];
-                  ms.forEach((m) => {
-                    if (!m) return;
-                    if (/wire/i.test(m.name || "")) {
-                      m.transparent = true;
-                      m.opacity = 0;
-                      m.depthWrite = false;
-                      return;
-                    }
-                    m.transparent = false;
-                    m.opacity = 1;
-                    m.depthWrite = true;
-                    if (m.color) m.color.setRGB(1, 1, 1); // pack Kd (0.588) dims the texture
-                    if (m.emissive) m.emissive.setRGB(0.03, 0.03, 0.04); // gentle lift, not harsh black
-                    if ("shininess" in m) m.shininess = 12;
-                    if (m.specular) m.specular.setRGB(0.07, 0.07, 0.09); // faint stone sheen
-                    if (m.map) {
-                      m.map.colorSpace = THREE.SRGBColorSpace;
-                      m.map.anisotropy = maxAniso;
-                    }
-                  });
+                  o.material = Array.isArray(o.material)
+                    ? o.material.map(upgradeMat)
+                    : upgradeMat(o.material);
                 });
               resolve(obj);
             };
@@ -226,12 +253,12 @@ export const ruined = {
     // Built from primitives so it's a PERFECT circle: a rock-plate top + textured
     // drum sides + a dark bottom cap. (The Step000 model wasn't cleanly round.)
     const _ftex = new THREE.TextureLoader().setPath(ASSETS);
-    const tex = (name, rx, ry) => {
+    const tex = (name, rx, ry, srgb = true) => {
       const t = track(_ftex.load(name));
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(rx, ry);
       t.anisotropy = maxAniso;
-      t.colorSpace = THREE.SRGBColorSpace;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace; // normal maps must stay linear
       return t;
     };
     const FLOOR_R = 15.5;
@@ -239,7 +266,9 @@ export const ruined = {
     const floor = new THREE.Mesh(
       track(new THREE.CircleGeometry(FLOOR_R, 96)),
       track(new THREE.MeshStandardMaterial({
-        map: tex("rockplateattack04_alb.png", 4, 4), color: 0xd8d0c4, roughness: 0.82, metalness: 0,
+        map: tex("rockplateattack04_alb.png", 4, 4),
+        normalMap: tex("rockplateattack04_nrm.png", 4, 4, false),
+        color: 0xd8d0c4, roughness: 0.82, metalness: 0,
       })),
     );
     floor.rotation.x = -Math.PI / 2;
@@ -249,7 +278,9 @@ export const ruined = {
     const drum = new THREE.Mesh(
       track(new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.95, DRUM_H, 96, 1, true)),
       track(new THREE.MeshStandardMaterial({
-        map: tex("brockwalltower00_alb.png", 26, 3), color: 0xbcb5ac, roughness: 0.92, side: THREE.DoubleSide,
+        map: tex("brockwalltower00_alb.png", 26, 3),
+        normalMap: tex("brockwalltower00_nrm.png", 26, 3, false),
+        color: 0xbcb5ac, roughness: 0.92, side: THREE.DoubleSide,
       })),
     );
     drum.position.set(C, 0.02 - DRUM_H / 2, C);
