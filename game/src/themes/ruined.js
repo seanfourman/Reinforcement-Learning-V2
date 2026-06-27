@@ -22,10 +22,10 @@ const AGENT_Y = 0.55;
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
 const PLATFORM_DIAM = 29; // a touch bigger than the 20x20 play area
 // a broken parapet of walls rings the dais rim; a few tall towers accent it.
-const WALL_RING_R = 13.0; // walls sit ON the dais (radius < dais radius ~14.5)
+const WALL_RING_R = 14.6; // walls out at the rim of the circle
 const WALL_COUNT = 16; // around the ring (some skipped = ruined gaps)
 const WALL_LEN = 5.0; // each wall ~this long; heights vary (ruined look)
-const TOWER_RING_R = 16.5; // towers just OUTSIDE the dais, as backdrop
+const TOWER_RING_R = 15.2; // towers at the rim, just behind the walls
 const TOWER_H = 8.0;
 const WALL_MODELS = [
   "BossRaidWorldHomeWall000",
@@ -220,53 +220,46 @@ export const ruined = {
       });
     }
 
-    // ---- the arena: STEP000 dais in the middle, agents race on its top ---
-    place(PLATFORM, C, C, { zUp: true, footprint: PLATFORM_DIAM, topAt: 0 });
-
-    // The explicit arena FLOOR the agents race on: a disc textured with the pack's
-    // boss-arena rock plate, capped just above the dais. (Step000's own top wasn't
-    // rendering as a usable surface, so this is the guaranteed play floor.) A skirt
-    // gives it a solid thick edge so it never reads as a thin floating disc.
+    // ---- the arena: a clean circular STONE DRUM (agents race on its top) ---
+    // Built from primitives so it's a PERFECT circle: a rock-plate top + textured
+    // drum sides + a dark bottom cap. (The Step000 model wasn't cleanly round.)
     const _ftex = new THREE.TextureLoader().setPath(ASSETS);
-    const floorTex = (name, rep) => {
+    const tex = (name, rx, ry) => {
       const t = track(_ftex.load(name));
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(rep, rep);
+      t.repeat.set(rx, ry);
       t.anisotropy = maxAniso;
       t.colorSpace = THREE.SRGBColorSpace;
       return t;
     };
-    const FLOOR_R = 14.6;
+    const FLOOR_R = 15.5;
+    const DRUM_H = 3.6;
     const floor = new THREE.Mesh(
-      track(new THREE.CircleGeometry(FLOOR_R, 64)),
-      track(
-        new THREE.MeshStandardMaterial({
-          map: floorTex("rockplateattack04_alb.png", 4),
-          color: 0xd8d0c4,
-          roughness: 0.95,
-          metalness: 0,
-        }),
-      ),
+      track(new THREE.CircleGeometry(FLOOR_R, 96)),
+      track(new THREE.MeshStandardMaterial({
+        map: tex("rockplateattack04_alb.png", 4, 4), color: 0xd8d0c4, roughness: 0.95, metalness: 0,
+      })),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(C, 0.02, C);
     floor.receiveShadow = true;
     group.add(floor);
-    const skirt = new THREE.Mesh(
-      track(
-        new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.9, 2.2, 64, 1, true),
-      ),
-      track(
-        new THREE.MeshStandardMaterial({
-          color: 0x4f4a5e,
-          roughness: 1,
-          side: THREE.DoubleSide,
-        }),
-      ),
+    const drum = new THREE.Mesh(
+      track(new THREE.CylinderGeometry(FLOOR_R, FLOOR_R * 0.95, DRUM_H, 96, 1, true)),
+      track(new THREE.MeshStandardMaterial({
+        map: tex("brockwalltower00_alb.png", 26, 3), color: 0xbcb5ac, roughness: 1, side: THREE.DoubleSide,
+      })),
     );
-    skirt.position.set(C, -1.08, C);
-    skirt.receiveShadow = true;
-    group.add(skirt);
+    drum.position.set(C, 0.02 - DRUM_H / 2, C);
+    drum.receiveShadow = true;
+    group.add(drum);
+    const cap = new THREE.Mesh(
+      track(new THREE.CircleGeometry(FLOOR_R * 0.95, 96)),
+      track(new THREE.MeshStandardMaterial({ color: 0x35313f, roughness: 1 })),
+    );
+    cap.rotation.x = Math.PI / 2;
+    cap.position.set(C, 0.02 - DRUM_H, C);
+    group.add(cap);
 
     // ---- broken WALL parapet around the dais rim (sits ON the platform) --
     for (let i = 0; i < WALL_COUNT; i++) {
@@ -277,7 +270,7 @@ export const ruined = {
       place(WALL_MODELS[i % WALL_MODELS.length], x, z, {
         zUp: true,
         footprint: WALL_LEN,
-        ry: -ang + Math.PI / 2,
+        ry: -ang + Math.PI / 2 + Math.PI, // 180: face the inside of the circle
         baseY: 0,
       });
     }
@@ -290,7 +283,7 @@ export const ruined = {
       place(TOWER_MODELS[i % TOWER_MODELS.length], x, z, {
         zUp: true,
         height: TOWER_H,
-        ry: -ang,
+        ry: -ang + Math.PI, // 180: face the inside of the circle
         baseY: -0.4,
       });
     }
