@@ -516,10 +516,10 @@ export const fossilfalls = {
 
     // ---- the 4 Cascade floater islands on the left and right sides -------
     [
-      ['WaterfallWorldHomeFloaterIsland000.dae', -8.2, 4.8, 3.3, 4.8, 0.55, 0.0],
-      ['WaterfallWorldHomeFloaterIsland001.dae', 26.7, 13.6, 2.6, 5.6, -0.45, 2.1],
-      ['WaterfallWorldHomeFloaterIsland000.dae', -7.2, 18.4, 1.8, 5.4, -0.2, 1.2],
-      ['WaterfallWorldHomeFloaterIsland001.dae', 27.0, 2.6, 2.1, 4.9, 0.35, 2.8],
+      ['WaterfallWorldHomeFloaterIsland000.dae', -5.4, 4.8, 3.3, 4.8, 0.55, 0.0],
+      ['WaterfallWorldHomeFloaterIsland001.dae', 23.8, 13.6, 2.6, 5.6, -0.45, 2.1],
+      ['WaterfallWorldHomeFloaterIsland000.dae', -4.6, 18.4, 1.8, 5.4, -0.2, 1.2],
+      ['WaterfallWorldHomeFloaterIsland001.dae', 24.0, 2.6, 2.1, 4.9, 0.35, 2.8],
     ].forEach(([name, x, z, y, foot, ry, ph]) =>
       place(name, x, z, {
         baseY: y,
