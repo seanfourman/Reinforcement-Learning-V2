@@ -17,6 +17,150 @@ const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to 
 const MODEL_DZ = 0;
 const MODEL_ROT = 0; // radians, spin to face the camera
 
+function removeTriangles(geometry, shouldDrop) {
+  const pos = geometry?.getAttribute?.("position");
+  if (!pos) return 0;
+
+  const p = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const index = geometry?.getIndex?.();
+
+  if (!index) {
+    let removed = 0;
+    for (let i = 0; i + 2 < pos.count; i += 3) {
+      c.set(0, 0, 0);
+      for (let j = 0; j < 3; j++) {
+        p.fromBufferAttribute(pos, i + j);
+        c.add(p);
+      }
+      c.multiplyScalar(1 / 3);
+      if (!shouldDrop(c)) continue;
+      p.fromBufferAttribute(pos, i);
+      pos.setXYZ(i + 1, p.x, p.y, p.z);
+      pos.setXYZ(i + 2, p.x, p.y, p.z);
+      removed++;
+    }
+    if (!removed) return 0;
+    pos.needsUpdate = true;
+    geometry.computeBoundingBox?.();
+    geometry.computeBoundingSphere?.();
+    return removed;
+  }
+
+  const src = index.array;
+  const kept = [];
+
+  for (let i = 0; i < src.length; i += 3) {
+    c.set(0, 0, 0);
+    for (let j = 0; j < 3; j++) {
+      p.fromBufferAttribute(pos, src[i + j]);
+      c.add(p);
+    }
+    c.multiplyScalar(1 / 3);
+    if (!shouldDrop(c)) kept.push(src[i], src[i + 1], src[i + 2]);
+  }
+
+  if (kept.length === src.length) return 0;
+
+  const IndexArray = pos.count > 65535 ? Uint32Array : Uint16Array;
+  geometry.setIndex(new THREE.BufferAttribute(new IndexArray(kept), 1));
+  geometry.clearGroups();
+  geometry.addGroup(0, kept.length, 0);
+  geometry.computeBoundingBox?.();
+  geometry.computeBoundingSphere?.();
+  return (src.length - kept.length) / 3;
+}
+
+function removeCenterStairRunner(mesh) {
+  if (!/^pCylinder1145__Velvet00$/i.test(mesh.name || "")) return;
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    const centered = Math.abs(c.x) <= 700;
+    const stairHeight = c.y >= -5 && c.y <= 580;
+    const stairDepth = c.z >= -3300 && c.z <= -650;
+    return centered && stairHeight && stairDepth;
+  });
+  if (removed) console.log(`PEACH center stair runner hidden: ${removed} tris`);
+}
+
+function removeCenterStairRails(mesh) {
+  if (
+    !/^(Emblem173_1__GoldDeco01|Emblem200__GoldDecoSeal00|NewWallModel2__MarbleWhite00|castle_tmp_polySurface263__MarbleWhite00NonDps|pCube110_10__GoldDecoWall00|pSphere234_1__GlassInside00|pSphere244__Lamp00)$/i.test(
+      mesh.name || "",
+    )
+  )
+    return;
+
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    const sideRailLane =
+      Math.abs(c.x) >= 245 &&
+      Math.abs(c.x) <= 940 &&
+      c.y >= -10 &&
+      c.y <= 1320 &&
+      c.z >= -2625 &&
+      c.z <= -600;
+    const topRailLip =
+      Math.abs(c.x) <= 940 &&
+      c.y >= 500 &&
+      c.y <= 700 &&
+      c.z >= -2630 &&
+      c.z <= -2580;
+    const bottomRailEnds =
+      Math.abs(c.x) <= 430 &&
+      c.y >= -30 &&
+      c.y <= 220 &&
+      c.z >= -830 &&
+      c.z <= -650;
+    return sideRailLane || topRailLip || bottomRailEnds;
+  });
+  if (removed) console.log(`PEACH center stair rails hidden: ${removed} tris`);
+}
+
+function removeCenterCarpetOutline(mesh) {
+  if (!/^pCylinder1145__Tassel00$/i.test(mesh.name || "")) return;
+
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    const centerFringe =
+      Math.abs(c.x) <= 255 &&
+      c.y >= -5 &&
+      c.y <= 510 &&
+      c.z >= -2065 &&
+      c.z <= -650;
+    return centerFringe;
+  });
+  if (removed) console.log(`PEACH center carpet outline hidden: ${removed} tris`);
+}
+
+function removeTopMiddlePanels(mesh) {
+  if (!/^pPlane574__FrescoCloudWall00$/i.test(mesh.name || "")) return;
+
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    const blueWallPanels =
+      Math.abs(c.x) >= 275 &&
+      Math.abs(c.x) <= 790 &&
+      c.y >= 50 &&
+      c.y <= 390 &&
+      c.z >= -2030 &&
+      c.z <= -1430;
+    return blueWallPanels;
+  });
+  if (removed) console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
+}
+
+function removeTopMiddleCrownFloor(mesh) {
+  if (!/^polySurface2051__MarbleCheckFloor00$/i.test(mesh.name || "")) return;
+
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    const crownFloorPatch =
+      Math.abs(c.x) <= 760 &&
+      c.y >= 490 &&
+      c.y <= 510 &&
+      c.z >= -2605 &&
+      c.z <= -2220;
+    return crownFloorPatch;
+  });
+  if (removed) console.log(`PEACH top middle crown floor hidden: ${removed} tris`);
+}
+
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
@@ -68,11 +212,17 @@ export const peach = {
         }
         model.traverse((o) => {
           if (!o.isMesh) return;
+          removeCenterStairRunner(o);
+          removeCenterStairRails(o);
+          removeCenterCarpetOutline(o);
+          removeTopMiddlePanels(o);
+          removeTopMiddleCrownFloor(o);
           const ms = Array.isArray(o.material) ? o.material : [o.material];
           // hide: god-ray / light-shaft meshes (render as black streaks), and the
           // wooden entrance DOOR (the only Wood-textured mesh in the foyer).
+          const meshName = o.name || "";
           const hide =
-            /polySurface71[02]/i.test(o.name || "") ||
+            /polySurface71[02]/i.test(meshName) ||
             ms.some((m) => {
               if (!m) return false;
               const t = m.map;
