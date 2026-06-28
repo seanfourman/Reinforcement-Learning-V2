@@ -123,7 +123,7 @@ export function createLiveActors(scene, walkers) {
   // continuous arena round: drive the two walkers from world (x,z) floats, no keys
   function setArena(on) {
     arena = on;
-    agentScale = on ? 2.5 : 1.2; // racers are larger in the open arena
+    agentScale = on ? 1.8 : 1.2; // a bit larger in the open arena
     king.group.scale.setScalar(agentScale);
     princess.group.scale.setScalar(agentScale);
     redKey.group.visible = !on && !isCross;
