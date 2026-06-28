@@ -707,6 +707,7 @@ export const ruined = {
         new THREE.MeshBasicMaterial({
           map: sealTex,
           transparent: true,
+          opacity: 0.9, // ~10% less glow
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           side: THREE.DoubleSide,
@@ -722,7 +723,7 @@ export const ruined = {
         new THREE.MeshBasicMaterial({
           color: c,
           transparent: true,
-          opacity: 0.9,
+          opacity: 0.81, // ~10% less glow
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           fog: false,
@@ -796,7 +797,7 @@ export const ruined = {
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       sealSpin.rotation.y += dt * 0.03; // the clock face drifts slowly
-      haze.material.opacity = 0.8 + Math.sin(t * 1.1) * 0.2; // breathing glow
+      haze.material.opacity = 0.72 + Math.sin(t * 1.1) * 0.18; // breathing glow (~10% less)
       ringA.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
       ringB.scale.setScalar(1 + Math.sin(t * 1.3 + 1.5) * 0.03);
       handMinute.rotation.y -= dt * 0.45; // sweeping clock hands
