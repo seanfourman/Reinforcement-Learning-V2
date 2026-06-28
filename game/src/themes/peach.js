@@ -15,9 +15,9 @@ const MODEL_FLOOR_FRAC = 0.108; // hall floor is ~10.8% of the footprint above b
 const MODEL_DX = 0;
 const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to y=0)
 const MODEL_DZ = 0;
-const MODEL_ROT = 0; // radians, spin to face the camera
+const MODEL_ROT = Math.PI; // radians, spin to face the camera (PI = arena flipped 180)
 const BOARD_DX = 0;
-const BOARD_DZ = -11.25; // move the clean board forward into the hall
+const BOARD_DZ = 0; // move the clean board forward into the hall
 const BOARD_Y = -7.55; // keep it just above the gameplay ground plane
 
 function createCleanBoardFloor(W, H) {
@@ -201,9 +201,11 @@ function removeTopMiddlePanels(mesh) {
   if (!/^pPlane574__FrescoCloudWall00$/i.test(mesh.name || "")) return;
 
   const removed = removeTriangles(mesh.geometry, (c) => {
+    // the lower blue cloud band across the whole back/north wall (both sides of
+    // the central doorway), not just the middle - x runs out to ~+-2345.
     const blueWallPanels =
       Math.abs(c.x) >= 275 &&
-      Math.abs(c.x) <= 790 &&
+      Math.abs(c.x) <= 2400 &&
       c.y >= 50 &&
       c.y <= 390 &&
       c.z >= -2030 &&
@@ -211,7 +213,7 @@ function removeTopMiddlePanels(mesh) {
     return blueWallPanels;
   });
   if (removed)
-    console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
+    console.log(`PEACH back-wall blue cloud band hidden: ${removed} tris`);
 }
 
 // The leftover Peach crest on the upper front wall (centre, second floor): the
