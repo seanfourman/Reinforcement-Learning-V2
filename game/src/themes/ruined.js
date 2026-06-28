@@ -20,7 +20,7 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 const ASSETS = "./assets/models/ruined-kingdom/";
 const FALLING_ASSETS = "./assets/models/falling/";
 const AGENT_Y = 0.55;
-const FALLING_PROP_SCALE = 0.005;
+const FALLING_PROP_SCALE = 0.02;
 const FALLING_TOP_Y = 30;
 const FALLING_BOTTOM_Y = -13;
 
@@ -785,7 +785,11 @@ export const ruined = {
       handHour.rotation.y -= (dt * 0.45) / 12;
       for (const obj of fallingObjects) {
         const u = (t * (obj.speed ?? 0.065) + (obj.phase ?? 0)) % 1;
-        obj.wrap.position.set(obj.x, THREE.MathUtils.lerp(obj.topY, obj.bottomY, u), obj.z);
+        obj.wrap.position.set(
+          obj.x,
+          THREE.MathUtils.lerp(obj.topY, obj.bottomY, u),
+          obj.z,
+        );
         obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * (obj.spin?.[0] ?? 0);
         obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
         obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
