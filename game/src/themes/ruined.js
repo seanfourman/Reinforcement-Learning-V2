@@ -176,7 +176,7 @@ export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
   sky: ["#121020", "#27243c", "#46425f"], // deep, moody dusk
-  fog: 0x44405a,
+  fog: 0x1a1444, // dark indigo so distant objects melt into the cosmic background
   fogNear: 44,
   fogFar: 175,
   hemi: [0xaab4dc, 0x322e46, 0.68], // ambient
@@ -217,6 +217,60 @@ export const ruined = {
       red: [3, A - 2.5],
       blue: [A - 3, A - 2.5],
     };
+
+    // ---- cosmic BACKGROUND: a starfield + soft nebula behind everything ---
+    // overrides the flat gradient sky for this round so the arena reads as
+    // floating in a starry void. (set on scene.background; the next round's
+    // applyTheme restores its own sky.)
+    const bgRnd = (n) => {
+      const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+      return x - Math.floor(x);
+    };
+    const hexA = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+    };
+    const bgTex = (() => {
+      const W = 1600,
+        H = 900;
+      const cv = document.createElement("canvas");
+      cv.width = W;
+      cv.height = H;
+      const g = cv.getContext("2d");
+      const base = g.createLinearGradient(0, 0, 0, H);
+      base.addColorStop(0.0, "#05030f");
+      base.addColorStop(0.55, "#0c0a22");
+      base.addColorStop(1.0, "#1a1444");
+      g.fillStyle = base;
+      g.fillRect(0, 0, W, H);
+      // soft nebula clouds (additive)
+      g.globalCompositeOperation = "lighter";
+      const neb = ["#6a2c9a", "#2c5f9a", "#9a2c6f", "#2c9a86"];
+      for (let i = 0; i < 8; i++) {
+        const cx = bgRnd(i) * W;
+        const cy = bgRnd(i + 9) * H;
+        const r = 180 + bgRnd(i + 3) * 360;
+        const rg = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+        rg.addColorStop(0, hexA(neb[i % neb.length], 0.16 + bgRnd(i + 5) * 0.14));
+        rg.addColorStop(1, hexA(neb[i % neb.length], 0));
+        g.fillStyle = rg;
+        g.fillRect(0, 0, W, H);
+      }
+      // stars
+      for (let i = 0; i < 420; i++) {
+        const s = bgRnd(i + 300);
+        const r = s < 0.93 ? 0.5 + s * 1.1 : 1.6 + bgRnd(i + 400) * 1.6;
+        g.fillStyle = `rgba(255,255,255,${0.45 + bgRnd(i + 500) * 0.55})`;
+        g.beginPath();
+        g.arc(bgRnd(i + 100) * W, bgRnd(i + 200) * H, r, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.globalCompositeOperation = "source-over";
+      const t = track(new THREE.CanvasTexture(cv));
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    scene.background = bgTex;
 
     // ---- OBJ pipeline ----------------------------------------------------
     // MTLLoader only loads the albedo, so the stone is flat/dull. Upgrade each
@@ -626,33 +680,7 @@ export const ruined = {
     // ---- the TIME RING: a glowing clock-seal the dais floats on ----------
     // additive glow (bloom-friendly): a soft energy haze, a rune-seal with Roman
     // numerals (a clock face), concentric rings and sweeping clock hands.
-    const hazeTex = (() => {
-      const cv = document.createElement("canvas");
-      cv.width = cv.height = 256;
-      const g = cv.getContext("2d");
-      const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-      grd.addColorStop(0.0, "rgba(120,210,255,0.8)");
-      grd.addColorStop(0.4, "rgba(90,110,255,0.3)");
-      grd.addColorStop(1.0, "rgba(30,20,70,0)");
-      g.fillStyle = grd;
-      g.fillRect(0, 0, 256, 256);
-      return track(new THREE.CanvasTexture(cv));
-    })();
-    const haze = new THREE.Mesh(
-      track(new THREE.CircleGeometry(60, 64)),
-      track(
-        new THREE.MeshBasicMaterial({
-          map: hazeTex,
-          transparent: true,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          fog: false,
-        }),
-      ),
-    );
-    haze.rotation.x = -Math.PI / 2;
-    haze.position.set(C, -5, C);
-    group.add(haze);
+    // (energy haze removed - the falling props passed through its glow)
 
     const sealTex = (() => {
       const S = 1024,
@@ -771,7 +799,6 @@ export const ruined = {
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       sealSpin.rotation.y += dt * 0.03; // the clock face drifts slowly
-      haze.material.opacity = 0.72 + Math.sin(t * 1.1) * 0.18; // breathing glow (~10% less)
       ringA.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
       ringB.scale.setScalar(1 + Math.sin(t * 1.3 + 1.5) * 0.03);
       handMinute.rotation.y -= dt * 0.45; // sweeping clock hands
