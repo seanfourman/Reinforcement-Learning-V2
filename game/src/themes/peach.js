@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
+import { getCell } from "../layout.js";
 
 const MODEL = "./assets/models/peach-castle/interior.dae";
 
@@ -22,8 +23,13 @@ const BOARD_Y = -7.55; // keep it just above the gameplay ground plane
 function createCleanBoardFloor(W, H) {
   const group = new THREE.Group();
   group.position.set(BOARD_DX, 0, BOARD_DZ);
+  // board square size: tiles + grout scale about the board centre (cx, cz), so a
+  // bigger cell grows the board in place without shifting its position.
+  const cell = getCell();
+  const cx = W / 2;
+  const cz = H / 2;
   const grout = new THREE.Mesh(
-    new THREE.PlaneGeometry(W, H),
+    new THREE.PlaneGeometry(W * cell, H * cell),
     new THREE.MeshStandardMaterial({
       color: 0xc9c0b3,
       roughness: 0.92,
@@ -31,11 +37,11 @@ function createCleanBoardFloor(W, H) {
     }),
   );
   grout.rotation.x = -Math.PI / 2;
-  grout.position.set(W / 2, BOARD_Y - 0.006, H / 2);
+  grout.position.set(cx, BOARD_Y - 0.006, cz);
   grout.receiveShadow = true;
   group.add(grout);
 
-  const tileGeo = new THREE.PlaneGeometry(0.965, 0.965);
+  const tileGeo = new THREE.PlaneGeometry(0.965 * cell, 0.965 * cell);
   const lightMat = new THREE.MeshStandardMaterial({
     color: 0xf1eee7,
     roughness: 0.84,
@@ -54,7 +60,11 @@ function createCleanBoardFloor(W, H) {
 
   for (let z = 0; z < H; z++) {
     for (let x = 0; x < W; x++) {
-      dummy.position.set(x + 0.5, BOARD_Y, z + 0.5);
+      dummy.position.set(
+        cx + (x + 0.5 - cx) * cell,
+        BOARD_Y,
+        cz + (z + 0.5 - cz) * cell,
+      );
       dummy.rotation.set(-Math.PI / 2, 0, 0);
       dummy.updateMatrix();
       if ((x + z) % 2 === 0) {
@@ -207,6 +217,7 @@ function removeTopMiddlePanels(mesh) {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
+  cell: 1.5, // board square size: 1.5 = ~50% bigger tiles, board still 20x20
   sky: ["#bfa9dc", "#dcc8ea", "#f6ecf2"], // soft regal lavender-cream
   fog: 0xe9e0f3,
   fogNear: 55,

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GRID } from './config.js';
-import { cellToWorld } from './layout.js';
+import { cellToWorld, getCell } from './layout.js';
 
 // Two ground overlays for a model's learning:
 //   * Visits  - a colour heatmap (BLUE = least stepped on, RED = most), one quad per tile.
@@ -52,7 +52,7 @@ export function createHeatmap(scene) {
           const { x, z } = cellToWorld(r, c);
           dummy.position.set(x, 0.19, z);
           dummy.rotation.set(-Math.PI / 2, 0, 0);
-          dummy.scale.setScalar(1);
+          dummy.scale.setScalar(getCell());
           mesh.setColorAt(i, ramp((v - lo) / span));
         }
         dummy.updateMatrix();
@@ -90,6 +90,7 @@ export function createHeatmap(scene) {
   }
 
   function setNumbers(grid) {
+    numPlane.scale.setScalar(getCell()); // grow the numbers grid with the board
     cctx.clearRect(0, 0, CW, CH);
     const H = grid.length, W = grid[0] ? grid[0].length : 0;
     const tw = CW / W, th = CH / H;

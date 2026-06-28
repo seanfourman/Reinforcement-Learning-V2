@@ -6,6 +6,17 @@
 // (col + 0.5, z=row + 0.5). North (row 0) is small z, which is where the
 // castle gatehouse / escape gate sits.
 
+import { GRID } from './config.js';
+
+// Per-round board square size. The whole 20x20 board (agents, floor tiles and
+// heatmap overlays) scales by this factor ABOUT THE BOARD CENTRE, so bigger
+// squares grow the board in place without shifting the camera, castle backdrop
+// or any existing offset. 1 = the original 1-unit squares (every round that
+// doesn't override it via theme.cell).
+let _cell = 1;
+export function setCell(s) { _cell = (s && s > 0) ? s : 1; }
+export function getCell() { return _cell; }
+
 export const TILE = {
   WALL: '#', FLOOR: '.', ESCAPE: 'E',
   RED_KEY: 'r', BLUE_KEY: 'b', GOLD: 'G',
@@ -43,7 +54,18 @@ export function parseLayout(rows) {
   };
 }
 
-// cell (row, col) -> three.js ground coordinate (cell centre)
+// cell (row, col) -> three.js ground coordinate (cell centre), scaled about the
+// board centre by the active cell size so the board grows in place.
 export function cellToWorld(r, c) {
-  return { x: c + 0.5, z: r + 0.5 };
+  const C = GRID / 2;
+  return { x: C + (c + 0.5 - C) * _cell, z: C + (r + 0.5 - C) * _cell };
+}
+
+// inverse of cellToWorld: ground coord -> integer cell (for click-to-inspect)
+export function worldToCell(x, z) {
+  const C = GRID / 2;
+  return {
+    r: Math.floor((z - C) / _cell + C),
+    c: Math.floor((x - C) / _cell + C),
+  };
 }

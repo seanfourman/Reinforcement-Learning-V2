@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { cellToWorld } from './layout.js';
+import { cellToWorld, getCell } from './layout.js';
 import { updateWalker } from './characters.js';
 
 // Live actor driver: the King, the Queen and the three keys, driven by frames
@@ -102,6 +102,10 @@ export function createLiveActors(scene, walkers) {
   function setWorld(lay, cross = false) {
     layout = lay;
     isCross = cross;
+    // grow the walkers with the board's square size so they fill the bigger tiles
+    agentScale = 1.2 * getCell();
+    king.group.scale.setScalar(agentScale);
+    princess.group.scale.setScalar(agentScale);
     // no keys / gold in a cross round - hide them outright so they never appear
     redKey.group.visible = !cross;
     blueKey.group.visible = !cross;
@@ -173,13 +177,13 @@ export function createLiveActors(scene, walkers) {
         if (p < 1) {
           const at = fell[key].at;
           walker.group.position.set(at.x, -2.6 * p, at.z);
-          walker.group.scale.setScalar(1.2 * (1 - 0.6 * p));
+          walker.group.scale.setScalar(agentScale * (1 - 0.6 * p));
           walker.group.rotation.y += dt * 9;
           continue;                       // skip normal movement while falling
         }
         fell[key] = null;
         walker.group.position.y = 0;
-        walker.group.scale.setScalar(1.2);
+        walker.group.scale.setScalar(agentScale);
         rendered[key] = { ...target[key] }; // reappear at spawn without sliding
       }
       const r = rendered[key], tg = target[key];

@@ -7,7 +7,7 @@ import { buildArchitecture } from "./architecture.js";
 import { createFurniture } from "./furniture.js";
 import { createDoors } from "./doors.js";
 import { createDressing } from "./dressing.js";
-import { parseLayout } from "./layout.js";
+import { parseLayout, setCell, worldToCell } from "./layout.js";
 import { makeKing, makePrincess } from "./characters.js";
 import { createLiveActors } from "./live.js";
 import { createMechanics } from "./mechanics.js";
@@ -204,6 +204,7 @@ function disposeWorld() {
 function rebuildWorld(worldJson) {
   disposeWorld();
   const theme = getTheme(worldJson.theme);
+  setCell(theme.cell || 1); // per-round board square size (1 = original); resets each round
   applyTheme(theme);
   rig.setView?.(theme.camera); // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
@@ -309,8 +310,7 @@ renderer.domElement.addEventListener("click", async (e) => {
   ndc.y = -(e.clientY / innerHeight) * 2 + 1;
   ray.setFromCamera(ndc, camera);
   if (!ray.ray.intersectPlane(groundPlane, hit)) return;
-  const c = Math.floor(hit.x),
-    r = Math.floor(hit.z);
+  const { r, c } = worldToCell(hit.x, hit.z);
   if (r < 0 || c < 0 || r >= GRID || c >= GRID) return;
   try {
     const q = await (
