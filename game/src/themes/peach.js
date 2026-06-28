@@ -17,7 +17,7 @@ const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to 
 const MODEL_DZ = 0;
 const MODEL_ROT = 0; // radians, spin to face the camera
 const BOARD_DX = 0;
-const BOARD_DZ = -10; // move the clean board forward into the hall
+const BOARD_DZ = -12; // move the clean board forward into the hall
 const BOARD_Y = -7.55; // keep it just above the gameplay ground plane
 
 function createCleanBoardFloor(W, H) {
@@ -217,7 +217,7 @@ function removeTopMiddlePanels(mesh) {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
-  cell: 1.5, // board square size: 1.5 = ~50% bigger tiles, board still 20x20
+  cell: 1.25, // board square size: 1.35 = ~35% bigger tiles, board still 20x20
   sky: ["#bfa9dc", "#dcc8ea", "#f6ecf2"], // soft regal lavender-cream
   fog: 0xe9e0f3,
   fogNear: 55,
