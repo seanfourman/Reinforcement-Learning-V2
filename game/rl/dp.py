@@ -50,11 +50,16 @@ class _DPBase:
         self.max_sweeps = max_sweeps
         self.epsilon = 0.0
         self.sweeps = [0, 0, 0]         # per-phase iteration counts (for the panel)
+        # a "cross" world (no keys/gold) is a single-goal gridworld: plan ONE phase
+        # (reach an escape tile) instead of the key->gold->escape race.
+        self.cross = getattr(env, "objective", "race") == "cross"
         self.plan()
 
     # ---- the known model: cells, goals, transitions -----------------------
     def _goals(self, phase):
         w = self.env.world
+        if self.cross:                  # single-goal gridworld: just reach an escape tile
+            return {tuple(e) for e in w.escape}
         if phase == 0:
             return {tuple(w.red_key if self.agent == "red" else w.blue_key)}
         if phase == 1:
@@ -84,7 +89,8 @@ class _DPBase:
         self.cells = list(self.env.floor_cells)
         self.V = [None] * N_PHASES
         self.policy = [None] * N_PHASES
-        for ph in range(N_PHASES):
+        nphases = 1 if self.cross else N_PHASES
+        for ph in range(nphases):
             goals = self._goals(ph)
             V, pol, n = self._solve_phase(goals)
             self.V[ph], self.policy[ph], self.sweeps[ph] = V, pol, n
@@ -103,6 +109,8 @@ class _DPBase:
     # ---- agent interface ---------------------------------------------------
     def _cell_phase(self, state):
         cell = self.env.floor_cells[state[0]]
+        if self.cross:
+            return cell, 0
         return cell, _phase(state[1], state[2])
 
     def policy_action(self, state):

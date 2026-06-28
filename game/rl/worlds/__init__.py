@@ -12,6 +12,7 @@ from .grid import (  # re-exported for convenience / back-compat
     GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
 )
 from . import medieval
+from . import peach
 from . import city
 from . import fossilfalls
 from . import ruined
@@ -20,7 +21,7 @@ from . import ruined
 # expose generate(). A module flagged CONTINUOUS=True has no grid World - its env
 # is rl/continuous.ContinuousArena, built directly by match.py.)
 ROUND_MODULES = {
-    1: medieval,
+    1: peach,
     2: city,
     3: fossilfalls,
     4: ruined,

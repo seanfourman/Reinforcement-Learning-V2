@@ -3,12 +3,14 @@
 // object (see medieval.js for the shape). Falls back to medieval if unknown.
 
 import { medieval } from './medieval.js';
+import { peach } from './peach.js';
 import { city } from './city.js';
 import { fossilfalls } from './fossilfalls.js';
 import { ruined } from './ruined.js';
 
 const THEMES = {
   medieval,
+  peach,         // Round 1: Peach's Castle throne room (VI vs PI gridworld)
   city,
   fossilfalls,
   ruined,        // Round 4: continuous DQN arena
