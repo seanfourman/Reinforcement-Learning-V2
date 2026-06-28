@@ -690,7 +690,7 @@ export const ruined = {
       cv.width = cv.height = S;
       const g = cv.getContext("2d");
       g.clearRect(0, 0, S, S);
-      g.strokeStyle = "rgba(150,225,255,1)";
+      g.strokeStyle = "rgba(255,205,110,1)";
       g.lineWidth = 4;
       for (const r of [210, 300, 470, 500]) {
         g.beginPath();
@@ -705,7 +705,7 @@ export const ruined = {
         g.lineTo(cx + Math.cos(a) * 500, cy + Math.sin(a) * 500);
         g.stroke();
       }
-      g.fillStyle = "rgba(205,185,255,1)";
+      g.fillStyle = "rgba(255,233,180,1)";
       g.font = "bold 72px 'Times New Roman', serif";
       g.textAlign = "center";
       g.textBaseline = "middle";
@@ -762,11 +762,11 @@ export const ruined = {
       );
     const ringA = new THREE.Mesh(
       track(new THREE.TorusGeometry(30, 0.4, 14, 140)),
-      glowMat(0x66e6ff),
+      glowMat(0xffd27a),
     );
     const ringB = new THREE.Mesh(
       track(new THREE.TorusGeometry(45, 0.55, 14, 160)),
-      glowMat(0xb070ff),
+      glowMat(0xffa64d),
     );
     for (const r of [ringA, ringB]) {
       r.rotation.x = Math.PI / 2;
@@ -786,8 +786,8 @@ export const ruined = {
       group.add(grp);
       return grp;
     };
-    const handMinute = mkHand(50, 0.7, 0x8fe6ff);
-    const handHour = mkHand(34, 1.1, 0xc79bff);
+    const handMinute = mkHand(50, 0.7, 0xffe6a8);
+    const handHour = mkHand(34, 1.1, 0xffbe66);
 
     // obstacles are invisible gameplay collisions only - no rock/grass markers.
 
