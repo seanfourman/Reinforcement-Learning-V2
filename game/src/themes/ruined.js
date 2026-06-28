@@ -23,6 +23,8 @@ const AGENT_Y = 0.55;
 const FALLING_PROP_SCALE = 0.02;
 const FALLING_TOP_Y = 30;
 const FALLING_BOTTOM_Y = -13;
+const FALLING_FADE_START = 0.7;
+const FALLING_END_SCALE = 0.18;
 
 // ---- tunable layout knobs ------------------------------------------------
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
@@ -427,6 +429,21 @@ export const ruined = {
         const b = proto.userData.bounds;
         const inner = cloneSkinned(proto);
         inner.position.set(-b.cx, -b.cy, -b.cz);
+        const fadeMats = [];
+        inner.traverse((o) => {
+          if (!o.isMesh || !o.material) return;
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          const cloned = mats.map((mat) => {
+            if (!mat) return mat;
+            const m = mat.clone();
+            m.transparent = true;
+            m.userData.baseOpacity = m.opacity ?? 1;
+            fadeMats.push(m);
+            track(m);
+            return m;
+          });
+          o.material = Array.isArray(o.material) ? cloned : cloned[0];
+        });
         const largest = Math.max(b.w, b.h, b.d);
         const scale =
           spec.height != null
@@ -434,9 +451,10 @@ export const ruined = {
             : spec.footprint != null
               ? spec.footprint / largest
               : (spec.scale ?? 1);
+        const baseScale = scale * FALLING_PROP_SCALE;
         const wrap = new THREE.Group();
         wrap.add(inner);
-        wrap.scale.setScalar(scale * FALLING_PROP_SCALE);
+        wrap.scale.setScalar(baseScale);
         wrap.rotation.set(
           spec.rot?.[0] ?? 0,
           spec.rot?.[1] ?? 0,
@@ -446,7 +464,7 @@ export const ruined = {
         const bottomY = spec.bottomY ?? FALLING_BOTTOM_Y;
         wrap.position.set(spec.x, topY, spec.z);
         group.add(wrap);
-        fallingObjects.push({ ...spec, wrap, topY, bottomY });
+        fallingObjects.push({ ...spec, wrap, fadeMats, baseScale, topY, bottomY });
       });
     }
 
@@ -785,11 +803,17 @@ export const ruined = {
       handHour.rotation.y -= (dt * 0.45) / 12;
       for (const obj of fallingObjects) {
         const u = (t * (obj.speed ?? 0.065) + (obj.phase ?? 0)) % 1;
+        const fade = THREE.MathUtils.smoothstep(u, FALLING_FADE_START, 1);
+        const opacity = 1 - fade;
         obj.wrap.position.set(
           obj.x,
           THREE.MathUtils.lerp(obj.topY, obj.bottomY, u),
           obj.z,
         );
+        obj.wrap.scale.setScalar(
+          obj.baseScale * THREE.MathUtils.lerp(1, FALLING_END_SCALE, fade),
+        );
+        for (const mat of obj.fadeMats) mat.opacity = mat.userData.baseOpacity * opacity;
         obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * (obj.spin?.[0] ?? 0);
         obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
         obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
