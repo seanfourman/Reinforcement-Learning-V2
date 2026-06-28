@@ -10,7 +10,7 @@ import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 const MODEL = "./assets/models/peach-castle/interior.dae";
 
 // ---- placement knobs (tune from a screenshot) ----------------------------
-const MODEL_TARGET = 80; // world footprint the castle is scaled to (board is 20) - big & grand
+const MODEL_TARGET = 84; // world footprint the castle is scaled to (board is 20) - big & grand (+2%)
 const MODEL_FLOOR_FRAC = 0.108; // hall floor is ~10.8% of the footprint above box.min
 const MODEL_DX = 0;
 const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to y=0)
@@ -77,7 +77,9 @@ export const peach = {
               if (!m) return false;
               const t = m.map;
               const src =
-                (t && (t.image?.src || t.source?.data?.src || t.name)) || m.name || "";
+                (t && (t.image?.src || t.source?.data?.src || t.name)) ||
+                m.name ||
+                "";
               return /godray|lightground|wood00/i.test(src);
             });
           if (hide) {
@@ -115,7 +117,9 @@ export const peach = {
         group.add(wrap);
         let nmesh = 0;
         model.traverse((o) => o.isMesh && nmesh++);
-        console.log(`PEACH model loaded: ${nmesh} meshes, raw footprint ${Math.max(size.x, size.z).toFixed(0)}, scale ${s.toFixed(4)}`);
+        console.log(
+          `PEACH model loaded: ${nmesh} meshes, raw footprint ${Math.max(size.x, size.z).toFixed(0)}, scale ${s.toFixed(4)}`,
+        );
       })
       .catch((e) => console.warn("Peach's Castle model failed to load", e));
 
