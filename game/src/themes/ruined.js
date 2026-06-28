@@ -175,8 +175,8 @@ const FALLING_PROPS = Array.from({ length: 90 }, (_, i) => {
 export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
-  sky: ["#121020", "#27243c", "#46425f"], // deep, moody dusk
-  fog: 0x1a1444, // dark indigo so distant objects melt into the cosmic background
+  sky: ["#050912", "#0a1425", "#10243a"], // deep blue-black cosmic dusk
+  fog: 0x071427, // deep navy so distant objects melt into the cosmic background
   fogNear: 44,
   fogFar: 175,
   hemi: [0xaab4dc, 0x322e46, 0.68], // ambient
@@ -238,14 +238,14 @@ export const ruined = {
       cv.height = H;
       const g = cv.getContext("2d");
       const base = g.createLinearGradient(0, 0, 0, H);
-      base.addColorStop(0.0, "#05030f");
-      base.addColorStop(0.55, "#0c0a22");
-      base.addColorStop(1.0, "#1a1444");
+      base.addColorStop(0.0, "#02050c");
+      base.addColorStop(0.55, "#06111f");
+      base.addColorStop(1.0, "#0b2136");
       g.fillStyle = base;
       g.fillRect(0, 0, W, H);
       // soft nebula clouds (additive)
       g.globalCompositeOperation = "lighter";
-      const neb = ["#6a2c9a", "#2c5f9a", "#9a2c6f", "#2c9a86"];
+      const neb = ["#123f74", "#1d6f8d", "#145b78", "#1b8a7d"];
       for (let i = 0; i < 8; i++) {
         const cx = bgRnd(i) * W;
         const cy = bgRnd(i + 9) * H;
