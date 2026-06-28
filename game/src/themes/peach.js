@@ -214,19 +214,20 @@ function removeTopMiddlePanels(mesh) {
     console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
 }
 
-// The leftover Peach crown + laurel crest decal on the upper front wall (centre,
-// second floor). It's a tiny patch of the GoldDecoSeal atlas at x~0, y~507,
-// z~-1570; the surrounding gold frame sits lower (y<=448) so it survives.
+// The leftover Peach crest on the upper front wall (centre, second floor): the
+// crown + laurel decal (y~507) PLUS its surrounding cartouche frame (y~186-450),
+// all on the GoldDecoSeal atlas at x~0, z~-1450. The long horizontal frieze just
+// below (y<=170, spans the whole wall) is kept, so the cut stays above it.
 function removeSecondFloorCrest(mesh) {
   if (!/^Emblem200__GoldDecoSeal00$/i.test(mesh.name || "")) return;
 
   const removed = removeTriangles(mesh.geometry, (c) => {
     return (
-      Math.abs(c.x) <= 150 &&
-      c.y >= 480 &&
+      Math.abs(c.x) <= 500 &&
+      c.y >= 180 &&
       c.y <= 540 &&
       c.z >= -1700 &&
-      c.z <= -1460
+      c.z <= -1250
     );
   });
   if (removed)
@@ -296,7 +297,7 @@ export const peach = {
           // wooden entrance DOOR (the only Wood-textured mesh in the foyer).
           const meshName = o.name || "";
           const hide =
-            /^(polySurface2051__MarbleCheckFloor00|pCylinder434__CarpetSun00)$/i.test(
+            /^(polySurface2051__MarbleCheckFloor00|pCylinder434__CarpetSun00|ShadowPoli10__Black00)$/i.test(
               meshName,
             ) ||
             /polySurface71[02]/i.test(meshName) ||

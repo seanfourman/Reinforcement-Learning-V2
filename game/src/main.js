@@ -324,6 +324,37 @@ renderer.domElement.addEventListener("click", async (e) => {
   }
 });
 
+// TEMP diagnostic: press I to toggle "identify" mode, then click a mesh to log
+// its name + the hit point in the mesh's LOCAL coords (matches the model's raw
+// vertex space used by the peach trimmers). Used to pin down leftover castle bits.
+let identifyMode = false;
+window.addEventListener("keydown", (e) => {
+  if (e.code === "KeyI" && !/input|select|textarea/i.test(e.target.tagName)) {
+    identifyMode = !identifyMode;
+    console.log(
+      `IDENTIFY mode ${identifyMode ? "ON - click the thing you want gone" : "off"}`,
+    );
+  }
+});
+renderer.domElement.addEventListener("click", (e) => {
+  if (!identifyMode) return;
+  ndc.x = (e.clientX / innerWidth) * 2 - 1;
+  ndc.y = -(e.clientY / innerHeight) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  const hits = ray
+    .intersectObjects(scene.children, true)
+    .filter((h) => h.object.isMesh && h.object.visible);
+  console.log("--- IDENTIFY: meshes under cursor (nearest first) ---");
+  for (const h of hits.slice(0, 6)) {
+    const lp = h.object.worldToLocal(h.point.clone());
+    console.log(
+      `${h.object.name || "(unnamed)"}  dist=${h.distance.toFixed(1)}  ` +
+        `local=(${lp.x.toFixed(0)}, ${lp.y.toFixed(0)}, ${lp.z.toFixed(0)})  ` +
+        `world=(${h.point.x.toFixed(1)}, ${h.point.y.toFixed(1)}, ${h.point.z.toFixed(1)})`,
+    );
+  }
+});
+
 // expose a tiny control API for the panel
 window.RL = {
   control,
