@@ -12,11 +12,15 @@
 // models (towers, the dais) upright with `zUp`.
 
 import * as THREE from "three";
+import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 const ASSETS = "./assets/models/ruined-kingdom/";
+const FALLING_ASSETS = "./assets/models/falling/";
 const AGENT_Y = 0.55;
+const FALLING_PROP_SCALE = 0.02;
 
 // ---- tunable layout knobs ------------------------------------------------
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
@@ -36,6 +40,50 @@ const TOWER_MODELS = [
   "BossRaidWorldHomeTower000",
   "BossRaidWorldHomeTower001",
   "BossRaidWorldHomeTower002",
+];
+const FALLING_PROPS = [
+  {
+    file: "rubber-dorrie/SouvenirLake2.dae",
+    x: 22.3,
+    z: 2.4,
+    height: 1.2,
+    fall: 9.5,
+    bottomY: -1.7,
+    speed: 0.095,
+    swayX: 0.8,
+    swayZ: 0.6,
+    spin: [-0.2, 0.7, 0.32],
+    rot: [0.25, 0.8, -0.45],
+    phase: 0.18,
+  },
+  {
+    file: "rock-fragment/SouvenirMoon1.dae",
+    x: 19.5,
+    z: -1.0,
+    height: 1.1,
+    fall: 9.2,
+    bottomY: -2.4,
+    speed: 0.12,
+    swayX: 0.75,
+    swayZ: 0.5,
+    spin: [0.8, 0.35, -0.5],
+    rot: [-0.35, 1.2, 0.2],
+    phase: 0.59,
+  },
+  {
+    file: "moon-lamp/SouvenirMoon2.dae",
+    x: -3.6,
+    z: 7.6,
+    height: 1.25,
+    fall: 12.5,
+    bottomY: -2.8,
+    speed: 0.07,
+    swayX: 1.0,
+    swayZ: 0.8,
+    spin: [-0.18, 0.45, 0.52],
+    rot: [0.55, -0.8, -0.2],
+    phase: 0.68,
+  },
 ];
 
 export const ruined = {
@@ -59,9 +107,20 @@ export const ruined = {
     const group = new THREE.Group();
     scene.add(group);
     const trash = [];
+    const textures = new Set();
     const track = (o) => (trash.push(o), o);
+    const trackTexture = (tex) => {
+      if (tex && tex.isTexture && !textures.has(tex)) {
+        textures.add(tex);
+        trash.push(tex);
+      }
+      return tex;
+    };
     let disposed = false;
     const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
+    const collada = new ColladaLoader();
+    const fallingProtos = new Map();
+    const fallingObjects = [];
 
     const A = world.arena || 20;
     const C = A / 2;
@@ -133,7 +192,9 @@ export const ruined = {
               if (obj)
                 obj.traverse((o) => {
                   if (!o.isMesh) return;
-                  const ms = Array.isArray(o.material) ? o.material : [o.material];
+                  const ms = Array.isArray(o.material)
+                    ? o.material
+                    : [o.material];
                   // a mesh that's entirely wire/grass/plant: hide it OUTRIGHT so it
                   // casts no shadow either (opacity 0 alone still shadows).
                   if (
@@ -177,6 +238,133 @@ export const ruined = {
         );
       }
       return protos.get(name);
+    }
+
+    function disposeTree(root) {
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const value of Object.values(mat)) {
+            if (value?.isTexture) value.dispose?.();
+          }
+          mat.dispose?.();
+        }
+      });
+    }
+
+    function tuneFallingMaterial(mat) {
+      if (!mat)
+        return track(
+          new THREE.MeshStandardMaterial({
+            color: 0xb8b0aa,
+            roughness: 0.82,
+            metalness: 0,
+          }),
+        );
+      const m = mat.clone();
+      if (m.map) {
+        m.map.colorSpace = THREE.SRGBColorSpace;
+        m.map.anisotropy = maxAniso;
+        trackTexture(m.map);
+      }
+      if (m.normalMap) trackTexture(m.normalMap);
+      if (m.roughnessMap) trackTexture(m.roughnessMap);
+      if (m.alphaMap) {
+        trackTexture(m.alphaMap);
+        m.transparent = true;
+        m.alphaTest = Math.max(m.alphaTest || 0, 0.16);
+      }
+      if (
+        /leaf|plant|grass|flower|glass|water|paper|cloth|flag|fence/i.test(
+          m.name || "",
+        )
+      ) {
+        m.side = THREE.DoubleSide;
+        m.transparent = true;
+        m.alphaTest = Math.max(m.alphaTest || 0, 0.12);
+      }
+      if ("emissiveIntensity" in m)
+        m.emissiveIntensity = Math.min(m.emissiveIntensity || 0, 0.35);
+      if ("shininess" in m) m.shininess = Math.min(m.shininess || 30, 10);
+      track(m);
+      return m;
+    }
+
+    function prepareFalling(asset) {
+      const root = asset.scene;
+      root.rotation.set(0, 0, 0);
+      root.updateMatrixWorld(true);
+      root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = false;
+        o.receiveShadow = false;
+        track(o.geometry);
+        o.material = Array.isArray(o.material)
+          ? o.material.map(tuneFallingMaterial)
+          : tuneFallingMaterial(o.material);
+      });
+      root.updateMatrixWorld(true);
+      const b = robustBounds(root) || new THREE.Box3().setFromObject(root);
+      root.userData.bounds = {
+        cx: (b.min.x + b.max.x) * 0.5,
+        cy: (b.min.y + b.max.y) * 0.5,
+        cz: (b.min.z + b.max.z) * 0.5,
+        minY: b.min.y,
+        h: Math.max(0.001, b.max.y - b.min.y),
+        w: Math.max(0.001, b.max.x - b.min.x),
+        d: Math.max(0.001, b.max.z - b.min.z),
+      };
+      return root;
+    }
+
+    function loadFalling(name) {
+      if (!fallingProtos.has(name)) {
+        fallingProtos.set(
+          name,
+          collada
+            .loadAsync(FALLING_ASSETS + name)
+            .then((asset) => {
+              const proto = prepareFalling(asset);
+              if (disposed) disposeTree(proto);
+              return proto;
+            })
+            .catch((err) => {
+              console.warn(`Could not load falling prop ${name}`, err);
+              return null;
+            }),
+        );
+      }
+      return fallingProtos.get(name);
+    }
+
+    function addFallingProp(spec) {
+      loadFalling(spec.file).then((proto) => {
+        if (disposed || !proto) return;
+        const b = proto.userData.bounds;
+        const inner = cloneSkinned(proto);
+        inner.position.set(-b.cx, -b.cy, -b.cz);
+        const largest = Math.max(b.w, b.h, b.d);
+        const scale =
+          spec.height != null
+            ? spec.height / largest
+            : spec.footprint != null
+              ? spec.footprint / largest
+              : (spec.scale ?? 1);
+        const wrap = new THREE.Group();
+        wrap.add(inner);
+        wrap.scale.setScalar(scale * FALLING_PROP_SCALE);
+        wrap.rotation.set(
+          spec.rot?.[0] ?? 0,
+          spec.rot?.[1] ?? 0,
+          spec.rot?.[2] ?? 0,
+        );
+        wrap.position.set(spec.x, spec.bottomY + spec.fall, spec.z);
+        group.add(wrap);
+        fallingObjects.push({ wrap, ...spec });
+      });
     }
 
     // robust bounds: trim the 0.5% extreme verts each axis so a stray wire-helper
@@ -326,6 +514,11 @@ export const ruined = {
       });
     }
 
+    // ---- impossible falling souvenirs around the tower ring --------------
+    // These are visual-only background props. They stay outside the playable
+    // surface and cast no shadows, so they cannot affect the DQN arena.
+    FALLING_PROPS.forEach(addFallingProp);
+
     // ---- the TIME RING: a glowing clock-seal the dais floats on ----------
     // additive glow (bloom-friendly): a soft energy haze, a rune-seal with Roman
     // numerals (a clock face), concentric rings and sweeping clock hands.
@@ -384,7 +577,20 @@ export const ruined = {
       g.font = "bold 72px 'Times New Roman', serif";
       g.textAlign = "center";
       g.textBaseline = "middle";
-      const NUM = ["XII", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
+      const NUM = [
+        "XII",
+        "I",
+        "II",
+        "III",
+        "IV",
+        "V",
+        "VI",
+        "VII",
+        "VIII",
+        "IX",
+        "X",
+        "XI",
+      ];
       for (let i = 0; i < 12; i++) {
         const a = -Math.PI / 2 + (i / 12) * Math.PI * 2;
         g.fillText(NUM[i], cx + Math.cos(a) * 250, cy + Math.sin(a) * 250);
@@ -421,8 +627,14 @@ export const ruined = {
           fog: false,
         }),
       );
-    const ringA = new THREE.Mesh(track(new THREE.TorusGeometry(30, 0.4, 14, 140)), glowMat(0x66e6ff));
-    const ringB = new THREE.Mesh(track(new THREE.TorusGeometry(45, 0.55, 14, 160)), glowMat(0xb070ff));
+    const ringA = new THREE.Mesh(
+      track(new THREE.TorusGeometry(30, 0.4, 14, 140)),
+      glowMat(0x66e6ff),
+    );
+    const ringB = new THREE.Mesh(
+      track(new THREE.TorusGeometry(45, 0.55, 14, 160)),
+      glowMat(0xb070ff),
+    );
     for (const r of [ringA, ringB]) {
       r.rotation.x = Math.PI / 2;
       r.position.set(C, -2, C);
@@ -432,7 +644,10 @@ export const ruined = {
     const mkHand = (len, w, c) => {
       const grp = new THREE.Group();
       grp.position.set(C, -1.9, C);
-      const bar = new THREE.Mesh(track(new THREE.BoxGeometry(len, 0.05, w)), glowMat(c));
+      const bar = new THREE.Mesh(
+        track(new THREE.BoxGeometry(len, 0.05, w)),
+        glowMat(c),
+      );
       bar.position.x = len / 2 - 3;
       grp.add(bar);
       group.add(grp);
@@ -485,6 +700,18 @@ export const ruined = {
       ringB.scale.setScalar(1 + Math.sin(t * 1.3 + 1.5) * 0.03);
       handMinute.rotation.y -= dt * 0.45; // sweeping clock hands
       handHour.rotation.y -= (dt * 0.45) / 12;
+      for (const obj of fallingObjects) {
+        const u = (t * obj.speed + obj.phase) % 1;
+        const wave = t * 1.6 + obj.phase * Math.PI * 2;
+        obj.wrap.position.set(
+          obj.x + Math.sin(wave) * (obj.swayX ?? 0),
+          obj.bottomY + (1 - u) * obj.fall,
+          obj.z + Math.cos(wave * 0.87) * (obj.swayZ ?? 0),
+        );
+        obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * obj.spin[0];
+        obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * obj.spin[1];
+        obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * obj.spin[2];
+      }
       if (frame && frame.continuous) {
         const k = 1 - Math.exp(-dt * 14);
         for (const side of ["red", "blue"]) {
