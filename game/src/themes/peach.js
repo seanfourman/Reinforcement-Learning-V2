@@ -214,6 +214,25 @@ function removeTopMiddlePanels(mesh) {
     console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
 }
 
+// The leftover Peach crown + laurel crest decal on the upper front wall (centre,
+// second floor). It's a tiny patch of the GoldDecoSeal atlas at x~0, y~507,
+// z~-1570; the surrounding gold frame sits lower (y<=448) so it survives.
+function removeSecondFloorCrest(mesh) {
+  if (!/^Emblem200__GoldDecoSeal00$/i.test(mesh.name || "")) return;
+
+  const removed = removeTriangles(mesh.geometry, (c) => {
+    return (
+      Math.abs(c.x) <= 150 &&
+      c.y >= 480 &&
+      c.y <= 540 &&
+      c.z >= -1700 &&
+      c.z <= -1460
+    );
+  });
+  if (removed)
+    console.log(`PEACH second-floor crown crest hidden: ${removed} tris`);
+}
+
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
@@ -271,6 +290,7 @@ export const peach = {
           removeCenterStairRails(o);
           removeCenterCarpetOutline(o);
           removeTopMiddlePanels(o);
+          removeSecondFloorCrest(o);
           const ms = Array.isArray(o.material) ? o.material : [o.material];
           // hide: god-ray / light-shaft meshes (render as black streaks), and the
           // wooden entrance DOOR (the only Wood-textured mesh in the foyer).
