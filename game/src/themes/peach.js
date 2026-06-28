@@ -17,7 +17,7 @@ const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to 
 const MODEL_DZ = 0;
 const MODEL_ROT = 0; // radians, spin to face the camera
 const BOARD_DX = 0;
-const BOARD_DZ = -12; // move the clean board forward into the hall
+const BOARD_DZ = -11.25; // move the clean board forward into the hall
 const BOARD_Y = -7.55; // keep it just above the gameplay ground plane
 
 function createCleanBoardFloor(W, H) {
