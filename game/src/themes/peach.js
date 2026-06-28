@@ -1,8 +1,7 @@
-// Round 1 - Peach's Castle: the FULL castle interior scene. The whole ~29MB
-// "Peach's Castle Interior" model (its own marble floor, grand staircase, gold
-// trim and the stained-glass Peach window) IS the environment - nothing
-// procedural is added on top. The 20x20 RL gridworld plays out on the model's
-// floor (open hall, navigate to the throne/goal at the top).
+// Round 1 - Peach's Castle: the castle interior scene supplies the backdrop
+// and side staircases, while the playable 20x20 RL board uses a clean flat
+// procedural checker floor. The source model's marble floor/rug geometry is
+// layered and uneven, so it is hidden instead of used as the board surface.
 
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
@@ -16,6 +15,63 @@ const MODEL_DX = 0;
 const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to y=0)
 const MODEL_DZ = 0;
 const MODEL_ROT = 0; // radians, spin to face the camera
+const BOARD_DX = 0;
+const BOARD_DZ = -10; // move the clean board forward into the hall
+const BOARD_Y = -7.55; // keep it just above the gameplay ground plane
+
+function createCleanBoardFloor(W, H) {
+  const group = new THREE.Group();
+  group.position.set(BOARD_DX, 0, BOARD_DZ);
+  const grout = new THREE.Mesh(
+    new THREE.PlaneGeometry(W, H),
+    new THREE.MeshStandardMaterial({
+      color: 0xc9c0b3,
+      roughness: 0.92,
+      metalness: 0,
+    }),
+  );
+  grout.rotation.x = -Math.PI / 2;
+  grout.position.set(W / 2, BOARD_Y - 0.006, H / 2);
+  grout.receiveShadow = true;
+  group.add(grout);
+
+  const tileGeo = new THREE.PlaneGeometry(0.965, 0.965);
+  const lightMat = new THREE.MeshStandardMaterial({
+    color: 0xf1eee7,
+    roughness: 0.84,
+    metalness: 0,
+  });
+  const darkMat = new THREE.MeshStandardMaterial({
+    color: 0x4f4a42,
+    roughness: 0.88,
+    metalness: 0,
+  });
+  const lightTiles = new THREE.InstancedMesh(tileGeo, lightMat, W * H);
+  const darkTiles = new THREE.InstancedMesh(tileGeo.clone(), darkMat, W * H);
+  const dummy = new THREE.Object3D();
+  let nLight = 0;
+  let nDark = 0;
+
+  for (let z = 0; z < H; z++) {
+    for (let x = 0; x < W; x++) {
+      dummy.position.set(x + 0.5, BOARD_Y, z + 0.5);
+      dummy.rotation.set(-Math.PI / 2, 0, 0);
+      dummy.updateMatrix();
+      if ((x + z) % 2 === 0) {
+        lightTiles.setMatrixAt(nLight++, dummy.matrix);
+      } else {
+        darkTiles.setMatrixAt(nDark++, dummy.matrix);
+      }
+    }
+  }
+
+  lightTiles.count = nLight;
+  darkTiles.count = nDark;
+  lightTiles.receiveShadow = true;
+  darkTiles.receiveShadow = true;
+  group.add(lightTiles, darkTiles);
+  return group;
+}
 
 function removeTriangles(geometry, shouldDrop) {
   const pos = geometry?.getAttribute?.("position");
@@ -127,7 +183,8 @@ function removeCenterCarpetOutline(mesh) {
       c.z <= -650;
     return centerFringe;
   });
-  if (removed) console.log(`PEACH center carpet outline hidden: ${removed} tris`);
+  if (removed)
+    console.log(`PEACH center carpet outline hidden: ${removed} tris`);
 }
 
 function removeTopMiddlePanels(mesh) {
@@ -143,22 +200,8 @@ function removeTopMiddlePanels(mesh) {
       c.z <= -1430;
     return blueWallPanels;
   });
-  if (removed) console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
-}
-
-function removeTopMiddleCrownFloor(mesh) {
-  if (!/^polySurface2051__MarbleCheckFloor00$/i.test(mesh.name || "")) return;
-
-  const removed = removeTriangles(mesh.geometry, (c) => {
-    const crownFloorPatch =
-      Math.abs(c.x) <= 760 &&
-      c.y >= 490 &&
-      c.y <= 510 &&
-      c.z >= -2605 &&
-      c.z <= -2220;
-    return crownFloorPatch;
-  });
-  if (removed) console.log(`PEACH top middle crown floor hidden: ${removed} tris`);
+  if (removed)
+    console.log(`PEACH top middle blue panels hidden: ${removed} tris`);
 }
 
 export const peach = {
@@ -186,6 +229,7 @@ export const peach = {
 
     const W = (world.rows && world.rows[0] && world.rows[0].length) || 20;
     const H = (world.rows && world.rows.length) || 20;
+    group.add(createCleanBoardFloor(W, H));
 
     // ---- the FULL Peach's Castle interior (loaded async, fit onto the board)
     const collada = new ColladaLoader();
@@ -216,12 +260,14 @@ export const peach = {
           removeCenterStairRails(o);
           removeCenterCarpetOutline(o);
           removeTopMiddlePanels(o);
-          removeTopMiddleCrownFloor(o);
           const ms = Array.isArray(o.material) ? o.material : [o.material];
           // hide: god-ray / light-shaft meshes (render as black streaks), and the
           // wooden entrance DOOR (the only Wood-textured mesh in the foyer).
           const meshName = o.name || "";
           const hide =
+            /^(polySurface2051__MarbleCheckFloor00|pCylinder434__CarpetSun00)$/i.test(
+              meshName,
+            ) ||
             /polySurface71[02]/i.test(meshName) ||
             ms.some((m) => {
               if (!m) return false;
