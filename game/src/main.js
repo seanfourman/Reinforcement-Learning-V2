@@ -186,7 +186,8 @@ function rebuildWorld(worldJson) {
     mechanics = createMechanics(scene, worldJson);
   }
   arenaMode = worldJson.objective === 'arena';
-  actors.setHidden(arenaMode);   // continuous round renders its own agents in the theme
+  actors.setHidden(false);
+  actors.setArena(arenaMode);    // arena round drives the chosen characters as the racers
   if (!arenaMode) actors.setWorld(parseLayout(rows), worldJson.objective === 'cross');
 }
 
@@ -223,7 +224,7 @@ async function poll() {
     }
     latestStats = snap.stats;
     latestFrame = snap.frame;
-    if (!replayActive && !arenaMode) actors.onFrame(snap.frame);
+    if (!replayActive) actors.onFrame(snap.frame);
     window.dispatchEvent(new CustomEvent('rl-snapshot', { detail: snap }));
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
@@ -375,6 +376,6 @@ renderer.setAnimationLoop(() => {
   if (doors && latestFrame) doors.update(latestFrame, t);
   if (dressing) dressing.update(t);
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
-  if (!arenaMode) actors.update(dt, t);
+  actors.update(dt, t);
   fx.composer.render();
 });

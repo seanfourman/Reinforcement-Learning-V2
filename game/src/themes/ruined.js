@@ -762,37 +762,8 @@ export const ruined = {
 
     // (goal marker removed - no glowing ring on the arena)
 
-    // ---- the two agents (from the continuous frame) ----------------------
-    function makeOrb(color, emissive) {
-      const wrap = new THREE.Group();
-      const body = new THREE.Mesh(
-        track(new THREE.SphereGeometry(0.5, 22, 16)),
-        track(
-          new THREE.MeshStandardMaterial({
-            color,
-            emissive,
-            emissiveIntensity: 0.45,
-            roughness: 0.35,
-            metalness: 0.1,
-          }),
-        ),
-      );
-      body.castShadow = true;
-      wrap.add(body);
-      wrap.add(new THREE.PointLight(color, 0.5, 4, 2));
-      group.add(wrap);
-      return wrap;
-    }
-    const orbs = {
-      red: makeOrb(0xff4d5e, 0x5a0a10),
-      blue: makeOrb(0x4d8bff, 0x0a1a4a),
-    };
-    const cur = {
-      red: { x: spawns.red[0], z: spawns.red[1] },
-      blue: { x: spawns.blue[0], z: spawns.blue[1] },
-    };
-    orbs.red.position.set(cur.red.x, AGENT_Y, cur.red.z);
-    orbs.blue.position.set(cur.blue.x, AGENT_Y, cur.blue.z);
+    // The two arena racers are the CHOSEN characters, driven by the shared actors
+    // system in arena mode (see main.js / live.js setArena) - no placeholder orbs.
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
@@ -818,16 +789,6 @@ export const ruined = {
         obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * (obj.spin?.[0] ?? 0);
         obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
         obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
-      }
-      if (frame && frame.continuous) {
-        const k = 1 - Math.exp(-dt * 14);
-        for (const side of ["red", "blue"]) {
-          const p = frame[side];
-          if (!p) continue;
-          cur[side].x += (p[0] - cur[side].x) * k;
-          cur[side].z += (p[1] - cur[side].z) * k;
-          orbs[side].position.set(cur[side].x, AGENT_Y, cur[side].z);
-        }
       }
     }
 

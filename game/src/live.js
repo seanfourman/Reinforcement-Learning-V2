@@ -59,7 +59,7 @@ export function createLiveActors(scene, walkers) {
       if (!w) continue;
       const old = side === 'red' ? king : princess;
       if (old && old.group) group.remove(old.group);
-      w.group.scale.setScalar(1.2);
+      w.group.scale.setScalar(agentScale);
       group.add(w.group);
       if (side === 'red') king = w; else princess = w;
     }
@@ -88,6 +88,8 @@ export function createLiveActors(scene, walkers) {
   let frame = null;
   let layout = null;
   let isCross = false;   // cross rounds (the hedge maze) have NO keys / gold
+  let arena = false;     // continuous arena round: positions are world (x,z), no keys
+  let agentScale = 1.2;  // walker scale (bigger in the open arena than in grid cells)
   // manhole fall animation, latched by the env's count (dormant unless drop_traps)
   const fell = { red: null, blue: null };
   const lastFallN = { red: 0, blue: 0 };
@@ -118,8 +120,25 @@ export function createLiveActors(scene, walkers) {
     banner.style.opacity = '0';
   }
 
+  // continuous arena round: drive the two walkers from world (x,z) floats, no keys
+  function setArena(on) {
+    arena = on;
+    agentScale = on ? 2.5 : 1.2; // racers are larger in the open arena
+    king.group.scale.setScalar(agentScale);
+    princess.group.scale.setScalar(agentScale);
+    redKey.group.visible = !on && !isCross;
+    blueKey.group.visible = !on && !isCross;
+    goldKey.group.visible = !on && !isCross;
+    escGlow.visible = !on;
+  }
+
   function onFrame(f) {
     frame = f;
+    if (arena) {
+      target.red = { x: f.red[0], z: f.red[1] };
+      target.blue = { x: f.blue[0], z: f.blue[1] };
+      return;
+    }
     target.red = cwArr(f.red);
     target.blue = cwArr(f.blue);
     // start a fall animation when the env reports a new manhole drop
@@ -180,7 +199,7 @@ export function createLiveActors(scene, walkers) {
     }
 
     if (!frame) return;
-    if (!isCross) {                       // keys + gold only exist in race rounds
+    if (!isCross && !arena) {             // keys + gold only exist in race rounds
       redKey.group.visible = !frame.redKey;
       blueKey.group.visible = !frame.blueKey;
       const spin = t * 1.5;
@@ -208,6 +227,7 @@ export function createLiveActors(scene, walkers) {
       }
     }
 
+    if (arena) return; // arena round: no escape glow / King-Queen banner
     if (frame.winner) {
       escGlow.intensity = 2 + Math.sin(t * 6) * 1.0;
       banner.textContent = frame.winner === 'red'
@@ -225,5 +245,5 @@ export function createLiveActors(scene, walkers) {
   // grid actors / keys / escape glow entirely.
   function setHidden(h) { group.visible = !h; }
 
-  return { setWorld, onFrame, update, group, setWalkers, setHidden };
+  return { setWorld, onFrame, update, group, setWalkers, setHidden, setArena };
 }
