@@ -175,14 +175,14 @@ const FALLING_PROPS = Array.from({ length: 90 }, (_, i) => {
 export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
-  sky: ["#050912", "#0a1425", "#10243a"], // deep blue-black cosmic dusk
-  fog: 0x071427, // deep navy so distant objects melt into the cosmic background
+  sky: ["#030303", "#0a0a0b", "#151515"], // neutral black cosmic dusk
+  fog: 0x101010, // charcoal so distant objects melt into the cosmic background
   fogNear: 44,
   fogFar: 175,
-  hemi: [0xaab4dc, 0x322e46, 0.68], // ambient
+  hemi: [0xd3cec3, 0x2d2b27, 0.68], // neutral ambient
   sun: 0xffefcf, // warm key, kept for contrast in the dark
   sunIntensity: 3.5,
-  fill: 0x8ea0d8,
+  fill: 0xb8b0a4,
   fillIntensity: 0.22,
   exposure: 1.0, // a bit brighter than the dark pass
   bloom: { strength: 0.34, radius: 0.5, threshold: 0.72 }, // goal/agents glow pops
@@ -238,14 +238,14 @@ export const ruined = {
       cv.height = H;
       const g = cv.getContext("2d");
       const base = g.createLinearGradient(0, 0, 0, H);
-      base.addColorStop(0.0, "#02050c");
-      base.addColorStop(0.55, "#06111f");
-      base.addColorStop(1.0, "#0b2136");
+      base.addColorStop(0.0, "#010101");
+      base.addColorStop(0.55, "#070708");
+      base.addColorStop(1.0, "#121212");
       g.fillStyle = base;
       g.fillRect(0, 0, W, H);
       // soft nebula clouds (additive)
       g.globalCompositeOperation = "lighter";
-      const neb = ["#123f74", "#1d6f8d", "#145b78", "#1b8a7d"];
+      const neb = ["#343434", "#46423b", "#2a2a2a", "#565047"];
       for (let i = 0; i < 8; i++) {
         const cx = bgRnd(i) * W;
         const cy = bgRnd(i + 9) * H;
