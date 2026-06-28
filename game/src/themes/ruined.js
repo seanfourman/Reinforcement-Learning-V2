@@ -20,7 +20,9 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 const ASSETS = "./assets/models/ruined-kingdom/";
 const FALLING_ASSETS = "./assets/models/falling/";
 const AGENT_Y = 0.55;
-const FALLING_PROP_SCALE = 0.02;
+const FALLING_PROP_SCALE = 0.005;
+const FALLING_TOP_Y = 30;
+const FALLING_BOTTOM_Y = -13;
 
 // ---- tunable layout knobs ------------------------------------------------
 const PLATFORM = "BossRaidWorldHomeStep000"; // the round arena dais (image 2)
@@ -41,50 +43,129 @@ const TOWER_MODELS = [
   "BossRaidWorldHomeTower001",
   "BossRaidWorldHomeTower002",
 ];
-const FALLING_PROPS = [
+const FALLING_PROP_TYPES = [
   {
     file: "rubber-dorrie/SouvenirLake2.dae",
-    x: 22.3,
-    z: 2.4,
-    height: 1.2,
-    fall: 9.5,
-    bottomY: -1.7,
-    speed: 0.095,
-    swayX: 0.8,
-    swayZ: 0.6,
+    height: 1.7,
     spin: [-0.2, 0.7, 0.32],
     rot: [0.25, 0.8, -0.45],
-    phase: 0.18,
-  },
-  {
-    file: "rock-fragment/SouvenirMoon1.dae",
-    x: 19.5,
-    z: -1.0,
-    height: 1.1,
-    fall: 9.2,
-    bottomY: -2.4,
-    speed: 0.12,
-    swayX: 0.75,
-    swayZ: 0.5,
-    spin: [0.8, 0.35, -0.5],
-    rot: [-0.35, 1.2, 0.2],
-    phase: 0.59,
   },
   {
     file: "moon-lamp/SouvenirMoon2.dae",
-    x: -3.6,
-    z: 7.6,
     height: 1.25,
-    fall: 12.5,
-    bottomY: -2.8,
-    speed: 0.07,
-    swayX: 1.0,
-    swayZ: 0.8,
     spin: [-0.18, 0.45, 0.52],
     rot: [0.55, -0.8, -0.2],
-    phase: 0.68,
+  },
+  {
+    file: "t-rex-model/T-Rex Model/T-Rex.dae",
+    height: 2.1,
+    spin: [0.2, -0.6, 0.18],
+    rot: [-0.25, 1.1, 0.1],
+  },
+  {
+    file: "triceratops-trophy/Triceratops Trophy/Triceratops Trophy.dae",
+    height: 1.8,
+    spin: [-0.15, 0.52, -0.24],
+    rot: [0.2, -1.2, 0.34],
+  },
+  {
+    file: "jaxi-statue/SouvenirSand2.dae",
+    height: 1.35,
+    spin: [0.36, 0.42, -0.18],
+    rot: [0.1, 0.4, -0.2],
+  },
+  {
+    file: "jizo-statue/SouvenirSky2.dae",
+    height: 1.2,
+    spin: [-0.28, 0.2, 0.45],
+    rot: [-0.3, -0.2, 0.18],
+  },
+  {
+    file: "paper-lantern/SouvenirSky1.dae",
+    height: 1.15,
+    spin: [0.18, -0.34, 0.58],
+    rot: [0.4, 0.1, -0.3],
+  },
+  {
+    file: "butterfly-mobile/SouvenirCrash2.dae",
+    height: 1.45,
+    spin: [-0.22, 0.64, 0.28],
+    rot: [0.25, -0.6, 0.22],
+  },
+  {
+    file: "plush-frog/SouvenirHat1.dae",
+    height: 1.3,
+    spin: [0.42, -0.22, 0.35],
+    rot: [-0.18, 0.7, -0.15],
+  },
+  {
+    file: "potted-palm-tree/SouvenirCrash1.dae",
+    height: 1.55,
+    spin: [-0.24, 0.38, -0.2],
+    rot: [0.28, -0.8, 0.2],
+  },
+  {
+    file: "sand-jar/SouvenirSea1.dae",
+    height: 1.25,
+    spin: [0.3, 0.48, -0.35],
+    rot: [0.35, 0.4, -0.32],
+  },
+  {
+    file: "souvenir-forks/SouvenirLava1.dae",
+    height: 1.5,
+    spin: [-0.3, -0.5, 0.26],
+    rot: [-0.2, -0.5, 0.3],
+  },
+  {
+    file: "watering-can/SouvenirForest2.dae",
+    height: 1.55,
+    spin: [0.24, -0.4, -0.44],
+    rot: [0.15, 1.0, -0.25],
+  },
+  {
+    file: "underwater-dome/SouvenirLake1.dae",
+    height: 1.65,
+    spin: [-0.34, 0.32, 0.2],
+    rot: [0.22, -0.3, -0.18],
   },
 ];
+const FALLING_SIDE_LANES = [
+  { x: -10, z: -5 },
+  { x: 30, z: -5 },
+  { x: -13, z: 0 },
+  { x: 33, z: 0 },
+  { x: -16, z: 5 },
+  { x: 36, z: 5 },
+  { x: -11, z: 10 },
+  { x: 31, z: 10 },
+  { x: -15, z: 15 },
+  { x: 35, z: 15 },
+  { x: -12, z: 20 },
+  { x: 32, z: 20 },
+  { x: -17, z: 25 },
+  { x: 37, z: 25 },
+  { x: -10, z: 30 },
+  { x: 30, z: 30 },
+  { x: -14, z: 35 },
+  { x: 34, z: 35 },
+];
+const FALLING_PROPS = Array.from({ length: 90 }, (_, i) => {
+  const type = FALLING_PROP_TYPES[i % FALLING_PROP_TYPES.length];
+  const lane = FALLING_SIDE_LANES[i % FALLING_SIDE_LANES.length];
+  const wave = Math.floor(i / FALLING_SIDE_LANES.length);
+  const xJitter = (((i * 37) % 13) - 6) * 0.22;
+  const zJitter = (((i * 19) % 11) - 5) * 0.18;
+  return {
+    ...type,
+    x: lane.x + xJitter,
+    z: lane.z + zJitter,
+    height: type.height * (0.86 + ((i * 11) % 7) * 0.045),
+    speed: 0.056 + ((i * 17) % 10) * 0.0055,
+    phase: (i * 0.173 + wave * 0.071) % 1,
+    topY: FALLING_TOP_Y + (wave % 4) * 5,
+    bottomY: FALLING_BOTTOM_Y - (wave % 3) * 2,
+  };
+});
 
 export const ruined = {
   name: "ruined",
@@ -361,9 +442,11 @@ export const ruined = {
           spec.rot?.[1] ?? 0,
           spec.rot?.[2] ?? 0,
         );
-        wrap.position.set(spec.x, spec.bottomY + spec.fall, spec.z);
+        const topY = spec.topY ?? FALLING_TOP_Y;
+        const bottomY = spec.bottomY ?? FALLING_BOTTOM_Y;
+        wrap.position.set(spec.x, topY, spec.z);
         group.add(wrap);
-        fallingObjects.push({ wrap, ...spec });
+        fallingObjects.push({ ...spec, wrap, topY, bottomY });
       });
     }
 
@@ -514,9 +597,9 @@ export const ruined = {
       });
     }
 
-    // ---- impossible falling souvenirs around the tower ring --------------
-    // These are visual-only background props. They stay outside the playable
-    // surface and cast no shadows, so they cannot affect the DQN arena.
+    // ---- impossible falling souvenirs beside the tower -------------------
+    // These are visual-only background props. They fall in side lanes outside
+    // the tower ring and cast no shadows, so they cannot affect the DQN arena.
     FALLING_PROPS.forEach(addFallingProp);
 
     // ---- the TIME RING: a glowing clock-seal the dais floats on ----------
@@ -701,16 +784,11 @@ export const ruined = {
       handMinute.rotation.y -= dt * 0.45; // sweeping clock hands
       handHour.rotation.y -= (dt * 0.45) / 12;
       for (const obj of fallingObjects) {
-        const u = (t * obj.speed + obj.phase) % 1;
-        const wave = t * 1.6 + obj.phase * Math.PI * 2;
-        obj.wrap.position.set(
-          obj.x + Math.sin(wave) * (obj.swayX ?? 0),
-          obj.bottomY + (1 - u) * obj.fall,
-          obj.z + Math.cos(wave * 0.87) * (obj.swayZ ?? 0),
-        );
-        obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * obj.spin[0];
-        obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * obj.spin[1];
-        obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * obj.spin[2];
+        const u = (t * (obj.speed ?? 0.065) + (obj.phase ?? 0)) % 1;
+        obj.wrap.position.set(obj.x, THREE.MathUtils.lerp(obj.topY, obj.bottomY, u), obj.z);
+        obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * (obj.spin?.[0] ?? 0);
+        obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
+        obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
       }
       if (frame && frame.continuous) {
         const k = 1 - Math.exp(-dt * 14);
