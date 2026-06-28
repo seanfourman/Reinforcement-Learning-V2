@@ -157,9 +157,12 @@ const FALLING_PROPS = Array.from({ length: 90 }, (_, i) => {
   const wave = Math.floor(i / FALLING_SIDE_LANES.length);
   const xJitter = (((i * 37) % 13) - 6) * 0.22;
   const zJitter = (((i * 19) % 11) - 5) * 0.18;
+  // push each lane a little further from the arena centre (x=10) so even the big
+  // props (T-Rex, triceratops) fully clear the tower ring.
+  const laneX = lane.x < 10 ? lane.x - 3 : lane.x + 3;
   return {
     ...type,
-    x: lane.x + xJitter,
+    x: laneX + xJitter,
     z: lane.z + zJitter,
     height: type.height * (0.86 + ((i * 11) % 7) * 0.045),
     speed: 0.056 + ((i * 17) % 10) * 0.0055,
