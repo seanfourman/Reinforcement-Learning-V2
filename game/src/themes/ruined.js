@@ -326,6 +326,121 @@ export const ruined = {
       });
     }
 
+    // ---- the TIME RING: a glowing clock-seal the dais floats on ----------
+    // additive glow (bloom-friendly): a soft energy haze, a rune-seal with Roman
+    // numerals (a clock face), concentric rings and sweeping clock hands.
+    const hazeTex = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 256;
+      const g = cv.getContext("2d");
+      const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+      grd.addColorStop(0.0, "rgba(120,210,255,0.8)");
+      grd.addColorStop(0.4, "rgba(90,110,255,0.3)");
+      grd.addColorStop(1.0, "rgba(30,20,70,0)");
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 256, 256);
+      return track(new THREE.CanvasTexture(cv));
+    })();
+    const haze = new THREE.Mesh(
+      track(new THREE.CircleGeometry(60, 64)),
+      track(
+        new THREE.MeshBasicMaterial({
+          map: hazeTex,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          fog: false,
+        }),
+      ),
+    );
+    haze.rotation.x = -Math.PI / 2;
+    haze.position.set(C, -5, C);
+    group.add(haze);
+
+    const sealTex = (() => {
+      const S = 1024,
+        cx = 512,
+        cy = 512;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const g = cv.getContext("2d");
+      g.clearRect(0, 0, S, S);
+      g.strokeStyle = "rgba(150,225,255,1)";
+      g.lineWidth = 4;
+      for (const r of [210, 300, 470, 500]) {
+        g.beginPath();
+        g.arc(cx, cy, r, 0, Math.PI * 2);
+        g.stroke();
+      }
+      g.lineWidth = 3;
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(cx + Math.cos(a) * 470, cy + Math.sin(a) * 470);
+        g.lineTo(cx + Math.cos(a) * 500, cy + Math.sin(a) * 500);
+        g.stroke();
+      }
+      g.fillStyle = "rgba(205,185,255,1)";
+      g.font = "bold 72px 'Times New Roman', serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      const NUM = ["XII", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI"];
+      for (let i = 0; i < 12; i++) {
+        const a = -Math.PI / 2 + (i / 12) * Math.PI * 2;
+        g.fillText(NUM[i], cx + Math.cos(a) * 250, cy + Math.sin(a) * 250);
+      }
+      return track(new THREE.CanvasTexture(cv));
+    })();
+    const sealSpin = new THREE.Group();
+    sealSpin.position.set(C, -2.5, C);
+    group.add(sealSpin);
+    const seal = new THREE.Mesh(
+      track(new THREE.CircleGeometry(54, 80)),
+      track(
+        new THREE.MeshBasicMaterial({
+          map: sealTex,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          fog: false,
+        }),
+      ),
+    );
+    seal.rotation.x = -Math.PI / 2;
+    sealSpin.add(seal);
+
+    const glowMat = (c) =>
+      track(
+        new THREE.MeshBasicMaterial({
+          color: c,
+          transparent: true,
+          opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+    const ringA = new THREE.Mesh(track(new THREE.TorusGeometry(30, 0.4, 14, 140)), glowMat(0x66e6ff));
+    const ringB = new THREE.Mesh(track(new THREE.TorusGeometry(45, 0.55, 14, 160)), glowMat(0xb070ff));
+    for (const r of [ringA, ringB]) {
+      r.rotation.x = Math.PI / 2;
+      r.position.set(C, -2, C);
+      group.add(r);
+    }
+
+    const mkHand = (len, w, c) => {
+      const grp = new THREE.Group();
+      grp.position.set(C, -1.9, C);
+      const bar = new THREE.Mesh(track(new THREE.BoxGeometry(len, 0.05, w)), glowMat(c));
+      bar.position.x = len / 2 - 3;
+      grp.add(bar);
+      group.add(grp);
+      return grp;
+    };
+    const handMinute = mkHand(50, 0.7, 0x8fe6ff);
+    const handHour = mkHand(34, 1.1, 0xc79bff);
+
     // obstacles are invisible gameplay collisions only - no rock/grass markers.
 
     // (goal marker removed - no glowing ring on the arena)
@@ -364,6 +479,12 @@ export const ruined = {
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
+      sealSpin.rotation.y += dt * 0.03; // the clock face drifts slowly
+      haze.material.opacity = 0.8 + Math.sin(t * 1.1) * 0.2; // breathing glow
+      ringA.scale.setScalar(1 + Math.sin(t * 1.3) * 0.03);
+      ringB.scale.setScalar(1 + Math.sin(t * 1.3 + 1.5) * 0.03);
+      handMinute.rotation.y -= dt * 0.45; // sweeping clock hands
+      handHour.rotation.y -= (dt * 0.45) / 12;
       if (frame && frame.continuous) {
         const k = 1 - Math.exp(-dt * 14);
         for (const side of ["red", "blue"]) {
