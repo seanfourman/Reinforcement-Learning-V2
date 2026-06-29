@@ -271,7 +271,7 @@ export const peach = {
   fillIntensity: 0.32,
   exposure: 1.12,
   bloom: { strength: 0.16, radius: 0.5, threshold: 0.82 },
-  camera: { startDist: 33, maxDist: 36, target: [10, 0, 10.7], panMargin: 4 },
+  camera: { startDist: 36, maxDist: 36, target: [10, 0, 10.7], panMargin: 4 },
   redName: "Crimson",
   blueName: "Cobalt",
 
