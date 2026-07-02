@@ -183,6 +183,20 @@ export const peach = {
       roughness: 0.55,
       metalness: 0,
     });
+    // solid marble for a BACKING shell placed just behind the model's own walls
+    // (built after the model loads, below). Where a front wall has a gap / a
+    // missing or one-sided face, this backing shows through as marble instead
+    // of the empty void. The front walls keep their own texture untouched.
+    // DoubleSide so it shows regardless of the cloned faces' winding.
+    const wallMarbleMat = new THREE.MeshStandardMaterial({
+      map: tex("MarbleWhite00_alb.png", 8, 6),
+      normalMap: tex("MarbleWhite00_nrm.png", 8, 6, false),
+      roughnessMap: tex("MarbleWhite00_rgh.png", 8, 6, false),
+      color: 0xf1e7d6,
+      roughness: 0.6,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    });
     for (const [r, c] of at("#").filter(([r, c]) => !onBorder(r, c))) {
       const { x, z } = cw(r, c);
       const col = new THREE.Mesh(
@@ -377,10 +391,47 @@ export const peach = {
         wrap.rotation.y = MODEL_ROT;
         group.add(wrap);
 
+        // ---- marble BACKING shell -------------------------------------------
+        // Clone each of the model's own wall meshes, push the copy slightly
+        // OUTWARD (behind the wall) and skin it in marble, so any gap / missing
+        // face in the front wall shows marble through it instead of the void.
+        // The front walls are left completely untouched. The push is a 3D radial
+        // scale about the shell's own centre, so the domed ceiling backing goes
+        // UP-and-out (staying behind the dome) instead of poking through it.
+        wrap.updateMatrixWorld(true);
+        const fbox = new THREE.Box3();
+        const frescoMeshes = [];
+        model.traverse((o) => {
+          if (!o.isMesh || !o.visible) return;
+          const oms = Array.isArray(o.material) ? o.material : [o.material];
+          if (oms.some((m) => /fresco/i.test(m?.name || ""))) {
+            frescoMeshes.push(o);
+            fbox.expandByObject(o);
+          }
+        });
+        const fc = new THREE.Vector3();
+        fbox.getCenter(fc);
+        const K = 1.015; // sits a hair behind the wall everywhere
+        const pushBack = new THREE.Matrix4()
+          .makeTranslation(fc.x, fc.y, fc.z)
+          .multiply(new THREE.Matrix4().makeScale(K, K, K))
+          .multiply(new THREE.Matrix4().makeTranslation(-fc.x, -fc.y, -fc.z));
+        const backings = [];
+        for (const o of frescoMeshes) {
+          const geo = o.geometry.clone();
+          geo.applyMatrix4(o.matrixWorld); // bake to world space
+          geo.applyMatrix4(pushBack); // then push it out behind the wall
+          const backing = new THREE.Mesh(geo, wallMarbleMat);
+          backing.receiveShadow = true;
+          backing.frustumCulled = false;
+          backings.push(backing);
+        }
+        for (const b of backings) group.add(b);
+
         let nmesh = 0;
         model.traverse((o) => o.isMesh && nmesh++);
         console.log(
-          `PEACH model loaded: ${nmesh} meshes, raw footprint ${Math.max(size.x, size.z).toFixed(0)}, scale ${s.toFixed(4)}`,
+          `PEACH model loaded: ${nmesh} meshes, raw footprint ${Math.max(size.x, size.z).toFixed(0)}, scale ${s.toFixed(4)}, ${backings.length} marble backing wall(s)`,
         );
       })
       .catch((e) => console.warn("Peach's Castle model failed to load", e));
