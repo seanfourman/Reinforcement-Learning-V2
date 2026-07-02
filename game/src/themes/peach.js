@@ -73,8 +73,8 @@ function starShape() {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
-  cell: 1.1, // a little bigger board
-  offset: [0, -2], // slide the arena back (north, toward the throne)
+  cell: 1.047, // a touch bigger board
+  offset: [0, 2.7], // slide the arena well back (north, toward the throne)
   sky: ["#bfa9dc", "#dcc8ea", "#f6ecf2"], // soft regal lavender-cream
   fog: 0xe9e0f3,
   fogNear: 55,
