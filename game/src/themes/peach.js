@@ -158,13 +158,9 @@ export const peach = {
         (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
         false,
       ),
-      roughnessMap: tex(
-        "MarbleCheckFloor00_rgh.png",
-        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
-        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
-        false,
-      ),
-      roughness: 0.9,
+      // no roughnessMap + full roughness = a matte floor with no specular
+      // glare (the marble rgh map had polished spots that caught the sun)
+      roughness: 1,
       metalness: 0,
     });
     const floor = new THREE.Mesh(
