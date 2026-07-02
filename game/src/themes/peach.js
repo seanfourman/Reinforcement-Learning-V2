@@ -1,259 +1,73 @@
-// Round 1 - Peach's Castle: the full castle interior scene plus a low-profile
-// royal training board that lines up with the 20x20 RL grid.
+// Round 1 - Peach's Castle: the full castle interior scene, with the RL grid
+// blended invisibly into it. The agents walk the model's REAL foyer floor
+// (MODEL_FLOOR_FRAC drops it to y=0); the only addition is a flush plane over
+// the foyer floor region re-laying the hall's own checkered marble at exactly
+// ONE CHECK = ONE GRID CELL, so the checker itself delineates the cells. The
+// model's grand staircases, carpets and its own sun carpet sit above that
+// plane untouched - there is no board object, frame or furniture. The only
+// markers are a hair-thin gold inlay + light pool at the goal and two small
+// flush marble medallions at the spawns.
+//
+// Vertical stack: agents' feet at y=0, floor plane top 0.012, flush decals
+// 0.016-0.03, heatmap overlays at y=0.19 renderOrder 3.
 
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { getCell } from "../layout.js";
 
 const MODEL = "./assets/models/peach-castle/interior.dae";
+const TEXDIR = "./assets/models/peach-castle/";
 
-// ---- placement knobs (tune from a screenshot) ----------------------------
-const MODEL_TARGET = 84; // world footprint the castle is scaled to (board is 20) - big & grand (+2%)
-const MODEL_FLOOR_FRAC = 0.108; // hall floor is ~10.8% of the footprint above box.min
+// ---- castle model placement knobs (tuned from screenshots) ----------------
+// Footprint the castle is scaled to (board is 20). At 84 the foyer's CLEAR
+// floor between the throne stair (north) and the entrance staircase (south)
+// is only ~14.5 units deep - the entrance stair's foot landed inside the
+// board's south rows. 126 (x1.5) makes the clear span cover the whole board:
+// throne-stair foot at the north border, entrance stair past the south edge.
+const MODEL_TARGET = 126;
+// The WALKABLE foyer floor is ~1.7% of the footprint above box.min (probed by
+// raycasting the checker mesh: main floor at +1.425 with an 84 footprint; the
+// octagonal sun-carpet recess mid-floor sits 0.4 lower, and box.min itself is
+// the foundation). The old 0.108 aligned the UPSTAIRS landing instead, leaving
+// the arena hanging ~8 units in the air above the real floor.
+const MODEL_FLOOR_FRAC = 0.01696;
 const MODEL_DX = 0;
 const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to y=0)
-const MODEL_DZ = 0;
+const MODEL_DZ = 3.5; // slide south: entrance stair clears the board's south edge
 const MODEL_ROT = Math.PI; // radians, flip the whole castle scene 180 degrees
-const BOARD_Y = 0.145;
-const BOARD_FRAME = 0.28;
 
-function makeBoardTexture(W, H, rows = []) {
-  const px = 96;
-  const canvas = document.createElement("canvas");
-  canvas.width = W * px;
-  canvas.height = H * px;
-  const ctx = canvas.getContext("2d");
+const CHECKS_PER_TEX = 6; // MarbleCheckFloor00 holds a 6x6 checker per tile
+const TEAM_RED = 0xb8332c;
+const TEAM_BLUE = 0x2456c8;
 
-  const fillFor = (ch, even) => {
-    if (ch === "#") return "#bda86e";
-    if (ch === "E") return "#efbf44";
-    if (ch === "R") return "#ee9d94";
-    if (ch === "B") return "#9fc0ea";
-    return even ? "#f0e4cf" : "#cfc4b3";
-  };
-
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      const x = c * px;
-      const y = r * px;
-      const ch = rows[r]?.[c] || ".";
-      ctx.fillStyle = fillFor(ch, (r + c) % 2 === 0);
-      ctx.fillRect(x, y, px, px);
-
-      const g = ctx.createLinearGradient(x, y, x + px, y + px);
-      g.addColorStop(0, "rgba(255,255,255,0.2)");
-      g.addColorStop(0.55, "rgba(74,58,38,0.04)");
-      g.addColorStop(1, "rgba(255,255,255,0.08)");
-      ctx.fillStyle = g;
-      ctx.fillRect(x, y, px, px);
-
-      for (let i = 0; i < 16; i++) {
-        const sx = x + ((r * 61 + c * 37 + i * 29) % px);
-        const sy = y + ((r * 43 + c * 71 + i * 17) % px);
-        ctx.fillStyle = "rgba(62,53,43,0.035)";
-        ctx.fillRect(sx, sy, 1, 1);
-      }
-
-      ctx.beginPath();
-      ctx.moveTo(x - 8, y + ((r * 19 + c * 31) % px));
-      ctx.bezierCurveTo(
-        x + px * 0.32,
-        y + px * 0.18,
-        x + px * 0.68,
-        y + px * 0.82,
-        x + px + 8,
-        y + ((r * 47 + c * 13) % px),
-      );
-      ctx.strokeStyle = "rgba(94,76,56,0.14)";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-    }
-  }
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  tex.needsUpdate = true;
-  return tex;
+function crownShape() {
+  const s = new THREE.Shape();
+  s.moveTo(-0.42, -0.22);
+  s.lineTo(-0.42, 0.18);
+  s.lineTo(-0.24, 0.02);
+  s.lineTo(-0.08, 0.28);
+  s.lineTo(0.08, 0.02);
+  s.lineTo(0.24, 0.28);
+  s.lineTo(0.42, 0.02);
+  s.lineTo(0.42, -0.22);
+  s.closePath();
+  return s;
 }
 
-function createCrownMarker(cell) {
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.42, -0.22);
-  shape.lineTo(-0.42, 0.18);
-  shape.lineTo(-0.24, 0.02);
-  shape.lineTo(-0.08, 0.28);
-  shape.lineTo(0.08, 0.02);
-  shape.lineTo(0.24, 0.28);
-  shape.lineTo(0.42, 0.02);
-  shape.lineTo(0.42, -0.22);
-  shape.closePath();
-
-  const crown = new THREE.Mesh(
-    new THREE.ShapeGeometry(shape),
-    new THREE.MeshStandardMaterial({
-      color: 0xffd65a,
-      roughness: 0.32,
-      metalness: 0.55,
-      emissive: 0x4a2300,
-      emissiveIntensity: 0.18,
-    }),
-  );
-  crown.rotation.x = -Math.PI / 2;
-  crown.scale.setScalar(cell * 0.78);
-  crown.renderOrder = 2;
-  return crown;
-}
-
-function createSpawnPad(color, cell) {
-  const group = new THREE.Group();
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(cell * 0.23, cell * 0.36, 40),
-    new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.82,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.035;
-  ring.renderOrder = 2;
-
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(cell * 0.21, 36),
-    new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }),
-  );
-  disc.rotation.x = -Math.PI / 2;
-  disc.position.y = 0.033;
-  disc.renderOrder = 2;
-  group.add(disc, ring);
-  return group;
-}
-
-function createPeachBoard(W, H, rows = []) {
-  const group = new THREE.Group();
-  const cell = getCell();
-  const cx = W / 2;
-  const cz = H / 2;
-  const boardW = W * cell;
-  const boardH = H * cell;
-  const boardCenterX = W / 2;
-  const boardCenterZ = H / 2;
-
-  const gold = new THREE.MeshStandardMaterial({
-    color: 0xb98e3a,
-    roughness: 0.58,
-    metalness: 0.34,
-  });
-  const redVelvet = new THREE.MeshStandardMaterial({
-    color: 0x741a22,
-    roughness: 0.86,
-    metalness: 0.02,
-  });
-  const shadow = new THREE.MeshBasicMaterial({
-    color: 0x160a0c,
-    transparent: true,
-    opacity: 0.28,
-    depthWrite: false,
-  });
-
-  const dropShadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(boardW + BOARD_FRAME * 2.8, boardH + BOARD_FRAME * 2.8),
-    shadow,
-  );
-  dropShadow.rotation.x = -Math.PI / 2;
-  dropShadow.position.set(boardCenterX, BOARD_Y - 0.018, boardCenterZ + 0.08);
-  dropShadow.renderOrder = 0;
-  group.add(dropShadow);
-
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(boardW + BOARD_FRAME * 2, 0.11, boardH + BOARD_FRAME * 2),
-    redVelvet,
-  );
-  base.position.set(boardCenterX, BOARD_Y - 0.065, boardCenterZ);
-  base.receiveShadow = true;
-  group.add(base);
-
-  const frameBars = [
-    [boardW + BOARD_FRAME * 2, BOARD_FRAME, 0, -boardH / 2 - BOARD_FRAME / 2],
-    [boardW + BOARD_FRAME * 2, BOARD_FRAME, 0, boardH / 2 + BOARD_FRAME / 2],
-    [BOARD_FRAME, boardH, -boardW / 2 - BOARD_FRAME / 2, 0],
-    [BOARD_FRAME, boardH, boardW / 2 + BOARD_FRAME / 2, 0],
-  ];
-  for (const [w, h, dx, dz] of frameBars) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(w, 0.09, h), gold);
-    bar.position.set(boardCenterX + dx, BOARD_Y - 0.012, boardCenterZ + dz);
-    bar.receiveShadow = true;
-    group.add(bar);
-  }
-
-  const boardTex = makeBoardTexture(W, H, rows);
-  const boardCanvas = document.createElement("canvas");
-  boardCanvas.width = boardTex.image.width;
-  boardCanvas.height = boardTex.image.height;
-  const ctx = boardCanvas.getContext("2d");
-  ctx.drawImage(boardTex.image, 0, 0);
-  const px = boardCanvas.width / W;
-  ctx.strokeStyle = "rgba(150,96,24,0.72)";
-  ctx.lineCap = "square";
-  for (let c = 0; c <= W; c++) {
-    ctx.lineWidth = c === 0 || c === W || c % 5 === 0 ? 4.2 : 2.1;
-    ctx.beginPath();
-    ctx.moveTo(c * px, 0);
-    ctx.lineTo(c * px, boardCanvas.height);
-    ctx.stroke();
-  }
-  for (let r = 0; r <= H; r++) {
-    ctx.lineWidth = r === 0 || r === H || r % 5 === 0 ? 4.2 : 2.1;
-    ctx.beginPath();
-    ctx.moveTo(0, r * px);
-    ctx.lineTo(boardCanvas.width, r * px);
-    ctx.stroke();
-  }
-  boardTex.dispose();
-
-  const boardSurfaceTex = new THREE.CanvasTexture(boardCanvas);
-  boardSurfaceTex.colorSpace = THREE.SRGBColorSpace;
-  boardSurfaceTex.anisotropy = 4;
-  const boardSurface = new THREE.Mesh(
-    new THREE.PlaneGeometry(boardW, boardH),
-    new THREE.MeshBasicMaterial({
-      map: boardSurfaceTex,
-      side: THREE.DoubleSide,
-    }),
-  );
-  boardSurface.rotation.x = -Math.PI / 2;
-  boardSurface.position.set(boardCenterX, BOARD_Y + 0.008, boardCenterZ);
-  boardSurface.receiveShadow = true;
-  boardSurface.renderOrder = 1;
-  group.add(boardSurface);
-
-  const placeCell = (r, c, obj) => {
-    obj.position.set(
-      cx + (c + 0.5 - cx) * cell,
-      BOARD_Y + 0.02,
-      cz + (r + 0.5 - cz) * cell,
-    );
-    group.add(obj);
-  };
-  for (let r = 0; r < H; r++) {
-    for (let c = 0; c < W; c++) {
-      const ch = rows[r]?.[c];
-      if (ch === "E") placeCell(r, c, createCrownMarker(cell));
-      if (ch === "R") placeCell(r, c, createSpawnPad(0xff5d58, cell));
-      if (ch === "B") placeCell(r, c, createSpawnPad(0x4f91ff, cell));
-    }
-  }
-
-  return group;
+function starShape() {
+  // 4-point compass star - the Blue spawn emblem (shape-codes the teams so
+  // the medallions stay tellable apart without color)
+  const s = new THREE.Shape();
+  s.moveTo(0, 0.5);
+  s.lineTo(0.13, 0.13);
+  s.lineTo(0.5, 0);
+  s.lineTo(0.13, -0.13);
+  s.lineTo(0, -0.5);
+  s.lineTo(-0.13, -0.13);
+  s.lineTo(-0.5, 0);
+  s.lineTo(-0.13, 0.13);
+  s.closePath();
+  return s;
 }
 
 export const peach = {
@@ -281,9 +95,212 @@ export const peach = {
     let disposed = false;
     const maxAniso = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
 
-    const W = (world.rows && world.rows[0] && world.rows[0].length) || 20;
-    const H = (world.rows && world.rows.length) || 20;
-    group.add(createPeachBoard(W, H, world.rows || []));
+    // ---- world layout ------------------------------------------------------
+    const rows =
+      world.rows && world.rows.length
+        ? world.rows
+        : Array.from({ length: 20 }, (_, r) =>
+            r === 0 || r === 19 ? "#".repeat(20) : "#" + ".".repeat(18) + "#",
+          );
+    const H = rows.length;
+    const W = rows[0].length;
+    const cell = getCell();
+    const cx = W / 2; // board centre (10, 10)
+    const cz = H / 2;
+    const cw = (r, c) => ({
+      x: cx + (c + 0.5 - cx) * cell,
+      z: cz + (r + 0.5 - cz) * cell,
+    });
+    const at = (ch) => {
+      const out = [];
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) if (rows[r][c] === ch) out.push([r, c]);
+      return out;
+    };
+    const goals = at("E");
+    const redSpawn = at("R")[0];
+    const blueSpawn = at("B")[0];
+    const onBorder = (r, c) => r === 0 || c === 0 || r === H - 1 || c === W - 1;
+
+    // ---- textures (the castle's own PBR set) --------------------------------
+    const loader = new THREE.TextureLoader();
+    const tex = (name, rx = 1, ry = 1, srgb = true) => {
+      const t = loader.load(TEXDIR + name);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      t.anisotropy = maxAniso;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+
+    // ---- the floor IS the grid ----------------------------------------------
+    // One flush plane re-laying the FOYER FLOOR REGION (probed model bounds:
+    // x -21.7..41.7, z 1.3..42.3) with the hall's own checker texture at one
+    // check per grid cell, 5mm above the model's real floor. Integer world
+    // bounds keep check edges exactly on cell boundaries, so the checker
+    // itself delineates the cells - no frame, no grout, no board edge, and no
+    // scale seam anywhere at floor level. The model's raised carpets, stairs
+    // and its own sun carpet all sit ABOVE this plane and stay visible.
+    const FX0 = -38;
+    const FX1 = 58;
+    const FZ0 = -2;
+    const FZ1 = 62;
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: tex(
+        "MarbleCheckFloor00_alb.png",
+        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
+        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
+      ),
+      normalMap: tex(
+        "MarbleCheckFloor00_nrm.png",
+        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
+        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
+        false,
+      ),
+      roughnessMap: tex(
+        "MarbleCheckFloor00_rgh.png",
+        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
+        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
+        false,
+      ),
+      roughness: 0.9,
+      metalness: 0,
+    });
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(FX1 - FX0, FZ1 - FZ0),
+      floorMat,
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set((FX0 + FX1) / 2, 0.005, (FZ0 + FZ1) / 2);
+    floor.receiveShadow = true;
+    group.add(floor);
+
+    const marbleMat = new THREE.MeshStandardMaterial({
+      map: tex("MarbleWhite00_alb.png", 1, 1),
+      normalMap: tex("MarbleWhite00_nrm.png", 1, 1, false),
+      roughnessMap: tex("MarbleWhite00_rgh.png", 1, 1, false),
+      roughness: 0.55,
+      metalness: 0,
+    });
+    for (const [r, c] of at("#").filter(([r, c]) => !onBorder(r, c))) {
+      const { x, z } = cw(r, c);
+      const col = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32 * cell, 0.38 * cell, 2.2, 14),
+        marbleMat,
+      );
+      col.position.set(x, 1.1, z);
+      col.castShadow = col.receiveShadow = true;
+      group.add(col);
+    }
+
+    // ---- goal: a hair-thin gold inlay + a soft light pool -------------------
+    // The model's own sun carpet already decorates the foyer mid-board; the
+    // goal itself is marked only by a flush gold inlay hugging the exact goal
+    // cells and a warm pool of light at the throne approach.
+    const animated = { inlay: null };
+    if (goals.length) {
+      let gx = 0;
+      let gz = 0;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (const [r, c] of goals) {
+        const p = cw(r, c);
+        gx += p.x;
+        gz += p.z;
+        minX = Math.min(minX, p.x - cell / 2);
+        maxX = Math.max(maxX, p.x + cell / 2);
+        minZ = Math.min(minZ, p.z - cell / 2);
+        maxZ = Math.max(maxZ, p.z + cell / 2);
+      }
+      gx /= goals.length;
+      gz /= goals.length;
+
+      // hair-thin flush gold inlay around the goal pair, faint breathing glow
+      const oW = (maxX - minX) / 2 + 0.02;
+      const oH = (maxZ - minZ) / 2 + 0.02;
+      const band = 0.06;
+      const outline = new THREE.Shape();
+      outline.moveTo(-oW, -oH);
+      outline.lineTo(oW, -oH);
+      outline.lineTo(oW, oH);
+      outline.lineTo(-oW, oH);
+      outline.closePath();
+      const holePath = new THREE.Path();
+      holePath.moveTo(-oW + band, -oH + band);
+      holePath.lineTo(oW - band, -oH + band);
+      holePath.lineTo(oW - band, oH - band);
+      holePath.lineTo(-oW + band, oH - band);
+      holePath.closePath();
+      outline.holes.push(holePath);
+      const inlayMat = new THREE.MeshStandardMaterial({
+        color: 0xd9a94a,
+        metalness: 0.75,
+        roughness: 0.35,
+        emissive: 0xffb23a,
+        emissiveIntensity: 0.25,
+      });
+      const inlay = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(outline, { depth: 0.012, bevelEnabled: false }),
+        inlayMat,
+      );
+      inlay.geometry.rotateX(-Math.PI / 2);
+      inlay.position.set(gx, 0.016, gz);
+      group.add(inlay);
+      animated.inlay = inlayMat;
+
+      // warm pool of light on the throne approach (physical falloff at r184:
+      // a ~10-unit throw needs intensity ~dozens, not ~1). No shadow - the
+      // 84-unit castle model would tank the shadow pass.
+      const spot = new THREE.SpotLight(0xffd9a0, 45, 0, 0.34, 0.75, 1.2);
+      spot.position.set(gx, 9, gz + 4.5);
+      spot.target.position.set(gx, 0, gz);
+      spot.castShadow = false;
+      group.add(spot, spot.target);
+    }
+
+    // ---- spawns: small flush marble medallions (static, quiet) --------------
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xd9a94a,
+      metalness: 0.85,
+      roughness: 0.35,
+    });
+    const medallion = (spawn, color, emblemShape, emblemScale) => {
+      if (!spawn) return;
+      const { x, z } = cw(spawn[0], spawn[1]);
+      const disc = new THREE.Mesh(
+        new THREE.CircleGeometry(0.3 * cell, 40),
+        new THREE.MeshStandardMaterial({
+          map: tex("MarbleWhite00_alb.png", 0.5, 0.5),
+          color,
+          roughness: 0.5,
+          metalness: 0,
+        }),
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.set(x, 0.018, z);
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.3 * cell, 0.36 * cell, 48),
+        goldMat,
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 0.02, z);
+      const emblem = new THREE.Mesh(
+        new THREE.ShapeGeometry(emblemShape),
+        new THREE.MeshStandardMaterial({
+          color: 0xf7f3ee,
+          roughness: 0.45,
+          metalness: 0,
+        }),
+      );
+      emblem.rotation.x = -Math.PI / 2;
+      emblem.scale.setScalar(emblemScale * cell);
+      emblem.position.set(x, 0.024, z);
+      group.add(disc, ring, emblem);
+    };
+    medallion(redSpawn, TEAM_RED, crownShape(), 0.5);
+    medallion(blueSpawn, TEAM_BLUE, starShape(), 0.48);
 
     // ---- the FULL Peach's Castle interior (loaded async, fit onto the board)
     const collada = new ColladaLoader();
@@ -308,6 +325,15 @@ export const peach = {
             sm.parent.remove(sm);
           }
         }
+        const matSrc = (m) => {
+          if (!m) return "";
+          const t = m.map;
+          return (
+            (t && (t.image?.src || t.source?.data?.src || t.name)) ||
+            m.name ||
+            ""
+          );
+        };
         model.traverse((o) => {
           if (!o.isMesh) return;
           const ms = Array.isArray(o.material) ? o.material : [o.material];
@@ -316,15 +342,7 @@ export const peach = {
           const meshName = o.name || "";
           const hide =
             /polySurface71[02]/i.test(meshName) ||
-            ms.some((m) => {
-              if (!m) return false;
-              const t = m.map;
-              const src =
-                (t && (t.image?.src || t.source?.data?.src || t.name)) ||
-                m.name ||
-                "";
-              return /godray|lightground|wood00/i.test(src);
-            });
+            ms.some((m) => /godray|lightground|wood00/i.test(matSrc(m)));
           if (hide) {
             o.visible = false;
             return;
@@ -358,6 +376,7 @@ export const peach = {
         );
         wrap.rotation.y = MODEL_ROT;
         group.add(wrap);
+
         let nmesh = 0;
         model.traverse((o) => o.isMesh && nmesh++);
         console.log(
@@ -368,12 +387,17 @@ export const peach = {
 
     return {
       group,
-      update() {},
+      update(t) {
+        // single subtle animation: the goal inlay breathes
+        if (animated.inlay)
+          animated.inlay.emissiveIntensity = 0.25 + 0.15 * Math.sin(1.6 * t);
+      },
       dispose() {
         disposed = true;
         scene.remove(group);
         group.traverse((o) => {
           if (o.isMesh) {
+            if (o.isInstancedMesh) o.dispose(); // frees instance GPU buffers
             o.geometry?.dispose?.();
             const ms = Array.isArray(o.material) ? o.material : [o.material];
             for (const m of ms) {

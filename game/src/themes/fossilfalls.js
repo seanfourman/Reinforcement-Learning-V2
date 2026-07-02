@@ -72,6 +72,11 @@ export const fossilfalls = {
     const maxAnisotropy = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
     let disposed = false;
     const islands = [];   // floating-island wraps to bob in update()
+    const cascades = [];  // waterfall sheets: scroll their streak texture
+    const ripples = [];   // expanding rings on the pond
+    const mists = [];     // drifting spray puffs at the falls' foot
+    let splash = null;    // pulsing foam where the cascade lands
+    let pondNrm = null;   // ripple normal map for the realistic pond water
 
     // ---- shared asset / material helpers ---------------------------------
     function assetTexture(name, repeatX = 1, repeatY = 1, color = true) {
@@ -400,6 +405,40 @@ export const fossilfalls = {
       return mesh;
     }
 
+    // A craggy rock CONE for the backdrop peak: the cone skin is pushed in/out by
+    // the same layered noise as the islands so it reads as low-poly rock, not a
+    // smooth ice-cream cone. Displacement eases toward the apex to keep a clean
+    // summit. Used twice: a big rock peak, then a small smoother snow cap.
+    function addRockMountain({ x, z, baseY, peakY, radius, seed, mat, amp = 0.45, radial = 13, rings = 11 }) {
+      const height = Math.max(0.5, peakY - baseY);
+      const geo = track(new THREE.ConeGeometry(radius, height, radial, rings, false));
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+        const frac = (vy + height / 2) / height;          // 0 base .. 1 apex
+        if (frac > 0.97) continue;                         // keep the summit crisp
+        const r = Math.hypot(vx, vz) || 1;
+        const lump =
+          0.60 * Math.sin(vx * 0.9 + vy * 0.5 + seed) +
+          0.50 * Math.sin(vz * 1.1 - vy * 0.4 + seed * 0.4) +
+          0.30 * Math.sin((vx + vz) * 0.8 + vy * 1.0 + seed * 0.7);
+        const jitter = hashFloat(Math.round(vx * 5) + 30, Math.round(vz * 5) + 50, Math.round(vy * 5)) - 0.5;
+        const taper = 1 - frac * 0.55;                     // calmer near the top
+        const off = (lump + jitter * 0.9) * amp * taper;
+        pos.setX(i, vx + (vx / r) * off);
+        pos.setZ(i, vz + (vz / r) * off);
+        pos.setY(i, vy + jitter * 0.28 * taper);
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+      geo.translate(x, baseY + height / 2, z);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    }
+
     function ridgeShape(w, d, seed, jag = 0.08) {
       const pts = [];
       const hw = w * 0.5, hd = d * 0.5;
@@ -577,6 +616,207 @@ export const fossilfalls = {
       })
     );
 
+    // ---- backdrop: snow-capped mountain + waterfall into a pond -----------
+    // A tall rock peak rises behind the north wall, beyond the goal gap, so it
+    // never covers the board. A bright cascade spills from a spring near the
+    // summit, down the front face, into a teal pond at its foot ringed by rocks.
+    // The Power Moon over the goal now floats squarely "over the falls" again.
+    {
+      const mtnX = CTR, mtnZ = -14.0;
+      const baseY = -3.0, peakY = 16.0, mtnR = 8.5, mtnH = peakY - baseY;
+      const rockRadiusAt = (y) => mtnR * (1 - (y - baseY) / mtnH);  // front-face radius
+
+      const mountainMat = pbr('RockWallBase03', 3, 4, 0xc3b297, {
+        roughness: 0.96, emissive: 0x3a2418, emissiveIntensity: 0.5,
+      });
+      const snowMat = track(new THREE.MeshStandardMaterial({
+        color: 0xeef3f6, roughness: 0.72, metalness: 0,
+        emissive: 0x20303c, emissiveIntensity: 0.06,
+      }));
+      const foamMat = track(new THREE.MeshStandardMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.85, roughness: 0.4, metalness: 0,
+        emissive: 0xeaf6ff, emissiveIntensity: 0.5, depthWrite: false,
+      }));
+      const mistMat = track(new THREE.MeshStandardMaterial({
+        color: 0xf2fbff, transparent: true, opacity: 0.28, roughness: 0.6, metalness: 0,
+        emissive: 0xdff2ff, emissiveIntensity: 0.25, depthWrite: false,
+      }));
+      // genuine reflective water for the pond + spring: a glossy, low-roughness
+      // physical surface that mirrors the HDRI sky with a clearcoat sheen and an
+      // animated ripple normal map (NOT the flat cartoon canvas the slip pools use).
+      pondNrm = assetTexture('Water00_nrm.png', 3, 3, false);
+      const pondWaterMat = track(new THREE.MeshPhysicalMaterial({
+        color: 0x16414d,
+        roughness: 0.08,
+        metalness: 0.0,
+        envMapIntensity: 3.0,
+        transparent: true,
+        opacity: 0.9,
+        normalMap: pondNrm,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.06,
+        ior: 1.33,
+        depthWrite: false,
+      }));
+
+      // rock foundation: a bumpy shoulder tying the floating board island to the
+      // mountain and cradling the pond (front kept north of the board surface).
+      addBumpyRockIsland({
+        x: mtnX, z: -11.0, w: 22.0, d: 21.0, topY: -0.12, bottomY: -15.0,
+        seed: 320, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.6, amp: 1.3,
+      });
+
+      // the peak + its snow cap
+      addRockMountain({ x: mtnX, z: mtnZ, baseY, peakY, radius: mtnR, seed: 412, mat: mountainMat, amp: 0.7, radial: 15, rings: 13 });
+      addRockMountain({
+        x: mtnX, z: mtnZ, baseY: 10.0, peakY: peakY + 0.3,
+        radius: rockRadiusAt(10.0) + 0.5, seed: 77, mat: snowMat, amp: 0.3, rings: 7,
+      });
+
+      // --- the pond at the foot: a wide, shallow pool -----------------------
+      const pondZ = -4.5, pondY = -0.05;
+      const pondHalfX = 5.4, pondHalfZ = 1.9;      // wide left-right, thin front-back
+      const pondBaseR = 3.06;                       // puddleShape(940, 9.0) ~radius
+      const pondGeo = track(new THREE.ExtrudeGeometry(puddleShape(940, 9.0), {
+        depth: 0.02, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.05, bevelSegments: 4,
+      }));
+      pondGeo.rotateX(-Math.PI / 2);
+      const pond = new THREE.Mesh(pondGeo, pondWaterMat);
+      pond.position.set(mtnX, pondY, pondZ);
+      pond.scale.set(pondHalfX / pondBaseR, 1, pondHalfZ / pondBaseR);
+      pond.renderOrder = 3;
+      pond.receiveShadow = true;
+      group.add(pond);
+
+      // a ring of rocks hugging the wide elliptical rim so the pond reads contained
+      const rimGeo = track(new THREE.IcosahedronGeometry(1, 0));
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2 + hashFloat(i, 5, 12) * 0.4;
+        const ex = pondHalfX + 0.25 + hashFloat(i, 9, 7) * 0.6;
+        const ez = pondHalfZ + 0.25 + hashFloat(i, 11, 7) * 0.45;
+        const s = 0.42 + hashFloat(i, 3, 4) * 0.5;
+        const rock = new THREE.Mesh(rimGeo, cliffMat);
+        rock.position.set(mtnX + Math.cos(a) * ex, pondY + 0.02 + s * 0.2, pondZ + Math.sin(a) * ez);
+        rock.scale.set(s, s * (0.5 + hashFloat(i, 1, 2) * 0.5), s);
+        rock.rotation.set(hashFloat(i, 2, 1) * 1.2, a, hashFloat(i, 6, 8) * 1.2);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        group.add(rock);
+      }
+
+      // --- spring at the top + the falling cascade -------------------------
+      const srcY = 9.0;
+      // keep the cascade clearly in FRONT of the bulged, craggy cone face for its
+      // whole length: the face slopes outward as it drops, so this forward offset
+      // (which beats the worst displacement bulge) leaves the spring + sheet proud
+      // of the rock instead of buried in it.
+      const srcZ = mtnZ + rockRadiusAt(srcY) + 1.9;
+      const springGeo = track(new THREE.CircleGeometry(1.6, 20));
+      springGeo.rotateX(-Math.PI / 2);
+      const spring = new THREE.Mesh(springGeo, pondWaterMat);
+      spring.position.set(mtnX, srcY + 0.05, srcZ - 0.5);   // back edge tucked into the cliff
+      spring.renderOrder = 3;
+      group.add(spring);
+
+      // a vertical streak texture for the falling water
+      function waterfallCanvas() {
+        const W = 48, H = 256;
+        const cv = document.createElement('canvas');
+        cv.width = W; cv.height = H;
+        const ctx = cv.getContext('2d');
+        const img = ctx.createImageData(W, H);
+        const d = img.data;
+        const lo = [78, 150, 182], hi = [232, 246, 251];
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const u = x / W, v = y / H;
+            const col = hashFloat(x, 7, 333);
+            let n = 0.42 + 0.42 * col
+              + 0.18 * Math.sin(2 * Math.PI * (v * 3 + col * 2))
+              + 0.10 * Math.sin(2 * Math.PI * (v * 7 - col));
+            n = Math.max(0, Math.min(1, n));
+            const i = (y * W + x) * 4;
+            d[i] = lo[0] + (hi[0] - lo[0]) * n;
+            d[i + 1] = lo[1] + (hi[1] - lo[1]) * n;
+            d[i + 2] = lo[2] + (hi[2] - lo[2]) * n;
+            const edge = Math.min(1, Math.min(u, 1 - u) / 0.12);   // soften side seams
+            d[i + 3] = (200 + 55 * n) * (0.45 + 0.55 * edge);
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return cv;
+      }
+      const fallTex = trackTexture(new THREE.CanvasTexture(waterfallCanvas()));
+      fallTex.colorSpace = THREE.SRGBColorSpace;
+      fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
+      fallTex.repeat.set(1, 3.4);
+      fallTex.anisotropy = maxAnisotropy;
+      const fallMat = track(new THREE.MeshStandardMaterial({
+        color: 0xffffff, map: fallTex, transparent: true, opacity: 0.94,
+        roughness: 0.22, metalness: 0, emissive: 0xbfe6f2, emissiveIntensity: 0.2,
+        side: THREE.DoubleSide, depthWrite: false,
+      }));
+      // a tapered sheet (wider at the base), hanging in front of the slope from
+      // the spring down to the pond
+      const topY = srcY, botY = pondY + 0.02, topZ = srcZ, botZ = pondZ;
+      const dz = botZ - topZ, dy = topY - botY;
+      const len = Math.hypot(dy, dz);
+      const fallGeo = track(new THREE.PlaneGeometry(1, len, 3, 14));
+      {
+        const p = fallGeo.attributes.position;
+        for (let i = 0; i < p.count; i++) {
+          const vf = (p.getY(i) + len / 2) / len;          // 0 bottom .. 1 top
+          p.setX(i, p.getX(i) * (4.2 + (2.2 - 4.2) * vf)); // 4.2 wide foot -> 2.2 lip
+        }
+        p.needsUpdate = true;
+        fallGeo.computeVertexNormals();
+      }
+      const fall = new THREE.Mesh(fallGeo, fallMat);
+      fall.position.set(mtnX, (topY + botY) / 2, (topZ + botZ) / 2);
+      fall.rotation.x = -Math.atan2(dz, dy);               // top toward the cliff, foot in the pond
+      fall.renderOrder = 4;
+      group.add(fall);
+      cascades.push({ tex: fallTex, mat: fallMat });
+
+      // foam at the lip and where it lands
+      const lip = new THREE.Mesh(track(new THREE.SphereGeometry(1.2, 12, 9)), foamMat);
+      lip.position.set(mtnX, topY + 0.08, topZ);
+      lip.scale.set(1.4, 0.45, 0.9);
+      group.add(lip);
+
+      splash = new THREE.Mesh(track(new THREE.SphereGeometry(1.7, 14, 10)), track(foamMat.clone()));
+      splash.position.set(mtnX, pondY + 0.1, botZ);
+      splash.scale.set(1.6, 0.32, 1.25);
+      group.add(splash);
+
+      // expanding ripple rings radiating from the splash
+      const ringGeo = track(new THREE.RingGeometry(0.92, 1.0, 28));
+      ringGeo.rotateX(-Math.PI / 2);
+      for (let i = 0; i < 3; i++) {
+        const rmat = track(new THREE.MeshBasicMaterial({
+          color: 0xdff3ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false,
+        }));
+        const ring = new THREE.Mesh(ringGeo, rmat);
+        ring.position.set(mtnX, pondY + 0.03, botZ);
+        ring.renderOrder = 4;
+        group.add(ring);
+        ripples.push({ mesh: ring, mat: rmat, off: i / 3, r0: 0.9, grow: 3.0, speed: 0.45, ax: 1.5, az: 0.5 });
+      }
+
+      // drifting spray at the base
+      const mistGeo = track(new THREE.SphereGeometry(1.0, 10, 8));
+      for (let i = 0; i < 5; i++) {
+        const puff = new THREE.Mesh(mistGeo, mistMat);
+        const px = mtnX + (hashFloat(i, 4, 6) - 0.5) * 8.0;
+        const pz = botZ + (hashFloat(i, 8, 9) - 0.5) * 1.8;
+        puff.position.set(px, pondY + 0.8 + hashFloat(i, 2, 3) * 0.7, pz);
+        puff.scale.set(1.3 + i * 0.2, 0.75, 1.1);
+        group.add(puff);
+        mists.push({ mesh: puff, base: puff.position.y, ph: i * 2.1 });
+      }
+    }
+
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       waterMat.opacity = 0.84 + 0.04 * Math.sin(t * 1.4);
@@ -584,6 +824,10 @@ export const fossilfalls = {
       waterNrm.offset.y = t * 0.011;
       waterTex.offset.x = t * 0.02;
       waterTex.offset.y = t * 0.014;
+      if (pondNrm) {
+        pondNrm.offset.x = Math.sin(t * 0.18) * 0.4 + t * 0.013;   // gentle swirling ripples
+        pondNrm.offset.y = Math.cos(t * 0.15) * 0.4 + t * 0.009;
+      }
       if (moon) {
         moon.mesh.rotation.y = t * 0.9;
         moon.mesh.position.y = moon.baseY + Math.sin(t * 1.8) * 0.12;
@@ -594,6 +838,27 @@ export const fossilfalls = {
       for (const is of islands) {
         is.w.position.y = is.y + Math.sin(t * 0.6 + is.ph) * 0.25;
         is.w.rotation.y += dt * 0.05;
+      }
+      for (const cas of cascades) {
+        cas.tex.offset.y += dt * 1.1;                 // streaks tumble downward toward the pond
+        cas.tex.offset.x = Math.sin(t * 0.7) * 0.02;  // faint sway
+        cas.mat.emissiveIntensity = 0.16 + 0.06 * Math.sin(t * 3.1);
+      }
+      for (const rp of ripples) {
+        const ph = ((t * rp.speed + rp.off) % 1 + 1) % 1;
+        const rad = rp.r0 + ph * rp.grow;
+        rp.mesh.scale.set(rad * rp.ax, 1, rad * rp.az);   // elliptical, matching the pool
+        rp.mat.opacity = (1 - ph) * 0.45;
+      }
+      if (splash) {
+        const b = 0.5 + 0.5 * Math.sin(t * 5.0);
+        splash.material.opacity = 0.55 + 0.25 * b;
+        splash.scale.x = 1.6 + 0.16 * b;
+        splash.scale.z = 1.25 + 0.12 * b;
+      }
+      for (const m of mists) {
+        m.mesh.position.y = m.base + Math.sin(t * 0.8 + m.ph) * 0.25;
+        m.mesh.position.x += Math.sin(t * 0.3 + m.ph) * dt * 0.05;
       }
     }
 
