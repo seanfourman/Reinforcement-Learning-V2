@@ -17,6 +17,14 @@ let _cell = 1;
 export function setCell(s) { _cell = (s && s > 0) ? s : 1; }
 export function getCell() { return _cell; }
 
+// Per-round world offset (dx along +x/east, dz along +z/south) applied AFTER the
+// cell scale, so a round can slide the whole arena - agents, heatmap and board
+// tiles all move together - without touching the fixed castle backdrop. Set from
+// theme.offset each round; defaults to none.
+let _offX = 0, _offZ = 0;
+export function setOffset(dx = 0, dz = 0) { _offX = dx || 0; _offZ = dz || 0; }
+export function getOffset() { return [_offX, _offZ]; }
+
 export const TILE = {
   WALL: '#', FLOOR: '.', ESCAPE: 'E',
   RED_KEY: 'r', BLUE_KEY: 'b', GOLD: 'G',
@@ -58,14 +66,17 @@ export function parseLayout(rows) {
 // board centre by the active cell size so the board grows in place.
 export function cellToWorld(r, c) {
   const C = GRID / 2;
-  return { x: C + (c + 0.5 - C) * _cell, z: C + (r + 0.5 - C) * _cell };
+  return {
+    x: C + (c + 0.5 - C) * _cell + _offX,
+    z: C + (r + 0.5 - C) * _cell + _offZ,
+  };
 }
 
 // inverse of cellToWorld: ground coord -> integer cell (for click-to-inspect)
 export function worldToCell(x, z) {
   const C = GRID / 2;
   return {
-    r: Math.floor((z - C) / _cell + C),
-    c: Math.floor((x - C) / _cell + C),
+    r: Math.floor((z - _offZ - C) / _cell + C),
+    c: Math.floor((x - _offX - C) / _cell + C),
   };
 }

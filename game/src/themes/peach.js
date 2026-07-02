@@ -13,7 +13,7 @@
 
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
-import { getCell } from "../layout.js";
+import { getCell, getOffset } from "../layout.js";
 
 const MODEL = "./assets/models/peach-castle/interior.dae";
 const TEXDIR = "./assets/models/peach-castle/";
@@ -73,7 +73,8 @@ function starShape() {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
-  cell: 1,
+  cell: 1.1, // a little bigger board
+  offset: [0, -2], // slide the arena back (north, toward the throne)
   sky: ["#bfa9dc", "#dcc8ea", "#f6ecf2"], // soft regal lavender-cream
   fog: 0xe9e0f3,
   fogNear: 55,
@@ -107,9 +108,12 @@ export const peach = {
     const cell = getCell();
     const cx = W / 2; // board centre (10, 10)
     const cz = H / 2;
+    // match layout.cellToWorld exactly (incl. the per-round arena slide) so the
+    // board tiles/markers stay aligned to the agents + heatmap
+    const [offX, offZ] = getOffset();
     const cw = (r, c) => ({
-      x: cx + (c + 0.5 - cx) * cell,
-      z: cz + (r + 0.5 - cz) * cell,
+      x: cx + (c + 0.5 - cx) * cell + offX,
+      z: cz + (r + 0.5 - cz) * cell + offZ,
     });
     const at = (ch) => {
       const out = [];
@@ -171,6 +175,99 @@ export const peach = {
     floor.position.set((FX0 + FX1) / 2, 0.02, (FZ0 + FZ1) / 2);
     floor.receiveShadow = true;
     group.add(floor);
+
+    // ---- the PLAYABLE BOARD: genuine per-cell squares -----------------------
+    // The RL agents move cell-to-cell, so the walkable interior is laid as REAL
+    // individual square tiles (not just a texture on the whole floor): a low
+    // raised platform of checkered marble squares with brass grout showing in
+    // the gaps between them and a slim gold frame, so the arena reads as a
+    // defined board that stands out a bit from the foyer floor around it while
+    // still matching the castle's marble.
+    {
+      const walk = [];
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) if (rows[r][c] !== "#") walk.push([r, c]);
+      let bx0 = Infinity,
+        bx1 = -Infinity,
+        bz0 = Infinity,
+        bz1 = -Infinity;
+      for (const [r, c] of walk) {
+        const p = cw(r, c);
+        bx0 = Math.min(bx0, p.x - cell / 2);
+        bx1 = Math.max(bx1, p.x + cell / 2);
+        bz0 = Math.min(bz0, p.z - cell / 2);
+        bz1 = Math.max(bz1, p.z + cell / 2);
+      }
+      const bW = bx1 - bx0;
+      const bD = bz1 - bz0;
+      const bCx = (bx0 + bx1) / 2;
+      const bCz = (bz0 + bz1) / 2;
+
+      // brass grout base under the tiles (shows in the gaps as the grid lines)
+      const groutBase = new THREE.Mesh(
+        new THREE.BoxGeometry(bW + 0.1, 0.03, bD + 0.1),
+        new THREE.MeshStandardMaterial({
+          color: 0x9c7b34,
+          roughness: 0.5,
+          metalness: 0.45,
+        }),
+      );
+      groutBase.position.set(bCx, 0.025, bCz); // top ~0.04
+      groutBase.receiveShadow = true;
+      group.add(groutBase);
+
+      // one real square tile per walkable cell; a 0.1 gap leaves the grout
+      // showing between them so the individual cells read as genuine squares
+      const boardTileMat = new THREE.MeshStandardMaterial({
+        map: tex("MarbleWhite00_alb.png", 0.5, 0.5),
+        roughness: 0.85,
+        metalness: 0,
+      });
+      const tiles = new THREE.InstancedMesh(
+        new THREE.BoxGeometry(0.9 * cell, 0.02, 0.9 * cell),
+        boardTileMat,
+        walk.length,
+      );
+      tiles.receiveShadow = true;
+      const bd = new THREE.Object3D();
+      const bcol = new THREE.Color();
+      const LIGHT = 0xf7efe0;
+      const DARK = 0x847a6c;
+      const GOALC = 0xf0cf82;
+      walk.forEach(([r, c], i) => {
+        const p = cw(r, c);
+        bd.position.set(p.x, 0.035, p.z); // top ~0.045
+        bd.updateMatrix();
+        tiles.setMatrixAt(i, bd.matrix);
+        const goalCell = rows[r][c] === "E";
+        tiles.setColorAt(
+          i,
+          bcol.set(goalCell ? GOALC : (r + c) % 2 === 0 ? LIGHT : DARK),
+        );
+      });
+      if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
+      group.add(tiles);
+
+      // slim gold frame standing a touch proud around the board perimeter
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: 0xd9a94a,
+        metalness: 0.7,
+        roughness: 0.35,
+      });
+      const fw = 0.14;
+      const fh = 0.055;
+      const fy = 0.028; // top ~0.055, just above the tiles
+      const bar = (w, d, x, z) => {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(w, fh, d), frameMat);
+        b.position.set(x, fy, z);
+        b.receiveShadow = true;
+        group.add(b);
+      };
+      bar(bW + 2 * fw, fw, bCx, bz0 - fw / 2);
+      bar(bW + 2 * fw, fw, bCx, bz1 + fw / 2);
+      bar(fw, bD, bx0 - fw / 2, bCz);
+      bar(fw, bD, bx1 + fw / 2, bCz);
+    }
 
     const marbleMat = new THREE.MeshStandardMaterial({
       map: tex("MarbleWhite00_alb.png", 1, 1),
@@ -279,7 +376,7 @@ export const peach = {
         inlayMat,
       );
       inlay.geometry.rotateX(-Math.PI / 2);
-      inlay.position.set(gx, 0.026, gz);
+      inlay.position.set(gx, 0.05, gz); // above the raised board tiles
       group.add(inlay);
       animated.inlay = inlayMat;
 
@@ -312,13 +409,13 @@ export const peach = {
         }),
       );
       disc.rotation.x = -Math.PI / 2;
-      disc.position.set(x, 0.028, z);
+      disc.position.set(x, 0.05, z); // above the raised board tiles
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.3 * cell, 0.36 * cell, 48),
         goldMat,
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, 0.03, z);
+      ring.position.set(x, 0.052, z);
       const emblem = new THREE.Mesh(
         new THREE.ShapeGeometry(emblemShape),
         new THREE.MeshStandardMaterial({
@@ -329,7 +426,7 @@ export const peach = {
       );
       emblem.rotation.x = -Math.PI / 2;
       emblem.scale.setScalar(emblemScale * cell);
-      emblem.position.set(x, 0.034, z);
+      emblem.position.set(x, 0.054, z);
       group.add(disc, ring, emblem);
     };
     medallion(redSpawn, TEAM_RED, crownShape(), 0.5);

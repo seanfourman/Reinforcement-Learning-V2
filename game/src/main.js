@@ -7,7 +7,7 @@ import { buildArchitecture } from "./architecture.js";
 import { createFurniture } from "./furniture.js";
 import { createDoors } from "./doors.js";
 import { createDressing } from "./dressing.js";
-import { parseLayout, setCell, worldToCell } from "./layout.js";
+import { parseLayout, setCell, setOffset, worldToCell } from "./layout.js";
 import { makeKing, makePrincess } from "./characters.js";
 import { createLiveActors } from "./live.js";
 import { createMechanics } from "./mechanics.js";
@@ -205,6 +205,7 @@ function rebuildWorld(worldJson) {
   disposeWorld();
   const theme = getTheme(worldJson.theme);
   setCell(theme.cell || 1); // per-round board square size (1 = original); resets each round
+  setOffset(...(theme.offset || [0, 0])); // per-round arena slide (resets each round)
   applyTheme(theme);
   rig.setView?.(theme.camera); // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
