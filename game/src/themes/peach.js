@@ -136,11 +136,12 @@ export const peach = {
     // ---- the floor IS the grid ----------------------------------------------
     // One flush plane re-laying the FOYER FLOOR REGION (probed model bounds:
     // x -21.7..41.7, z 1.3..42.3) with the hall's own checker texture at one
-    // check per grid cell, 5mm above the model's real floor. Integer world
+    // check per grid cell, 20mm above the model's real floor. Integer world
     // bounds keep check edges exactly on cell boundaries, so the checker
     // itself delineates the cells - no frame, no grout, no board edge, and no
-    // scale seam anywhere at floor level. The model's raised carpets, stairs
-    // and its own sun carpet all sit ABOVE this plane and stay visible.
+    // scale seam anywhere at floor level. The model's raised carpets and
+    // stairs sit ABOVE this plane and stay visible; its sunken sun-carpet
+    // recess mid-floor is bridged flat and hidden.
     const FX0 = -38;
     const FX1 = 58;
     const FZ0 = -2;
@@ -171,7 +172,7 @@ export const peach = {
       floorMat,
     );
     floor.rotation.x = -Math.PI / 2;
-    floor.position.set((FX0 + FX1) / 2, 0.005, (FZ0 + FZ1) / 2);
+    floor.position.set((FX0 + FX1) / 2, 0.02, (FZ0 + FZ1) / 2);
     floor.receiveShadow = true;
     group.add(floor);
 
@@ -194,8 +195,7 @@ export const peach = {
     }
 
     // ---- goal: a hair-thin gold inlay + a soft light pool -------------------
-    // The model's own sun carpet already decorates the foyer mid-board; the
-    // goal itself is marked only by a flush gold inlay hugging the exact goal
+    // The goal is marked only by a flush gold inlay hugging the exact goal
     // cells and a warm pool of light at the throne approach.
     const animated = { inlay: null };
     if (goals.length) {
@@ -246,7 +246,7 @@ export const peach = {
         inlayMat,
       );
       inlay.geometry.rotateX(-Math.PI / 2);
-      inlay.position.set(gx, 0.016, gz);
+      inlay.position.set(gx, 0.026, gz);
       group.add(inlay);
       animated.inlay = inlayMat;
 
@@ -279,13 +279,13 @@ export const peach = {
         }),
       );
       disc.rotation.x = -Math.PI / 2;
-      disc.position.set(x, 0.018, z);
+      disc.position.set(x, 0.028, z);
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.3 * cell, 0.36 * cell, 48),
         goldMat,
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, 0.02, z);
+      ring.position.set(x, 0.03, z);
       const emblem = new THREE.Mesh(
         new THREE.ShapeGeometry(emblemShape),
         new THREE.MeshStandardMaterial({
@@ -296,7 +296,7 @@ export const peach = {
       );
       emblem.rotation.x = -Math.PI / 2;
       emblem.scale.setScalar(emblemScale * cell);
-      emblem.position.set(x, 0.024, z);
+      emblem.position.set(x, 0.034, z);
       group.add(disc, ring, emblem);
     };
     medallion(redSpawn, TEAM_RED, crownShape(), 0.5);
