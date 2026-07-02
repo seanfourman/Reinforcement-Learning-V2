@@ -269,13 +269,6 @@ export const peach = {
       bar(fw, bD, bx1 + fw / 2, bCz);
     }
 
-    const marbleMat = new THREE.MeshStandardMaterial({
-      map: tex("MarbleWhite00_alb.png", 1, 1),
-      normalMap: tex("MarbleWhite00_nrm.png", 1, 1, false),
-      roughnessMap: tex("MarbleWhite00_rgh.png", 1, 1, false),
-      roughness: 0.55,
-      metalness: 0,
-    });
     // solid marble for a BACKING shell placed just behind the model's own walls
     // (built after the model loads, below). Where a front wall has a gap / a
     // missing or one-sided face, this backing shows through as marble instead
@@ -310,16 +303,10 @@ export const peach = {
       metalness: 0.25,
       side: THREE.DoubleSide,
     });
-    for (const [r, c] of at("#").filter(([r, c]) => !onBorder(r, c))) {
-      const { x, z } = cw(r, c);
-      const col = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.32 * cell, 0.38 * cell, 2.2, 14),
-        marbleMat,
-      );
-      col.position.set(x, 1.1, z);
-      col.castShadow = col.receiveShadow = true;
-      group.add(col);
-    }
+    // NOTE: wall ('#') cells are intentionally NOT rendered as anything - the
+    // 16x16 play area is framed by a walled-off margin (see peach.py) that must
+    // read as plain foyer floor, so no columns/geometry go on wall cells.
+    void onBorder;
 
     // ---- goal: a hair-thin gold inlay + a soft light pool -------------------
     // The goal is marked only by a flush gold inlay hugging the exact goal

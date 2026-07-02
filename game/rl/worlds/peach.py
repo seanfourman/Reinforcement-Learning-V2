@@ -19,8 +19,15 @@ THEME = "peach"
 ROUND_ID = 1
 TITLE = "Peach's Castle"
 
-ESCAPE_POS = [(1, 9), (1, 10)]                 # the throne / goal (top centre)
-RED_SPAWN_POS, BLUE_SPAWN_POS = (18, 6), (18, 13)
+# The RL grid stays SIZE x SIZE (=20; the viewer's heatmap/camera assume that),
+# but the PLAYABLE area is a central 16x16: a MARGIN-cell frame is walled off.
+# Those frame cells render as plain foyer floor (peach.js draws no wall geometry),
+# so there's no visible ring - the board just reads as a 16x16.
+MARGIN = 2
+LO, HI = MARGIN, SIZE - 1 - MARGIN     # playable rows/cols span [2, 17] inclusive
+
+ESCAPE_POS = [(LO, 9), (LO, 10)]               # the throne / goal (top of the 16x16)
+RED_SPAWN_POS, BLUE_SPAWN_POS = (HI, 6), (HI, 13)   # spawns at the bottom row
 # open hall - no interior obstacles (the castle model is the whole scene)
 PILLARS = []
 
@@ -28,12 +35,11 @@ PILLARS = []
 def _build():
     g = [[FLOOR] * SIZE for _ in range(SIZE)]
 
-    # room border (logical bounds; the castle model supplies the visible walls)
-    for i in range(SIZE):
-        g[0][i] = WALL
-        g[SIZE - 1][i] = WALL
-        g[i][0] = WALL
-        g[i][SIZE - 1] = WALL
+    # wall off everything outside the central 16x16 so the play area is 16x16
+    for r in range(SIZE):
+        for c in range(SIZE):
+            if r < LO or r > HI or c < LO or c > HI:
+                g[r][c] = WALL
 
     for (r, c) in PILLARS:
         g[r][c] = WALL
