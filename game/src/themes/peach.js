@@ -202,6 +202,21 @@ export const peach = {
       metalness: 0,
       side: THREE.DoubleSide,
     });
+    // GOLD variant, used to back the newer wall layers (the structural marble +
+    // gold-panel meshes) so THEIR gaps read gold, while the sky-fresco wall
+    // keeps the white marble backing above.
+    const wallGoldMat = new THREE.MeshStandardMaterial({
+      map: tex("MarbleWhite00_alb.png", 8, 6),
+      normalMap: tex("MarbleWhite00_nrm.png", 8, 6, false),
+      roughnessMap: tex("MarbleWhite00_rgh.png", 8, 6, false),
+      color: 0xd9a94a,
+      emissive: 0xd9a94a,
+      emissiveMap: tex("MarbleWhite00_alb.png", 8, 6),
+      emissiveIntensity: 0.4,
+      roughness: 0.45,
+      metalness: 0.25,
+      side: THREE.DoubleSide,
+    });
     for (const [r, c] of at("#").filter(([r, c]) => !onBorder(r, c))) {
       const { x, z } = cw(r, c);
       const col = new THREE.Mesh(
@@ -396,37 +411,43 @@ export const peach = {
         wrap.rotation.y = MODEL_ROT;
         group.add(wrap);
 
-        // ---- marble BACKING shell -------------------------------------------
-        // Clone each of the model's own wall meshes, push the copy slightly
-        // OUTWARD (behind the wall) and skin it in marble, so any gap / missing
-        // face in the front wall shows marble through it instead of the void.
-        // The front walls are left completely untouched. The push is a 3D radial
-        // scale about the shell's own centre, so the domed ceiling backing goes
-        // UP-and-out (staying behind the dome) instead of poking through it.
+        // ---- BACKING shell --------------------------------------------------
+        // Clone each of the model's WALL-SHELL meshes, push the copy OUTWARD
+        // (behind the wall) so any gap / missing / culled face shows the backing
+        // through it instead of the void. The sky-fresco wall gets a WHITE marble
+        // backing; the newer structural-marble + gold-panel layers get a GOLD
+        // backing (per request). Front walls untouched. The push is a 3D radial
+        // scale about the shell centre so the domed ceiling stays behind. Uniform
+        // K preserves each layer's relative depth (gold stays behind the white).
+        const WALL_ALL = /fresco|marblewhite|golddecowall/i;
         wrap.updateMatrixWorld(true);
-        const fbox = new THREE.Box3();
-        const frescoMeshes = [];
+        const wbox = new THREE.Box3();
+        const wallMeshes = [];
         model.traverse((o) => {
           if (!o.isMesh || !o.visible) return;
           const oms = Array.isArray(o.material) ? o.material : [o.material];
-          if (oms.some((m) => /fresco/i.test(m?.name || ""))) {
-            frescoMeshes.push(o);
-            fbox.expandByObject(o);
-          }
+          if (!oms.some((m) => WALL_ALL.test(m?.name || ""))) return;
+          const isFresco = oms.some((m) => /fresco/i.test(m?.name || ""));
+          wallMeshes.push({ o, mat: isFresco ? wallMarbleMat : wallGoldMat });
+          wbox.expandByObject(o);
         });
-        const fc = new THREE.Vector3();
-        fbox.getCenter(fc);
-        const K = 1.015; // sits a hair behind the wall everywhere
-        const pushBack = new THREE.Matrix4()
-          .makeTranslation(fc.x, fc.y, fc.z)
-          .multiply(new THREE.Matrix4().makeScale(K, K, K))
-          .multiply(new THREE.Matrix4().makeTranslation(-fc.x, -fc.y, -fc.z));
+        const wc = new THREE.Vector3();
+        wbox.getCenter(wc);
+        const makePush = (K) =>
+          new THREE.Matrix4()
+            .makeTranslation(wc.x, wc.y, wc.z)
+            .multiply(new THREE.Matrix4().makeScale(K, K, K))
+            .multiply(new THREE.Matrix4().makeTranslation(-wc.x, -wc.y, -wc.z));
+        const pushWhite = makePush(1.03); // fresco backing: a bit behind
+        // gold backing sits CLOSE behind the wall so it fills the gap fully
+        // (pushing it further out just lets the gap's edge hide it)
+        const pushGold = makePush(1.025);
         const backings = [];
-        for (const o of frescoMeshes) {
+        for (const { o, mat } of wallMeshes) {
           const geo = o.geometry.clone();
           geo.applyMatrix4(o.matrixWorld); // bake to world space
-          geo.applyMatrix4(pushBack); // then push it out behind the wall
-          const backing = new THREE.Mesh(geo, wallMarbleMat);
+          geo.applyMatrix4(mat === wallGoldMat ? pushGold : pushWhite);
+          const backing = new THREE.Mesh(geo, mat);
           backing.receiveShadow = true;
           backing.frustumCulled = false;
           backings.push(backing);
