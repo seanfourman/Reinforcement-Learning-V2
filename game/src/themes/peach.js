@@ -276,7 +276,10 @@ export const peach = {
         emissiveIntensity: 0.25,
       });
       const inlay = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(outline, { depth: 0.012, bevelEnabled: false }),
+        new THREE.ExtrudeGeometry(outline, {
+          depth: 0.012,
+          bevelEnabled: false,
+        }),
         inlayMat,
       );
       inlay.geometry.rotateX(-Math.PI / 2);
@@ -441,7 +444,7 @@ export const peach = {
         const pushWhite = makePush(1.03); // fresco backing: a bit behind
         // gold backing sits CLOSE behind the wall so it fills the gap fully
         // (pushing it further out just lets the gap's edge hide it)
-        const pushGold = makePush(1.025);
+        const pushGold = makePush(1.005);
         const backings = [];
         for (const { o, mat } of wallMeshes) {
           const geo = o.geometry.clone();
