@@ -192,7 +192,12 @@ export const peach = {
       map: tex("MarbleWhite00_alb.png", 8, 6),
       normalMap: tex("MarbleWhite00_nrm.png", 8, 6, false),
       roughnessMap: tex("MarbleWhite00_rgh.png", 8, 6, false),
-      color: 0xf1e7d6,
+      color: 0xffffff, // no warm tint - the marble shows at its natural white
+      // the backing sits behind the walls in shadow, so self-light it (emissive
+      // driven by the marble map) to keep it bright white through the gaps
+      emissive: 0xffffff,
+      emissiveMap: tex("MarbleWhite00_alb.png", 8, 6),
+      emissiveIntensity: 0.4,
       roughness: 0.6,
       metalness: 0,
       side: THREE.DoubleSide,
