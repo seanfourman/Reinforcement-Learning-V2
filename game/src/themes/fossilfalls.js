@@ -948,9 +948,9 @@ export const fossilfalls = {
       // layout knobs (tuned from screenshots)
       const LEVEL_TARGET = 190; // world-units footprint of the widest side
       const LEVEL_ROT = -Math.PI / 4; // yaw the tiered/skeleton face toward the camera
-      const LEVEL_X = CTR; // centred behind the board
+      const LEVEL_X = CTR - 15; // slid west of the board centre
       const LEVEL_TOP_Y = 16; // plateau top rises this far above the board
-      const LEVEL_FRONT_Z = -9; // nearest cliff face, close behind the goal row
+      const LEVEL_FRONT_Z = 0; // nearest cliff face, hugging the goal row
 
       // the export's water meshes reference a blank UV-distortion map and render
       // white - swap them for real reflective water (ripples animate in update()).
@@ -1019,8 +1019,8 @@ export const fossilfalls = {
 
       // --- the great waterfall: a streaked sheet pouring off the front cliff,
       // past the arena's depth, into the void below (positions tuned by eye)
-      const WF_X = CTR + 3.0;
-      const WF_Z = -10.2; // hugs the now-closer cliff face
+      const WF_X = CTR; // slid west along with the diorama
+      const WF_Z = -7.2; // hugs the now-closer cliff face
       const WF_TOP_Y = 6.0;
       const WF_BOT_Y = -46.0;
 
