@@ -90,7 +90,7 @@ export const peach = {
   fillIntensity: 0.32,
   exposure: 1.12,
   bloom: { strength: 0.16, radius: 0.5, threshold: 0.82 },
-  camera: { startDist: 36, maxDist: 36, target: [10, 0, 10.7], panMargin: 4 },
+  camera: { startDist: 36, maxDist: 36, target: [10, 0, 10.7], panMargin: 4, flip: true },
   redName: "Crimson",
   blueName: "Cobalt",
 
@@ -278,7 +278,7 @@ export const peach = {
         metalness: 0.7,
         roughness: 0.35,
       });
-      const fw = 0.14;
+      const fw = 0.06; // thin gold border
       const fh = 0.055;
       const fy = 0.028; // top ~0.055, just above the tiles
       const bar = (w, d, x, z) => {
@@ -391,14 +391,7 @@ export const peach = {
       group.add(inlay);
       animated.inlay = inlayMat;
 
-      // warm pool of light on the throne approach (physical falloff at r184:
-      // a ~10-unit throw needs intensity ~dozens, not ~1). No shadow - the
-      // 84-unit castle model would tank the shadow pass.
-      const spot = new THREE.SpotLight(0xffd9a0, 45, 0, 0.34, 0.75, 1.2);
-      spot.position.set(gx, 9, gz + 4.5);
-      spot.target.position.set(gx, 0, gz);
-      spot.castShadow = false;
-      group.add(spot, spot.target);
+      // (goal light pool removed - the thin gold inlay marks the goal, no glow)
     }
 
     // ---- spawns: small flush marble medallions (static, quiet) --------------
@@ -440,8 +433,7 @@ export const peach = {
       emblem.position.set(x, 0.054, z);
       group.add(disc, ring, emblem);
     };
-    medallion(redSpawn, TEAM_RED, crownShape(), 0.5);
-    medallion(blueSpawn, TEAM_BLUE, starShape(), 0.48);
+    // spawn medallions removed (no start-position icons on the board)
 
     // ---- the FULL Peach's Castle interior (loaded async, fit onto the board)
     // `ready` resolves only after the model is loaded AND fully processed (backing

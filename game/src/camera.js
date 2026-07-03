@@ -36,11 +36,15 @@ export function createCameraRig(camera, dom) {
     goal.z = THREE.MathUtils.clamp(goal.z, loZ, hiZ);
   };
 
+  // view.flip = view the scene from the OPPOSITE (north) side, i.e. the whole
+  // environment appears rotated 180 degrees (no geometry is touched).
+  const fs = () => (view.flip ? -1 : 1);
+
   function placeCamera() {
     camera.position.set(
       target.x,
       target.y + Math.sin(view.pitch) * dist,
-      target.z + Math.cos(view.pitch) * dist
+      target.z + fs() * Math.cos(view.pitch) * dist
     );
     camera.lookAt(target);
   }
@@ -72,8 +76,8 @@ export function createCameraRig(camera, dom) {
   dom.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     const f = (dist * 1.35) / dom.clientHeight;
-    goal.x -= (e.clientX - lastX) * f;
-    goal.z -= ((e.clientY - lastY) * f) / Math.sin(view.pitch);
+    goal.x -= fs() * (e.clientX - lastX) * f;
+    goal.z -= fs() * ((e.clientY - lastY) * f) / Math.sin(view.pitch);
     lastX = e.clientX;
     lastY = e.clientY;
     clampGoal();
@@ -99,7 +103,7 @@ export function createCameraRig(camera, dom) {
   window.addEventListener('blur', () => keys.clear());
 
   function update(dt) {
-    const speed = dist * 0.65 * dt;
+    const speed = dist * 0.65 * dt * fs();
     if (keys.has('KeyW') || keys.has('ArrowUp')) goal.z -= speed;
     if (keys.has('KeyS') || keys.has('ArrowDown')) goal.z += speed;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) goal.x -= speed;

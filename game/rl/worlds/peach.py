@@ -28,8 +28,11 @@ LO = (SIZE - BOARD) // 2                # first play row/col (top/left margin)
 HI = LO + BOARD - 1                     # last play row/col
 MID = (LO + HI) // 2                    # centre column of the play area
 
-ESCAPE_POS = [(LO, MID)]                        # ONE terminal, top-centre
-RED_SPAWN_POS, BLUE_SPAWN_POS = (HI, LO), (HI, HI)   # bottom-left / bottom-right corners (symmetric)
+# peach's camera views the foyer FLIPPED (theme.camera.flip), so the world layout
+# is flipped 180 too - that cancels out, leaving the BOARD looking the way it did:
+# goal top-centre, spawns bottom-left/right on screen.
+ESCAPE_POS = [(HI, MID)]                        # goal (appears top-centre)
+RED_SPAWN_POS, BLUE_SPAWN_POS = (LO, HI), (LO, LO)   # spawns (appear bottom-left / bottom-right)
 # open hall - no interior obstacles (the castle model is the whole scene)
 PILLARS = []
 
