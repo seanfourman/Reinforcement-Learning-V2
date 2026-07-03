@@ -26,14 +26,14 @@ const STYLE = `
   flex-direction:column;align-items:center;justify-content:center;text-align:center;
   opacity:0;transform:translateY(12px);
   transition:opacity .6s ease,transform .6s cubic-bezier(.2,.9,.2,1);color:#fff;
-  /* a soft scrim so the name stays legible over a bright scene, fades with the card */
-  background:radial-gradient(58% 42% at 50% 47%,rgba(0,0,0,.5),rgba(0,0,0,0) 72%);}
+  /* a faint scrim so the name stays legible over a bright scene, fades with the card */
+  background:radial-gradient(58% 42% at 50% 47%,rgba(0,0,0,.2),rgba(0,0,0,0) 72%);}
 #rl-iris-card.show{opacity:1;transform:translateY(0);}
 #rl-iris-card .ttl{font-family:Georgia,"Times New Roman",serif;font-weight:600;font-size:62px;
   letter-spacing:1px;margin:0;color:#fdfdff;
-  text-shadow:0 0 34px rgba(150,180,255,.35),0 3px 14px rgba(0,0,0,.75);}
+  text-shadow:0 0 18px rgba(150,180,255,.22),0 1px 5px rgba(0,0,0,.35);}
 #rl-iris-card .sub{font-family:Georgia,serif;font-style:italic;font-size:20px;letter-spacing:3px;
-  margin-top:14px;color:rgba(255,255,255,.82);text-shadow:0 2px 16px rgba(0,0,0,.85);}
+  margin-top:14px;color:rgba(255,255,255,.82);text-shadow:0 1px 6px rgba(0,0,0,.4);}
 #rl-iris-card .sub:empty{display:none;}
 `;
 
