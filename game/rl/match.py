@@ -85,6 +85,18 @@ class Match:
             return ContinuousArena(self.seed, round_id=round_id)
         return GridWorld(self.seed, round_id=round_id)
 
+    def world_for_round(self, round_id):
+        """A round's world built READ-ONLY (does not touch the live env/match),
+        so the client can build + cache every arena scene up front during the
+        start menu and make every transition instant."""
+        with self.lock:
+            return self._make_env(round_id).to_json()
+
+    def all_worlds(self):
+        """Every round's world in tournament order (for the client prewarm)."""
+        return [{"roundId": rid, "world": self.world_for_round(rid)}
+                for rid in worlds.ROUNDS]
+
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
             return make_dp(algo, self.env, color, gamma=gamma)

@@ -227,7 +227,7 @@ function disposeWorld() {
 
 function rebuildWorld(worldJson) {
   const key = worldJson.theme;
-  const rowsKey = worldJson.rows.join("\n");
+  const rowsKey = (worldJson.rows || []).join("\n"); // arena rounds have no rows
   const theme = getTheme(key);
 
   detachActiveWorld(); // stash the current world (themed -> keep resident)
@@ -238,16 +238,21 @@ function rebuildWorld(worldJson) {
   rig.setView?.(theme.camera); // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
 
-  const cached = theme.buildScene ? sceneCache.get(key) : null;
+  // only the fixed GRID rounds are cached resident; the continuous arena (round 4,
+  // no stable rows) always builds fresh so it's never served a stale scene.
+  const cacheable = !!(theme.buildScene && worldJson.rows);
+  const cached = cacheable ? sceneCache.get(key) : null;
   if (cached && cached.rowsKey === rowsKey) {
-    // REUSE the warm resident scene: instant, no reload / re-parse / recompile
+    // REUSE the warm resident scene: instant, no reload / re-parse / recompile.
+    // (If it was prebuilt during the menu and its model is still streaming in, its
+    // .ready keeps the transition's black up until it's done - never a pop-in.)
     themeScene = cached.themeScene;
     scene.add(themeScene.group);
     activeThemeKey = key;
-    themeReady = Promise.resolve();
+    themeReady = themeScene.ready || Promise.resolve();
   } else if (theme.buildScene) {
     // first visit (or the level regenerated differently): drop any stale cache
-    // entry, build fresh, and cache it resident for next time.
+    // entry, build fresh, and (if cacheable) keep it resident for next time.
     if (cached) {
       cached.themeScene.dispose?.();
       sceneCache.delete(key);
@@ -255,8 +260,12 @@ function rebuildWorld(worldJson) {
     // a theme that ships its own world geometry (e.g. the city) takes over;
     // the medieval-only groups stay null, so the render loop simply skips them.
     themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
-    sceneCache.set(key, { themeScene, rowsKey });
-    activeThemeKey = key;
+    if (cacheable) {
+      sceneCache.set(key, { themeScene, rowsKey });
+      activeThemeKey = key; // resident: detach + keep on the next round change
+    } else {
+      activeThemeKey = null; // arena: not cached -> disposed normally next change
+    }
     // the transition holds its black screen until this resolves (themes that load
     // async models expose .ready; others are ready synchronously)
     themeReady = themeScene?.ready || Promise.resolve();
@@ -278,6 +287,43 @@ function rebuildWorld(worldJson) {
   actors.setArena(arenaMode); // arena round drives the chosen characters as the racers
   if (!arenaMode)
     actors.setWorld(parseLayout(rows), worldJson.objective === "cross");
+}
+
+// ---- prewarm: build EVERY round's arena UP FRONT (in the background, while the
+// start menu is shown) into the resident sceneCache, so even the FIRST time a
+// level appears the transition is instant. Each scene is built into an offscreen
+// holder (never rendered), so it's invisible until gameplay re-attaches its group.
+async function prewarmRound(worldJson) {
+  const key = worldJson && worldJson.theme;
+  if (!key || !worldJson.rows) return; // skip the continuous arena (no stable rows)
+  const theme = getTheme(key);
+  if (!theme || !theme.buildScene || sceneCache.has(key)) return;
+  try {
+    const holder = new THREE.Scene(); // offscreen: never passed to renderer.render()
+    setCell(theme.cell || 1); // build the geometry with this theme's board scale...
+    setOffset(...(theme.offset || [0, 0])); // ...and slide (baked in; reset per round anyway)
+    const ts = theme.buildScene(holder, worldJson, { THREE, renderer });
+    sceneCache.set(key, { themeScene: ts, rowsKey: (worldJson.rows || []).join("\n") });
+    // wait for its model to finish parsing/processing, bounded so one bad asset
+    // can't stall the rest of the prewarm
+    await Promise.race([
+      ts && ts.ready ? ts.ready : Promise.resolve(),
+      new Promise((r) => setTimeout(r, 15000)),
+    ]);
+  } catch (e) {
+    console.warn("prewarm failed for", key, e);
+  }
+}
+
+async function prewarmAllRounds() {
+  let allWorlds;
+  try {
+    const res = await fetch(`${API}/api/worlds`, { cache: "no-store" });
+    allWorlds = (await res.json()).worlds;
+  } catch (e) {
+    return; // older server / offline: fall back to lazy build-on-first-visit
+  }
+  for (const w of allWorlds || []) await prewarmRound(w.world); // sequential = low peak load
 }
 
 // ------------------------------------------------------------------ live polling
@@ -529,7 +575,11 @@ menu = createStartMenu({
         const mgr = THREE.DefaultLoadingManager;
         const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
         const built = themeScene != null || current != null;
-        if (built && idle && walkersReady && performance.now() - t0 > 600) {
+        const elapsed = performance.now() - t0;
+        // wait for round 1 + walkers (and any menu-time prewarm still in flight) to
+        // finish, but CAP it so a fast Start never hangs on a black screen - any
+        // unfinished prewarm just keeps warming in the background during round 1.
+        if ((built && idle && walkersReady && elapsed > 600) || elapsed > 6000) {
           requestAnimationFrame(() => requestAnimationFrame(resolve)); // a couple frames to settle
         } else {
           requestAnimationFrame(ready);
@@ -537,6 +587,11 @@ menu = createStartMenu({
       })();
     }),
 });
+
+// Build EVERY round's arena in the background while the menu is up, so all
+// transitions are instant. Delayed a touch so the menu's own cabin + characters
+// get first crack at the bandwidth; runs sequentially to keep the peak modest.
+setTimeout(() => prewarmAllRounds(), 1500);
 function resize() {
   const pr = Math.min(devicePixelRatio, 2);
   renderer.setPixelRatio(pr);

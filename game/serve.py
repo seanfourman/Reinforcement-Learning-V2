@@ -91,6 +91,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/world":
             return self._json({"worldVersion": match.world_version,
                                "world": match.env.to_json()})
+        if route == "/api/worlds":
+            # every round's world, so the client can prebuild + cache all arena
+            # scenes during the start menu (instant transitions)
+            return self._json({"worlds": match.all_worlds()})
         if route == "/api/values":
             agent = q.get("agent", ["red"])[0]
             if "cell" in q:
