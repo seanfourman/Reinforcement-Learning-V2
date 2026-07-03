@@ -824,12 +824,12 @@ export const fossilfalls = {
     // the south face, watching the camera. Bases are sunk into the rock so the
     // bones read as part of the island.
     place("WaterfallWorldHomeBone001.dae", -3.5, 10.0, {
-      baseY: -7.0,
+      baseY: -9.8,
       footprint: 15.0,
       ry: -1.5, // west flank (tuned by eye)
     });
     place("WaterfallWorldHomeBone001.dae", 23.5, 10.0, {
-      baseY: -7.0,
+      baseY: -9.8,
       footprint: 15.0,
       ry: -1.5 + Math.PI, // east flank (mirrored)
     });
