@@ -843,11 +843,6 @@ export const fossilfalls = {
     // modular cliff masses east/west/south-below, so the terrain wraps all the
     // way around the arena and the raw sky never shows below the horizon.
     // Tops stay a few units BELOW the board so nothing crowds the maze.
-    place("WaterfallWorldHomeGround002.dae", 50, 10, {
-      footprint: 55,
-      baseY: -39,
-      ry: -0.7,
-    });
     place("WaterfallWorldHomeGround007.dae", -34, 30, {
       footprint: 50,
       baseY: -36,
