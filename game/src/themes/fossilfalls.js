@@ -819,6 +819,16 @@ export const fossilfalls = {
       }),
     );
 
+    // ---- the Odyssey, moored in the sky off the arena's right side --------
+    // Mario's hat-shaped airship (vendored ShineTower rip), bobbing gently
+    // like the floater islands.
+    place("odyssey/ShineTower.dae", 27.5, 7.5, {
+      baseY: 1.5,
+      footprint: 9.0,
+      ry: -0.6, // angled so the bow faces the arena
+      onPlaced: (w) => islands.push({ w, y: 1.5, ph: 3.6 }),
+    });
+
     // ---- fossils EMBEDDED in the main island itself: rib-cages erode out of
     // BOTH tapered flanks (no separate islets), and the great skull juts from
     // the south face, watching the camera. Bases are sunk into the rock so the
