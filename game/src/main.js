@@ -168,6 +168,30 @@ let menu = null; // start menu (cabin background); gates the game boot
 initHud(); // Blue top-left / Red top-right score + round banner
 const transition = createTransition(); // video-game curtain between arenas
 
+// keep downloaded files (textures, .dae) resident so a re-load never re-fetches
+THREE.Cache.enabled = true;
+
+// Resident cache of BUILT themed scenes, keyed by theme name. Rounds wrap
+// (round 4 -> round 1 -> ...), so instead of disposing + rebuilding a theme's
+// heavy model every time we revisit it, we build it ONCE and keep it in memory,
+// just detaching / re-attaching its group. Revisiting a level is then instant -
+// no reload, no re-parse, no shader recompile. `rowsKey` guards against a level
+// whose layout regenerated differently (rebuild fresh in that case).
+const sceneCache = new Map(); // theme name -> { themeScene, rowsKey }
+let activeThemeKey = null; // theme name of the themed scene currently attached
+
+// detach the live world: a resident themed scene is kept warm in the cache; a
+// non-themed (medieval) world is freed as before.
+function detachActiveWorld() {
+  if (activeThemeKey && themeScene) {
+    scene.remove(themeScene.group); // keep it resident in sceneCache
+    themeScene = null;
+    activeThemeKey = null;
+    return;
+  }
+  disposeWorld();
+}
+
 function disposeWorld() {
   if (current) {
     scene.remove(current.group);
@@ -202,17 +226,40 @@ function disposeWorld() {
 }
 
 function rebuildWorld(worldJson) {
-  disposeWorld();
-  const theme = getTheme(worldJson.theme);
+  const key = worldJson.theme;
+  const rowsKey = worldJson.rows.join("\n");
+  const theme = getTheme(key);
+
+  detachActiveWorld(); // stash the current world (themed -> keep resident)
+
   setCell(theme.cell || 1); // per-round board square size (1 = original); resets each round
   setOffset(...(theme.offset || [0, 0])); // per-round arena slide (resets each round)
   applyTheme(theme);
   rig.setView?.(theme.camera); // cinematic per-theme framing if the rig supports it
   const rows = worldJson.rows;
-  if (theme.buildScene) {
+
+  const cached = theme.buildScene ? sceneCache.get(key) : null;
+  if (cached && cached.rowsKey === rowsKey) {
+    // REUSE the warm resident scene: instant, no reload / re-parse / recompile
+    themeScene = cached.themeScene;
+    scene.add(themeScene.group);
+    activeThemeKey = key;
+    themeReady = Promise.resolve();
+  } else if (theme.buildScene) {
+    // first visit (or the level regenerated differently): drop any stale cache
+    // entry, build fresh, and cache it resident for next time.
+    if (cached) {
+      cached.themeScene.dispose?.();
+      sceneCache.delete(key);
+    }
     // a theme that ships its own world geometry (e.g. the city) takes over;
     // the medieval-only groups stay null, so the render loop simply skips them.
     themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
+    sceneCache.set(key, { themeScene, rowsKey });
+    activeThemeKey = key;
+    // the transition holds its black screen until this resolves (themes that load
+    // async models expose .ready; others are ready synchronously)
+    themeReady = themeScene?.ready || Promise.resolve();
   } else {
     const world = buildFixedWorld(rows); // empty wall grid: floor + castle + nature
     current = buildWorld(world, textures);
@@ -223,6 +270,8 @@ function rebuildWorld(worldJson) {
     doors = createDoors(scene, worldJson); // arched bedroom doors
     dressing = createDressing(scene, worldJson); // carpet + rugs
     mechanics = createMechanics(scene, worldJson);
+    activeThemeKey = null;
+    themeReady = Promise.resolve();
   }
   arenaMode = worldJson.objective === "arena";
   actors.setHidden(false);
@@ -250,8 +299,57 @@ let heatMode = "value"; // 'value' (V(s)) | 'visits' (where it travels)
 let pollCount = 0;
 let polling = false;
 let replayActive = false; // while replaying a recorded episode, ignore live frames
+let holdUI = false; // true while an arena transition covers the screen: freeze all
+//                     live UI (HUD, panels, board) so nothing updates before black
+
+// push a snapshot into the live UI (HUD algo names, panels, board pieces). Kept in
+// one place so a transition can defer it until the screen is fully black.
+function applyStats(snap) {
+  latestStats = snap.stats;
+  latestFrame = snap.frame;
+  if (!replayActive) actors.onFrame(snap.frame);
+  window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
+}
+
+// the freshly rebuilt theme's own "fully loaded + processed" signal (if it exposes
+// one via buildScene().ready); Promise.resolve() for themes that don't.
+let themeReady = Promise.resolve();
+const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
+
+// resolve only once the new arena is COMPLETELY ready under the black - model
+// loaded + processed, every texture done (and STAYS done, catching multi-wave
+// loaders), all shaders force-compiled, and a few frames settled - so the iris
+// opens onto a finished scene with no pop-in and no compile hitch (that was the
+// "lag" on reveal). Capped so a failed asset can never hang on black forever.
+async function whenReady() {
+  const t0 = performance.now();
+  // 1) the theme's own ready signal (e.g. peach's castle model + backing shell)
+  await Promise.race([themeReady, new Promise((r) => setTimeout(r, 8000))]);
+  // 2) the loading manager is idle AND has stayed idle briefly (wave loaders)
+  await new Promise((resolve) => {
+    let lastBusy = performance.now();
+    (function tick() {
+      const mgr = THREE.DefaultLoadingManager;
+      const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
+      const built = themeScene != null || current != null;
+      if (!idle) lastBusy = performance.now();
+      const stable = idle && performance.now() - lastBusy > 250;
+      if ((built && stable) || performance.now() - t0 > 8000) resolve();
+      else requestAnimationFrame(tick);
+    })();
+  });
+  // 3) force EVERY shader to compile now, while the screen is still black
+  try {
+    renderer.compile(scene, camera);
+  } catch (e) {
+    /* older three / edge case: fall back to the settle frames below */
+  }
+  // 4) render a few frames under black so the compile + first GPU upload settle
+  for (let i = 0; i < 4; i++) await nextFrame();
+}
+
 async function poll() {
-  if (polling) return;
+  if (polling || holdUI) return; // frozen while a transition covers the screen
   polling = true;
   try {
     const snap = await (
@@ -266,13 +364,26 @@ async function poll() {
       if (firstBuild) {
         rebuildWorld(w.world); // initial load: no curtain
       } else {
-        transition.play(w.world, snap.stats, () => rebuildWorld(w.world));
+        // Hold ALL live UI (HUD algo names, panels, board pieces) on the CURRENT
+        // stage until the iris is fully black; then swap the world + UI together
+        // under black, wait until every asset is loaded + settled, and only then
+        // open the iris. holdUI stays set until the whole transition finishes.
+        holdUI = true;
+        transition
+          .play(w.world, snap.stats, async () => {
+            rebuildWorld(w.world);
+            applyStats(snap); // update HUD / panels now, while black covers them
+            await whenReady(); // don't open until the new arena is fully ready
+          })
+          .catch((err) => console.warn("arena transition failed:", err))
+          .finally(() => {
+            holdUI = false;
+          });
+        return; // this poll's UI update is deferred into the transition
       }
     }
-    latestStats = snap.stats;
-    latestFrame = snap.frame;
-    if (!replayActive) actors.onFrame(snap.frame);
-    window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
+    if (holdUI) return; // a transition is covering the screen - freeze the UI
+    applyStats(snap);
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
       const m = heatMode === "value" ? "q" : "visits";

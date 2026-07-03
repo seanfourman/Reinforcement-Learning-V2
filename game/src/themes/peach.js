@@ -443,6 +443,10 @@ export const peach = {
     medallion(blueSpawn, TEAM_BLUE, starShape(), 0.48);
 
     // ---- the FULL Peach's Castle interior (loaded async, fit onto the board)
+    // `ready` resolves only after the model is loaded AND fully processed (backing
+    // shell built), so the arena transition can hold its black screen until then.
+    let markReady;
+    const ready = new Promise((res) => (markReady = res));
     const collada = new ColladaLoader();
     collada
       .loadAsync(MODEL)
@@ -566,10 +570,12 @@ export const peach = {
           `PEACH model loaded: ${nmesh} meshes, raw footprint ${Math.max(size.x, size.z).toFixed(0)}, scale ${s.toFixed(4)}, ${backings.length} marble backing wall(s)`,
         );
       })
-      .catch((e) => console.warn("Peach's Castle model failed to load", e));
+      .catch((e) => console.warn("Peach's Castle model failed to load", e))
+      .finally(() => markReady()); // ready even on failure, so the black never hangs
 
     return {
       group,
+      ready,
       update(t) {
         // single subtle animation: the goal inlay breathes
         if (animated.inlay)
