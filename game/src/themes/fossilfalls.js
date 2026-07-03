@@ -950,7 +950,7 @@ export const fossilfalls = {
       const LEVEL_ROT = -Math.PI / 4; // yaw the tiered/skeleton face toward the camera
       const LEVEL_X = CTR - 15; // slid west of the board centre
       const LEVEL_TOP_Y = 16; // plateau top rises this far above the board
-      const LEVEL_FRONT_Z = 0; // nearest cliff face, hugging the goal row
+      const LEVEL_FRONT_Z = 7; // nearest cliff face, overlapping the board's north edge
 
       // the export's water meshes reference a blank UV-distortion map and render
       // white - swap them for real reflective water (ripples animate in update()).
