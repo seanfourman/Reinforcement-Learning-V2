@@ -81,6 +81,9 @@ function applyEnv(theme) {
     if (currentEnvKey !== key) return; // theme switched while loading
     scene.environment = entry.envMap;
     scene.environmentIntensity = theme.envIntensity ?? 1;
+    // envBackground:false = HDRI drives lighting/reflections ONLY; the theme's
+    // gradient sky (setSky) stays as the visible backdrop
+    if (theme.envBackground === false) return;
     scene.background = entry.background;
     scene.backgroundBlurriness = theme.envBlur ?? 0;
     scene.backgroundIntensity = theme.bgIntensity ?? 1;

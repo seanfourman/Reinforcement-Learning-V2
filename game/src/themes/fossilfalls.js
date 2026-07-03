@@ -35,8 +35,10 @@ export const fossilfalls = {
   // warm sun against a cool blue fill, and a faint bloom so only the moon glows.
   sky: ['#356fb0', '#7cb4e4', '#dceffa'],
   fog: 0xc9e0f1,
-  fogNear: 48,
-  fogFar: 235,
+  // pushed way out so the assembled Cascade Kingdom diorama behind the arena
+  // reads crisply and only its far cliffs melt into the sky
+  fogNear: 95,
+  fogFar: 420,
   hemi: [0xaccdf2, 0x7c6c50, 0.6],
   sun: 0xfff1d2,
   sunIntensity: 3.1,
@@ -46,8 +48,9 @@ export const fossilfalls = {
   bloom: { strength: 0.22, radius: 0.4, threshold: 0.85 }, // gentle moon-only glow
   env: './assets/hdri/qwantani_noon_2k.hdr',
   envIntensity: 0.45,
-  envBlur: 0.0,
-  bgIntensity: 1.02,
+  envBackground: false, // HDRI lights the scene; the sky stays the soft gradient
+  // wider shot than the default 30 so the assembled level around the arena shows
+  camera: { startDist: 38, maxDist: 38 },
   redName: 'Magma',
   blueName: 'Glacier',
 
@@ -78,6 +81,10 @@ export const fossilfalls = {
     const mists = [];     // drifting spray puffs at the falls' foot
     let splash = null;    // pulsing foam where the cascade lands
     let pondNrm = null;   // ripple normal map for the realistic pond water
+    // the round transition holds its black screen until the real level below
+    // has fully assembled (resolved in the backdrop block, even on failure)
+    let markReady;
+    const ready = new Promise((res) => (markReady = res));
 
     // ---- shared asset / material helpers ---------------------------------
     function assetTexture(name, repeatX = 1, repeatY = 1, color = true) {
@@ -373,7 +380,7 @@ export const fossilfalls = {
     // layered noise so the walls read as craggy ROCK instead of a flat cliff.
     // Displacement fades to 0 at the top, so the board still sits flush on it.
     function addBumpyRockIsland({ x, z, w, d, topY, bottomY, seed, topMat, sideMat,
-      jag = 0.5, outlineSteps = 14, extrudeSteps = 12, amp = 1.1 }) {
+      jag = 0.5, outlineSteps = 14, extrudeSteps = 12, amp = 1.1, taper = 0 }) {
       const depth = Math.max(0.2, topY - bottomY);
       const geo = track(new THREE.ExtrudeGeometry(plateauShape(w, d, seed, outlineSteps, jag), {
         depth, steps: extrudeSteps, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.035, bevelSegments: 1,
@@ -386,15 +393,23 @@ export const fossilfalls = {
         const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
         const df = Math.min(1, Math.max(0, (topY - vy) / span));   // 0 top .. 1 bottom
         if (df <= 0.002) continue;                                 // keep the top rim crisp
-        const dx = vx - x, dz = vz - z, r = Math.hypot(dx, dz) || 1;
+        let dx = vx - x, dz = vz - z;
+        // taper: shrink the footprint radially with depth, so the island
+        // narrows toward a rough point below (the classic floating-island cone)
+        if (taper > 0) {
+          const f = 1 - taper * df;
+          dx *= f;
+          dz *= f;
+        }
+        const r = Math.hypot(dx, dz) || 1;
         const lump =
           0.55 * Math.sin(vx * 0.85 + vy * 0.6 + seed) +
           0.45 * Math.sin(vz * 1.05 - vy * 0.5 + seed * 0.3) +
           0.30 * Math.sin((vx + vz) * 0.7 + vy * 1.2 + seed * 0.7);
         const jitter = hashFloat(Math.round(vx * 6) + 200, Math.round(vz * 6) + 90, Math.round(vy * 6)) - 0.5;
         const off = (lump + jitter * 0.8) * amp * df;
-        pos.setX(i, vx + (dx / r) * off);
-        pos.setZ(i, vz + (dz / r) * off);
+        pos.setX(i, x + dx + (dx / r) * off);
+        pos.setZ(i, z + dz + (dz / r) * off);
         pos.setY(i, vy + jitter * 0.5 * df);                       // a little vertical crag
       }
       pos.needsUpdate = true;
@@ -406,39 +421,6 @@ export const fossilfalls = {
       return mesh;
     }
 
-    // A craggy rock CONE for the backdrop peak: the cone skin is pushed in/out by
-    // the same layered noise as the islands so it reads as low-poly rock, not a
-    // smooth ice-cream cone. Displacement eases toward the apex to keep a clean
-    // summit. Used twice: a big rock peak, then a small smoother snow cap.
-    function addRockMountain({ x, z, baseY, peakY, radius, seed, mat, amp = 0.45, radial = 13, rings = 11 }) {
-      const height = Math.max(0.5, peakY - baseY);
-      const geo = track(new THREE.ConeGeometry(radius, height, radial, rings, false));
-      const pos = geo.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
-        const frac = (vy + height / 2) / height;          // 0 base .. 1 apex
-        if (frac > 0.97) continue;                         // keep the summit crisp
-        const r = Math.hypot(vx, vz) || 1;
-        const lump =
-          0.60 * Math.sin(vx * 0.9 + vy * 0.5 + seed) +
-          0.50 * Math.sin(vz * 1.1 - vy * 0.4 + seed * 0.4) +
-          0.30 * Math.sin((vx + vz) * 0.8 + vy * 1.0 + seed * 0.7);
-        const jitter = hashFloat(Math.round(vx * 5) + 30, Math.round(vz * 5) + 50, Math.round(vy * 5)) - 0.5;
-        const taper = 1 - frac * 0.55;                     // calmer near the top
-        const off = (lump + jitter * 0.9) * amp * taper;
-        pos.setX(i, vx + (vx / r) * off);
-        pos.setZ(i, vz + (vz / r) * off);
-        pos.setY(i, vy + jitter * 0.28 * taper);
-      }
-      pos.needsUpdate = true;
-      geo.computeVertexNormals();
-      geo.translate(x, baseY + height / 2, z);
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-      return mesh;
-    }
 
     function ridgeShape(w, d, seed, jag = 0.08) {
       const pts = [];
@@ -473,17 +455,20 @@ export const fossilfalls = {
     }
 
     // the floating rock island the board sits on: dirt/mud top, craggy bumpy
-    // rock sides, dropping deep below the board
+    // rock sides TAPERING to a rough point far below (triangular silhouette)
     addBumpyRockIsland({
-      x: CTR, z: CTR, w: 22.8, d: 22.6, topY: -0.08, bottomY: -12.0,
-      seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, amp: 1.1,
+      x: CTR, z: CTR, w: 23.6, d: 23.4, topY: -0.08, bottomY: -17.0,
+      seed: 100, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.42, amp: 1.15,
+      taper: 0.82, extrudeSteps: 16,
     });
 
-    // ---- board surface: one continuous playable plateau, sandy/dirt top -----
+    // ---- board surface: one continuous playable plateau, sandy/dirt top.
+    // Deliberately NOT a neat square: a chunky, jagged organic outline (still
+    // fully containing the 20x20 play area) so the arena reads as terrain.
     addPlateau({
-      x: CTR, z: CTR, w: 20.9, d: 20.9, topY: GRASS_TOP,
+      x: CTR, z: CTR, w: 21.7, d: 21.7, topY: GRASS_TOP,
       bottomY: -0.14, seed: 210, topMat: sandyTopMat,
-      sideMat: grassEdgeMats[1], jag: 0.28, steps: 10,
+      sideMat: grassEdgeMats[1], jag: 0.85, steps: 6,
     });
 
     // A few soft dirt scars break up the green without covering gameplay markers.
@@ -600,11 +585,12 @@ export const fossilfalls = {
     }
 
     // ---- the 4 Cascade floater islands on the left and right sides -------
+    // floaters at VERY different heights left + right, for vertical depth
     [
-      ['WaterfallWorldHomeFloaterIsland000.dae', -5.4, 4.8, 3.3, 4.8, 0.55, 0.0],
-      ['WaterfallWorldHomeFloaterIsland001.dae', 23.8, 13.6, 2.6, 5.6, -0.45, 2.1],
-      ['WaterfallWorldHomeFloaterIsland000.dae', -4.6, 18.4, 1.8, 5.4, -0.2, 1.2],
-      ['WaterfallWorldHomeFloaterIsland001.dae', 24.0, 2.6, 2.1, 4.9, 0.35, 2.8],
+      ['WaterfallWorldHomeFloaterIsland000.dae', -16.5, 4.0, 8.5, 5.2, 0.55, 0.0],
+      ['WaterfallWorldHomeFloaterIsland001.dae', -12.0, 17.0, -6.5, 4.6, -0.45, 2.1],
+      ['WaterfallWorldHomeFloaterIsland000.dae', 28.0, 14.0, 11.5, 5.6, -0.2, 1.2],
+      ['WaterfallWorldHomeFloaterIsland001.dae', 26.5, 2.0, -4.0, 4.4, 0.35, 2.8],
     ].forEach(([name, x, z, y, foot, ry, ph]) =>
       place(name, x, z, {
         baseY: y,
@@ -617,23 +603,169 @@ export const fossilfalls = {
       })
     );
 
-    // ---- backdrop: snow-capped mountain + waterfall into a pond -----------
-    // A tall rock peak rises behind the north wall, beyond the goal gap, so it
-    // never covers the board. A bright cascade spills from a spring near the
-    // summit, down the front face, into a teal pond at its foot ringed by rocks.
-    // The Power Moon over the goal now floats squarely "over the falls" again.
-    {
-      const mtnX = CTR, mtnZ = -14.0;
-      const baseY = -3.0, peakY = 16.0, mtnR = 8.5, mtnH = peakY - baseY;
-      const rockRadiusAt = (y) => mtnR * (1 - (y - baseY) / mtnH);  // front-face radius
+    // ---- fossils EMBEDDED in the main island itself: rib-cages erode out of
+    // BOTH tapered flanks (no separate islets), and the great skull juts from
+    // the south face, watching the camera. Bases are sunk into the rock so the
+    // bones read as part of the island.
+    place('WaterfallWorldHomeBone001.dae', -3.5, 10.0, {
+      baseY: -7.0, footprint: 15.0, ry: -2.29, // west flank (1.2 rotated 200deg clockwise)
+    });
+    place('WaterfallWorldHomeBone001.dae', 23.5, 10.0, {
+      baseY: -7.0, footprint: 15.0, ry: 1.2 + Math.PI, // east flank (mirrored)
+    });
+    place('WaterfallWorldHomeBone000.dae', 10.5, 22.4, {
+      baseY: -8.2, footprint: 7.5, ry: -0.52, // the skull on the south face, eyeing the camera
+    });
 
-      const mountainMat = pbr('RockWallBase03', 3, 4, 0xc3b297, {
-        roughness: 0.96, emissive: 0x3a2418, emissiveIntensity: 0.5,
-      });
-      const snowMat = track(new THREE.MeshStandardMaterial({
-        color: 0xeef3f6, roughness: 0.72, metalness: 0,
-        emissive: 0x20303c, emissiveIntensity: 0.06,
+    // ---- the SURROUNDING RING: single Ground chunks from the pack placed as
+    // modular cliff masses east/west/south-below, so the terrain wraps all the
+    // way around the arena and the raw sky never shows below the horizon.
+    // Tops stay a few units BELOW the board so nothing crowds the maze.
+    place('WaterfallWorldHomeGround006.dae', -30, 8, {
+      footprint: 46, baseY: -32, ry: 0.5,
+    });
+    place('WaterfallWorldHomeGround002.dae', 50, 10, {
+      footprint: 55, baseY: -39, ry: -0.7,
+    });
+    place('WaterfallWorldHomeGround007.dae', -34, 30, {
+      footprint: 50, baseY: -36, ry: 2.2,
+    });
+    place('WaterfallWorldHomeGround001.dae', 48, 34, {
+      footprint: 48, baseY: -35, ry: 2.8,
+    });
+    place('WaterfallWorldHomeGround006.dae', 10, 38, {
+      footprint: 60, baseY: -44, ry: 0.15,
+    });
+
+    // ---- the mist sea: soft drifting haze layers far below the islands, so
+    // looking down between them you see fog, never a "bottom"
+    const hazes = [];
+    {
+      function hazeCanvas() {
+        const S = 256;
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = S;
+        const ctx = cv.getContext('2d');
+        const g = ctx.createRadialGradient(S / 2, S / 2, S * 0.1, S / 2, S / 2, S * 0.5);
+        g.addColorStop(0, 'rgba(236,246,252,0.95)');
+        g.addColorStop(0.55, 'rgba(226,240,250,0.55)');
+        g.addColorStop(1, 'rgba(220,236,250,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, S, S);
+        return cv;
+      }
+      const hazeTex = trackTexture(new THREE.CanvasTexture(hazeCanvas()));
+      hazeTex.colorSpace = THREE.SRGBColorSpace;
+      const hazeGeo = track(new THREE.PlaneGeometry(1, 1));
+      for (const [hx, hy, hz, w, d, op, ph] of [
+        // thin veils up high, denser sea further down - terrain tops stay visible
+        [10, -16, 6, 170, 120, 0.28, 0.0],
+        [-16, -23, 14, 150, 110, 0.38, 1.7],
+        [34, -23, 18, 150, 110, 0.38, 3.9],
+        [10, -32, 10, 240, 180, 0.55, 2.6],
+        [10, -44, 12, 330, 250, 0.8, 5.1],
+      ]) {
+        const m = track(new THREE.MeshBasicMaterial({
+          map: hazeTex, transparent: true, opacity: op,
+          depthWrite: false, fog: false,
+        }));
+        const p = new THREE.Mesh(hazeGeo, m);
+        p.rotation.x = -Math.PI / 2;
+        p.scale.set(w, d, 1);
+        p.position.set(hx, hy, hz);
+        p.renderOrder = 1;
+        group.add(p);
+        hazes.push({ mesh: p, baseX: hx, baseZ: hz, ph });
+      }
+    }
+
+    // ---- backdrop: the REAL Fossil Falls level, self-assembled ------------
+    // Every WaterfallWorldHome chunk in the pack still carries its authentic
+    // in-level transform, so loading them together re-assembles the actual
+    // Cascade Kingdom island - tiered red-rock cliffs, grassy plateaus, the
+    // sauropod skeleton, the stone bridge and the summit pond - as one giant
+    // floating diorama rising behind the arena (the reference-photo look).
+    // The flat board island keeps floating dead-centre in front of it.
+    {
+      const LEVEL_FILES = [
+        'WaterfallWorldHomeGround000.dae',
+        'WaterfallWorldHomeGround001.dae',
+        'WaterfallWorldHomeGround002.dae',
+        'WaterfallWorldHomeGround003.dae',
+        'WaterfallWorldHomeGround004.dae',
+        'WaterfallWorldHomeGround005.dae',
+        'WaterfallWorldHomeGround006.dae',
+        'WaterfallWorldHomeGround007.dae',
+        'WaterfallWorldHomeBone000.dae',   // sauropod skull (BoneSaursHead)
+        'WaterfallWorldHomeBone001.dae',   // rib-cage bone set
+        'WaterfallWorldHomeStoneBridge.dae',
+        'WaterfallWorldHomeWater000.dae',  // summit pond (retextured below)
+      ];
+      // layout knobs (tuned from screenshots)
+      const LEVEL_TARGET = 190;   // world-units footprint of the widest side
+      const LEVEL_ROT = -Math.PI / 4; // yaw the tiered/skeleton face toward the camera
+      const LEVEL_X = CTR;        // centred behind the board
+      const LEVEL_TOP_Y = 16;     // plateau top rises this far above the board
+      const LEVEL_FRONT_Z = -9;   // nearest cliff face, close behind the goal row
+
+      // the export's water meshes reference a blank UV-distortion map and render
+      // white - swap them for real reflective water (ripples animate in update()).
+      pondNrm = assetTexture('Water00_nrm.png', 5, 5, false);
+      const levelWaterMat = track(new THREE.MeshPhysicalMaterial({
+        color: 0x1d5a66, roughness: 0.1, metalness: 0,
+        envMapIntensity: 2.5, transparent: true, opacity: 0.92,
+        normalMap: pondNrm, normalScale: new THREE.Vector2(0.5, 0.5),
+        clearcoat: 1.0, clearcoatRoughness: 0.08, ior: 1.33, depthWrite: false,
       }));
+
+      const level = new THREE.Group();
+      Promise.all(LEVEL_FILES.map((f) => loadModel(f)))
+        .then((protosArr) => {
+          if (disposed) return;
+          for (const proto of protosArr) {
+            if (!proto) continue;
+            const inst = cloneSkinned(proto); // keep the native in-level transform
+            inst.traverse((o) => {
+              if (!o.isMesh) return;
+              o.castShadow = false; // backdrop only receives - shadow pass stays cheap
+              const ms = Array.isArray(o.material) ? o.material : [o.material];
+              // the black warp-gate covers are level-logic props, not scenery
+              if (ms.some((m) => /commongateblack/i.test(m?.name || ''))) {
+                o.visible = false;
+                return;
+              }
+              if (ms.some((m) => /water00|waterconnect/i.test(m?.name || ''))) {
+                o.material = levelWaterMat;
+                o.renderOrder = 2;
+              }
+            });
+            level.add(inst);
+          }
+          // fit: centre the assembly, bbox top plateau at LEVEL_TOP_Y, nearest
+          // cliff face at LEVEL_FRONT_Z, uniformly scaled to LEVEL_TARGET across
+          level.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(level);
+          const size = box.getSize(new THREE.Vector3());
+          const ctr = box.getCenter(new THREE.Vector3());
+          const s = LEVEL_TARGET / (Math.max(size.x, size.z) || 1);
+          level.position.set(-ctr.x, -box.max.y, -ctr.z); // bbox top -> wrap origin
+          const wrap = new THREE.Group();
+          wrap.add(level);
+          wrap.scale.setScalar(s);
+          wrap.rotation.y = LEVEL_ROT;
+          wrap.position.set(LEVEL_X, LEVEL_TOP_Y, LEVEL_FRONT_Z - (size.z * s) / 2);
+          group.add(wrap);
+        })
+        .catch((e) => console.warn('Fossil Falls level failed to assemble', e))
+        .finally(() => markReady()); // never hang the round transition
+
+      // --- the great waterfall: a streaked sheet pouring off the front cliff,
+      // past the arena's depth, into the void below (positions tuned by eye)
+      const WF_X = CTR + 3.0;
+      const WF_Z = -10.2; // hugs the now-closer cliff face
+      const WF_TOP_Y = 6.0;
+      const WF_BOT_Y = -46.0;
+
       const foamMat = track(new THREE.MeshStandardMaterial({
         color: 0xffffff, transparent: true, opacity: 0.85, roughness: 0.4, metalness: 0,
         emissive: 0xeaf6ff, emissiveIntensity: 0.5, depthWrite: false,
@@ -642,83 +774,6 @@ export const fossilfalls = {
         color: 0xf2fbff, transparent: true, opacity: 0.28, roughness: 0.6, metalness: 0,
         emissive: 0xdff2ff, emissiveIntensity: 0.25, depthWrite: false,
       }));
-      // genuine reflective water for the pond + spring: a glossy, low-roughness
-      // physical surface that mirrors the HDRI sky with a clearcoat sheen and an
-      // animated ripple normal map (NOT the flat cartoon canvas the slip pools use).
-      pondNrm = assetTexture('Water00_nrm.png', 3, 3, false);
-      const pondWaterMat = track(new THREE.MeshPhysicalMaterial({
-        color: 0x16414d,
-        roughness: 0.08,
-        metalness: 0.0,
-        envMapIntensity: 3.0,
-        transparent: true,
-        opacity: 0.9,
-        normalMap: pondNrm,
-        normalScale: new THREE.Vector2(0.45, 0.45),
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.06,
-        ior: 1.33,
-        depthWrite: false,
-      }));
-
-      // rock foundation: a bumpy shoulder tying the floating board island to the
-      // mountain and cradling the pond (front kept north of the board surface).
-      addBumpyRockIsland({
-        x: mtnX, z: -11.0, w: 22.0, d: 21.0, topY: -0.12, bottomY: -15.0,
-        seed: 320, topMat: sandyTopMat, sideMat: cliffMat, jag: 0.6, amp: 1.3,
-      });
-
-      // the peak + its snow cap
-      addRockMountain({ x: mtnX, z: mtnZ, baseY, peakY, radius: mtnR, seed: 412, mat: mountainMat, amp: 0.7, radial: 15, rings: 13 });
-      addRockMountain({
-        x: mtnX, z: mtnZ, baseY: 10.0, peakY: peakY + 0.3,
-        radius: rockRadiusAt(10.0) + 0.5, seed: 77, mat: snowMat, amp: 0.3, rings: 7,
-      });
-
-      // --- the pond at the foot: a wide, shallow pool -----------------------
-      const pondZ = -4.5, pondY = -0.05;
-      const pondHalfX = 5.4, pondHalfZ = 1.9;      // wide left-right, thin front-back
-      const pondBaseR = 3.06;                       // puddleShape(940, 9.0) ~radius
-      const pondGeo = track(new THREE.ExtrudeGeometry(puddleShape(940, 9.0), {
-        depth: 0.02, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.05, bevelSegments: 4,
-      }));
-      pondGeo.rotateX(-Math.PI / 2);
-      const pond = new THREE.Mesh(pondGeo, pondWaterMat);
-      pond.position.set(mtnX, pondY, pondZ);
-      pond.scale.set(pondHalfX / pondBaseR, 1, pondHalfZ / pondBaseR);
-      pond.renderOrder = 3;
-      pond.receiveShadow = true;
-      group.add(pond);
-
-      // a ring of rocks hugging the wide elliptical rim so the pond reads contained
-      const rimGeo = track(new THREE.IcosahedronGeometry(1, 0));
-      for (let i = 0; i < 18; i++) {
-        const a = (i / 18) * Math.PI * 2 + hashFloat(i, 5, 12) * 0.4;
-        const ex = pondHalfX + 0.25 + hashFloat(i, 9, 7) * 0.6;
-        const ez = pondHalfZ + 0.25 + hashFloat(i, 11, 7) * 0.45;
-        const s = 0.42 + hashFloat(i, 3, 4) * 0.5;
-        const rock = new THREE.Mesh(rimGeo, cliffMat);
-        rock.position.set(mtnX + Math.cos(a) * ex, pondY + 0.02 + s * 0.2, pondZ + Math.sin(a) * ez);
-        rock.scale.set(s, s * (0.5 + hashFloat(i, 1, 2) * 0.5), s);
-        rock.rotation.set(hashFloat(i, 2, 1) * 1.2, a, hashFloat(i, 6, 8) * 1.2);
-        rock.castShadow = true;
-        rock.receiveShadow = true;
-        group.add(rock);
-      }
-
-      // --- spring at the top + the falling cascade -------------------------
-      const srcY = 9.0;
-      // keep the cascade clearly in FRONT of the bulged, craggy cone face for its
-      // whole length: the face slopes outward as it drops, so this forward offset
-      // (which beats the worst displacement bulge) leaves the spring + sheet proud
-      // of the rock instead of buried in it.
-      const srcZ = mtnZ + rockRadiusAt(srcY) + 1.9;
-      const springGeo = track(new THREE.CircleGeometry(1.6, 20));
-      springGeo.rotateX(-Math.PI / 2);
-      const spring = new THREE.Mesh(springGeo, pondWaterMat);
-      spring.position.set(mtnX, srcY + 0.05, srcZ - 0.5);   // back edge tucked into the cliff
-      spring.renderOrder = 3;
-      group.add(spring);
 
       // a vertical streak texture for the falling water
       function waterfallCanvas() {
@@ -751,70 +806,46 @@ export const fossilfalls = {
       const fallTex = trackTexture(new THREE.CanvasTexture(waterfallCanvas()));
       fallTex.colorSpace = THREE.SRGBColorSpace;
       fallTex.wrapS = fallTex.wrapT = THREE.RepeatWrapping;
-      fallTex.repeat.set(1, 3.4);
+      fallTex.repeat.set(1, 4.6);
       fallTex.anisotropy = maxAnisotropy;
       const fallMat = track(new THREE.MeshStandardMaterial({
         color: 0xffffff, map: fallTex, transparent: true, opacity: 0.94,
         roughness: 0.22, metalness: 0, emissive: 0xbfe6f2, emissiveIntensity: 0.2,
         side: THREE.DoubleSide, depthWrite: false,
       }));
-      // a tapered sheet (wider at the base), hanging in front of the slope from
-      // the spring down to the pond
-      const topY = srcY, botY = pondY + 0.02, topZ = srcZ, botZ = pondZ;
-      const dz = botZ - topZ, dy = topY - botY;
-      const len = Math.hypot(dy, dz);
+      // a tapered sheet (wider at the foot), hanging straight down the cliff face
+      const len = WF_TOP_Y - WF_BOT_Y;
       const fallGeo = track(new THREE.PlaneGeometry(1, len, 3, 14));
       {
         const p = fallGeo.attributes.position;
         for (let i = 0; i < p.count; i++) {
           const vf = (p.getY(i) + len / 2) / len;          // 0 bottom .. 1 top
-          p.setX(i, p.getX(i) * (4.2 + (2.2 - 4.2) * vf)); // 4.2 wide foot -> 2.2 lip
+          p.setX(i, p.getX(i) * (5.6 + (3.2 - 5.6) * vf)); // 5.6 wide foot -> 3.2 lip
         }
         p.needsUpdate = true;
         fallGeo.computeVertexNormals();
       }
       const fall = new THREE.Mesh(fallGeo, fallMat);
-      fall.position.set(mtnX, (topY + botY) / 2, (topZ + botZ) / 2);
-      fall.rotation.x = -Math.atan2(dz, dy);               // top toward the cliff, foot in the pond
+      fall.position.set(WF_X, (WF_TOP_Y + WF_BOT_Y) / 2, WF_Z);
       fall.renderOrder = 4;
       group.add(fall);
       cascades.push({ tex: fallTex, mat: fallMat });
 
-      // foam at the lip and where it lands
+      // foam at the lip, drifting spray puffs along the upper drop
       const lip = new THREE.Mesh(track(new THREE.SphereGeometry(1.2, 12, 9)), foamMat);
-      lip.position.set(mtnX, topY + 0.08, topZ);
-      lip.scale.set(1.4, 0.45, 0.9);
+      lip.position.set(WF_X, WF_TOP_Y + 0.08, WF_Z);
+      lip.scale.set(1.7, 0.4, 0.9);
       group.add(lip);
 
-      splash = new THREE.Mesh(track(new THREE.SphereGeometry(1.7, 14, 10)), track(foamMat.clone()));
-      splash.position.set(mtnX, pondY + 0.1, botZ);
-      splash.scale.set(1.6, 0.32, 1.25);
-      group.add(splash);
-
-      // expanding ripple rings radiating from the splash
-      const ringGeo = track(new THREE.RingGeometry(0.92, 1.0, 28));
-      ringGeo.rotateX(-Math.PI / 2);
-      for (let i = 0; i < 3; i++) {
-        const rmat = track(new THREE.MeshBasicMaterial({
-          color: 0xdff3ff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false,
-        }));
-        const ring = new THREE.Mesh(ringGeo, rmat);
-        ring.position.set(mtnX, pondY + 0.03, botZ);
-        ring.renderOrder = 4;
-        group.add(ring);
-        ripples.push({ mesh: ring, mat: rmat, off: i / 3, r0: 0.9, grow: 3.0, speed: 0.45, ax: 1.5, az: 0.5 });
-      }
-
-      // drifting spray at the base
       const mistGeo = track(new THREE.SphereGeometry(1.0, 10, 8));
       for (let i = 0; i < 5; i++) {
         const puff = new THREE.Mesh(mistGeo, mistMat);
-        const px = mtnX + (hashFloat(i, 4, 6) - 0.5) * 8.0;
-        const pz = botZ + (hashFloat(i, 8, 9) - 0.5) * 1.8;
-        puff.position.set(px, pondY + 0.8 + hashFloat(i, 2, 3) * 0.7, pz);
+        const px = WF_X + (hashFloat(i, 4, 6) - 0.5) * 5.0;
+        const py = WF_TOP_Y - 3.5 - hashFloat(i, 2, 3) * 8.0;
+        puff.position.set(px, py, WF_Z + 0.6);
         puff.scale.set(1.3 + i * 0.2, 0.75, 1.1);
         group.add(puff);
-        mists.push({ mesh: puff, base: puff.position.y, ph: i * 2.1 });
+        mists.push({ mesh: puff, base: py, ph: i * 2.1 });
       }
     }
 
@@ -861,6 +892,12 @@ export const fossilfalls = {
         m.mesh.position.y = m.base + Math.sin(t * 0.8 + m.ph) * 0.25;
         m.mesh.position.x += Math.sin(t * 0.3 + m.ph) * dt * 0.05;
       }
+      for (const h of hazes) {
+        // the mist sea drifts slowly and breathes a little
+        h.mesh.position.x = h.baseX + Math.sin(t * 0.05 + h.ph) * 6;
+        h.mesh.position.z = h.baseZ + Math.cos(t * 0.04 + h.ph * 1.3) * 5;
+        h.mesh.rotation.z = t * 0.008 + h.ph;
+      }
     }
 
     function dispose() {
@@ -869,6 +906,6 @@ export const fossilfalls = {
       for (const o of trash) o.dispose?.();
     }
 
-    return { group, update, dispose };
+    return { group, ready, update, dispose };
   },
 };
