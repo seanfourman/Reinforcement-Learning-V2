@@ -12,6 +12,8 @@
 // Signature: play(worldJson, stats, onCovered) where onCovered is an async fn
 // called at full black that must resolve when the new arena is ready.
 
+import { getTheme } from "./themes/index.js";
+
 const IRIS_MS = 1000; // iris close / open duration (matches the start-menu iris)
 const NAME_LEAD = 150; // begin the name fade this long before the iris finishes opening
 const HOLD_MS = 1500; // how long the level name sits fully readable over the world
@@ -30,6 +32,9 @@ const STYLE = `
 #rl-iris-card .ttl{font-family:Georgia,"Times New Roman",serif;font-weight:600;font-size:62px;
   letter-spacing:1px;margin:0;color:#fdfdff;
   text-shadow:0 0 34px rgba(150,180,255,.35),0 3px 14px rgba(0,0,0,.75);}
+#rl-iris-card .sub{font-family:Georgia,serif;font-style:italic;font-size:20px;letter-spacing:3px;
+  margin-top:14px;color:rgba(255,255,255,.82);text-shadow:0 2px 16px rgba(0,0,0,.85);}
+#rl-iris-card .sub:empty{display:none;}
 `;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,10 +52,12 @@ export function createTransition() {
 
   const card = document.createElement("div");
   card.id = "rl-iris-card";
-  card.innerHTML = `<div class="ttl" id="rl-iris-ttl">Arena</div>`;
+  card.innerHTML = `<div class="ttl" id="rl-iris-ttl">Arena</div>
+      <div class="sub" id="rl-iris-sub"></div>`;
   document.body.appendChild(card);
 
   const ttl = card.querySelector("#rl-iris-ttl");
+  const sub = card.querySelector("#rl-iris-sub");
 
   const setIris = (dpx) => {
     iris.style.width = iris.style.height = dpx + "px";
@@ -59,10 +66,12 @@ export function createTransition() {
 
   let busy = false;
 
-  // populate the level card (arena name only) and reset it hidden
+  // populate the level card (arena name + a short thematic subtitle) and hide it
   function fillCard(worldJson, stats) {
     const r = (stats && stats.round) || {};
     ttl.textContent = worldJson.title || r.title || "Arena";
+    const theme = getTheme(worldJson.theme);
+    sub.textContent = (theme && theme.subtitle) || "";
     card.classList.remove("show");
   }
 

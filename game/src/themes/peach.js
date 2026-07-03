@@ -74,6 +74,7 @@ function starShape() {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
+  subtitle: "The Grand Foyer",
   cell: 1.21, // board cell size
   // offX = 0.5*cell (0.605) re-centres the ODD 15-board (its centre col lands on
   // the screen centre x=10); offZ slides it up/down - tune for perfect alignment.

@@ -57,6 +57,7 @@ function hash(a, b) {
 export const city = {
   name: 'city',
   title: 'New Donk City',
+  subtitle: 'Bustling Downtown Streets',
   // bright, saturated "New Donk City" sunny look: warm sun vs cool blue fill,
   // vivid sky, a gentle game-y bloom, punchy ACES exposure
   sky: ['#2f74d6', '#6fb0f3', '#cfe8ff'],

@@ -175,6 +175,7 @@ const FALLING_PROPS = Array.from({ length: 90 }, (_, i) => {
 export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
+  subtitle: "The Fallen Keep",
   sky: ["#030303", "#0a0a0b", "#151515"], // neutral black cosmic dusk
   fog: 0x101010, // charcoal so distant objects melt into the cosmic background
   fogNear: 44,

@@ -30,6 +30,7 @@ function hash(a, b) {
 export const fossilfalls = {
   name: 'fossilfalls',
   title: 'Fossil Falls',
+  subtitle: 'Floating Stone Islands',
   // misty prehistoric canyon: a fresh, slightly cool sky with hazy depth, one
   // warm sun against a cool blue fill, and a faint bloom so only the moon glows.
   sky: ['#356fb0', '#7cb4e4', '#dceffa'],
