@@ -163,6 +163,7 @@ let arenaMode = false; // round 4 (continuous arena): the theme renders its own 
 let worldVersion = -1; // last world we built
 let latestStats = null;
 let latestFrame = null;
+let lastWorldJson = null; // most recently (re)built world - for the entry name card
 let menu = null; // start menu (cabin background); gates the game boot
 
 initHud(); // Blue top-left / Red top-right score + round banner
@@ -226,6 +227,7 @@ function disposeWorld() {
 }
 
 function rebuildWorld(worldJson) {
+  lastWorldJson = worldJson;
   const key = worldJson.theme;
   const rowsKey = (worldJson.rows || []).join("\n"); // arena rounds have no rows
   const theme = getTheme(key);
@@ -580,7 +582,15 @@ menu = createStartMenu({
         // finish, but CAP it so a fast Start never hangs on a black screen - any
         // unfinished prewarm just keeps warming in the background during round 1.
         if ((built && idle && walkersReady && elapsed > 600) || elapsed > 6000) {
-          requestAnimationFrame(() => requestAnimationFrame(resolve)); // a couple frames to settle
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              resolve();
+              // announce the first level, over the scene, as the menu iris opens
+              setTimeout(() => {
+                if (lastWorldJson) transition.showName(lastWorldJson, latestStats);
+              }, 750);
+            }),
+          );
         } else {
           requestAnimationFrame(ready);
         }

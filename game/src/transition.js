@@ -27,16 +27,9 @@ const STYLE = `
   /* a soft scrim so the name stays legible over a bright scene, fades with the card */
   background:radial-gradient(58% 42% at 50% 47%,rgba(0,0,0,.5),rgba(0,0,0,0) 72%);}
 #rl-iris-card.show{opacity:1;transform:translateY(0);}
-#rl-iris-card .pre{font-family:"Segoe UI",system-ui,sans-serif;font-size:13px;
-  letter-spacing:7px;text-transform:uppercase;color:#dbe4f6;opacity:.85;margin-bottom:18px;
-  text-shadow:0 2px 12px rgba(0,0,0,.7);}
 #rl-iris-card .ttl{font-family:Georgia,"Times New Roman",serif;font-weight:600;font-size:62px;
   letter-spacing:1px;margin:0;color:#fdfdff;
   text-shadow:0 0 34px rgba(150,180,255,.35),0 3px 14px rgba(0,0,0,.75);}
-#rl-iris-card .sub{font-family:Georgia,serif;font-style:italic;font-size:21px;letter-spacing:2px;
-  margin-top:16px;color:rgba(255,255,255,.9);text-shadow:0 2px 16px rgba(0,0,0,.85);}
-#rl-iris-card .sub b{font-style:normal;font-weight:700;}
-#rl-iris-card .sub b.r{color:#ff9a90;} #rl-iris-card .sub b.b{color:#9cc0f5;}
 `;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -54,14 +47,10 @@ export function createTransition() {
 
   const card = document.createElement("div");
   card.id = "rl-iris-card";
-  card.innerHTML = `<div class="pre" id="rl-iris-pre"></div>
-      <div class="ttl" id="rl-iris-ttl">Arena</div>
-      <div class="sub" id="rl-iris-sub"></div>`;
+  card.innerHTML = `<div class="ttl" id="rl-iris-ttl">Arena</div>`;
   document.body.appendChild(card);
 
-  const pre = card.querySelector("#rl-iris-pre");
   const ttl = card.querySelector("#rl-iris-ttl");
-  const sub = card.querySelector("#rl-iris-sub");
 
   const setIris = (dpx) => {
     iris.style.width = iris.style.height = dpx + "px";
@@ -69,6 +58,24 @@ export function createTransition() {
   };
 
   let busy = false;
+
+  // populate the level card (arena name only) and reset it hidden
+  function fillCard(worldJson, stats) {
+    const r = (stats && stats.round) || {};
+    ttl.textContent = worldJson.title || r.title || "Arena";
+    card.classList.remove("show");
+  }
+
+  // Show the level name over the CURRENT view (no iris), then fade it out. Used on
+  // game ENTRY to announce the first level, which never goes through a round
+  // transition (its scene is revealed by the start menu's own iris).
+  function showName(worldJson, stats) {
+    fillCard(worldJson, stats);
+    requestAnimationFrame(() => {
+      card.classList.add("show");
+      setTimeout(() => card.classList.remove("show"), HOLD_MS + 400);
+    });
+  }
 
   async function play(worldJson, stats, onCovered) {
     if (busy) {
@@ -78,19 +85,7 @@ export function createTransition() {
 
     busy = true;
     try {
-      // ---- fill the level card (shown later, over the revealed world) ----
-      const r = (stats && stats.round) || {};
-      pre.textContent =
-        `Round ${(r.index ?? (worldJson.roundId - 1)) + 1}` +
-        (r.total ? ` / ${r.total}` : "");
-      ttl.textContent = worldJson.title || r.title || "Arena";
-      const lr = r.labelRed || (stats && stats.algoRed) || "";
-      const lb = r.labelBlue || (stats && stats.algoBlue) || "";
-      sub.innerHTML =
-        lr && lb
-          ? `<b class="r">${lr}</b> &nbsp;vs&nbsp; <b class="b">${lb}</b>`
-          : "";
-      card.classList.remove("show"); // make sure it starts hidden
+      fillCard(worldJson, stats); // shown later, over the revealed world
 
       // circle big enough to clear the screen corners even after resize
       const diag = Math.ceil(
@@ -127,5 +122,5 @@ export function createTransition() {
     }
   }
 
-  return { play };
+  return { play, showName };
 }
