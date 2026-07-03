@@ -20,14 +20,16 @@ ROUND_ID = 1
 TITLE = "Peach's Castle"
 
 # The RL grid stays SIZE x SIZE (=20; the viewer's heatmap/camera assume that),
-# but the PLAYABLE area is a central 16x16: a MARGIN-cell frame is walled off.
-# Those frame cells render as plain foyer floor (peach.js draws no wall geometry),
-# so there's no visible ring - the board just reads as a 16x16.
-MARGIN = 2
-LO, HI = MARGIN, SIZE - 1 - MARGIN     # playable rows/cols span [2, 17] inclusive
+# but the PLAYABLE area is a central BOARD x BOARD: the frame around it is walled
+# off. Those frame cells render as plain foyer floor (peach.js draws no wall
+# geometry), so there's no visible ring - the board just reads as BOARD x BOARD.
+BOARD = 15
+LO = (SIZE - BOARD) // 2                # first play row/col (top/left margin)
+HI = LO + BOARD - 1                     # last play row/col
+MID = (LO + HI) // 2                    # centre column of the play area
 
-ESCAPE_POS = [(LO, 9), (LO, 10)]               # the throne / goal (top of the 16x16)
-RED_SPAWN_POS, BLUE_SPAWN_POS = (HI, 6), (HI, 13)   # spawns at the bottom row
+ESCAPE_POS = [(LO, MID)]                        # ONE terminal, top-centre
+RED_SPAWN_POS, BLUE_SPAWN_POS = (HI, LO), (HI, HI)   # bottom-left / bottom-right corners (symmetric)
 # open hall - no interior obstacles (the castle model is the whole scene)
 PILLARS = []
 

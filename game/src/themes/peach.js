@@ -36,7 +36,8 @@ const MODEL_DY = 0; // manual vertical nudge (the hall floor is auto-dropped to 
 const MODEL_DZ = 3.5; // slide south: entrance stair clears the board's south edge
 const MODEL_ROT = Math.PI; // radians, flip the whole castle scene 180 degrees
 
-const CHECKS_PER_TEX = 6; // MarbleCheckFloor00 holds a 6x6 checker per tile
+const TEX_CHECKS = 6; // MarbleCheckFloor00 has 6 checker squares across each texture tile (measured)
+const FLOOR_MULT = 1; // foyer floor checks are this many board-cells across (1 = same size as the board tiles)
 const TEAM_RED = 0xb8332c;
 const TEAM_BLUE = 0x2456c8;
 
@@ -73,8 +74,10 @@ function starShape() {
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
-  cell: 1.047, // a touch bigger board
-  offset: [0, 2.7], // slide the arena well back (north, toward the throne)
+  cell: 1.21, // board cell size
+  // offX = 0.5*cell (0.605) re-centres the ODD 15-board (its centre col lands on
+  // the screen centre x=10); offZ slides it up/down - tune for perfect alignment.
+  offset: [0.605, 1.305],
   sky: ["#bfa9dc", "#dcc8ea", "#f6ecf2"], // soft regal lavender-cream
   fog: 0xe9e0f3,
   fogNear: 55,
@@ -150,18 +153,33 @@ export const peach = {
     const FX1 = 58;
     const FZ0 = -2;
     const FZ1 = 62;
+    // foyer checker: one check == one board cell (CHECKS_PER_TEX), and PHASE-
+    // aligned to the board grid so the floor checks line up with the board tiles.
+    // Alignment is derived from cell + offset, so it holds if those are tuned.
+    const floorCheck = FLOOR_MULT * cell; // foyer check world size
+    const frepX = (FX1 - FX0) / (TEX_CHECKS * floorCheck);
+    const frepZ = (FZ1 - FZ0) / (TEX_CHECKS * floorCheck);
+    // shift the texture so a floor-check line lands on a board cell boundary
+    // (FLOOR_MULT is a whole number, so the bigger floor checks nest with the board)
+    const alignOff = (boardEdge, planeMin) => {
+      const g = (boardEdge - planeMin) / (TEX_CHECKS * floorCheck);
+      return Math.round(g * TEX_CHECKS) / TEX_CHECKS - g;
+    };
+    // MarbleCheckFloor00's checker is phased with a square CENTRE at its UV
+    // origin (measured), so snapping to the texture's check grid lands a check
+    // CORNER on the board centre. Shift half a check so a floor SQUARE centres on
+    // the board grid: gives a middle square AND nests the board tiles in the floor.
+    const HALF = 0.5 / TEX_CHECKS;
+    const fOffX = alignOff(cx + offX, FX0) + HALF;
+    const fOffZ = -alignOff(cz + offZ, FZ0) + HALF; // V flips under the plane's -90deg X rotation
+    const floorTex = (name, srgb) => {
+      const t = tex(name, frepX, frepZ, srgb);
+      t.offset.set(fOffX, fOffZ);
+      return t;
+    };
     const floorMat = new THREE.MeshStandardMaterial({
-      map: tex(
-        "MarbleCheckFloor00_alb.png",
-        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
-        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
-      ),
-      normalMap: tex(
-        "MarbleCheckFloor00_nrm.png",
-        (FX1 - FX0) / (CHECKS_PER_TEX * cell),
-        (FZ1 - FZ0) / (CHECKS_PER_TEX * cell),
-        false,
-      ),
+      map: floorTex("MarbleCheckFloor00_alb.png", true),
+      normalMap: floorTex("MarbleCheckFloor00_nrm.png", false),
       // no roughnessMap + full roughness = a matte floor with no specular
       // glare (the marble rgh map had polished spots that caught the sun)
       roughness: 1,
