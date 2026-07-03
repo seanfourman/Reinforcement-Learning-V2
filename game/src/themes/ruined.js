@@ -176,6 +176,9 @@ export const ruined = {
   name: "ruined",
   title: "Ruined Kingdom",
   subtitle: "The Fallen Keep",
+  // pull the camera further back than the default (30) - this arena reads better
+  // from a wider shot
+  camera: { startDist: 38, maxDist: 38 },
   sky: ["#030303", "#0a0a0b", "#151515"], // neutral black cosmic dusk
   fog: 0x101010, // charcoal so distant objects melt into the cosmic background
   fogNear: 44,
@@ -252,7 +255,10 @@ export const ruined = {
         const cy = bgRnd(i + 9) * H;
         const r = 180 + bgRnd(i + 3) * 360;
         const rg = g.createRadialGradient(cx, cy, 0, cx, cy, r);
-        rg.addColorStop(0, hexA(neb[i % neb.length], 0.16 + bgRnd(i + 5) * 0.14));
+        rg.addColorStop(
+          0,
+          hexA(neb[i % neb.length], 0.16 + bgRnd(i + 5) * 0.14),
+        );
         rg.addColorStop(1, hexA(neb[i % neb.length], 0));
         g.fillStyle = rg;
         g.fillRect(0, 0, W, H);
@@ -522,7 +528,14 @@ export const ruined = {
         const bottomY = spec.bottomY ?? FALLING_BOTTOM_Y;
         wrap.position.set(spec.x, topY, spec.z);
         group.add(wrap);
-        fallingObjects.push({ ...spec, wrap, fadeMats, baseScale, topY, bottomY });
+        fallingObjects.push({
+          ...spec,
+          wrap,
+          fadeMats,
+          baseScale,
+          topY,
+          bottomY,
+        });
       });
     }
 
@@ -816,7 +829,8 @@ export const ruined = {
         obj.wrap.scale.setScalar(
           obj.baseScale * THREE.MathUtils.lerp(1, FALLING_END_SCALE, fade),
         );
-        for (const mat of obj.fadeMats) mat.opacity = mat.userData.baseOpacity * opacity;
+        for (const mat of obj.fadeMats)
+          mat.opacity = mat.userData.baseOpacity * opacity;
         obj.wrap.rotation.x = (obj.rot?.[0] ?? 0) + t * (obj.spin?.[0] ?? 0);
         obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
         obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
