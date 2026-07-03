@@ -82,8 +82,9 @@ const STYLE = `
 #rl-panel .btns{display:flex;gap:7px;}
 #rl-panel .btns+.btns{margin-top:7px;}
 #rl-panel button{flex:1;padding:9px 6px;border:1px solid #d7dade;border-radius:9px;background:#fff;
-  color:#26272b;font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  color:#26272b;font:inherit;font-size:12px;font-weight:600;cursor:pointer;outline:none;
   transition:background .12s,border-color .12s,color .12s;}
+#rl-panel button:focus,#rl-panel button:focus-visible{outline:none;box-shadow:none;}
 #rl-panel button:hover{background:#f0f1f3;}
 #rl-panel button:active{background:#e7e8eb;}
 #rl-panel button.primary{background:#1f5fd0;border-color:#1a52b8;color:#fff;}
@@ -175,13 +176,13 @@ export function initPanel() {
     <section>
       <h2>Playback</h2>
       <div class="transport">
-        <button id="rl-prev" class="tbtn" title="Previous round">${SVG.prev}</button>
-        <button id="rl-play" class="tplay" title="Play / Pause">${SVG.pause}</button>
-        <button id="rl-next" class="tbtn" title="Next round">${SVG.next}</button>
+        <button id="rl-prev" class="tbtn">${SVG.prev}</button>
+        <button id="rl-play" class="tplay">${SVG.pause}</button>
+        <button id="rl-next" class="tbtn">${SVG.next}</button>
       </div>
       <div class="btns" style="margin-top:14px;">
-        <button id="rl-reset" title="Reset learning, keep this world">↺ Reset</button>
-        <button id="rl-regen" title="New world + reset everything">⟳ New world</button>
+        <button id="rl-reset">↺ Reset</button>
+        <button id="rl-regen">⟳ New world</button>
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>

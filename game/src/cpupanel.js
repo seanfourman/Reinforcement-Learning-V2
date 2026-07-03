@@ -32,7 +32,8 @@ const STYLE = `
 #rl-cpanel section{margin:11px 11px;padding:13px 14px;background:#fff;border:1px solid #e6e8ec;border-radius:13px;box-shadow:0 1px 2px rgba(20,20,30,.04);}
 #rl-cpanel h2{margin:0 0 12px;font-size:10.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;}
 #rl-cpanel button{width:100%;padding:9px 6px;border:1px solid #d7dade;border-radius:9px;background:#fff;color:#26272b;
-  font:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s;}
+  font:inherit;font-size:12px;font-weight:600;cursor:pointer;outline:none;transition:background .12s,border-color .12s,color .12s;}
+#rl-cpanel button:focus,#rl-cpanel button:focus-visible{outline:none;box-shadow:none;}
 #rl-cpanel button:hover{background:#f0f1f3;}
 #rl-cpanel button.primary{background:#d4141f;border-color:#b8101a;color:#fff;}
 #rl-cpanel button.primary:hover{background:#b8101a;}
