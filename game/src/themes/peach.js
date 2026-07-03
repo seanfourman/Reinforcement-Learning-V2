@@ -194,7 +194,7 @@ export const peach = {
     // board/agents (the pattern travels with the plane). +z = toward the camera
     // (down-screen), -z = forward into the scene (toward the throne). "A bit
     // forward" = a small negative slide.
-    const FLOOR_FWD = -1.8;
+    const FLOOR_FWD = -1.7;
     floor.position.set((FX0 + FX1) / 2, 0.02, (FZ0 + FZ1) / 2 + FLOOR_FWD);
     floor.receiveShadow = true;
     group.add(floor);
