@@ -878,10 +878,10 @@ export const fossilfalls = {
       baseY: -36,
       ry: 2.2,
     });
-    place("WaterfallWorldHomeGround001.dae", 51, 0, {
+    place("WaterfallWorldHomeGround001.dae", 60, -20, {
       footprint: 48,
       baseY: -80,
-      ry: 3.43, // tuned live via the dev bar
+      ry: 4.12, // tuned live via the dev bar
     });
     place("WaterfallWorldHomeGround006.dae", 10, 38, {
       footprint: 60,
