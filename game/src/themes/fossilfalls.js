@@ -1008,7 +1008,7 @@ export const fossilfalls = {
         [25, -22, 33, 10, 5.0],
         // back-left and middle-back right
         [-21, -15, -16, 8.5, 1.1],
-        [31, -15, -2, 8, 4.8],
+        [47, -15, -2, 8, 4.8],
       ].forEach(([x, y, z, s, ph], i) => deckCloud(x, y, z, s, 700 + i, ph));
     }
 
