@@ -152,12 +152,20 @@ export const fossilfalls = {
       });
     }
 
+    // grass for the level terrain: EXACTLY the same look as the floater islands
+    // (applyIslandGrass) - the lawn texture + tint - applied to every grass and
+    // mossy-rock surface of the Cascade chunks, so all the greens match.
+    const levelGrassTex = textureAt(ISLAND_GRASS, 1, 1);
     function tuneMaterial(mat) {
       if (!mat)
         return track(
           new THREE.MeshStandardMaterial({ color: 0x9a9080, roughness: 0.9 }),
         );
       const m = mat.clone();
+      if (/GroundGrass00|GroundMossRock|OUPBM/i.test(m.name || "")) {
+        m.map = levelGrassTex;
+        m.color?.set?.(0x8ed35f); // identical tint to islandGrassMat
+      }
       if (m.map) {
         m.map.colorSpace = THREE.SRGBColorSpace;
         m.map.anisotropy = maxAnisotropy;
@@ -865,7 +873,7 @@ export const fossilfalls = {
     // modular cliff masses east/west/south-below, so the terrain wraps all the
     // way around the arena and the raw sky never shows below the horizon.
     // Tops stay a few units BELOW the board so nothing crowds the maze.
-    place("WaterfallWorldHomeGround007.dae", -34, 30, {
+    place("WaterfallWorldHomeGround007.dae", -37, -15, {
       footprint: 50,
       baseY: -36,
       ry: 2.2,
