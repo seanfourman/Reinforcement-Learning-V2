@@ -809,7 +809,7 @@ export const fossilfalls = {
         2.8,
       ],
       // between the two right-side floaters, a bit further out
-      ["WaterfallWorldHomeFloaterIsland000.dae", 28.0, 0.0, 4.0, 5.0, 0.9, 3.4],
+      ["WaterfallWorldHomeFloaterIsland000.dae", 28.0, 0.0, 4.0, 7.5, 0.9, 3.4],
     ].forEach(([name, x, z, y, foot, ry, ph]) =>
       place(name, x, z, {
         baseY: y,
