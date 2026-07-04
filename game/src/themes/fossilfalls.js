@@ -45,7 +45,9 @@ export const fossilfalls = {
   fill: 0x9bc1f2,
   fillIntensity: 0.24,
   exposure: 1.02,
-  bloom: { strength: 0.22, radius: 0.4, threshold: 0.85 }, // gentle moon-only glow
+  // tuned midway: a soft halo on the brightest cloud tops + the moon, without
+  // the full white blowout (was 0.22/0.85, too hot; 0.14/0.93 too flat)
+  bloom: { strength: 0.18, radius: 0.4, threshold: 0.89 },
   env: "./assets/hdri/qwantani_noon_2k.hdr",
   envIntensity: 0.45,
   envBackground: false, // HDRI lights the scene; the sky stays the soft gradient
@@ -949,6 +951,62 @@ export const fossilfalls = {
         group.add(p);
         hazes.push({ mesh: p, baseX: hx, baseZ: hz, ph });
       }
+
+      // --- the CLOUD DECK: big lit cartoon clouds (lobed spheres, same recipe
+      // as the waterfall's crown) drifting LOW on the sides and out front, so
+      // the fog reads clearly without a glowing sheet.
+      const deckMat = track(
+        new THREE.MeshStandardMaterial({
+          color: 0xf4f7fa, // just shy of white: only the sunniest tops kiss the bloom
+          transparent: true,
+          opacity: 0.92,
+          roughness: 0.9,
+          metalness: 0,
+          emissive: 0xcfdfec,
+          emissiveIntensity: 0, // no self-glow at all - lit purely by the sun
+          depthWrite: false,
+        }),
+      );
+      const deckGeo = track(new THREE.SphereGeometry(1, 12, 9));
+      function deckCloud(x, y, z, scale, seed, ph) {
+        const cl = new THREE.Group();
+        const heart = new THREE.Mesh(deckGeo, deckMat);
+        heart.scale.set(scale * 0.9, scale * 0.42, scale * 0.75);
+        cl.add(heart);
+        for (let i = 0; i < 5; i++) {
+          const lobe = new THREE.Mesh(deckGeo, deckMat);
+          const a = (i / 5) * Math.PI * 2 + hashFloat(seed, i, 81) * 0.9;
+          const rr = scale * (0.5 + hashFloat(seed, i, 82) * 0.35);
+          lobe.position.set(
+            Math.cos(a) * rr,
+            (hashFloat(seed, i, 83) - 0.5) * scale * 0.2,
+            Math.sin(a) * rr * 0.7,
+          );
+          const s = scale * (0.35 + hashFloat(seed, i, 84) * 0.3);
+          lobe.scale.set(s, s * 0.45, s * 0.85);
+          cl.add(lobe);
+        }
+        cl.position.set(x, y, z);
+        // keep the white puffs OUT of the bloom pass - lit white geometry over
+        // a pale sky blooms hard otherwise (the "way too much glow")
+        cl.traverse((o) => (o.userData.excludeBloom = true));
+        group.add(cl);
+        mists.push({ mesh: cl, base: y, ph });
+      }
+      [
+        // left side, low
+        [-15, -14, 6, 7, 0.4],
+        [-11, -17, 18, 8.5, 1.8],
+        [-19, -20, 27, 9, 5.6],
+        // right side, low
+        [34, -15, 4, 7, 4.4],
+        [38, -18, 16, 8, 0.9],
+        [31, -20, 27, 9.5, 3.1],
+        // out front (south, toward the camera), lowest
+        [-2, -22, 32, 10, 2.3],
+        [12, -24, 35, 12, 3.7],
+        [25, -22, 33, 10, 5.0],
+      ].forEach(([x, y, z, s, ph], i) => deckCloud(x, y, z, s, 700 + i, ph));
     }
 
     // ---- backdrop: the REAL Fossil Falls level, self-assembled ------------
@@ -1128,13 +1186,13 @@ export const fossilfalls = {
       // single squashed ball.
       const foamMat = track(
         new THREE.MeshStandardMaterial({
-          color: 0xffffff,
+          color: 0xf4f8fb, // just shy of white - a soft kiss of bloom on the crown
           transparent: true,
           opacity: 0.9,
           roughness: 0.55,
           metalness: 0,
           emissive: 0xeaf6ff,
-          emissiveIntensity: 0.45,
+          emissiveIntensity: 0.12,
           depthWrite: false,
         }),
       );
@@ -1146,7 +1204,7 @@ export const fossilfalls = {
           roughness: 0.6,
           metalness: 0,
           emissive: 0xdff2ff,
-          emissiveIntensity: 0.25,
+          emissiveIntensity: 0.08,
           depthWrite: false,
         }),
       );
@@ -1171,6 +1229,9 @@ export const fossilfalls = {
           lobe.scale.set(s, s * 0.75, s);
           cl.add(lobe);
         }
+        // spray clouds sit right at the bright waterfall - keep them out of the
+        // bloom pass or they halo hard
+        cl.traverse((o) => (o.userData.excludeBloom = true));
         group.add(cl);
         return cl;
       }
