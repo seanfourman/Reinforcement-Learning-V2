@@ -1034,31 +1034,6 @@ export const fossilfalls = {
       const WF_TOP_Y = 6.0;
       const WF_BOT_Y = -46.0;
 
-      const foamMat = track(
-        new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          transparent: true,
-          opacity: 0.85,
-          roughness: 0.4,
-          metalness: 0,
-          emissive: 0xeaf6ff,
-          emissiveIntensity: 0.5,
-          depthWrite: false,
-        }),
-      );
-      const mistMat = track(
-        new THREE.MeshStandardMaterial({
-          color: 0xf2fbff,
-          transparent: true,
-          opacity: 0.28,
-          roughness: 0.6,
-          metalness: 0,
-          emissive: 0xdff2ff,
-          emissiveIntensity: 0.25,
-          depthWrite: false,
-        }),
-      );
-
       // a vertical streak texture for the falling water
       function waterfallCanvas() {
         const W = 48,
@@ -1130,24 +1105,78 @@ export const fossilfalls = {
       group.add(fall);
       cascades.push({ tex: fallTex, mat: fallMat });
 
-      // foam at the lip, drifting spray puffs along the upper drop
-      const lip = new THREE.Mesh(
-        track(new THREE.SphereGeometry(1.2, 12, 9)),
-        foamMat,
+      // --- spray clouds: the cartoon look, but built like PUFFY CLOUDS - each
+      // one a cluster of overlapping rounded lobes (Mario-style cumulus), not a
+      // single squashed ball.
+      const foamMat = track(
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.9,
+          roughness: 0.55,
+          metalness: 0,
+          emissive: 0xeaf6ff,
+          emissiveIntensity: 0.45,
+          depthWrite: false,
+        }),
       );
-      lip.position.set(WF_X, WF_TOP_Y + 0.08, WF_Z);
-      lip.scale.set(1.7, 0.4, 0.9);
-      group.add(lip);
-
-      const mistGeo = track(new THREE.SphereGeometry(1.0, 10, 8));
-      for (let i = 0; i < 5; i++) {
-        const puff = new THREE.Mesh(mistGeo, mistMat);
-        const px = WF_X + (hashFloat(i, 4, 6) - 0.5) * 5.0;
-        const py = WF_TOP_Y - 3.5 - hashFloat(i, 2, 3) * 8.0;
-        puff.position.set(px, py, WF_Z + 0.6);
-        puff.scale.set(1.3 + i * 0.2, 0.75, 1.1);
-        group.add(puff);
-        mists.push({ mesh: puff, base: py, ph: i * 2.1 });
+      const mistMat = track(
+        new THREE.MeshStandardMaterial({
+          color: 0xf2fbff,
+          transparent: true,
+          opacity: 0.32,
+          roughness: 0.6,
+          metalness: 0,
+          emissive: 0xdff2ff,
+          emissiveIntensity: 0.25,
+          depthWrite: false,
+        }),
+      );
+      const lobeGeo = track(new THREE.SphereGeometry(1, 14, 10));
+      function cartoonCloud(mat, scale, seed) {
+        const cl = new THREE.Group();
+        // big soft heart of the cloud
+        const heart = new THREE.Mesh(lobeGeo, mat);
+        heart.scale.set(scale * 0.8, scale * 0.6, scale * 0.7);
+        cl.add(heart);
+        // 5 lobes bulging out around it at varied sizes/heights
+        for (let i = 0; i < 5; i++) {
+          const lobe = new THREE.Mesh(lobeGeo, mat);
+          const a = (i / 5) * Math.PI * 2 + hashFloat(seed, i, 41) * 0.9;
+          const r = scale * (0.45 + hashFloat(seed, i, 42) * 0.3);
+          lobe.position.set(
+            Math.cos(a) * r,
+            (hashFloat(seed, i, 43) - 0.35) * scale * 0.35,
+            Math.sin(a) * r * 0.6,
+          );
+          const s = scale * (0.35 + hashFloat(seed, i, 44) * 0.3);
+          lobe.scale.set(s, s * 0.75, s);
+          cl.add(lobe);
+        }
+        group.add(cl);
+        return cl;
+      }
+      // billowing crown where the water tips over the lip: a big central cloud
+      // pulled toward the camera, flanked by two smaller companions
+      const crown = cartoonCloud(foamMat, 2.4, 501);
+      crown.position.set(WF_X, WF_TOP_Y + 0.35, WF_Z + 1.6);
+      mists.push({ mesh: crown, base: WF_TOP_Y + 0.35, ph: 0.6 });
+      const crownL = cartoonCloud(foamMat, 1.5, 502);
+      crownL.position.set(WF_X - 2.8, WF_TOP_Y + 0.1, WF_Z + 1.2);
+      mists.push({ mesh: crownL, base: WF_TOP_Y + 0.1, ph: 1.9 });
+      const crownR = cartoonCloud(foamMat, 1.6, 503);
+      crownR.position.set(WF_X + 2.9, WF_TOP_Y + 0.2, WF_Z + 1.3);
+      mists.push({ mesh: crownR, base: WF_TOP_Y + 0.2, ph: 4.2 });
+      // smaller cloud puffs drifting down the upper drop
+      for (let i = 0; i < 8; i++) {
+        const py = WF_TOP_Y - 3.0 - hashFloat(i, 2, 3) * 10.0;
+        const puff = cartoonCloud(mistMat, 1.2 + hashFloat(i, 5, 45) * 0.7, 510 + i);
+        puff.position.set(
+          WF_X + (hashFloat(i, 4, 6) - 0.5) * 6.5,
+          py,
+          WF_Z + 1.0,
+        );
+        mists.push({ mesh: puff, base: py, ph: 3 + i * 2.1 });
       }
     }
 
