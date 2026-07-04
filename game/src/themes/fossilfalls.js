@@ -1,12 +1,16 @@
 // Round 3 — Fossil Falls (Cascade Kingdom), stripped to its core pieces.
 //
-// Just the essentials float in the sky: the 20x20 RL board (a GRASSY PLATEAU on
-// the y=0 plane where the actors / value heatmap live) sitting on its own
-// floating ROCK ISLAND, plus 4 of the Cascade FLOATER ISLANDS off the left and
-// right sides. The board still carries its gameplay layer - rock-maze shelves on
-// '#' cells, wet-rock POOLS on slippery ('S') cells, and the floating POWER MOON
-// over the goal. The surrounding diorama (canyon cliffs, waterfall, dino bones,
-// rim rocks, scattered plants) has been removed.
+// Just the essentials float in the sky: the 20x20 RL board lives directly ON
+// the flat summit of a floating ROCK ISLAND - no raised platform, and NO grass
+// up here. The playfield is a dry field of slightly-irregular FLAGSTONE SLABS
+// (one per cell, dirt seams between them, a soft light/deep checker in cool
+// limestone tones) cut straight into the summit, so the grid reads as natural
+// terrain instead of a game board sitting on terrain. Wall cells rise as
+// tiered RED-ROCK STRATA MESAS (wide foot, eroded waist, overhanging brow
+// with a warm dry-rock top - the Cascade cliff profile). Slippery ('S') cells
+// are darker WET-SHEEN slabs, the goal slabs are pale gold stone under the
+// floating POWER MOON, and the spawn slabs carry a faint red/blue cast.
+// 4 Cascade FLOATER ISLANDS hang off the left and right sides.
 //
 // Nothing may cover the y=0 board surface. Models come from the vendored Cascade
 // Kingdom Collada pack in assets/models/fossil-falls (DJ_Fox11 / Models Resource).
@@ -19,7 +23,7 @@ const GRID = 20;
 const CTR = GRID / 2;
 const ASSETS = "./assets/models/fossil-falls/";
 const ISLAND_GRASS = "./assets/models/city-newdonk/GroundLawn00_alb.png";
-const GRASS_TOP = 0.04; // raised plateau surface, kept below decals/heatmap
+const SLAB_TOP = 0.04; // flagstone-slab top surface, kept below decals/heatmap
 
 function hash(a, b) {
   let h = (a * 73856093) ^ (b * 19349663);
@@ -275,19 +279,32 @@ export const fossilfalls = {
     }
 
     // ---- materials -------------------------------------------------------
-    const grassTileTex = assetTexture("GroundGrass00_alb.png", 1.3, 1.3);
-    const grassTopMats = [
-      0x83c25a, 0x77b84f, 0x8fcb68, 0x6fae47, 0x88c861, 0x6aa642,
-    ].map((color) =>
+    // the board floor: dry flagstone in two close limestone families for a
+    // soft checker - LIGHT tops on (r+c)-even cells, DEEP on odd, hash-varied
+    // inside each family so the grid reads at a glance without ever looking
+    // like a printed chessboard. Cool stone tones, so the warm red mesas and
+    // sandy apron stay clearly separate.
+    const slabRockTex = assetTexture("GroundBaseRock00_alb.png", 1, 1);
+    const slabMat = (color, opts = {}) =>
       track(
         new THREE.MeshStandardMaterial({
-          map: grassTileTex,
+          map: slabRockTex,
           color,
-          roughness: 1,
+          roughness: 0.9,
           metalness: 0,
+          ...opts,
         }),
-      ),
+      );
+    const stoneLightMats = [0xd2dde4, 0xcad5dd, 0xdae4ea].map((c) =>
+      slabMat(c),
     );
+    const stoneDeepMats = [0xb4c1c9, 0xacb9c1, 0xbcc8d0].map((c) => slabMat(c));
+    // special slab tops: pale gold at the goal, a darker wet sheen on the
+    // slippery cells, a faint warm/cool cast on the two spawn cells
+    const goalSlabMat = slabMat(0xffe9ad, { roughness: 0.75 });
+    const wetSlabMat = slabMat(0x8e9490, { roughness: 0.32, metalness: 0.05 });
+    const redSpawnSlabMat = slabMat(0xf0b096);
+    const blueSpawnSlabMat = slabMat(0xbcd8f2);
     const islandGrassTex = textureAt(ISLAND_GRASS, 1, 1);
     const islandGrassMat = track(
       new THREE.MeshStandardMaterial({
@@ -343,81 +360,20 @@ export const fossilfalls = {
     // sandy / dry-mud ground for the island + board top
     const sandyTopMat = pbr("GroundBaseRock00", 0.5, 0.5, 0xe6d6b0);
 
-    // ---- cartoon water (slip pools + the falls) --------------------------
-    const waterNrm = assetTexture("Water00_nrm.png", 2.2, 2.2, false);
-    function waterCanvas() {
-      const S = 256;
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = S;
-      const ctx = canvas.getContext("2d");
-      const img = ctx.createImageData(S, S);
-      const d = img.data;
-      const lo = [26, 96, 132],
-        hi = [76, 168, 196]; // teal pool: base -> ripple
-      for (let y = 0; y < S; y++) {
-        for (let x = 0; x < S; x++) {
-          const u = x / S,
-            v = y / S;
-          let n =
-            0.5 +
-            0.3 * Math.sin(2 * Math.PI * (u + v)) +
-            0.2 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
-          n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
-          const i = (y * S + x) * 4;
-          d[i] = lo[0] + (hi[0] - lo[0]) * n;
-          d[i + 1] = lo[1] + (hi[1] - lo[1]) * n;
-          d[i + 2] = lo[2] + (hi[2] - lo[2]) * n;
-          d[i + 3] = 255;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
-      return canvas;
-    }
-    const waterTex = trackTexture(new THREE.CanvasTexture(waterCanvas()));
-    waterTex.colorSpace = THREE.SRGBColorSpace;
-    waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
-    waterTex.repeat.set(1.6, 1.6);
-    waterTex.anisotropy = maxAnisotropy;
-    const waterMat = track(
-      new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        map: waterTex,
-        transparent: true,
-        opacity: 0.92,
-        roughness: 0.28,
-        metalness: 0.1,
-        envMapIntensity: 0.5,
-        emissive: 0x0e3a52,
-        emissiveIntensity: 0.06,
-        normalMap: waterNrm,
-        normalScale: new THREE.Vector2(0.14, 0.14),
-        depthWrite: false,
-      }),
-    );
-    function puddleShape(seed, scale = 1) {
-      const s = new THREE.Shape();
-      const rnd = (salt) => hashFloat(seed, salt, 211);
-      const ph1 = rnd(1) * 6.283,
-        ph2 = rnd(2) * 6.283;
-      const radius = (0.34 + rnd(4) * 0.03) * scale;
-      const rx = radius * (1.02 + (rnd(5) - 0.5) * 0.08);
-      const ry = radius * (0.98 + (rnd(6) - 0.5) * 0.08);
-      const n = 80;
-      for (let i = 0; i <= n; i++) {
-        const t = (i / n) * Math.PI * 2;
-        const w =
-          1 + 0.06 * Math.sin(t * 3 + ph1) + 0.035 * Math.sin(t * 5 + ph2);
-        const x = Math.cos(t) * rx * w,
-          y = Math.sin(t) * ry * w;
-        if (i === 0) s.moveTo(x, y);
-        else s.lineTo(x, y);
-      }
-      return s;
-    }
-
     // ---- island + board shells -------------------------------------------
-    const shelfGrassMat = grassTopMats[2];
-    const mazeSideMat = solid(0x5c4a32, { roughness: 0.96 });
+    // banded red rock for the wall mesas: two tints of the same strata texture
+    // so alternating layers read as different sediment beds
+    const strataLightMat = pbr("RockWallBase03", 1.1, 1.1, 0xffffff, {
+      roughness: 0.95,
+    });
+    const strataDarkMat = pbr("RockWallBase03", 1.45, 1.45, 0xb5734f, {
+      roughness: 0.97,
+    });
+    // mesa tops: the same dry-rock texture as the apron but tinted warm
+    // red-tan, so wall tops read as ROCK - clearly apart from the cool
+    // flagstone floor AND the pale sandy apron
+    const mesaTopMat = pbr("GroundBaseRock00", 0.5, 0.5, 0xc08f62);
+    const boulderMat = solid(0xa98d6f, { roughness: 1, flatShading: true });
 
     function plateauShape(w, d, seed, steps = 7, jag = 0.55) {
       const pts = [];
@@ -445,7 +401,7 @@ export const fossilfalls = {
       topY,
       bottomY,
       seed,
-      topMat = shelfGrassMat,
+      topMat = sandyTopMat,
       sideMat = cliffMat,
       jag = 0.55,
       steps = 7,
@@ -544,57 +500,55 @@ export const fossilfalls = {
       return mesh;
     }
 
-    function ridgeShape(w, d, seed, jag = 0.08) {
-      const pts = [];
-      const hw = w * 0.5,
-        hd = d * 0.5;
-      const n = Math.max(24, Math.ceil((w + d) * 6));
-      for (let i = 0; i < n; i++) {
-        const t = (i / n) * Math.PI * 2;
-        const co = Math.cos(t),
-          si = Math.sin(t);
-        const sx = Math.sign(co) * Math.pow(Math.abs(co), 0.42) * hw;
-        const sz = Math.sign(si) * Math.pow(Math.abs(si), 0.42) * hd;
-        const edge = 0.35 + 0.65 * Math.max(Math.abs(co), Math.abs(si));
-        const x = sx + (hashFloat(seed, i, 710) - 0.5) * jag * edge;
-        const z = sz + (hashFloat(seed, i, 711) - 0.5) * jag * edge;
-        pts.push(new THREE.Vector2(x, z));
+    // little flat-shaded boulders, scattered on mesa caps and the summit apron.
+    // 3 shared jittered dodecahedra; coincident vertex copies get the same
+    // jitter (hashed by rounded position) so the hulls stay closed.
+    const boulderGeos = [0, 1, 2].map((k) => {
+      const g = track(new THREE.DodecahedronGeometry(1, 0));
+      const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const key = (v) => Math.round(v * 8) + 40;
+        const jit = (salt) =>
+          (hashFloat(
+            key(p.getX(i)) + salt,
+            key(p.getY(i)) * 7 + key(p.getZ(i)),
+            k,
+          ) -
+            0.5) *
+          0.34;
+        p.setXYZ(i, p.getX(i) + jit(1), p.getY(i) + jit(2), p.getZ(i) + jit(3));
       }
-      return new THREE.Shape(pts);
-    }
-
-    function addRidge({ x, z, w, d, topY, bottomY, seed, topMat, sideMat }) {
-      const depth = Math.max(0.08, topY - bottomY);
-      const geo = track(
-        new THREE.ExtrudeGeometry(
-          ridgeShape(w, d, seed, Math.min(0.16, 0.04 + Math.max(w, d) * 0.012)),
-          {
-            depth,
-            bevelEnabled: true,
-            bevelSize: 0.055,
-            bevelThickness: 0.045,
-            bevelSegments: 2,
-          },
-        ),
+      g.computeVertexNormals();
+      return g;
+    });
+    function addBoulder(x, y, z, s, seed) {
+      const m = new THREE.Mesh(
+        boulderGeos[hash(seed, 7) % boulderGeos.length],
+        boulderMat,
       );
-      geo.rotateX(Math.PI / 2);
-      geo.translate(x, topY, z);
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, [topMat, sideMat]);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-      return mesh;
+      m.scale.set(
+        s * (0.8 + hashFloat(seed, 1, 721) * 0.5),
+        s * (0.55 + hashFloat(seed, 2, 722) * 0.4),
+        s * (0.8 + hashFloat(seed, 3, 723) * 0.5),
+      );
+      m.rotation.y = hashFloat(seed, 4, 724) * Math.PI * 2;
+      // sit the hull ~1/3 into the ground so it reads half-buried, not dropped
+      m.position.set(x, y + m.scale.y * 0.62, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      group.add(m);
     }
 
-    // the floating rock island the board sits on: dirt/mud top, craggy bumpy
-    // rock sides TAPERING to a rough point far below (triangular silhouette)
+    // the floating rock island the board lives on: its FLAT SUMMIT (y=0) *is*
+    // the play surface - no raised platform. Sandy top shows in the slab seams
+    // and as a bare apron around the grid; craggy bumpy rock sides TAPER to a
+    // rough point far below (triangular silhouette).
     addBumpyRockIsland({
       x: CTR,
       z: CTR,
       w: 23.6,
       d: 23.4,
-      topY: -0.08,
+      topY: 0,
       bottomY: -17.0,
       seed: 100,
       topMat: sandyTopMat,
@@ -605,57 +559,107 @@ export const fossilfalls = {
       extrudeSteps: 16,
     });
 
-    // ---- board surface: one continuous playable plateau, sandy/dirt top.
-    // Deliberately NOT a neat square: a chunky, jagged organic outline (still
-    // fully containing the 20x20 play area) so the arena reads as terrain.
-    addPlateau({
-      x: CTR,
-      z: CTR,
-      w: 21.7,
-      d: 21.7,
-      topY: GRASS_TOP,
-      bottomY: -0.14,
-      seed: 210,
-      topMat: sandyTopMat,
-      sideMat: grassEdgeMats[1],
-      jag: 0.85,
-      steps: 6,
-    });
-
-    // A few soft dirt scars break up the green without covering gameplay markers.
-    const dirtPatchMat = track(
-      new THREE.MeshStandardMaterial({
-        color: 0x8b6a43,
-        roughness: 1,
-        metalness: 0,
-        transparent: true,
-        opacity: 0.34,
-        depthWrite: false,
-      }),
-    );
-    for (let i = 0; i < 18; i++) {
-      const h = hash(i * 31 + 9, 8800);
-      const patch = new THREE.Mesh(
-        track(new THREE.CircleGeometry(0.45 + (h % 40) / 100, 18)),
-        dirtPatchMat,
-      );
-      patch.rotation.x = -Math.PI / 2;
-      patch.scale.set(
-        1 + ((h >>> 4) % 60) / 80,
-        0.45 + ((h >>> 8) % 50) / 100,
-        1,
-      );
-      patch.rotation.z = (h % 628) / 100;
-      patch.position.set(
-        1.4 + (h % 172) / 10,
-        GRASS_TOP + 0.006,
-        1.1 + ((h >>> 6) % 178) / 10,
-      );
-      patch.renderOrder = 1;
-      group.add(patch);
+    // ---- the playfield: one flagstone slab per cell, cut into the summit --
+    // Slightly-irregular rounded squares (same trick as the city park lawns)
+    // with dirt sides, sunk into the island top so the sandy rock reads in the
+    // seams. Slab tops sit at SLAB_TOP, safely under decals and the heatmap.
+    function cellShape(r, c) {
+      const j = (salt, amp) => (hashFloat(r, c, salt) - 0.5) * amp;
+      const half = 0.468 + hashFloat(r, c, 34) * 0.012;
+      const left = -half + j(1, 0.018);
+      const right = half + j(2, 0.018);
+      const bottom = -half + j(3, 0.018);
+      const top = half + j(4, 0.018);
+      const cb = 0.045 + hashFloat(r, c, 5) * 0.035;
+      const cr = 0.045 + hashFloat(r, c, 6) * 0.035;
+      const ct = 0.045 + hashFloat(r, c, 7) * 0.035;
+      const cl = 0.045 + hashFloat(r, c, 8) * 0.035;
+      const pts = [
+        [left + cb, bottom + j(9, 0.018)],
+        [-0.16 + j(10, 0.045), bottom + j(11, 0.028)],
+        [0.16 + j(12, 0.045), bottom + j(13, 0.028)],
+        [right - cb, bottom + j(14, 0.018)],
+        [right + j(15, 0.018), bottom + cr],
+        [right + j(16, 0.028), -0.16 + j(17, 0.045)],
+        [right + j(18, 0.028), 0.16 + j(19, 0.045)],
+        [right + j(20, 0.018), top - cr],
+        [right - ct, top + j(21, 0.018)],
+        [0.16 + j(22, 0.045), top + j(23, 0.028)],
+        [-0.16 + j(24, 0.045), top + j(25, 0.028)],
+        [left + ct, top + j(26, 0.018)],
+        [left + j(27, 0.018), top - cl],
+        [left + j(28, 0.028), 0.16 + j(29, 0.045)],
+        [left + j(30, 0.028), -0.16 + j(31, 0.045)],
+        [left + j(32, 0.018), bottom + cl],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      return new THREE.Shape(pts);
     }
 
-    // ---- rock maze: raised mossy shelves, merged into organic runs --------
+    const boardRows = world.rows || [];
+    const slipSet = new Set(
+      (world.slipCells || []).map(([r, c]) => `${r},${c}`),
+    );
+    const goalSet = new Set((world.escape || []).map(([r, c]) => `${r},${c}`));
+    function slabTopMat(r, c) {
+      const ch = (boardRows[r] || "")[c];
+      if (goalSet.has(`${r},${c}`)) return goalSlabMat;
+      if (ch === "R") return redSpawnSlabMat;
+      if (ch === "B") return blueSpawnSlabMat;
+      if (slipSet.has(`${r},${c}`)) return wetSlabMat;
+      const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;
+      return fam[hash(r * 19 + 11, c * 23 + 5) % fam.length];
+    }
+    for (let r = 0; r < GRID; r++) {
+      for (let c = 0; c < GRID; c++) {
+        // slabs under EVERY cell, walls included, so the strata mesas rise
+        // from turf instead of from a bare gap
+        const geo = track(
+          new THREE.ExtrudeGeometry(cellShape(r, c), {
+            depth: 0.05,
+            bevelEnabled: true,
+            bevelSize: 0.014,
+            bevelThickness: 0.01,
+            bevelSegments: 1,
+          }),
+        );
+        // extrude UVs are shape-local, so every slab would sample the SAME
+        // patch of the rock texture (a stamped look): slide each slab's UVs
+        // by a hashed offset so neighbours show different stone
+        const uv = geo.attributes.uv;
+        const du = hashFloat(r, c, 41),
+          dv = hashFloat(r, c, 42);
+        for (let i = 0; i < uv.count; i++)
+          uv.setXY(i, uv.getX(i) + du, uv.getY(i) + dv);
+        const h = hash(r * 7 + 3, c * 13 + 1);
+        const mesh = new THREE.Mesh(geo, [
+          slabTopMat(r, c),
+          grassEdgeMats[h % grassEdgeMats.length],
+        ]);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.set(
+          c + 0.5,
+          SLAB_TOP - 0.05 + hashFloat(r, c, 33) * 0.006,
+          r + 0.5,
+        );
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+      }
+    }
+
+    // a few half-buried boulders on the bare apron ring around the grid
+    for (let i = 0; i < 14; i++) {
+      const t = hashFloat(i, 3, 731);
+      const side = hash(i, 733) % 4;
+      const along = -10.6 + t * 21.2;
+      const out = 10.55 + hashFloat(i, 5, 735) * 0.55;
+      const bx =
+        CTR + (side === 0 || side === 3 ? along : side === 1 ? out : -out);
+      const bz = CTR + (side === 0 ? -out : side === 3 ? out : along);
+      addBoulder(bx, 0, bz, 0.14 + hashFloat(i, 6, 737) * 0.18, 900 + i);
+    }
+
+    // ---- rock maze: tiered strata mesas, merged into organic runs ---------
     const rows = world.rows || [];
     const wallCells = [];
     for (let r = 0; r < GRID; r++) {
@@ -669,23 +673,57 @@ export const fossilfalls = {
       const isWall = (r, c) => wallSet.has(`${r},${c}`);
       const isUsed = (r, c) => used.has(`${r},${c}`);
       const mark = (r, c) => used.add(`${r},${c}`);
-      const addShelf = (r0, c0, len, horizontal) => {
+      // one wall run -> a tiered red-rock MESA: wide foot, eroded darker
+      // waist, overhanging lighter brow whose pale dry-rock ledge IS the top
+      // (no turf cap: pale rims against the green valley floor keep the walls
+      // readable). Per-band outline jitter keeps the layers from stacking
+      // like machined discs.
+      const addMesa = (r0, c0, len, horizontal) => {
         const seed = hash(r0 * 83 + c0 * 17, len * 41 + (horizontal ? 3 : 9));
         const x = horizontal ? c0 + len * 0.5 : c0 + 0.5;
         const z = horizontal ? r0 + 0.5 : r0 + len * 0.5;
-        const w = horizontal ? Math.max(0.86, len * 0.94) : 0.76;
-        const d = horizontal ? 0.76 : Math.max(0.86, len * 0.94);
-        addRidge({
-          x,
-          z,
-          w,
-          d,
-          topY: 0.36 + hashFloat(r0, c0, 502) * 0.06,
-          bottomY: GRASS_TOP + 0.005,
-          seed,
-          topMat: grassTopMats[(seed >>> 2) % grassTopMats.length],
-          sideMat: mazeSideMat,
+        const along = Math.max(0.92, len * 0.96);
+        const body = 0.62 + hashFloat(r0, c0, 502) * 0.16;
+        const steps = Math.max(5, Math.ceil(along * 1.3));
+        // f scales the cross width; run ENDS only pull in by a fixed sliver,
+        // so long runs never lose whole cells to the eroded waist
+        const bands = [
+          { f: 1.0, h: 0.36, mat: strataLightMat },
+          { f: 0.82, h: 0.3, mat: strataDarkMat },
+          { f: 0.95, h: 0.34, mat: strataLightMat },
+        ];
+        let y = SLAB_TOP - 0.03; // sink through the slab seams into the rock
+        bands.forEach((b, i) => {
+          const runL = along - (1 - b.f) * 1.1;
+          const cross = 0.84 * b.f;
+          const h = body * b.h;
+          addPlateau({
+            x: x + (hashFloat(seed, i, 601) - 0.5) * 0.07,
+            z: z + (hashFloat(seed, i, 602) - 0.5) * 0.07,
+            w: horizontal ? runL : cross,
+            d: horizontal ? cross : runL,
+            topY: y + h,
+            bottomY: y,
+            seed: seed + i * 7,
+            topMat: mesaTopMat, // exposed ledges + the top read warm dry rock
+            sideMat: b.mat,
+            jag: 0.13,
+            steps,
+          });
+          y += h;
         });
+        // the odd half-buried boulder riding a longer mesa's top
+        if (len >= 2 && hashFloat(seed, 9, 771) < 0.4) {
+          const t = 0.15 + hashFloat(seed, 10, 772) * 0.7;
+          const drift = (hashFloat(seed, 11, 773) - 0.5) * 0.3;
+          addBoulder(
+            horizontal ? c0 + t * len : x + drift,
+            y - 0.01,
+            horizontal ? z + drift : r0 + t * len,
+            0.12 + hashFloat(seed, 12, 774) * 0.12,
+            seed,
+          );
+        }
       };
 
       for (let r = 0; r < GRID; r++) {
@@ -698,7 +736,7 @@ export const fossilfalls = {
           let n = 1;
           while (c + n < GRID && isWall(r, c + n) && !isUsed(r, c + n)) n++;
           if (n >= 2) {
-            addShelf(r, c, n, true);
+            addMesa(r, c, n, true);
             for (let k = 0; k < n; k++) mark(r, c + k);
           }
           c += Math.max(1, n);
@@ -714,35 +752,13 @@ export const fossilfalls = {
           }
           let n = 1;
           while (r + n < GRID && isWall(r + n, c) && !isUsed(r + n, c)) n++;
-          addShelf(r, c, n, false);
+          addMesa(r, c, n, false);
           for (let k = 0; k < n; k++) mark(r + k, c);
           r += Math.max(1, n);
         }
       }
     }
     if (wallCells.length) addRockMaze(wallCells);
-
-    // ---- wet-rock pools on the slippery cells ----------------------------
-    for (const [r, c] of world.slipCells || []) {
-      const cx = c + 0.5,
-        cz = r + 0.5;
-      const seed = hash(r * 17 + 3, c * 29 + 7) >>> 0;
-      const geo = track(
-        new THREE.ExtrudeGeometry(puddleShape(seed, 1.0), {
-          depth: 0.015,
-          bevelEnabled: true,
-          bevelThickness: 0.04,
-          bevelSize: 0.045,
-          bevelSegments: 4,
-        }),
-      );
-      geo.rotateX(-Math.PI / 2);
-      const water = new THREE.Mesh(geo, waterMat);
-      water.position.set(cx, GRASS_TOP + 0.02, cz);
-      water.renderOrder = 3;
-      water.receiveShadow = true;
-      group.add(water);
-    }
 
     // ---- the floating Power Moon over the goal cells ---------------------
     let moon = null;
@@ -1268,11 +1284,6 @@ export const fossilfalls = {
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
-      waterMat.opacity = 0.84 + 0.04 * Math.sin(t * 1.4);
-      waterNrm.offset.x = t * 0.015;
-      waterNrm.offset.y = t * 0.011;
-      waterTex.offset.x = t * 0.02;
-      waterTex.offset.y = t * 0.014;
       if (pondNrm) {
         pondNrm.offset.x = Math.sin(t * 0.18) * 0.4 + t * 0.013; // gentle swirling ripples
         pondNrm.offset.y = Math.cos(t * 0.15) * 0.4 + t * 0.009;
