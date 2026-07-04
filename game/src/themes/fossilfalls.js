@@ -856,9 +856,9 @@ export const fossilfalls = {
       ry: -1.5 + Math.PI, // east flank (mirrored)
     });
     place("WaterfallWorldHomeBone000.dae", 10.5, 21.0, {
-      baseY: -8.2,
+      baseY: -6.5,
       footprint: 7.5,
-      ry: -0.09, // the skull on the south face (tuned live via the dev bar)
+      ry: 0, // the skull on the south face (tuned live via the dev bar)
     });
 
     // ---- the SURROUNDING RING: single Ground chunks from the pack placed as
