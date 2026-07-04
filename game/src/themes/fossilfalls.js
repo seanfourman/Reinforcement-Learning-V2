@@ -774,7 +774,7 @@ export const fossilfalls = {
     [
       [
         "WaterfallWorldHomeFloaterIsland000.dae",
-        -16.5,
+        -5.5,
         4.0,
         2.0,
         5.2,
