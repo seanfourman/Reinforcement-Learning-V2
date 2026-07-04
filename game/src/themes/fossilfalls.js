@@ -808,6 +808,8 @@ export const fossilfalls = {
         0.35,
         2.8,
       ],
+      // between the two right-side floaters, a bit further out
+      ["WaterfallWorldHomeFloaterIsland000.dae", 28.0, 0.0, 4.0, 5.0, 0.9, 3.4],
     ].forEach(([name, x, z, y, foot, ry, ph]) =>
       place(name, x, z, {
         baseY: y,
@@ -1170,7 +1172,11 @@ export const fossilfalls = {
       // smaller cloud puffs drifting down the upper drop
       for (let i = 0; i < 8; i++) {
         const py = WF_TOP_Y - 3.0 - hashFloat(i, 2, 3) * 10.0;
-        const puff = cartoonCloud(mistMat, 1.2 + hashFloat(i, 5, 45) * 0.7, 510 + i);
+        const puff = cartoonCloud(
+          mistMat,
+          1.2 + hashFloat(i, 5, 45) * 0.7,
+          510 + i,
+        );
         puff.position.set(
           WF_X + (hashFloat(i, 4, 6) - 0.5) * 6.5,
           py,
