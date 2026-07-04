@@ -5,11 +5,12 @@
 // up here. The playfield is a dry field of slightly-irregular FLAGSTONE SLABS
 // (one per cell, dirt seams between them, a soft light/deep checker in cool
 // limestone tones) cut straight into the summit, so the grid reads as natural
-// terrain instead of a game board sitting on terrain. Wall cells rise as
-// tiered RED-ROCK STRATA MESAS (wide foot, eroded waist, overhanging brow
-// with a warm dry-rock top - the Cascade cliff profile). Slippery ('S') cells
-// are darker WET-SHEEN slabs, the goal slabs are pale gold stone under the
-// floating POWER MOON, and the spawn slabs carry a faint red/blue cast.
+// terrain instead of a game board sitting on terrain. Wall cells carry REAL
+// Cascade rocks: a clone of the pack's worn red-rock boulder
+// (WaterfallWorldHomeRock002) per '#' cell, quarter-turn yaws and hashed
+// sizes, overlapping neighbours so runs read as continuous rocky ridges.
+// Slippery ('S') cells are darker WET-SHEEN slabs and the goal slabs are
+// pale gold stone under the floating POWER MOON.
 // 4 Cascade FLOATER ISLANDS hang off the left and right sides.
 //
 // Nothing may cover the y=0 board surface. Models come from the vendored Cascade
@@ -300,11 +301,9 @@ export const fossilfalls = {
     );
     const stoneDeepMats = [0xb4c1c9, 0xacb9c1, 0xbcc8d0].map((c) => slabMat(c));
     // special slab tops: pale gold at the goal, a darker wet sheen on the
-    // slippery cells, a faint warm/cool cast on the two spawn cells
+    // slippery cells; spawn cells are plain field slabs like everything else
     const goalSlabMat = slabMat(0xffe9ad, { roughness: 0.75 });
     const wetSlabMat = slabMat(0x8e9490, { roughness: 0.32, metalness: 0.05 });
-    const redSpawnSlabMat = slabMat(0xf0b096);
-    const blueSpawnSlabMat = slabMat(0xbcd8f2);
     const islandGrassTex = textureAt(ISLAND_GRASS, 1, 1);
     const islandGrassMat = track(
       new THREE.MeshStandardMaterial({
@@ -361,18 +360,6 @@ export const fossilfalls = {
     const sandyTopMat = pbr("GroundBaseRock00", 0.5, 0.5, 0xe6d6b0);
 
     // ---- island + board shells -------------------------------------------
-    // banded red rock for the wall mesas: two tints of the same strata texture
-    // so alternating layers read as different sediment beds
-    const strataLightMat = pbr("RockWallBase03", 1.1, 1.1, 0xffffff, {
-      roughness: 0.95,
-    });
-    const strataDarkMat = pbr("RockWallBase03", 1.45, 1.45, 0xb5734f, {
-      roughness: 0.97,
-    });
-    // mesa tops: the same dry-rock texture as the apron but tinted warm
-    // red-tan, so wall tops read as ROCK - clearly apart from the cool
-    // flagstone floor AND the pale sandy apron
-    const mesaTopMat = pbr("GroundBaseRock00", 0.5, 0.5, 0xc08f62);
     const boulderMat = solid(0xa98d6f, { roughness: 1, flatShading: true });
 
     function plateauShape(w, d, seed, steps = 7, jag = 0.55) {
@@ -393,40 +380,7 @@ export const fossilfalls = {
       return new THREE.Shape(pts);
     }
 
-    function addPlateau({
-      x,
-      z,
-      w,
-      d,
-      topY,
-      bottomY,
-      seed,
-      topMat = sandyTopMat,
-      sideMat = cliffMat,
-      jag = 0.55,
-      steps = 7,
-    }) {
-      const depth = Math.max(0.2, topY - bottomY);
-      const geo = track(
-        new THREE.ExtrudeGeometry(plateauShape(w, d, seed, steps, jag), {
-          depth,
-          bevelEnabled: true,
-          bevelSize: 0.04,
-          bevelThickness: 0.035,
-          bevelSegments: 1,
-        }),
-      );
-      geo.rotateX(Math.PI / 2);
-      geo.translate(x, topY, z);
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, [topMat, sideMat]);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      group.add(mesh);
-      return mesh;
-    }
-
-    // Like addPlateau, but the side + bottom vertices are pushed in/out by
+    // The island shell: side + bottom vertices are pushed in/out by
     // layered noise so the walls read as craggy ROCK instead of a flat cliff.
     // Displacement fades to 0 at the top, so the board still sits flush on it.
     function addBumpyRockIsland({
@@ -595,16 +549,12 @@ export const fossilfalls = {
       return new THREE.Shape(pts);
     }
 
-    const boardRows = world.rows || [];
     const slipSet = new Set(
       (world.slipCells || []).map(([r, c]) => `${r},${c}`),
     );
     const goalSet = new Set((world.escape || []).map(([r, c]) => `${r},${c}`));
     function slabTopMat(r, c) {
-      const ch = (boardRows[r] || "")[c];
       if (goalSet.has(`${r},${c}`)) return goalSlabMat;
-      if (ch === "R") return redSpawnSlabMat;
-      if (ch === "B") return blueSpawnSlabMat;
       if (slipSet.has(`${r},${c}`)) return wetSlabMat;
       const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;
       return fam[hash(r * 19 + 11, c * 23 + 5) % fam.length];
@@ -659,106 +609,86 @@ export const fossilfalls = {
       addBoulder(bx, 0, bz, 0.14 + hashFloat(i, 6, 737) * 0.18, 900 + i);
     }
 
-    // ---- rock maze: tiered strata mesas, merged into organic runs ---------
+    // ---- rock maze: REAL Cascade rocks on the wall cells ------------------
+    // Each '#' cell gets its own clone of the pack's boulder
+    // (WaterfallWorldHomeRock000 - one solid single-lump rock, so rows read
+    // as walls, not gravel), with per-clone shape randomisation below, sized
+    // to overlap its neighbours into continuous ridges.
     const rows = world.rows || [];
-    const wallCells = [];
-    for (let r = 0; r < GRID; r++) {
-      for (let c = 0; c < GRID; c++) {
-        if ((rows[r] || "")[c] === "#") wallCells.push([r, c]);
-      }
-    }
-    function addRockMaze(cells) {
-      const wallSet = new Set(cells.map(([r, c]) => `${r},${c}`));
-      const used = new Set();
-      const isWall = (r, c) => wallSet.has(`${r},${c}`);
-      const isUsed = (r, c) => used.has(`${r},${c}`);
-      const mark = (r, c) => used.add(`${r},${c}`);
-      // one wall run -> a tiered red-rock MESA: wide foot, eroded darker
-      // waist, overhanging lighter brow whose pale dry-rock ledge IS the top
-      // (no turf cap: pale rims against the green valley floor keep the walls
-      // readable). Per-band outline jitter keeps the layers from stacking
-      // like machined discs.
-      const addMesa = (r0, c0, len, horizontal) => {
-        const seed = hash(r0 * 83 + c0 * 17, len * 41 + (horizontal ? 3 : 9));
-        const x = horizontal ? c0 + len * 0.5 : c0 + 0.5;
-        const z = horizontal ? r0 + 0.5 : r0 + len * 0.5;
-        const along = Math.max(0.92, len * 0.96);
-        const body = 0.62 + hashFloat(r0, c0, 502) * 0.16;
-        const steps = Math.max(5, Math.ceil(along * 1.3));
-        // f scales the cross width; run ENDS only pull in by a fixed sliver,
-        // so long runs never lose whole cells to the eroded waist
-        const bands = [
-          { f: 1.0, h: 0.36, mat: strataLightMat },
-          { f: 0.82, h: 0.3, mat: strataDarkMat },
-          { f: 0.95, h: 0.34, mat: strataLightMat },
-        ];
-        let y = SLAB_TOP - 0.03; // sink through the slab seams into the rock
-        bands.forEach((b, i) => {
-          const runL = along - (1 - b.f) * 1.1;
-          const cross = 0.84 * b.f;
-          const h = body * b.h;
-          addPlateau({
-            x: x + (hashFloat(seed, i, 601) - 0.5) * 0.07,
-            z: z + (hashFloat(seed, i, 602) - 0.5) * 0.07,
-            w: horizontal ? runL : cross,
-            d: horizontal ? cross : runL,
-            topY: y + h,
-            bottomY: y,
-            seed: seed + i * 7,
-            topMat: mesaTopMat, // exposed ledges + the top read warm dry rock
-            sideMat: b.mat,
-            jag: 0.13,
-            steps,
-          });
-          y += h;
-        });
-        // the odd half-buried boulder riding a longer mesa's top
-        if (len >= 2 && hashFloat(seed, 9, 771) < 0.4) {
-          const t = 0.15 + hashFloat(seed, 10, 772) * 0.7;
-          const drift = (hashFloat(seed, 11, 773) - 0.5) * 0.3;
-          addBoulder(
-            horizontal ? c0 + t * len : x + drift,
-            y - 0.01,
-            horizontal ? z + drift : r0 + t * len,
-            0.12 + hashFloat(seed, 12, 774) * 0.12,
-            seed,
-          );
-        }
-      };
-
+    {
+      const cells = [];
       for (let r = 0; r < GRID; r++) {
-        let c = 0;
-        while (c < GRID) {
-          if (!isWall(r, c) || isUsed(r, c)) {
-            c++;
-            continue;
-          }
-          let n = 1;
-          while (c + n < GRID && isWall(r, c + n) && !isUsed(r, c + n)) n++;
-          if (n >= 2) {
-            addMesa(r, c, n, true);
-            for (let k = 0; k < n; k++) mark(r, c + k);
-          }
-          c += Math.max(1, n);
+        for (let c = 0; c < GRID; c++) {
+          if ((rows[r] || "")[c] === "#") cells.push([r, c]);
         }
       }
-
-      for (let c = 0; c < GRID; c++) {
-        let r = 0;
-        while (r < GRID) {
-          if (!isWall(r, c) || isUsed(r, c)) {
-            r++;
-            continue;
+      if (cells.length)
+        loadModel("WaterfallWorldHomeRock000.dae").then((proto) => {
+          if (disposed || !proto) return;
+          // hide the foliage cards baked into the model ONCE on the shared
+          // prototype (150 identical sprouting plants would read as noise)
+          proto.traverse((o) => {
+            if (!o.isMesh) return;
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            if (mats.some((m) => /grass|leaf|plant|flower/i.test(m?.name || "")))
+              o.visible = false;
+          });
+          // the boulder's stock RockWall01 skin is mossy GREEN (reads as a
+          // hedge from above) - reskin it in the island's own red-rock so the
+          // maze matches the cliffs it floats on
+          const wallSkin = track(
+            new THREE.MeshStandardMaterial({
+              map: assetTexture("RockWallBase03_alb.png", 1, 1),
+              normalMap: assetTexture("RockWallBase03_nrm.png", 1, 1, false),
+              roughnessMap: assetTexture("RockWallBase03_rgh.png", 1, 1, false),
+              roughness: 0.95,
+              metalness: 0,
+            }),
+          );
+          proto.traverse((o) => {
+            if (o.isMesh && o.visible) o.material = wallSkin;
+          });
+          // fit by the ROCK's own bounds - the (now hidden) grass cards
+          // inflate the stock bounds and would shrink every clone
+          const box = new THREE.Box3();
+          proto.traverse((o) => {
+            if (o.isMesh && o.visible) box.expandByObject(o);
+          });
+          const size = box.getSize(new THREE.Vector3());
+          const ctr = box.getCenter(new THREE.Vector3());
+          const fit = Math.max(size.x, size.z);
+          for (const [r, c] of cells) {
+            const inst = cloneSkinned(proto);
+            inst.position.set(-ctr.x, -box.min.y, -ctr.z);
+            const wrap = new THREE.Group();
+            wrap.add(inst);
+            // every clone gets its own silhouette: independent long/short
+            // axes, a free spin (not quarter turns), a touch of tilt, a 50%
+            // mirror and a little drift, so the same rock never reads twice
+            const long = 1.12 + hashFloat(r, c, 921) * 0.26;
+            const aspect = 0.72 + hashFloat(r, c, 925) * 0.33;
+            const mirror = hash(r * 3 + 1, c * 7 + 5) & 1 ? -1 : 1;
+            wrap.scale.set(
+              (long / fit) * mirror,
+              (0.55 + hashFloat(r, c, 922) * 0.35) / size.y,
+              (long * aspect) / fit,
+            );
+            wrap.rotation.set(
+              (hashFloat(r, c, 926) - 0.5) * 0.12,
+              hashFloat(r, c, 923) * Math.PI * 2,
+              (hashFloat(r, c, 927) - 0.5) * 0.12,
+            );
+            // rooted on the island top, poking up through the slab seams
+            // (sunk a bit deeper so the random tilt never lifts the base)
+            wrap.position.set(
+              c + 0.5 + (hashFloat(r, c, 928) - 0.5) * 0.12,
+              -0.04,
+              r + 0.5 + (hashFloat(r, c, 929) - 0.5) * 0.12,
+            );
+            group.add(wrap);
           }
-          let n = 1;
-          while (r + n < GRID && isWall(r + n, c) && !isUsed(r + n, c)) n++;
-          addMesa(r, c, n, false);
-          for (let k = 0; k < n; k++) mark(r + k, c);
-          r += Math.max(1, n);
-        }
-      }
+        });
     }
-    if (wallCells.length) addRockMaze(wallCells);
 
     // ---- the floating Power Moon over the goal cells ---------------------
     let moon = null;
