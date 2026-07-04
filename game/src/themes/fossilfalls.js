@@ -81,6 +81,7 @@ export const fossilfalls = {
     const mists = []; // drifting spray puffs at the falls' foot
     let splash = null; // pulsing foam where the cascade lands
     let pondNrm = null; // ripple normal map for the realistic pond water
+    let ship = null; // the moored Odyssey: bobs + sways in update(), no full turn
     // the round transition holds its black screen until the real level below
     // has fully assembled (resolved in the backdrop block, even on failure)
     let markReady;
@@ -822,11 +823,12 @@ export const fossilfalls = {
     // ---- the Odyssey, moored in the sky off the arena's right side --------
     // Mario's hat-shaped airship (vendored ShineTower rip), bobbing gently
     // like the floater islands.
-    place("odyssey/ShineTower.dae", 27.5, 7.5, {
-      baseY: 1.5,
-      footprint: 9.0,
+    place("odyssey/ShineTower.dae", 28.5, 13.5, {
+      baseY: 1.0,
+      footprint: 12.5,
       ry: -0.6, // angled so the bow faces the arena
-      onPlaced: (w) => islands.push({ w, y: 1.5, ph: 3.6 }),
+      // moored: bobs and SWAYS around its heading (no full rotation)
+      onPlaced: (w) => (ship = { w, y: 1.0, ry: -0.6, ph: 3.6 }),
     });
 
     // ---- fossils EMBEDDED in the main island itself: rib-cages erode out of
@@ -1162,6 +1164,13 @@ export const fossilfalls = {
       for (const is of islands) {
         is.w.position.y = is.y + Math.sin(t * 0.6 + is.ph) * 0.25;
         is.w.rotation.y += dt * 0.05;
+      }
+      if (ship) {
+        // the Odyssey rides at anchor: gentle bob + a slight back-and-forth
+        // sway about its mooring heading, never a full turn
+        ship.w.position.y = ship.y + Math.sin(t * 0.5 + ship.ph) * 0.3;
+        ship.w.rotation.y = ship.ry + Math.sin(t * 0.22 + ship.ph) * 0.13;
+        ship.w.rotation.z = Math.sin(t * 0.35 + ship.ph * 0.7) * 0.02;
       }
       for (const cas of cascades) {
         cas.tex.offset.y += dt * 1.1; // streaks tumble downward toward the pond
