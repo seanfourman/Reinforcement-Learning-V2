@@ -81,7 +81,7 @@ export const fossilfalls = {
     const mists = []; // drifting spray puffs at the falls' foot
     let splash = null; // pulsing foam where the cascade lands
     let pondNrm = null; // ripple normal map for the realistic pond water
-    let ship = null; // the moored Odyssey: bobs + sways in update(), no full turn
+    const ships = []; // moored airships: bob + sway in update(), no full turn
     // the round transition holds its black screen until the real level below
     // has fully assembled (resolved in the backdrop block, even on failure)
     let markReady;
@@ -828,7 +828,15 @@ export const fossilfalls = {
       footprint: 12.5,
       ry: -0.6, // angled so the bow faces the arena
       // moored: bobs and SWAYS around its heading (no full rotation)
-      onPlaced: (w) => (ship = { w, y: 1.0, ry: -0.6, ph: 3.6 }),
+      onPlaced: (w) => ships.push({ w, y: 1.0, ry: -0.6, ph: 3.6 }),
+    });
+
+    // ---- the Broodals' wooden airship, moored off the LEFT side -----------
+    place("broodal-ship/Ship.dae", -8.0, 12.5, {
+      baseY: 1.5,
+      footprint: 11.0,
+      ry: 0.6, // mirrored: bow toward the arena
+      onPlaced: (w) => ships.push({ w, y: 1.5, ry: 0.6, ph: 1.4 }),
     });
 
     // ---- fossils EMBEDDED in the main island itself: rib-cages erode out of
@@ -1165,12 +1173,12 @@ export const fossilfalls = {
         is.w.position.y = is.y + Math.sin(t * 0.6 + is.ph) * 0.25;
         is.w.rotation.y += dt * 0.05;
       }
-      if (ship) {
-        // the Odyssey rides at anchor: gentle bob + a slight back-and-forth
-        // sway about its mooring heading, never a full turn
-        ship.w.position.y = ship.y + Math.sin(t * 0.5 + ship.ph) * 0.3;
-        ship.w.rotation.y = ship.ry + Math.sin(t * 0.22 + ship.ph) * 0.13;
-        ship.w.rotation.z = Math.sin(t * 0.35 + ship.ph * 0.7) * 0.02;
+      for (const s of ships) {
+        // airships ride at anchor: gentle bob + a slight back-and-forth sway
+        // about their mooring heading, never a full turn
+        s.w.position.y = s.y + Math.sin(t * 0.5 + s.ph) * 0.3;
+        s.w.rotation.y = s.ry + Math.sin(t * 0.22 + s.ph) * 0.13;
+        s.w.rotation.z = Math.sin(t * 0.35 + s.ph * 0.7) * 0.02;
       }
       for (const cas of cascades) {
         cas.tex.offset.y += dt * 1.1; // streaks tumble downward toward the pond
