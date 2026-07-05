@@ -738,7 +738,7 @@ export const tostarena = {
       size: 60, // footprint of the intact block
       y: -4.5, // sunk: its lowest geometry sits under its own street level
       left: { x: C - 16, z: C, ry: 0 },
-      right: { x: C + 16, z: C, ry: 0 },
+      right: { x: 9, z: 2.5, ry: 0 },
     };
     // keep only this wing's triangles of one geometry; null = nothing left.
     // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
@@ -798,6 +798,17 @@ export const tostarena = {
         const ctr = box.getCenter(new THREE.Vector3());
         inst.traverse((o) => {
           if (!o.isMesh || !o.visible) return;
+          // the block's own baked courtyard fountain sits ON the midline, so
+          // the wing cut slices it in half - drop it outright instead (the
+          // plaza already has its own fountain centrepiece)
+          const ms = Array.isArray(o.material) ? o.material : [o.material];
+          if (
+            /fountain/i.test(o.name || "") ||
+            ms.some((m) => /fountain/i.test(m?.name || ""))
+          ) {
+            o.visible = false;
+            return;
+          }
           const g2 = splitGeometryX(o.geometry, midX, which === "left");
           if (!g2) {
             o.visible = false;
