@@ -192,7 +192,9 @@ export const tostarena = {
               if (obj)
                 obj.traverse((o) => {
                   if (!o.isMesh) return;
-                  const ms = Array.isArray(o.material) ? o.material : [o.material];
+                  const ms = Array.isArray(o.material)
+                    ? o.material
+                    : [o.material];
                   // wire/helper meshes: hide OUTRIGHT (they'd still shadow and
                   // poison the bounds fit at opacity 0)
                   if (ms.every((m) => /wire|dummy/i.test(m?.name || ""))) {
@@ -260,7 +262,8 @@ export const tostarena = {
         const raw = visibleBounds(inst);
         if (raw.isEmpty()) return;
         // model bulk on -Z: +90deg stands it up; bulk on +Z: -90deg
-        inst.rotation.x = raw.max.z + raw.min.z < 0 ? Math.PI / 2 : -Math.PI / 2;
+        inst.rotation.x =
+          raw.max.z + raw.min.z < 0 ? Math.PI / 2 : -Math.PI / 2;
         const box = visibleBounds(inst);
         const size = box.getSize(new THREE.Vector3());
         const ctr = box.getCenter(new THREE.Vector3());
@@ -361,8 +364,22 @@ export const tostarena = {
     {
       const patchGeo = track(new THREE.CircleGeometry(1, 22));
       const mats = [
-        track(new THREE.MeshBasicMaterial({ color: 0x8a3a24, transparent: true, opacity: 0.16, depthWrite: false })),
-        track(new THREE.MeshBasicMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.13, depthWrite: false })),
+        track(
+          new THREE.MeshBasicMaterial({
+            color: 0x8a3a24,
+            transparent: true,
+            opacity: 0.16,
+            depthWrite: false,
+          }),
+        ),
+        track(
+          new THREE.MeshBasicMaterial({
+            color: 0xffd9a8,
+            transparent: true,
+            opacity: 0.13,
+            depthWrite: false,
+          }),
+        ),
       ];
       for (let i = 0; i < 20; i++) {
         const m = new THREE.Mesh(patchGeo, mats[i % 2]);
@@ -466,7 +483,9 @@ export const tostarena = {
     // one light beacon per side, standing on that racer's CURRENT target ring
     const beacons = {};
     for (const side of ["red", "blue"]) {
-      const geo = track(new THREE.CylinderGeometry(0.34, 0.5, 3.4, 18, 1, true));
+      const geo = track(
+        new THREE.CylinderGeometry(0.34, 0.5, 3.4, 18, 1, true),
+      );
       const mat = track(
         new THREE.MeshBasicMaterial({
           color: RING_COLORS[side],
@@ -539,7 +558,10 @@ export const tostarena = {
       rim.position.set(qx, 0.053, qz);
       rim.renderOrder = 1;
       group.add(rim);
-      sandSwirls.push({ tex, speed: 0.05 + hashFloat(qx * 7, qz * 13, 3) * 0.04 });
+      sandSwirls.push({
+        tex,
+        speed: 0.05 + hashFloat(qx * 7, qz * 13, 3) * 0.04,
+      });
     }
 
     // ---- DUST DEVILS: two procedural tornados driven by the live frame -----
@@ -591,7 +613,9 @@ export const tostarena = {
       // dusty skirt at the foot
       const skirt = new THREE.Mesh(
         track(new THREE.SphereGeometry(0.8, 12, 8)),
-        track(new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.24 })),
+        track(
+          new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.24 }),
+        ),
       );
       skirt.scale.set(1.5, 0.4, 1.5);
       skirt.position.y = 0.22;
@@ -601,7 +625,9 @@ export const tostarena = {
       for (let i = 0; i < 6; i++) {
         const chip = new THREE.Mesh(
           track(new THREE.PlaneGeometry(0.16, 0.12)),
-          track(new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.6 })),
+          track(
+            new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.6 }),
+          ),
         );
         const a = (i / 6) * Math.PI * 2;
         const rr = 0.7 + hashFloat(seed, i, 63) * 0.5;
@@ -680,7 +706,8 @@ export const tostarena = {
       const t = hashFloat(i, 5, 92);
       const along = -A / 2 - 0.6 + t * (A + 1.2);
       const out = A / 2 + 1.1 + hashFloat(i, 6, 93) * 0.9;
-      const sx = C + (side === 0 || side === 3 ? along : side === 1 ? out : -out);
+      const sx =
+        C + (side === 0 || side === 3 ? along : side === 1 ? out : -out);
       const sz = C + (side === 0 ? -out : side === 3 ? out : along);
       // the Stone00x models are tall carved pillar chunks - cap their height
       // so they read as squat toppled rubble, not a colonnade
@@ -699,46 +726,98 @@ export const tostarena = {
     // are large enough that the buildings LOOM over the kerb rather than
     // reading as toys. The Jaxi statue watches the finish from inside the
     // ring; the tower rises from the north-west corner.
-    const TOWN_F = 27; // footprint of the town block: the town is BIG
-    const RIM = 1.7; // corner fillers hug this line outside the kerb
-    // ONE copy of the town block, parked at dead screen centre as a staging
-    // position - the final placement is being directed by eye from here
-    placeObj("Town000", C, C, { footprint: TOWN_F, ry: 0 });
-    // corner fillers seal the ring
-    placeObj("Town001", -12, -12, {
-      footprint: 10,
-      ry: Math.PI / 4,
-      abut: [
-        { axis: "x", dir: -1, edge: -RIM - 0.6 },
-        { axis: "z", dir: -1, edge: -RIM - 0.6 },
-      ],
-    });
-    placeObj("Town001", A + 12, -12, {
-      footprint: 10,
-      ry: -Math.PI / 4,
-      abut: [
-        { axis: "x", dir: 1, edge: A + RIM + 0.6 },
-        { axis: "z", dir: -1, edge: -RIM - 0.6 },
-      ],
-    });
-    placeObj("Town001", -12, A + 12, {
-      footprint: 10,
-      ry: (3 * Math.PI) / 4,
-      abut: [
-        { axis: "x", dir: -1, edge: -RIM - 0.6 },
-        { axis: "z", dir: 1, edge: A + RIM + 0.6 },
-      ],
-    });
-    placeObj("Town001", A + 12, A + 12, {
-      footprint: 10,
-      ry: (-3 * Math.PI) / 4,
-      abut: [
-        { axis: "x", dir: 1, edge: A + RIM + 0.6 },
-        { axis: "z", dir: 1, edge: A + RIM + 0.6 },
-      ],
-    });
-    placeObj("Tower000", -13, -13, { height: 11, ry: 0.6 });
-    placeObj("Statue000", A - 3.2, -2.6, { footprint: 4, ry: Math.PI + 0.5 });
+    // The block is SPLIT into left/right wings so each can be moved on its
+    // own. The model's 32 meshes are PER-MATERIAL buckets that each span the
+    // whole town (all clay walls in one mesh, etc.), so the cut happens at
+    // TRIANGLE level: each wing keeps only the triangles whose centre lies on
+    // its side of the model's midline (the baked ground plane gets sliced at
+    // the seam too, so each wing stays self-grounded). Both wings share the
+    // whole-model centring + scale, so identical coords reassemble the intact
+    // block exactly. Move/turn each wing HERE:
+    const TOWN = {
+      size: 60, // footprint of the intact block
+      y: -4.5, // sunk: its lowest geometry sits under its own street level
+      left: { x: C - 16, z: C, ry: 0 },
+      right: { x: C + 16, z: C, ry: 0 },
+    };
+    // keep only this wing's triangles of one geometry; null = nothing left.
+    // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
+    // and the upright flip spins about X so geometry x IS model x.
+    function splitGeometryX(geo, midX, wantLeft) {
+      const pos = geo.attributes.position;
+      const idx = geo.index;
+      const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
+      const keep = [];
+      for (let t = 0; t < triCount; t++) {
+        let cx = 0;
+        for (let k = 0; k < 3; k++) {
+          const i = idx ? idx.getX(t * 3 + k) : t * 3 + k;
+          cx += pos.getX(i);
+        }
+        if (cx / 3 < midX === wantLeft) keep.push(t);
+      }
+      if (keep.length === triCount) return geo; // whole mesh is on this side
+      if (!keep.length) return null;
+      if (idx) {
+        const arr = new (pos.count > 65535 ? Uint32Array : Uint16Array)(
+          keep.length * 3,
+        );
+        for (let j = 0; j < keep.length; j++)
+          for (let k = 0; k < 3; k++)
+            arr[j * 3 + k] = idx.getX(keep[j] * 3 + k);
+        const g2 = geo.clone();
+        g2.setIndex(new THREE.BufferAttribute(arr, 1));
+        return g2;
+      }
+      const g2 = new THREE.BufferGeometry();
+      for (const [name, src] of Object.entries(geo.attributes)) {
+        const it = src.itemSize;
+        const dst = new Float32Array(keep.length * 3 * it);
+        for (let j = 0; j < keep.length; j++)
+          for (let k = 0; k < 3; k++) {
+            const si = (keep[j] * 3 + k) * it;
+            const di = (j * 3 + k) * it;
+            for (let c = 0; c < it; c++) dst[di + c] = src.array[si + c];
+          }
+        g2.setAttribute(name, new THREE.BufferAttribute(dst, it));
+      }
+      return g2;
+    }
+    function placeTownHalf(which) {
+      loadObj("Town000").then((proto) => {
+        if (disposed || !proto) return;
+        const inst = proto.clone();
+        const raw = visibleBounds(inst);
+        if (raw.isEmpty()) return;
+        const midX = (raw.min.x + raw.max.x) / 2; // geometry-space midline
+        inst.rotation.x =
+          raw.max.z + raw.min.z < 0 ? Math.PI / 2 : -Math.PI / 2;
+        // FULL-model framing first, so both wings scale + centre identically
+        const box = visibleBounds(inst);
+        const size = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        inst.traverse((o) => {
+          if (!o.isMesh || !o.visible) return;
+          const g2 = splitGeometryX(o.geometry, midX, which === "left");
+          if (!g2) {
+            o.visible = false;
+            return;
+          }
+          if (g2 !== o.geometry) o.geometry = track(g2);
+        });
+        inst.position.set(-ctr.x, -box.min.y, -ctr.z);
+        const s = TOWN.size / Math.max(size.x, size.z, 0.001);
+        const wrap = new THREE.Group();
+        wrap.add(inst);
+        wrap.scale.setScalar(s);
+        const p = TOWN[which];
+        wrap.rotation.y = p.ry;
+        wrap.position.set(p.x, TOWN.y, p.z);
+        group.add(wrap);
+      });
+    }
+    placeTownHalf("left");
+    placeTownHalf("right");
 
     // streetlights at the plaza corners + benches along the edges, so the
     // kerb reads as a town square people actually use
@@ -820,7 +899,9 @@ export const tostarena = {
         const b = beacons[side];
         const bob = 0.12 * Math.sin(t * 2.1 + (side === "red" ? 0 : 2));
         b.mesh.position.set(
-          bx + (side === "red" ? -0.2 : 0.2) * (prog[side] === tours[side].length - 1 ? 1 : 0),
+          bx +
+            (side === "red" ? -0.2 : 0.2) *
+              (prog[side] === tours[side].length - 1 ? 1 : 0),
           1.72 + bob,
           bz,
         );

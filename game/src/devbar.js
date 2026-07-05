@@ -6,6 +6,9 @@
 //   ROTATE    click an object to select its top-level wrap, then rotate it with
 //             the on-bar buttons (or , and . keys) - the readout shows the ry
 //             value to paste into the theme code
+//   MOVE      click an object to select its top-level wrap, then nudge it with
+//             the on-bar buttons or the arrow keys (x/z), PgUp/PgDn (y).
+//             Shift = fine 0.1 steps. The readout shows the live position
 //   FREE CAM  fly the camera: WASD move, Q/E down/up, drag the mouse to look,
 //             Shift = fast. The game rig is suspended while it's on
 //   COPY CAM  copy the camera position (+ a look-at guess) to the clipboard
@@ -57,6 +60,15 @@ export function initDevBar({ scene, camera, renderer, rig }) {
       <button data-deg="5">+5&deg;</button>
       <button data-deg="45">+45&deg;</button>
     </span>
+    <button id="rl-dev-move">&#10021; Move</button>
+    <span class="rot" id="rl-dev-movbtns">
+      <button data-ax="x" data-d="-1" title="west (Shift=fine)">&#9664;</button>
+      <button data-ax="x" data-d="1" title="east (Shift=fine)">&#9654;</button>
+      <button data-ax="z" data-d="-1" title="north (Shift=fine)">&#9650;</button>
+      <button data-ax="z" data-d="1" title="south (Shift=fine)">&#9660;</button>
+      <button data-ax="y" data-d="-1" title="down (Shift=fine)">y-</button>
+      <button data-ax="y" data-d="1" title="up (Shift=fine)">y+</button>
+    </span>
     <button id="rl-dev-fly">&#9992; Free cam</button>
     <button id="rl-dev-copycam">&#128247; Copy cam</button>
     <span class="readout" id="rl-dev-readout" title="click to copy">press a tool...</span>`;
@@ -66,13 +78,15 @@ export function initDevBar({ scene, camera, renderer, rig }) {
   const btnInspect = $("#rl-dev-inspect");
   const btnRotate = $("#rl-dev-rotate");
   const rotBtns = $("#rl-dev-rotbtns");
+  const btnMove = $("#rl-dev-move");
+  const movBtns = $("#rl-dev-movbtns");
   const btnFly = $("#rl-dev-fly");
   const btnCopy = $("#rl-dev-copycam");
   const readout = $("#rl-dev-readout");
 
   let open = false;
-  let mode = null; // 'inspect' | 'rotate' | null
-  let selected = null; // rotate-mode selection (top-level wrap/mesh)
+  let mode = null; // 'inspect' | 'rotate' | 'move' | null
+  let selected = null; // rotate/move-mode selection (top-level wrap/mesh)
   let flying = false;
 
   const say = (text) => {
@@ -91,11 +105,16 @@ export function initDevBar({ scene, camera, renderer, rig }) {
     btnInspect.classList.toggle("active", mode === "inspect");
     btnRotate.classList.toggle("active", mode === "rotate");
     rotBtns.classList.toggle("show", mode === "rotate");
+    btnMove.classList.toggle("active", mode === "move");
+    movBtns.classList.toggle("show", mode === "move");
     if (mode === "inspect") say("inspect: click a mesh");
     else if (mode === "rotate") say("rotate: click an object to select");
+    else if (mode === "move")
+      say("move: click an object, then arrows / PgUp PgDn (Shift = fine)");
   }
   btnInspect.addEventListener("click", () => setMode("inspect"));
   btnRotate.addEventListener("click", () => setMode("rotate"));
+  btnMove.addEventListener("click", () => setMode("move"));
 
   // ---- raycast helpers ----------------------------------------------------
   const ray = new THREE.Raycaster();
@@ -140,7 +159,7 @@ export function initDevBar({ scene, camera, renderer, rig }) {
             `world=(${hh.point.x.toFixed(1)}, ${hh.point.y.toFixed(1)}, ${hh.point.z.toFixed(1)})`,
         );
       }
-    } else if (mode === "rotate") {
+    } else if (mode === "rotate" || mode === "move") {
       selected = topWrap(hits[0].object);
       sayRotation();
     }
@@ -174,6 +193,19 @@ export function initDevBar({ scene, camera, renderer, rig }) {
   rotBtns.addEventListener("click", (e) => {
     const d = e.target?.dataset?.deg;
     if (d) rotateSelected(parseFloat(d));
+  });
+
+  function moveSelected(axis, dir, fine) {
+    if (!selected) {
+      say("move: click an object first");
+      return;
+    }
+    selected.position[axis] += dir * (fine ? 0.1 : 0.5);
+    sayRotation();
+  }
+  movBtns.addEventListener("click", (e) => {
+    const ax = e.target?.dataset?.ax;
+    if (ax) moveSelected(ax, parseFloat(e.target.dataset.d), e.shiftKey);
   });
 
   // ---- free camera ---------------------------------------------------------
@@ -216,6 +248,8 @@ export function initDevBar({ scene, camera, renderer, rig }) {
         btnInspect.classList.remove("active");
         btnRotate.classList.remove("active");
         rotBtns.classList.remove("show");
+        btnMove.classList.remove("active");
+        movBtns.classList.remove("show");
       }
       return;
     }
@@ -223,6 +257,20 @@ export function initDevBar({ scene, camera, renderer, rig }) {
     if (mode === "rotate") {
       if (e.code === "Comma") rotateSelected(-5);
       if (e.code === "Period") rotateSelected(5);
+    }
+    if (mode === "move") {
+      const mv = {
+        ArrowLeft: ["x", -1],
+        ArrowRight: ["x", 1],
+        ArrowUp: ["z", -1],
+        ArrowDown: ["z", 1],
+        PageUp: ["y", 1],
+        PageDown: ["y", -1],
+      }[e.code];
+      if (mv) {
+        e.preventDefault();
+        moveSelected(mv[0], mv[1], e.shiftKey);
+      }
     }
     if (flying) keys.add(e.code);
   });
