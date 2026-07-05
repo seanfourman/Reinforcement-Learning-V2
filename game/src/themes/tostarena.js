@@ -305,13 +305,11 @@ export const tostarena = {
 
     // ---- the desert floor: STREET LEVEL, like the city round ---------------
     // One big sand plane at y=0 running out to the fog - the arena is just the
-    // kerbed plaza in the middle of town, not a floating island. The pack's
-    // sand albedo is a near-UNIFORM red (Tostarena's signature): the life
-    // comes from the ripple normal map + tonal patches, not the map itself.
+    // kerbed plaza in the middle of town, not a floating island.
     const TOP = 0; // the ground plane IS the play surface
     {
       const GROUND = 260;
-      const rep = GROUND / 2.2; // plane UVs are 0..1: tile every ~2.2 units
+      const rep = GROUND / 10; // bigger sand tiles (~7 units) so the grain reads
       const groundMat = track(
         new THREE.MeshStandardMaterial({
           map: assetTexture("GroundSandRed00_rep_alb.png", rep, rep),
