@@ -33,23 +33,27 @@ function hash(a, b) {
 export const tostarena = {
   name: "tostarena",
   title: "Tostarena",
-  subtitle: "Desert Checkpoint Rally",
-  // hot desert noon: deep blue zenith over a sand-glow horizon, warm haze
-  sky: ["#2f6cc0", "#7db4e8", "#f4e2bd"],
-  fog: 0xecd8ae,
-  // street-level scene: the desert floor melts into warm haze much closer
-  // than the floating rounds' backdrops
-  fogNear: 70,
-  fogFar: 300,
-  hemi: [0xcfe0f2, 0x8a6f4d, 0.62],
-  sun: 0xfff2cf,
-  sunIntensity: 3.4,
-  fill: 0xa8c4ea,
-  fillIntensity: 0.22,
-  exposure: 1.04,
-  bloom: { strength: 0.2, radius: 0.42, threshold: 0.86 },
-  env: "./assets/hdri/qwantani_noon_2k.hdr", // the vendored noon HDRI is already a desert
-  envIntensity: 0.5,
+  subtitle: "Desert Sunset Rally",
+  // GOLDEN HOUR: a dusk-indigo zenith burning down into a low orange sun and a
+  // gold horizon, the whole desert bathed warm
+  sky: ["#1e2f60", "#d9743f", "#ffcf82"],
+  fog: 0xdca066,
+  fogNear: 62,
+  fogFar: 270,
+  // warm sky bounce over warm-dark ground
+  hemi: [0xf2b078, 0x543022, 0.72],
+  // the game's main sun is FIXED high overhead (can't sit low from a theme), so
+  // it is turned OFF here and the theme adds its own LOW warm "setting sun"
+  // directional light in buildScene - that gives the long dusk shadows.
+  sun: 0xff8c3a,
+  sunIntensity: 0,
+  fill: 0xc86844,
+  fillIntensity: 0.34,
+  exposure: 1.08,
+  // a touch of bloom so the low sun + warm rims glow
+  bloom: { strength: 0.34, radius: 0.5, threshold: 0.72 },
+  env: "./assets/hdri/qwantani_noon_2k.hdr",
+  envIntensity: 0.3,
   envBackground: false,
   camera: { startDist: 38, maxDist: 38 },
   redName: "DQN",
@@ -335,68 +339,10 @@ export const tostarena = {
       group.add(g);
     }
 
-    // a low sun-bleached kerb marking the [0,A] arena square, so the physics
-    // walls the racers bounce off are VISIBLE on the wider plate
-    {
-      const kerbMat = track(
-        new THREE.MeshStandardMaterial({ color: 0xecd6ac, roughness: 0.9 }),
-      );
-      const kx = track(new THREE.BoxGeometry(A + 0.4, 0.1, 0.16));
-      const kz = track(new THREE.BoxGeometry(0.16, 0.1, A + 0.4));
-      for (const [gx, gz, geo] of [
-        [C, -0.08, kx],
-        [C, A + 0.08, kx],
-        [-0.08, C, kz],
-        [A + 0.08, C, kz],
-      ]) {
-        const k = new THREE.Mesh(geo, kerbMat);
-        k.position.set(gx, TOP + 0.05, gz);
-        k.castShadow = true;
-        k.receiveShadow = true;
-        group.add(k);
-      }
-    }
-
-    // soft tonal patches (windblown dark scars + sun-bleached streaks) break
-    // the near-uniform red of the pack's sand without covering any marker
-    {
-      const patchGeo = track(new THREE.CircleGeometry(1, 22));
-      const mats = [
-        track(
-          new THREE.MeshBasicMaterial({
-            color: 0x8a3a24,
-            transparent: true,
-            opacity: 0.16,
-            depthWrite: false,
-          }),
-        ),
-        track(
-          new THREE.MeshBasicMaterial({
-            color: 0xffd9a8,
-            transparent: true,
-            opacity: 0.13,
-            depthWrite: false,
-          }),
-        ),
-      ];
-      for (let i = 0; i < 20; i++) {
-        const m = new THREE.Mesh(patchGeo, mats[i % 2]);
-        m.rotation.x = -Math.PI / 2;
-        m.rotation.z = hashFloat(i, 1, 401) * Math.PI;
-        m.scale.set(
-          0.9 + hashFloat(i, 2, 402) * 1.6,
-          0.5 + hashFloat(i, 3, 403) * 0.9,
-          1,
-        );
-        m.position.set(
-          1.5 + hashFloat(i, 4, 404) * (A - 3),
-          TOP + 0.008,
-          1.5 + hashFloat(i, 5, 405) * (A - 3),
-        );
-        m.renderOrder = 1;
-        group.add(m);
-      }
-    }
+    // The board is kept CLEAN: no kerb outline, no decorative sand patches,
+    // and none of the on-board props (pools, palms, ruin gates, fountain,
+    // dust devils) below. Only the RL route markers - the dashed racing lines,
+    // checkpoint rings and target beacons - remain on the sand.
 
     // ---- the RACING LINES: each side's tour dashed onto the sand -----------
     const lineMats = {
@@ -503,64 +449,9 @@ export const tostarena = {
       beacons[side] = { mesh: m, mat };
     }
 
-    // ---- QUICKSAND pools: swirling discs of the pack's own texture ---------
-    // The slow-zone nearest the plaza centre is NOT drawn as quicksand - the
-    // town fountain (below) stands in it and its wading pool plays that part.
-    const centerIdx = quicksand.reduce(
-      (best, q, i) =>
-        Math.hypot(q[0] - C, q[1] - C) <
-        Math.hypot(quicksand[best]?.[0] - C, quicksand[best]?.[1] - C)
-          ? i
-          : best,
-      0,
-    );
+    // QUICKSAND pool discs removed from the clean board (kept empty so the
+    // swirl-animation loop in update() stays a harmless no-op).
     const sandSwirls = [];
-    for (let qi = 0; qi < quicksand.length; qi++) {
-      if (qi === centerIdx) continue;
-      const [qx, qz, qr] = quicksand[qi];
-      const tex = assetTexture("QuickSand00_alb.png", 1, 1);
-      tex.center.set(0.5, 0.5);
-      const mat = track(
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          color: 0xd8b078,
-          roughness: 1,
-          metalness: 0,
-          transparent: true,
-          opacity: 0.96,
-          depthWrite: false,
-        }),
-      );
-      const m = new THREE.Mesh(
-        track(new THREE.CircleGeometry(qr * 1.08, 40)),
-        mat,
-      );
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(qx, 0.05, qz);
-      m.renderOrder = 1;
-      m.receiveShadow = true;
-      group.add(m);
-      // a darker sunken rim so the pool reads as a depression
-      const rim = new THREE.Mesh(
-        track(new THREE.RingGeometry(qr * 1.02, qr * 1.22, 40)),
-        track(
-          new THREE.MeshBasicMaterial({
-            color: 0x8a6a42,
-            transparent: true,
-            opacity: 0.35,
-            depthWrite: false,
-          }),
-        ),
-      );
-      rim.rotation.x = -Math.PI / 2;
-      rim.position.set(qx, 0.053, qz);
-      rim.renderOrder = 1;
-      group.add(rim);
-      sandSwirls.push({
-        tex,
-        speed: 0.05 + hashFloat(qx * 7, qz * 13, 3) * 0.04,
-      });
-    }
 
     // ---- DUST DEVILS: two procedural tornados driven by the live frame -----
     // The env moves them on a deterministic mirrored orbit; between snapshot
@@ -643,11 +534,9 @@ export const tostarena = {
       devils.push({ g, spinners, chips, target: null });
       return g;
     }
-    {
-      const [p0, p1] = tornadoFormula(0);
-      dustDevil(11).position.set(p0[0], 0, p0[1]);
-      dustDevil(23).position.set(p1[0], 0, p1[1]);
-    }
+    // (dust devils removed from the clean board; `devils` stays empty so the
+    // animation loop no-ops. dustDevil() / tornadoFormula kept for easy revive.)
+    void dustDevil;
 
     // ---- LANDMARKS ---------------------------------------------------------
     // the Inverted Pyramid: the finish monument, hovering beyond the north rim,
@@ -665,38 +554,9 @@ export const tostarena = {
       },
     });
 
-    // oasis water + palms at each side's first checkpoint
-    for (const side of ["red", "blue"]) {
-      const [ox, , or_] = tours[side][0];
-      const oz = tours[side][0][1];
-      // the oasis model is nearly FLAT - keep its base above the mesa's real
-      // top surface or the whole pool vanishes into the plate
-      placeObj("WaterOasis", ox, oz, { footprint: or_ * 2.4, baseY: 0.04 });
-      // the palm's crown is only the top ~18% of the model, so palms need to
-      // stand TALL (and a bit fat) for the fronds to read at arena scale
-      const n = 3;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + (side === "red" ? 0.6 : 2.7);
-        const rr = or_ * 1.7 + hashFloat(ox * 3, i, 71) * 0.5;
-        placeObj("TreePalm000", ox + Math.cos(a) * rr, oz + Math.sin(a) * rr, {
-          height: 3.2 + hashFloat(ox * 5, i, 72) * 1.0,
-          ry: hashFloat(ox * 7, i, 73) * Math.PI * 2,
-        });
-      }
-    }
-
-    // ruin markers at each side's second checkpoint. StonePillar000 is itself
-    // a CLUSTER of three pillars, so ONE placement per gate is a whole ruin -
-    // offset toward the nearest rim so the racers never clip through it
-    for (const side of ["red", "blue"]) {
-      const [gx, gz] = tours[side][1];
-      const outX = gx > C ? gx + 2.3 : gx - 2.3;
-      placeObj("StonePillar000", outX, gz, {
-        footprint: 3.0,
-        height: 2.4,
-        ry: hashFloat(gx, 1, 81) * 0.6 + (gx > C ? 0.3 : -0.3),
-      });
-    }
+    // (oasis pools + palms and the ruin-gate pillars were on-board props -
+    // removed to keep the board clean; the checkpoints are still marked by the
+    // glowing rings.)
 
     // scattered desert stones on the apron ring around the play area
     for (let i = 0; i < 10; i++) {
@@ -864,34 +724,132 @@ export const tostarena = {
       placeObj("Bench000", bx, bz, { footprint: 1.3, ry: br });
     }
 
-    // ---- the CENTRE PIECE: the town fountain in the middle of the plaza ----
-    // It stands inside the env's central slow-zone (the one skipped by the
-    // quicksand loop above), so its shallow pool IS the hazard: wade through
-    // the fountain square and you lose speed.
-    const centerPool = quicksand[centerIdx] || null;
-    if (centerPool) {
-      const [fxc, fzc, frc] = centerPool;
-      placeObj("WaterFountain", fxc, fzc, { footprint: frc * 1.5, baseY: TOP });
-      // the shallow wading pool around it: teal water out to the slow radius
-      const pool = new THREE.Mesh(
-        track(new THREE.CircleGeometry(frc * 1.04, 48)),
-        oasisWaterMat,
+    // (the centre fountain + its wading pool were on-board props - removed to
+    // keep the board clean.)
+
+    // ======================================================================
+    // DUSK ATMOSPHERE: what keeps the emptied plaza feeling ALIVE - blowing
+    // sand on the evening wind, birds wheeling over the town, and the low
+    // setting sun glowing on the horizon.
+    // ======================================================================
+
+    // the LOW SETTING-SUN key light (the game's own sun is fixed overhead and
+    // off for this round) - warm, from a low western angle, casting the long
+    // dusk shadows across the plaza. Added to `group` so dispose() cleans it.
+    {
+      const duskLight = new THREE.DirectionalLight(0xff8f42, 3.5);
+      duskLight.position.set(C - 44, 13, C - 6);
+      duskLight.target.position.set(C, 0, C);
+      duskLight.castShadow = true;
+      duskLight.shadow.mapSize.set(2048, 2048);
+      const SH = 42;
+      duskLight.shadow.camera.left = -SH;
+      duskLight.shadow.camera.right = SH;
+      duskLight.shadow.camera.top = SH;
+      duskLight.shadow.camera.bottom = -SH;
+      duskLight.shadow.camera.near = 0.5;
+      duskLight.shadow.camera.far = 170;
+      duskLight.shadow.bias = -0.0006;
+      group.add(duskLight);
+      group.add(duskLight.target);
+    }
+
+    // blowing DUST drifting across the whole plaza on the wind
+    const dust = (() => {
+      const N = 200;
+      const pos = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        pos[i * 3] = C + (hashFloat(i, 1, 911) - 0.5) * 76;
+        // most of the dust hugs the ground (desert haze), a little rides higher
+        pos[i * 3 + 1] = 0.1 + Math.pow(hashFloat(i, 2, 912), 2) * 6;
+        pos[i * 3 + 2] = C + (hashFloat(i, 3, 913) - 0.5) * 76;
+      }
+      const geo = track(new THREE.BufferGeometry());
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      const mat = track(
+        new THREE.PointsMaterial({
+          color: 0xffd9a0,
+          size: 0.17,
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false,
+          sizeAttenuation: true,
+        }),
       );
-      pool.rotation.x = -Math.PI / 2;
-      pool.position.set(fxc, TOP + 0.055, fzc);
-      pool.renderOrder = 2;
-      group.add(pool);
-      // a pale stone lip so the pool reads deliberate, not spilled
-      const lip = new THREE.Mesh(
-        track(new THREE.RingGeometry(frc * 1.02, frc * 1.16, 48)),
-        track(
-          new THREE.MeshStandardMaterial({ color: 0xead8b4, roughness: 0.85 }),
-        ),
+      const pts = new THREE.Points(geo, mat);
+      pts.traverse((o) => (o.userData.excludeBloom = true));
+      group.add(pts);
+      return { pts, pos, N, wind: 3.4 };
+    })();
+
+    // a TUMBLEWEED rolling across the desert now and then - a tangled ball of
+    // dry twigs (crossed torus rings), blown on the wind, bouncing as it goes.
+    // Hidden between passes; the update() loop drives one crossing per cycle.
+    const TUMBLE_R = 0.9;
+    const tumble = (() => {
+      const g = new THREE.Group();
+      const mat = track(
+        new THREE.MeshStandardMaterial({
+          color: 0xc2a066, // dry straw, pale enough to read on the red sand
+          roughness: 1,
+          metalness: 0,
+          emissive: 0x3a2c14,
+          emissiveIntensity: 0.4,
+        }),
       );
-      lip.rotation.x = -Math.PI / 2;
-      lip.position.set(fxc, TOP + 0.06, fzc);
-      lip.receiveShadow = true;
-      group.add(lip);
+      for (let i = 0; i < 13; i++) {
+        const ring = new THREE.Mesh(
+          track(
+            new THREE.TorusGeometry(
+              TUMBLE_R * (0.82 + hashFloat(i, 1, 941) * 0.3),
+              0.05,
+              5,
+              14,
+            ),
+          ),
+          mat,
+        );
+        ring.rotation.set(
+          hashFloat(i, 2, 942) * Math.PI,
+          hashFloat(i, 3, 943) * Math.PI,
+          hashFloat(i, 4, 944) * Math.PI,
+        );
+        ring.scale.set(1, 0.75 + hashFloat(i, 5, 945) * 0.4, 1);
+        g.add(ring);
+      }
+      g.traverse((o) => (o.userData.excludeBloom = true));
+      g.visible = false;
+      group.add(g);
+      return g;
+    })();
+
+    // the low SETTING SUN glowing on the horizon behind the town
+    {
+      const S = 128;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      g.addColorStop(0, "rgba(255,244,206,1)");
+      g.addColorStop(0.3, "rgba(255,172,84,0.9)");
+      g.addColorStop(1, "rgba(255,120,50,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      const tex = trackTexture(new THREE.CanvasTexture(cv));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = track(
+        new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      const sp = new THREE.Sprite(mat);
+      sp.scale.set(44, 44, 1);
+      sp.position.set(C - 18, 8, -66); // low, off to one side behind the town
+      group.add(sp);
     }
 
     // ---- animation + teardown ---------------------------------------------
@@ -957,6 +915,35 @@ export const tostarena = {
       if (pyramid) {
         pyramid.w.position.y = pyramid.y + Math.sin(t * 0.5) * 0.35;
         pyramid.w.rotation.y += dt * 0.06;
+      }
+
+      // --- dusk atmosphere ---
+      // blowing sand streams across the plaza, wrapping around the far edge
+      const dp = dust.pos;
+      for (let i = 0; i < dust.N; i++) {
+        dp[i * 3] += dust.wind * dt;
+        dp[i * 3 + 2] += Math.sin(t * 0.3 + i) * dt * 0.5;
+        if (dp[i * 3] > C + 37) dp[i * 3] -= 74;
+      }
+      dust.pts.geometry.attributes.position.needsUpdate = true;
+
+      // the tumbleweed rolls across on the wind every so often, then is hidden
+      // until the next pass (a fresh lane + hop pattern each time)
+      const CYCLE = 12,
+        CROSS = 6.2;
+      const cyc = t % CYCLE;
+      if (cyc < CROSS) {
+        const p = cyc / CROSS; // 0..1 across the desert, west -> east
+        const pass = Math.floor(t / CYCLE); // which crossing this is
+        const x = -9 + (A + 18) * p;
+        const z = C + (hashFloat(pass, 1, 951) - 0.5) * (A + 6);
+        const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.7;
+        tumble.visible = true;
+        tumble.position.set(x, TUMBLE_R + hop, z);
+        tumble.rotation.z -= dt * 6.5; // forward roll
+        tumble.rotation.x += dt * 2.4; // wobble
+      } else {
+        tumble.visible = false;
       }
     }
 
