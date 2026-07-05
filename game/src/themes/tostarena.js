@@ -707,6 +707,14 @@ export const tostarena = {
       const sx =
         C + (side === 0 || side === 3 ? along : side === 1 ? out : -out);
       const sz = C + (side === 0 ? -out : side === 3 ? out : along);
+      // stones removed by request (deterministic placement, so matching by
+      // position is stable). Add [x, z] pairs here to drop more.
+      const REMOVED = [
+        [21.8, 11.9],
+        [3.5, -2.3],
+      ];
+      if (REMOVED.some(([rx, rz]) => Math.hypot(sx - rx, sz - rz) < 1.5))
+        continue;
       // the Stone00x models are tall carved pillar chunks - cap their height
       // so they read as squat toppled rubble, not a colonnade
       placeObj(`Stone00${hash(i, 94) % 3}`, sx, sz, {
@@ -735,7 +743,7 @@ export const tostarena = {
     const TOWN = {
       size: 60, // footprint of the intact block
       y: -4.5, // default sink; a wing can carry its own y override
-      left: { x: -10, z: -23.5, ry: -3.67, y: -6 }, // far back-left backdrop
+      left: { x: -28.5, z: -1.5, ry: -2.97, y: -6 }, // west-side backdrop
       right: { x: 9, z: 2.5, ry: 0 },
     };
     // keep only this wing's triangles of one geometry; null = nothing left.
