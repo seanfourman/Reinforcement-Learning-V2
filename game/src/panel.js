@@ -15,6 +15,7 @@ export const NAMES = {
   value_iteration: 'Value Iteration', policy_iteration: 'Policy Iteration',
   qlearning: 'Q-Learning', sarsa: 'SARSA', expected_sarsa: 'Expected-SARSA',
   monte_carlo: 'Monte-Carlo',
+  dqn: 'DQN', double_dqn: 'Double-DQN', dueling_dqn: 'Dueling-DQN',
 };
 const ACTION_NAMES = ['North', 'South', 'West', 'East', 'Use'];
 

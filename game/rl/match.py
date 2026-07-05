@@ -22,10 +22,10 @@ from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
 import worlds
 
-# The DQN agents (Round 4) need PyTorch. Import them LAZILY (inside _make_one)
+# The DQN agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
 # so the server still boots and runs the tabular / DP rounds in a Python that
 # doesn't have torch installed - only building a DQN agent requires it.
-DQN_ALGOS = ("dqn", "double_dqn")
+DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
 
 
 def is_dqn(algo):
@@ -78,9 +78,12 @@ class Match:
 
     # ------------------------------------------------------------------ setup
     def _make_env(self, round_id):
-        """Pick the env class for a round: continuous arena for a CONTINUOUS round
-        (Round 4), the tabular grid world otherwise."""
+        """Pick the env for a round: the module's own make_env() when it ships
+        one (Round 5's sequential rally), the shared continuous arena for any
+        other CONTINUOUS round (Round 4), the tabular grid world otherwise."""
         mod = worlds.ROUND_MODULES.get(round_id)
+        if hasattr(mod, "make_env"):
+            return mod.make_env(self.seed)
         if getattr(mod, "CONTINUOUS", False):
             return ContinuousArena(self.seed, round_id=round_id)
         return GridWorld(self.seed, round_id=round_id)
@@ -339,7 +342,7 @@ class Match:
 
     def set_side_algo(self, side, algo):
         with self.lock:
-            valid = algo in ALGORITHMS or is_dp(algo)
+            valid = algo in ALGORITHMS or is_dp(algo) or is_dqn(algo)
             if not valid:
                 return
             if side == "red":

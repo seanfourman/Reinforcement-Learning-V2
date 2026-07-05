@@ -1,16 +1,25 @@
-"""DQN + Double-DQN for the continuous arena (Round 4) - the function-approximation
-round of the syllabus. Same agent interface as the tabular learners in agents.py
-(policy_action / learn_step / end_episode / q_values / state_value / set_epsilon /
-learned_count, with alpha/gamma/epsilon), so match.py drives them unchanged - but
-the action-value function is a small MLP over the continuous observation vector
-instead of a dict, trained off a replay buffer against a periodically-synced
-target network.
+"""DQN + Double-DQN + Dueling-DQN for the continuous arenas (Rounds 4-5) - the
+function-approximation rounds of the syllabus. Same agent interface as the
+tabular learners in agents.py (policy_action / learn_step / end_episode /
+q_values / state_value / set_epsilon / learned_count, with alpha/gamma/epsilon),
+so match.py drives them unchanged - but the action-value function is a small MLP
+over the continuous observation vector instead of a dict, trained off a replay
+buffer against a periodically-synced target network.
 
 Double-DQN differs in the bootstrap target only: vanilla DQN uses
     max_a' Q_target(s', a')
 which over-estimates; Double-DQN decouples action SELECTION (online net) from its
 EVALUATION (target net):
     Q_target(s', argmax_a' Q_online(s', a'))
+
+Dueling-DQN (Round 5's contrast) differs in the NETWORK HEAD only: instead of
+one linear layer emitting Q(s,a) directly, a shared trunk splits into a state
+VALUE head V(s) and an ADVANTAGE head A(s,a), recombined as
+    Q(s,a) = V(s) + A(s,a) - mean_a A(s,a)
+so the net can learn how good a STATE is without needing to nail every action -
+exactly what the rally wants, where most states' worth is "how far along the
+tour am I" regardless of the thrust picked this tick. Target rule stays the
+vanilla max, so the ONLY experimental variable vs DQN is the head.
 """
 
 import random
@@ -34,21 +43,44 @@ class QNet(nn.Module):
         return self.net(x)
 
 
+class DuelingQNet(nn.Module):
+    """Shared trunk -> V(s) head + A(s,a) head, Q = V + A - mean(A). The mean
+    subtraction pins down the V/A split (they are otherwise only identified up
+    to a constant)."""
+
+    def __init__(self, obs_dim, n_actions, hidden=128):
+        super().__init__()
+        self.trunk = nn.Sequential(
+            nn.Linear(obs_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+        )
+        self.value = nn.Linear(hidden, 1)
+        self.adv = nn.Linear(hidden, n_actions)
+
+    def forward(self, x):
+        h = self.trunk(x)
+        v = self.value(h)
+        a = self.adv(h)
+        return v + a - a.mean(dim=-1, keepdim=True)
+
+
 class DQNAgent:
     name = "DQN"
     double = False
+    net_cls = QNet
 
     def __init__(self, obs_dim, n_actions, alpha=0.2, gamma=0.98, seed=0,
                  buffer=50_000, batch=64, warmup=1_000, target_sync=500, hidden=128):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
+        self.hidden = hidden
         self.gamma = gamma
         self.epsilon = 1.0
         self.rng = random.Random(seed)
         torch.manual_seed(seed)
         self.device = torch.device("cpu")
-        self.q = QNet(obs_dim, n_actions, hidden).to(self.device)
-        self.target = QNet(obs_dim, n_actions, hidden).to(self.device)
+        self.q = self.net_cls(obs_dim, n_actions, hidden).to(self.device)
+        self.target = self.net_cls(obs_dim, n_actions, hidden).to(self.device)
         self.target.load_state_dict(self.q.state_dict())
         self.target.eval()
         self._alpha = alpha
@@ -105,7 +137,8 @@ class DQNAgent:
         self.epsilon = eps
 
     def reset_learning(self):
-        self.q = QNet(self.obs_dim, self.n_actions).to(self.device)
+        self.q = self.net_cls(self.obs_dim, self.n_actions, self.hidden).to(self.device)
+        self.target = self.net_cls(self.obs_dim, self.n_actions, self.hidden).to(self.device)
         self.target.load_state_dict(self.q.state_dict())
         self.opt = torch.optim.Adam(self.q.parameters(), lr=self._lr(self._alpha))
         self.buf.clear()
@@ -152,7 +185,13 @@ class DoubleDQNAgent(DQNAgent):
     double = True
 
 
-DQN_ALGORITHMS = {"dqn": DQNAgent, "double_dqn": DoubleDQNAgent}
+class DuelingDQNAgent(DQNAgent):
+    name = "Dueling-DQN"
+    net_cls = DuelingQNet     # vanilla max target: the head is the only change
+
+
+DQN_ALGORITHMS = {"dqn": DQNAgent, "double_dqn": DoubleDQNAgent,
+                  "dueling_dqn": DuelingDQNAgent}
 
 
 def is_dqn(algo):

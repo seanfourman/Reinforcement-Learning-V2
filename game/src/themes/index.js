@@ -7,6 +7,7 @@ import { peach } from './peach.js';
 import { city } from './city.js';
 import { fossilfalls } from './fossilfalls.js';
 import { ruined } from './ruined.js';
+import { tostarena } from './tostarena.js';
 
 const THEMES = {
   medieval,
@@ -14,6 +15,7 @@ const THEMES = {
   city,
   fossilfalls,
   ruined,        // Round 4: continuous DQN arena
+  tostarena,     // Round 5: sequential checkpoint rally (DQN vs Dueling-DQN)
 };
 
 export function getTheme(name) {
