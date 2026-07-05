@@ -745,6 +745,8 @@ export const tostarena = {
       y: -4.5, // default sink; a wing can carry its own y override
       left: { x: -28.5, z: -1.5, ry: -2.97, y: -6 }, // west-side backdrop
       right: { x: 9, z: 2.5, ry: 0 },
+      // a DUPLICATE of the left wing filling the empty north end
+      top: { x: 16.5, z: -27, ry: 0, y: 0, half: "left" },
     };
     // keep only this wing's triangles of one geometry; null = nothing left.
     // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
@@ -789,7 +791,12 @@ export const tostarena = {
       }
       return g2;
     }
+    // `which` names the placement in TOWN; `place.half` (or `which` itself)
+    // picks which geometry HALF to keep, so several placements can reuse the
+    // same wing geometry at different spots.
     function placeTownHalf(which) {
+      const place = TOWN[which];
+      const half = place.half || which;
       loadObj("Town000").then((proto) => {
         if (disposed || !proto) return;
         const inst = proto.clone();
@@ -815,7 +822,7 @@ export const tostarena = {
             o.visible = false;
             return;
           }
-          const g2 = splitGeometryX(o.geometry, midX, which === "left");
+          const g2 = splitGeometryX(o.geometry, midX, half === "left");
           if (!g2) {
             o.visible = false;
             return;
@@ -827,14 +834,14 @@ export const tostarena = {
         const wrap = new THREE.Group();
         wrap.add(inst);
         wrap.scale.setScalar(s);
-        const p = TOWN[which];
-        wrap.rotation.y = p.ry;
-        wrap.position.set(p.x, p.y ?? TOWN.y, p.z);
+        wrap.rotation.y = place.ry;
+        wrap.position.set(place.x, place.y ?? TOWN.y, place.z);
         group.add(wrap);
       });
     }
     placeTownHalf("left");
     placeTownHalf("right");
+    placeTownHalf("top");
 
     // streetlights at the plaza corners + benches along the edges, so the
     // kerb reads as a town square people actually use
