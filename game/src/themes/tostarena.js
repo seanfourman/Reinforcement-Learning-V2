@@ -736,8 +736,8 @@ export const tostarena = {
     // block exactly. Move/turn each wing HERE:
     const TOWN = {
       size: 60, // footprint of the intact block
-      y: -4.5, // sunk: its lowest geometry sits under its own street level
-      left: { x: C - 16, z: C, ry: 0 },
+      y: -4.5, // default sink; a wing can carry its own y override
+      left: { x: -10, z: -23.5, ry: -3.67, y: -6 }, // far back-left backdrop
       right: { x: 9, z: 2.5, ry: 0 },
     };
     // keep only this wing's triangles of one geometry; null = nothing left.
@@ -823,7 +823,7 @@ export const tostarena = {
         wrap.scale.setScalar(s);
         const p = TOWN[which];
         wrap.rotation.y = p.ry;
-        wrap.position.set(p.x, TOWN.y, p.z);
+        wrap.position.set(p.x, p.y ?? TOWN.y, p.z);
         group.add(wrap);
       });
     }
