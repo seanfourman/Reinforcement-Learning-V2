@@ -83,10 +83,29 @@
         mask-mode: alpha, alpha;
         mask-composite: exclude;
       }
+      /* #capfade is a BLACK cap (cap-solid.png is already black-on-transparent)
+         over the scene-hole. At the handoff it's opaque = the landed black cap;
+         JS fades it out during the wind-up so the BLACK fades out and the SCENE
+         fades in where it was (no pop). Same --hole as the hole + badge, so it's
+         pixel-aligned. It sits BELOW #capbadge, so the white disc stays on top and
+         the badge's cut-out M shows #capfade's black through it at the handoff,
+         then the scene once #capfade has faded. */
+      #capfade {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+        background-image: url("./assets/ui/cap-solid.png");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: var(--hole, 42.2vmin) auto;
+      }
       /* #capbadge is the white M badge (cap-badge.png: a white disc with the M
-         cut out TRANSPARENT, so the scene shows through the M). It sits over the
-         scene-hole at the same full-cell geometry + --hole, so it rides ON the cap
-         as it grows. No fade, no dissolve - it just grows with the cap. */
+         cut out TRANSPARENT, so whatever is behind shows through the M). It sits
+         over #capfade at the same full-cell geometry + --hole, so it rides ON the
+         cap as it grows. The disc stays white; the M crossfades black->scene as
+         #capfade fades. */
       #capbadge {
         position: fixed;
         inset: 0;
@@ -104,6 +123,7 @@
     <div id="loadscreen">
       <div id="capwin"><img id="capstrip" src="./assets/ui/cap-loader.png" alt="" /></div>
     </div>
+    <div id="capfade"></div>
     <div id="capbadge"></div>
     <div id="app"></div>
     <script type="importmap">

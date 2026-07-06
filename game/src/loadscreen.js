@@ -11,11 +11,12 @@
 //   1. SPIN - the cap tumbles (frames stepped in JS) while main.js loads assets.
 //   2. LAND - finish() eases the tumble to a stop on the default frame (frame 0,
 //             cap facing front). No snap: it decelerates onto a whole rotation.
-//   3. WIND-UP - the cap pulls back a touch (shrinks) as anticipation.
-//   4. GROW - then it SPRINTS out: the cap becomes a window to the scene (a
-//             cap-shaped HOLE in the white) that grows until the white is gone.
-//             Nothing fades. The white M badge (#capbadge, M cut out so the scene
-//             shows through it) rides on the cap as it grows.
+//   3. WIND-UP - the cap pulls back (shrinks) as anticipation AND crossfades from
+//               black to the scene: #capfade (a black cap) fades out so the BLACK
+//               fades away and the SCENE fades in where it was (no pop).
+//   4. GROW - then it SPRINTS out: the cap (a window to the scene) grows until the
+//             white is gone. The white M badge (#capbadge, M cut out so whatever
+//             is behind shows through it) rides on the cap as it grows.
 //
 // The hole (#loadscreen.grow) and the M badge (#capbadge) share the SAME full-cell
 // geometry + the SAME --hole (set on :root), so they're pixel-aligned and grow
@@ -26,19 +27,21 @@ const N = 8; // sprite frames
 const CELL_VMIN = 42.2; // one cell width, matches #capwin / #capstrip cell
 const SPIN_MS = 48; // ms per frame while tumbling (fast = fluid)
 const HANDOFF_HOLE = 42.2; // vmin: = one sprite cell, so the reveal == the landed sprite
-const BACK_HOLE = HANDOFF_HOLE * 0.78; // wind-up: pull back a touch before the sprint
+const BACK_HOLE = HANDOFF_HOLE * 0.45; // wind-up: pull back before the sprint
 const FULL_HOLE = 820; // vmin: cap-hole big enough to clear any screen
-const WINDUP_MS = 190; // the little pull-back before it grows
+const WINDUP_MS = 200; // the pull-back + black->scene crossfade before it grows
 const GROW_MS = 560; // sprint out to full screen
 
 const easeIn = (p) => p * p;
 const easeOut = (p) => 1 - (1 - p) * (1 - p);
+const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2);
 
 export function createLoadScreen() {
   const root = document.documentElement;
   const el = document.getElementById("loadscreen");
   const win = document.getElementById("capwin");
   const strip = document.getElementById("capstrip");
+  const fade = document.getElementById("capfade");
   const badge = document.getElementById("capbadge");
   if (!el || !win || !strip) return { finish: () => Promise.resolve() };
 
@@ -73,6 +76,7 @@ export function createLoadScreen() {
     gone = true;
     cancelAnimationFrame(raf);
     if (el.parentNode) el.remove();
+    if (fade && fade.parentNode) fade.remove();
     if (badge && badge.parentNode) badge.remove();
     if (resolveDone) resolveDone();
   };
@@ -82,6 +86,7 @@ export function createLoadScreen() {
     // open the scene-hole and show the M badge at exactly the sprite's size/place.
     setHole(HANDOFF_HOLE);
     el.classList.add("grow");
+    if (fade) fade.style.opacity = "1"; // black cap == the landed sprite; fades next
     if (badge) badge.style.opacity = "1";
     phase = "windup";
     windupStart = now;
@@ -101,10 +106,12 @@ export function createLoadScreen() {
         startReveal(now);
       }
     } else if (phase === "windup") {
-      // pull back a touch (anticipation) - decelerate into the pulled-back size
+      // pull back (anticipation) AND crossfade the black cap out to the scene
       const p = Math.min(1, (now - windupStart) / WINDUP_MS);
       setHole(HANDOFF_HOLE + (BACK_HOLE - HANDOFF_HOLE) * easeOut(p));
+      if (fade) fade.style.opacity = String(1 - easeInOut(p));
       if (p >= 1) {
+        if (fade) fade.style.opacity = "0";
         phase = "grow";
         growStart = now;
       }
