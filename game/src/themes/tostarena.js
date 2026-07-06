@@ -945,7 +945,7 @@ export const tostarena = {
         // sits low on the sand, with only small bounces
         const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.45;
         tumble.visible = true;
-        tumble.position.set(x, TUMBLE_R * 0.6 + hop, z);
+        tumble.position.set(x, TUMBLE_R * 0.42 + hop, z);
         tumble.rotation.z -= dt * 6.5; // forward roll
         tumble.rotation.x += dt * 2.4; // wobble
       } else {
