@@ -4,8 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grid World</title>
-    <!-- load the cap-loader sprite first so the boot screen animates instantly -->
+    <!-- load the cap sprite + the solid-cap mask up front so the boot screen
+         animates instantly and the reveal wipe has no glitch -->
     <link rel="preload" as="image" href="./assets/ui/cap-loader.png" />
+    <link rel="preload" as="image" href="./assets/ui/cap-solid.png" />
     <style>
       html, body {
         margin: 0;
@@ -49,28 +51,57 @@
         display: block;
         width: 337.6vmin; /* 8 cells */
         height: 24vmin;
-        animation: capspin 0.9s steps(8) infinite;
+        /* cold start: spin with pure CSS so the cap tumbles from the FIRST paint,
+           before main.js's module graph (three.js + themes) has even parsed.
+           loadscreen.js takes over the frames once it loads (so finish() can land
+           the tumble smoothly on frame 0). */
+        animation: capspin 0.5s steps(8) infinite;
         will-change: transform;
       }
       @keyframes capspin {
         to { transform: translate3d(-337.6vmin, 0, 0); }
       }
-      /* reveal: the cap flies at the screen and the white fades to show the menu */
-      #loadscreen.ls-out {
+      /* reveal: after the cap lands, the white gets a cap-shaped HOLE (scene
+         shows inside the cap, white outside) that GROWS until the white is gone.
+         The hole is mask-composite (fill XOR cap) so the white ALWAYS covers
+         everything except the hole, at any size; JS grows it via --hole (set on
+         :root so #capfade, a sibling, reads the same value). cap-solid.png is an
+         opaque solid-cap silhouette. */
+      #loadscreen.grow #capwin { display: none; }
+      #loadscreen.grow {
+        pointer-events: none;
+        -webkit-mask-image: url("./assets/ui/cap-solid.png"), -webkit-linear-gradient(#000, #000);
+        -webkit-mask-repeat: no-repeat, no-repeat;
+        -webkit-mask-position: center, center;
+        -webkit-mask-size: var(--hole, 36vmin) auto, 101% 101%;
+        -webkit-mask-composite: xor;
+        mask-image: url("./assets/ui/cap-solid.png"), linear-gradient(#000, #000);
+        mask-repeat: no-repeat, no-repeat;
+        mask-position: center, center;
+        mask-size: var(--hole, 36vmin) auto, 101% 101%;
+        mask-mode: alpha, alpha;
+        mask-composite: exclude;
+      }
+      /* #capfade sits EXACTLY over the scene-hole: a black cap (same cap-solid.png
+         + --hole, so it's pixel-aligned with the hole), on top of everything. At
+         the handoff it's opaque (the cap still reads black, no pop), then JS fades
+         its opacity 1->0 so the scene fades IN inside the black of the hat. It
+         grows with --hole too, then the hat keeps growing (pure scene) to fill. */
+      #capfade {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: #000;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 0.5s ease-in 0.12s;
-      }
-      #loadscreen.ls-out #capwin {
-        transform: scale(6.5);
-        opacity: 0;
-        transition:
-          transform 0.6s cubic-bezier(0.5, 0, 0.85, 0.4),
-          opacity 0.5s ease-in;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        #capstrip { animation: none; }
-        #loadscreen.ls-out #capwin { transform: none; }
+        -webkit-mask-image: url("./assets/ui/cap-solid.png");
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        -webkit-mask-size: var(--hole, 36vmin) auto;
+        mask-image: url("./assets/ui/cap-solid.png");
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: var(--hole, 36vmin) auto;
       }
     </style>
   </head>
@@ -78,6 +109,7 @@
     <div id="loadscreen">
       <div id="capwin"><img id="capstrip" src="./assets/ui/cap-loader.png" alt="" /></div>
     </div>
+    <div id="capfade"></div>
     <div id="app"></div>
     <script type="importmap">
       {
