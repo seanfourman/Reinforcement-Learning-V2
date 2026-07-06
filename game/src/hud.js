@@ -96,6 +96,15 @@ const STYLE = `
   box-shadow:0 2px 0 #000;transition:background .2s;}
 .fb-side.blue .fb-dots i.on{background:radial-gradient(circle at 35% 30%,#7fb4ff,#2f6bd6);}
 .fb-side.red .fb-dots i.on{background:radial-gradient(circle at 35% 30%,#ff8d80,#d8392c);}
+/* bottom-left key hints (what to press) - a ROW; smaller badges than the menu's
+   ESC/Back, with a lighter shadow */
+#rl-keys{position:fixed;left:1.5vw;bottom:3vh;z-index:7;display:flex;flex-direction:row;align-items:center;
+  gap:22px;color:#fff;pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;}
+#rl-keys .kh{display:flex;align-items:center;gap:9px;}
+#rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
+  box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
+  font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.32);}
+#rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 2px 5px rgba(0,0,0,.6);}
 `;
 
 export function initHud() {
@@ -120,6 +129,15 @@ export function initHud() {
     `<div class="fb-rnum"><b class="i" id="fb-round-i">1</b><span class="sep">/</span><span class="t" id="fb-round-t">1</span></div></div>` +
     sideHTML("red", "CPU");
   document.body.appendChild(hud);
+
+  // bottom-left key hints - what to press for what (hidden with the HUD by the menu)
+  const keys = document.createElement("div");
+  keys.id = "rl-keys";
+  keys.innerHTML =
+    `<div class="kh"><span class="key">R</span><span class="txt">Reset</span></div>` +
+    `<div class="kh"><span class="key">N</span><span class="txt">Controls</span></div>` +
+    `<div class="kh"><span class="key">M</span><span class="txt">CPU</span></div>`;
+  document.body.appendChild(keys);
 
   const $ = (id) => hud.querySelector(id);
   // crop each icon's transparent padding so the image box edge IS the character edge - then

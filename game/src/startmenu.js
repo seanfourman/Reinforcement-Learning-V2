@@ -701,7 +701,7 @@ export function createStartMenu({
   // hide the game HUD (Blue/Red/round), the control panel + its tab, and the edge
   // vignette so the menu is clean. All restored in dispose().
   const hiddenEls = [];
-  for (const id of ["rl-hud", "rl-panel", "rl-tab"]) {
+  for (const id of ["rl-hud", "rl-panel", "rl-tab", "rl-keys"]) {
     const el = document.getElementById(id);
     if (el) {
       hiddenEls.push([el, el.style.display]);
