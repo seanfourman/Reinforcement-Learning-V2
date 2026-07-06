@@ -929,23 +929,25 @@ export const tostarena = {
       dust.pts.geometry.attributes.position.needsUpdate = true;
 
       // the tumbleweed rolls across on the wind every so often, then is hidden
-      // until the next pass (a fresh lane + hop pattern each time)
+      // until the next pass (the SAME path every time - no randomised lane)
       const CYCLE = 12,
         CROSS = 6.2;
       const cyc = t % CYCLE;
       if (cyc < CROSS) {
         const p = cyc / CROSS; // 0..1 across the desert, west -> east
-        const pass = Math.floor(t / CYCLE); // which crossing this is
         // start + end well OFF-SCREEN so it rolls IN from outside and exits
         // outside - never popping into existence mid-frame
         const x = -16 + (A + 32) * p;
-        // stay in the OPEN foreground (south strip in front of the board) - no
-        // buildings there, so it never rolls through a wall
-        const z = A + 2.5 + hashFloat(pass, 1, 951) * 6;
-        // sits low on the sand, with only small bounces
-        const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.45;
+        // ALWAYS the same lane, right up FRONT near the camera: high z is the
+        // south foreground, which sits LOW on the screen (this is the "lower"
+        // that was wanted - screen position, not world height). Fixed per pass.
+        // A+4 is the lowest lane still readable - past this the camera crops it
+        // off the bottom edge of the frame (verified by render).
+        const z = A + 4;
+        // rolls ON the sand with a natural bounce (height was never the issue)
+        const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.35;
         tumble.visible = true;
-        tumble.position.set(x, TUMBLE_R * 0.42 + hop, z);
+        tumble.position.set(x, TUMBLE_R * 0.78 + hop, z);
         tumble.rotation.z -= dt * 6.5; // forward roll
         tumble.rotation.x += dt * 2.4; // wobble
       } else {
