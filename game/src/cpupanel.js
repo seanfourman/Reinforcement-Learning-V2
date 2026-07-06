@@ -61,6 +61,9 @@ const STYLE = `
 #rl-cpanel input[type=range]:disabled{cursor:default;}
 #rl-cpanel input[type=range]:disabled::-webkit-slider-thumb{background:#eef0f3;cursor:default;}
 #rl-cpanel input[type=range]:disabled::-moz-range-thumb{background:#eef0f3;cursor:default;}
+/* while locked the sliders are disabled - dim the whole control so it reads grayed out */
+#rl-cpanel .ctl{transition:opacity .15s;}
+#rl-cpanel .ctl:has(input:disabled){opacity:.5;}
 #rl-cpanel .note{font-size:10.5px;color:#a2a5ac;margin:11px 0 0;line-height:1.45;}
 #rl-cpanel .stat{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0;border-bottom:1px solid #f0f1f3;}
 #rl-cpanel .stat:last-child{border-bottom:0;}
