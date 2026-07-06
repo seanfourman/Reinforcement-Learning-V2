@@ -20,6 +20,7 @@ import { getTheme } from "./themes/index.js";
 import { initHud } from "./hud.js";
 import { createTransition } from "./transition.js";
 import { createStartMenu, getCpuTier } from "./startmenu.js";
+import { createLoadScreen } from "./loadscreen.js";
 import { loadBoardWalkers } from "./boardchars.js";
 import { initDevBar } from "./devbar.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
@@ -35,6 +36,11 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 app.appendChild(renderer.domElement);
+
+// Mario-style boot loader: a white screen with a tumbling 3D Cappy, held over the
+// menu until every asset is loaded, then Cappy flies at the camera to reveal it.
+// Created first thing so the cap starts loading immediately.
+const loadScreen = createLoadScreen();
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(PALETTE.fog, 34, 78);
@@ -576,10 +582,65 @@ menu = createStartMenu({
     }),
 });
 
-// Build EVERY round's arena in the background while the menu is up, so all
-// transitions are instant. Delayed a touch so the menu's own cabin + characters
-// get first crack at the bandwidth; runs sequentially to keep the peak modest.
-setTimeout(() => prewarmAllRounds(), 1500);
+// Hold the Cappy loading screen until EVERYTHING is actually downloaded, then
+// fly Cappy in. The old bug: it treated "nothing has started loading yet" as
+// idle and bailed almost immediately, and it kicked off the round prewarm AFTER
+// the reveal - so all those textures streamed in while you were on the menu and
+// it hitched. Now we download it all up front, under the spinning cap:
+//   1) the menu's own cabin + cast are already loading;
+//   2) prewarm every (grid) round's arena now, awaiting each theme's .ready;
+//   3) then wait for the loading manager to go fully quiet (last texture decodes)
+//      before revealing. All bounded so a stuck asset can't hang boot forever.
+(async function holdLoadScreen() {
+  const t0 = performance.now();
+  // Download + BUILD every grid round NOW, under the spinning cap - heavy textures
+  // and all - so the menu can't hitch on them after it opens. (My previous version
+  // deferred them to AFTER the reveal, which is exactly what lagged the menu.)
+  // Await it: each round settles on its theme's .ready. Capped so a stuck asset
+  // can't hang boot.
+  try {
+    await Promise.race([
+      prewarmAllRounds(),
+      new Promise((r) => setTimeout(r, 20000)),
+    ]);
+  } catch (e) {
+    /* offline / older server: nothing to prewarm */
+  }
+  // Then hold until the three.js loading manager's counts STOP CHANGING for a beat
+  // (any trailing textures + the menu's own cast have settled). We use count
+  // STABILITY, not loaded===total: a single 404/stuck asset leaves the counter
+  // below total forever (that was the spin-forever bug). The manager only tracks
+  // three.js loads, so the live snapshot poller's plain fetches never touch it -
+  // which is why this is reliable where watching the raw network was not.
+  await new Promise((resolve) => {
+    let lastTotal = -1;
+    let lastLoaded = -1;
+    let sinceChange = performance.now();
+    (function tick() {
+      const m = THREE.DefaultLoadingManager;
+      if (m.itemsTotal !== lastTotal || m.itemsLoaded !== lastLoaded) {
+        lastTotal = m.itemsTotal;
+        lastLoaded = m.itemsLoaded;
+        sinceChange = performance.now();
+      }
+      const menuUp = !!(menu && menu.active);
+      if (
+        (menuUp && performance.now() - sinceChange > 800) ||
+        performance.now() - t0 > 24000
+      ) {
+        resolve();
+      } else {
+        requestAnimationFrame(tick);
+      }
+    })();
+  });
+  const m = THREE.DefaultLoadingManager;
+  console.log(
+    `[boot] assets settled @${Math.round(performance.now() - t0)}ms ` +
+      `(loader ${m.itemsLoaded}/${m.itemsTotal}) - revealing`,
+  );
+  loadScreen.finish();
+})();
 function resize() {
   const pr = Math.min(devicePixelRatio, 2);
   renderer.setPixelRatio(pr);

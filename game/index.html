@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grid World</title>
+    <!-- load the cap-loader sprite first so the boot screen animates instantly -->
+    <link rel="preload" as="image" href="./assets/ui/cap-loader.png" />
     <style>
       html, body {
         margin: 0;
@@ -20,9 +22,62 @@
         -moz-user-select: none;
         user-select: none;
       }
+      /* Mario-style boot loader: a plain white screen with a spinning Mario-cap
+         sprite (ripped from Odyssey's screen transitions). It is pure CSS, so it
+         paints from the FIRST frame - before three.js or any asset loads - which
+         is the whole point of a loading screen. loadscreen.js only fades it away
+         once loading is actually finished. */
+      #loadscreen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* the cap: an 8-frame strip inside a one-cell window, stepped with a
+         translate. transform is GPU-composited, so the spin stays smooth even
+         while the round scenes are being parsed on the main thread. Cell aspect
+         ~1.76; height 24vmin so it scales with the viewport. */
+      #capwin {
+        width: 42.2vmin;
+        height: 24vmin;
+        overflow: hidden;
+      }
+      #capstrip {
+        display: block;
+        width: 337.6vmin; /* 8 cells */
+        height: 24vmin;
+        animation: capspin 0.9s steps(8) infinite;
+        will-change: transform;
+      }
+      @keyframes capspin {
+        to { transform: translate3d(-337.6vmin, 0, 0); }
+      }
+      /* reveal: the cap flies at the screen and the white fades to show the menu */
+      #loadscreen.ls-out {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease-in 0.12s;
+      }
+      #loadscreen.ls-out #capwin {
+        transform: scale(6.5);
+        opacity: 0;
+        transition:
+          transform 0.6s cubic-bezier(0.5, 0, 0.85, 0.4),
+          opacity 0.5s ease-in;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #capstrip { animation: none; }
+        #loadscreen.ls-out #capwin { transform: none; }
+      }
     </style>
   </head>
   <body>
+    <div id="loadscreen">
+      <div id="capwin"><img id="capstrip" src="./assets/ui/cap-loader.png" alt="" /></div>
+    </div>
     <div id="app"></div>
     <script type="importmap">
       {
