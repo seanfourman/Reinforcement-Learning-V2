@@ -341,8 +341,14 @@ export const tostarena = {
 
     // The board is kept CLEAN: no kerb outline, no decorative sand patches,
     // and none of the on-board props (pools, palms, ruin gates, fountain,
-    // dust devils) below. Only the RL route markers - the dashed racing lines,
-    // checkpoint rings and target beacons - remain on the sand.
+    // dust devils) below.
+    //
+    // The RL route markers (dashed racing lines, checkpoint rings, target
+    // beacons) are BUILT below but gated behind SHOW_MARKERS. It is false for
+    // now - the arena stays bare while we polish the scene, and the gameplay
+    // overlay goes back in LAST. Flip this to true to restore every marker and
+    // its update() animation in one shot.
+    const SHOW_MARKERS = false;
 
     // ---- the RACING LINES: each side's tour dashed onto the sand -----------
     const lineMats = {
@@ -380,13 +386,14 @@ export const tostarena = {
         group.add(m);
       }
     }
-    for (const side of ["red", "blue"]) {
-      let prev = spawns[side];
-      for (const wp of tours[side]) {
-        dashLine(prev, wp, lineMats[side]);
-        prev = wp;
+    if (SHOW_MARKERS)
+      for (const side of ["red", "blue"]) {
+        let prev = spawns[side];
+        for (const wp of tours[side]) {
+          dashLine(prev, wp, lineMats[side]);
+          prev = wp;
+        }
       }
-    }
 
     // ---- CHECKPOINT RINGS + the two current-target BEACONS -----------------
     // rings[side][k] pulses while k is that side's live target (frame.redCp /
@@ -411,43 +418,47 @@ export const tostarena = {
       group.add(m);
       return { mesh: m, mat, base: 0.55 };
     }
-    for (const side of ["red", "blue"]) {
-      const tour = tours[side];
-      for (let k = 0; k < tour.length - 1; k++) {
-        const [x, z, r] = tour[k];
-        rings[side].push(addRing(x, z, r, RING_COLORS[side]));
+    let goldRing = null;
+    if (SHOW_MARKERS) {
+      for (const side of ["red", "blue"]) {
+        const tour = tours[side];
+        for (let k = 0; k < tour.length - 1; k++) {
+          const [x, z, r] = tour[k];
+          rings[side].push(addRing(x, z, r, RING_COLORS[side]));
+        }
       }
+      // the shared finish: one gold ring + per-side accents just outside it
+      const [fx, fz, fr] = finish;
+      goldRing = addRing(fx, fz, fr, 0xffd24a, 0.2);
+      rings.red.push(addRing(fx, fz, fr + 0.3, RING_COLORS.red, 0.07));
+      rings.blue.push(addRing(fx, fz, fr + 0.55, RING_COLORS.blue, 0.07));
     }
-    // the shared finish: one gold ring + per-side accents just outside it
-    const [fx, fz, fr] = finish;
-    const goldRing = addRing(fx, fz, fr, 0xffd24a, 0.2);
-    rings.red.push(addRing(fx, fz, fr + 0.3, RING_COLORS.red, 0.07));
-    rings.blue.push(addRing(fx, fz, fr + 0.55, RING_COLORS.blue, 0.07));
 
     // one light beacon per side, standing on that racer's CURRENT target ring
     const beacons = {};
-    for (const side of ["red", "blue"]) {
-      const geo = track(
-        new THREE.CylinderGeometry(0.34, 0.5, 3.4, 18, 1, true),
-      );
-      const mat = track(
-        new THREE.MeshBasicMaterial({
-          color: RING_COLORS[side],
-          transparent: true,
-          opacity: 0.22,
-          blending: THREE.AdditiveBlending,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        }),
-      );
-      const m = new THREE.Mesh(geo, mat);
-      m.renderOrder = 3;
-      m.traverse((o) => (o.userData.excludeBloom = true));
-      const [bx, bz] = tours[side][0];
-      m.position.set(bx, 1.72, bz);
-      group.add(m);
-      beacons[side] = { mesh: m, mat };
-    }
+    if (SHOW_MARKERS)
+      for (const side of ["red", "blue"]) {
+        const geo = track(
+          new THREE.CylinderGeometry(0.34, 0.5, 3.4, 18, 1, true),
+        );
+        const mat = track(
+          new THREE.MeshBasicMaterial({
+            color: RING_COLORS[side],
+            transparent: true,
+            opacity: 0.22,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          }),
+        );
+        const m = new THREE.Mesh(geo, mat);
+        m.renderOrder = 3;
+        m.traverse((o) => (o.userData.excludeBloom = true));
+        const [bx, bz] = tours[side][0];
+        m.position.set(bx, 1.72, bz);
+        group.add(m);
+        beacons[side] = { mesh: m, mat };
+      }
 
     // QUICKSAND pool discs removed from the clean board (kept empty so the
     // swirl-animation loop in update() stays a harmless no-op).
@@ -857,41 +868,45 @@ export const tostarena = {
     let simSteps = 0; // formula clock while no live frame is available
     function update(t, dt, frame) {
       // checkpoint rings + beacons track each side's live tour progress
-      const prog = {
-        red: frame && Number.isInteger(frame.redCp) ? frame.redCp : 0,
-        blue: frame && Number.isInteger(frame.blueCp) ? frame.blueCp : 0,
-      };
-      for (const side of ["red", "blue"]) {
-        const list = rings[side];
-        const k = Math.min(prog[side], list.length - 1);
-        for (let i = 0; i < list.length; i++) {
-          const ring = list[i];
-          if (i < prog[side]) {
-            ring.mat.opacity = 0.1; // passed: a faint memory on the sand
-          } else if (i === k) {
-            // the live target breathes
-            ring.mat.opacity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 3.2));
-            ring.mesh.scale.setScalar(1 + 0.05 * Math.sin(t * 3.2));
-          } else {
-            ring.mat.opacity = 0.3;
+      // (gated: while SHOW_MARKERS is off the gameplay overlay is not built, so
+      // there is nothing to animate here)
+      if (SHOW_MARKERS) {
+        const prog = {
+          red: frame && Number.isInteger(frame.redCp) ? frame.redCp : 0,
+          blue: frame && Number.isInteger(frame.blueCp) ? frame.blueCp : 0,
+        };
+        for (const side of ["red", "blue"]) {
+          const list = rings[side];
+          const k = Math.min(prog[side], list.length - 1);
+          for (let i = 0; i < list.length; i++) {
+            const ring = list[i];
+            if (i < prog[side]) {
+              ring.mat.opacity = 0.1; // passed: a faint memory on the sand
+            } else if (i === k) {
+              // the live target breathes
+              ring.mat.opacity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 3.2));
+              ring.mesh.scale.setScalar(1 + 0.05 * Math.sin(t * 3.2));
+            } else {
+              ring.mat.opacity = 0.3;
+            }
           }
+          // the beacon stands on the current target
+          const tour = tours[side];
+          const [bx, bz] = tour[Math.min(prog[side], tour.length - 1)];
+          const b = beacons[side];
+          const bob = 0.12 * Math.sin(t * 2.1 + (side === "red" ? 0 : 2));
+          b.mesh.position.set(
+            bx +
+              (side === "red" ? -0.2 : 0.2) *
+                (prog[side] === tours[side].length - 1 ? 1 : 0),
+            1.72 + bob,
+            bz,
+          );
+          b.mat.opacity = 0.16 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.6));
+          b.mesh.visible = !(frame && frame.winner); // hide once race is decided
         }
-        // the beacon stands on the current target
-        const tour = tours[side];
-        const [bx, bz] = tour[Math.min(prog[side], tour.length - 1)];
-        const b = beacons[side];
-        const bob = 0.12 * Math.sin(t * 2.1 + (side === "red" ? 0 : 2));
-        b.mesh.position.set(
-          bx +
-            (side === "red" ? -0.2 : 0.2) *
-              (prog[side] === tours[side].length - 1 ? 1 : 0),
-          1.72 + bob,
-          bz,
-        );
-        b.mat.opacity = 0.16 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.6));
-        b.mesh.visible = !(frame && frame.winner); // hide once the race is decided
+        goldRing.mat.opacity = 0.45 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.2));
       }
-      goldRing.mat.opacity = 0.45 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.2));
 
       // dust devils: ease toward the env's reported positions (or the local
       // deterministic orbit before the first frame arrives)
