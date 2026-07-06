@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live RL server + static host for the King-vs-Queen arena.
+"""Live RL server + static host for the Rival Minds arena.
 
 Run with:  python serve.py
 
@@ -188,7 +188,8 @@ def main():
     t.start()
 
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
-    print(f"King vs Queen RL arena running at {url}")
+    print("Rival Minds - live self-play RL arena")
+    print(f"Running at {url}")
     print("Two models are training live. R = new world + reset, M = panel.")
     print("Keep this window open. Press Ctrl+C to stop.")
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()

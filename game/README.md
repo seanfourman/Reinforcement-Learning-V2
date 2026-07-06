@@ -1,4 +1,4 @@
-# King vs Queen — a live self-play RL arena
+# Rival Minds - a live self-play RL arena
 
 Two agents (the **King** = red, the **Queen** = blue) start **untrained** and learn,
 live and on-screen, to solve the **same** competitive task inside a fixed,

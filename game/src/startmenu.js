@@ -1991,7 +1991,7 @@ export function createStartMenu({
   const el = document.createElement("div");
   el.id = "rl-menu";
   el.innerHTML = `
-    <div class="brand"><img src="./assets/ui/rival-minds-logo.png" alt="Rival Minds"></div>
+    <div class="brand"><img src="./assets/ui/rival-minds-logo-2.png" alt="Rival Minds"></div>
     <div class="panel">
       <div class="items">
         ${ITEM("sel", 'data-go="1"', "Start")}
