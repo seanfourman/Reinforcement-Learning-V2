@@ -8,6 +8,7 @@
          animates instantly and the reveal wipe has no glitch -->
     <link rel="preload" as="image" href="./assets/ui/cap-loader.png" />
     <link rel="preload" as="image" href="./assets/ui/cap-solid.png" />
+    <link rel="preload" as="image" href="./assets/ui/cap-badge.png" />
     <style>
       html, body {
         margin: 0;
@@ -65,7 +66,7 @@
          shows inside the cap, white outside) that GROWS until the white is gone.
          The hole is mask-composite (fill XOR cap) so the white ALWAYS covers
          everything except the hole, at any size; JS grows it via --hole (set on
-         :root so #capfade, a sibling, reads the same value). cap-solid.png is an
+         :root so #capbadge, a sibling, reads the same value). cap-solid.png is an
          opaque solid-cap silhouette. */
       #loadscreen.grow #capwin { display: none; }
       #loadscreen.grow {
@@ -73,35 +74,29 @@
         -webkit-mask-image: url("./assets/ui/cap-solid.png"), -webkit-linear-gradient(#000, #000);
         -webkit-mask-repeat: no-repeat, no-repeat;
         -webkit-mask-position: center, center;
-        -webkit-mask-size: var(--hole, 36vmin) auto, 101% 101%;
+        -webkit-mask-size: var(--hole, 42.2vmin) auto, 101% 101%;
         -webkit-mask-composite: xor;
         mask-image: url("./assets/ui/cap-solid.png"), linear-gradient(#000, #000);
         mask-repeat: no-repeat, no-repeat;
         mask-position: center, center;
-        mask-size: var(--hole, 36vmin) auto, 101% 101%;
+        mask-size: var(--hole, 42.2vmin) auto, 101% 101%;
         mask-mode: alpha, alpha;
         mask-composite: exclude;
       }
-      /* #capfade sits EXACTLY over the scene-hole: a black cap (same cap-solid.png
-         + --hole, so it's pixel-aligned with the hole), on top of everything. At
-         the handoff it's opaque (the cap still reads black, no pop), then JS fades
-         its opacity 1->0 so the scene fades IN inside the black of the hat. It
-         grows with --hole too, then the hat keeps growing (pure scene) to fill. */
-      #capfade {
+      /* #capbadge is the white M badge (cap-badge.png: a white disc with the M
+         cut out TRANSPARENT, so the scene shows through the M). It sits over the
+         scene-hole at the same full-cell geometry + --hole, so it rides ON the cap
+         as it grows. No fade, no dissolve - it just grows with the cap. */
+      #capbadge {
         position: fixed;
         inset: 0;
-        z-index: 10000;
-        background: #000;
+        z-index: 10001;
         opacity: 0;
         pointer-events: none;
-        -webkit-mask-image: url("./assets/ui/cap-solid.png");
-        -webkit-mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-        -webkit-mask-size: var(--hole, 36vmin) auto;
-        mask-image: url("./assets/ui/cap-solid.png");
-        mask-repeat: no-repeat;
-        mask-position: center;
-        mask-size: var(--hole, 36vmin) auto;
+        background-image: url("./assets/ui/cap-badge.png");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: var(--hole, 42.2vmin) auto;
       }
     </style>
   </head>
@@ -109,7 +104,7 @@
     <div id="loadscreen">
       <div id="capwin"><img id="capstrip" src="./assets/ui/cap-loader.png" alt="" /></div>
     </div>
-    <div id="capfade"></div>
+    <div id="capbadge"></div>
     <div id="app"></div>
     <script type="importmap">
       {

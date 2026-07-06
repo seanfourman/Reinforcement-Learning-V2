@@ -6,38 +6,37 @@
 // CSS sprite strip (ripped from Odyssey's screen transitions), not a 3D model
 // that would itself need loading.
 //
-// This module DRIVES the reveal from JS (one rAF loop) so it's a precise,
-// snap-free sequence the way the user asked for it:
+// This module DRIVES the reveal from JS (one rAF loop):
 //
 //   1. SPIN - the cap tumbles (frames stepped in JS) while main.js loads assets.
 //   2. LAND - finish() eases the tumble to a stop on the default frame (frame 0,
 //             cap facing front). No snap: it decelerates onto a whole rotation.
-//   3. FADE - the hat stays put and the scene FADES IN inside the black of the
-//             cap (a black cap layer, #capfade, fades its opacity 1->0 while the
-//             white already has a cap-shaped hole to the scene beneath it).
-//   4. GROW - then the cap (now a scene window) GROWS until the white is gone.
+//   3. GROW - the cap becomes a window to the scene (a cap-shaped HOLE in the
+//             white) and GROWS until the white is gone. Nothing fades. The white
+//             M badge (#capbadge, M cut out so the scene shows through it) rides
+//             on the cap as it grows. That's it.
 //
-// The hole + the black cap use the SAME cap-solid.png and the SAME --hole (set on
-// :root), so they're pixel-aligned; the black just fades off the top of the hole.
+// The hole (#loadscreen.grow) and the M badge (#capbadge) share the SAME full-cell
+// geometry + the SAME --hole (set on :root), so they're pixel-aligned and grow
+// together; HANDOFF_HOLE = one sprite cell, so the reveal starts at the exact size
+// and position of the landed sprite.
 
 const N = 8; // sprite frames
 const CELL_VMIN = 42.2; // one cell width, matches #capwin / #capstrip cell
 const SPIN_MS = 55; // ms per frame while tumbling (fast = fluid)
-const HANDOFF_HOLE = 36; // vmin: cap-hole size at the landed hat (~the sprite cap)
-const FULL_HOLE = 760; // vmin: cap-hole big enough to clear any screen
-const FADE_MS = 440; // black cap -> scene, at hat size
+const HANDOFF_HOLE = 42.2; // vmin: = one sprite cell, so the reveal == the landed sprite
+const FULL_HOLE = 820; // vmin: cap-hole big enough to clear any screen
 const GROW_MS = 720; // hat -> full screen
 
 const easeIn = (p) => p * p;
 const easeOut = (p) => 1 - (1 - p) * (1 - p);
-const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2);
 
 export function createLoadScreen() {
   const root = document.documentElement;
   const el = document.getElementById("loadscreen");
   const win = document.getElementById("capwin");
   const strip = document.getElementById("capstrip");
-  const fade = document.getElementById("capfade");
+  const badge = document.getElementById("capbadge");
   if (!el || !win || !strip) return { finish: () => Promise.resolve() };
 
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -57,7 +56,6 @@ export function createLoadScreen() {
   let landTo = 0;
   let landStart = 0;
   let landDur = 0;
-  let fadeStart = 0;
   let growStart = 0;
 
   const showFrame = (f) => {
@@ -71,19 +69,18 @@ export function createLoadScreen() {
     gone = true;
     cancelAnimationFrame(raf);
     if (el.parentNode) el.remove();
-    if (fade && fade.parentNode) fade.remove();
+    if (badge && badge.parentNode) badge.remove();
     if (resolveDone) resolveDone();
   };
 
   const startReveal = (now) => {
-    // hand off from the sprite to the mask: hide the tumbling sprite, open the
-    // scene-hole at the landed hat size, and cover it with the opaque black cap -
-    // so nothing visibly changes yet (still a black hat on white).
+    // hand off from the sprite to the reveal at the landed size: hide the sprite,
+    // open the scene-hole and show the M badge at exactly the sprite's size/place.
     setHole(HANDOFF_HOLE);
     el.classList.add("grow");
-    if (fade) fade.style.opacity = "1";
-    phase = "fade";
-    fadeStart = now;
+    if (badge) badge.style.opacity = "1";
+    phase = "grow";
+    growStart = now;
   };
 
   const tick = () => {
@@ -99,17 +96,8 @@ export function createLoadScreen() {
         showFrame(0); // default frame: cap facing front
         startReveal(now);
       }
-    } else if (phase === "fade") {
-      // hat stays at HANDOFF; the scene fades in inside the black of the cap
-      const p = Math.min(1, (now - fadeStart) / FADE_MS);
-      if (fade) fade.style.opacity = String(1 - easeInOut(p));
-      if (p >= 1) {
-        if (fade) fade.style.opacity = "0";
-        phase = "grow";
-        growStart = now;
-      }
     } else if (phase === "grow") {
-      // the cap (now a scene window) grows until the white is gone
+      // the cap (a scene window) grows until the white is gone; the M rides along
       const p = Math.min(1, (now - growStart) / GROW_MS);
       setHole(HANDOFF_HOLE + (FULL_HOLE - HANDOFF_HOLE) * easeIn(p));
       if (p >= 1) finishNow();
@@ -119,8 +107,8 @@ export function createLoadScreen() {
 
   return {
     // Called by main.js once the heavy assets are actually loaded. Lands the
-    // tumble on the default frame, fades the scene in inside the black cap, then
-    // grows the cap to reveal the scene. Resolves when the overlay is gone.
+    // tumble on the default frame, then grows the cap to reveal the scene.
+    // Resolves when the overlay is gone. Safe to call once.
     finish() {
       if (gone || phase !== "spin") return Promise.resolve();
       if (reduced) {
