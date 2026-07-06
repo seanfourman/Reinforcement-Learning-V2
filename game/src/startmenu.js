@@ -2341,6 +2341,9 @@ export function createStartMenu({
     #rl-howto .hw-arenas .a4{transform:translate(16%,-62%) rotate(15deg) scale(.64);z-index:2;filter:brightness(.63) drop-shadow(0 4px 7px rgba(0,0,0,.5));}
     #rl-howto .hw-arenas .a3{transform:translate(-72%,-44%) rotate(-6deg) scale(1);z-index:3;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45));}
     #rl-howto .hw-arenas .a2{transform:translate(-28%,-42%) rotate(6deg) scale(1.04);z-index:4;filter:drop-shadow(0 9px 14px rgba(0,0,0,.45));}
+    /* "Take the crown" stage: the wide head-to-head scoreboard banner. It's
+       allowed to spill past the 440px stage and use the wider panel. */
+    #rl-howto .hw-versus{width:min(600px,86vw);max-width:none;height:auto;filter:drop-shadow(0 6px 12px rgba(0,0,0,.28));}
     #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
       gap:11px;cursor:pointer;color:#fff;pointer-events:none;
       transform:translateY(220%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
@@ -3123,6 +3126,8 @@ export function createStartMenu({
     `<img class="ar a3" src="./assets/arenas/arena-round3.png" alt="Fossil Falls board">` +
     `<img class="ar a2" src="./assets/arenas/arena-round2.png" alt="New Donk City board">` +
     `</div>`;
+  // "Take the crown" visual: the head-to-head scoreboard banner
+  const hwVersus = `<img class="hw-versus" src="./assets/ui/versus.png" alt="Round scoreboard - you versus the CPU">`;
 
   const HOWTO_PAGES = [
     { frac: "1/4", title: "Build your team",
@@ -3136,7 +3141,7 @@ export function createStartMenu({
       stage: hwArenaStack },
     { frac: "4/4", title: "Take the crown",
       para: "Out-score your rival (faster, safer, higher reward) to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
-      stage: hwPlaceholder },
+      stage: hwVersus },
   ];
 
   const hwStepEl = howtoEl.querySelector(".hw-step");
