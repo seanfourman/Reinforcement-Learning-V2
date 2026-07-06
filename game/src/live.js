@@ -121,6 +121,18 @@ export function createLiveActors(scene, walkers) {
     const bs = lay.blueSpawn ? cw(lay.blueSpawn) : { x: 0.5, z: 18.5 }; // blue low-X (screen left)
     rendered.red = { ...rs }; target.red = { ...rs };
     rendered.blue = { ...bs }; target.blue = { ...bs };
+    // face each spawn TOWARD the goal so nobody starts looking backward - peach's
+    // goal sits on the far side, so its spawns face the opposite way from the rest
+    if (lay.escape && lay.escape[0]) {
+      const faceGoal = (sp) => {
+        const dx = ew.x - sp.x, dz = ew.z - sp.z;
+        return Math.abs(dx) + Math.abs(dz) > 1e-4 ? Math.atan2(dx, dz) : Math.PI;
+      };
+      heading.red = faceGoal(rs);
+      heading.blue = faceGoal(bs);
+      king.group.rotation.y = heading.red;
+      princess.group.rotation.y = heading.blue;
+    }
     banner.style.opacity = '0';
   }
 
