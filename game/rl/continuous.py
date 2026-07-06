@@ -72,8 +72,8 @@ class ContinuousArena:
         self.H = self.W = int(ARENA)        # coarse grid the value field samples on
         self.goal = np.array(GOAL, dtype=np.float32)
         self.obstacles = [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in OBSTACLES]
-        self.red_spawn = (3.0, ARENA - 2.5)
-        self.blue_spawn = (ARENA - 3.0, ARENA - 2.5)
+        self.red_spawn = (ARENA - 3.0, ARENA - 2.5)   # red on the viewer's RIGHT
+        self.blue_spawn = (3.0, ARENA - 2.5)           # blue on the viewer's LEFT (matches the HUD)
         self.steps = 0
         self.done = False
         self.winner = None

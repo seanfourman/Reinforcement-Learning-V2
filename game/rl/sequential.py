@@ -53,10 +53,12 @@ OBS_DIM = 9
 # Each agent's ordered waypoints: near-side OASIS -> far-side RUIN GATE -> the
 # shared PYRAMID finish. (x, z, capture radius)
 FINISH = (ARENA / 2, 2.6, 1.5)
-RED_TOUR = [(4.0, 12.5, 1.3), (16.0, 8.0, 1.3), FINISH]
-BLUE_TOUR = [(16.0, 12.5, 1.3), (4.0, 8.0, 1.3), FINISH]
-RED_SPAWN = (7.0, 17.5)
-BLUE_SPAWN = (13.0, 17.5)
+# red starts on the viewer's RIGHT, blue on the LEFT (matches the HUD); each
+# color's spawn + tour move together, so the race stays mirror-fair.
+RED_TOUR = [(16.0, 12.5, 1.3), (4.0, 8.0, 1.3), FINISH]
+BLUE_TOUR = [(4.0, 12.5, 1.3), (16.0, 8.0, 1.3), FINISH]
+RED_SPAWN = (13.0, 17.5)
+BLUE_SPAWN = (7.0, 17.5)
 
 # static quicksand pools (x, z, radius): heavy drag + a trickle of cost inside.
 # One guards the midfield crossing, two flank the pyramid approach.

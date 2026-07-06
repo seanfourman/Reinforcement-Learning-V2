@@ -32,7 +32,7 @@ MID = (LO + HI) // 2                    # centre column of the play area
 # is flipped 180 too - that cancels out, leaving the BOARD looking the way it did:
 # goal top-centre, spawns bottom-left/right on screen.
 ESCAPE_POS = [(HI, MID)]                        # goal (appears top-centre)
-RED_SPAWN_POS, BLUE_SPAWN_POS = (LO, HI), (LO, LO)   # spawns (appear bottom-left / bottom-right)
+RED_SPAWN_POS, BLUE_SPAWN_POS = (LO, LO), (LO, HI)   # blue = bottom-LEFT, red = bottom-RIGHT on screen (matches the HUD; flip theme -> high col is screen-left)
 # open hall - no interior obstacles (the castle model is the whole scene)
 PILLARS = []
 

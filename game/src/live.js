@@ -117,8 +117,8 @@ export function createLiveActors(scene, walkers) {
     const ew = cw(e);
     escGlow.position.set(ew.x + 0.5, 1.4, ew.z);
     // snap actors to spawns so they don't streak across a brand-new world
-    const rs = lay.redSpawn ? cw(lay.redSpawn) : { x: 0.5, z: 18.5 };
-    const bs = lay.blueSpawn ? cw(lay.blueSpawn) : { x: 18.5, z: 18.5 };
+    const rs = lay.redSpawn ? cw(lay.redSpawn) : { x: 18.5, z: 18.5 }; // red high-X (screen right)
+    const bs = lay.blueSpawn ? cw(lay.blueSpawn) : { x: 0.5, z: 18.5 }; // blue low-X (screen left)
     rendered.red = { ...rs }; target.red = { ...rs };
     rendered.blue = { ...bs }; target.blue = { ...bs };
     banner.style.opacity = '0';
