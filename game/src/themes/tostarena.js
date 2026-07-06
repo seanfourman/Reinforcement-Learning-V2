@@ -620,24 +620,14 @@ export const tostarena = {
       // a DUPLICATE of the left wing filling the empty north end
       top: { x: 16.5, z: -27, ry: 0, y: -0.35, half: "left" },
     };
-    // keep only this wing's triangles of one geometry; null = nothing left.
-    // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
-    // and the upright flip spins about X so geometry x IS model x.
-    function splitGeometryX(geo, midX, wantLeft) {
+    // rebuild a geometry keeping only the triangles listed in `keep` (indices
+    // into the triangle list). Returns geo unchanged if every tri is kept, null
+    // if none are. Shared by the wing split and the stray-part carve below.
+    function rebuildGeom(geo, keep, triCount) {
+      if (keep.length === triCount) return geo;
+      if (!keep.length) return null;
       const pos = geo.attributes.position;
       const idx = geo.index;
-      const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
-      const keep = [];
-      for (let t = 0; t < triCount; t++) {
-        let cx = 0;
-        for (let k = 0; k < 3; k++) {
-          const i = idx ? idx.getX(t * 3 + k) : t * 3 + k;
-          cx += pos.getX(i);
-        }
-        if (cx / 3 < midX === wantLeft) keep.push(t);
-      }
-      if (keep.length === triCount) return geo; // whole mesh is on this side
-      if (!keep.length) return null;
       if (idx) {
         const arr = new (pos.count > 65535 ? Uint32Array : Uint16Array)(
           keep.length * 3,
@@ -663,6 +653,65 @@ export const tostarena = {
       }
       return g2;
     }
+    // keep only this wing's triangles of one geometry; null = nothing left.
+    // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
+    // and the upright flip spins about X so geometry x IS model x.
+    function splitGeometryX(geo, midX, wantLeft) {
+      const pos = geo.attributes.position;
+      const idx = geo.index;
+      const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
+      const keep = [];
+      for (let t = 0; t < triCount; t++) {
+        let cx = 0;
+        for (let k = 0; k < 3; k++) {
+          const i = idx ? idx.getX(t * 3 + k) : t * 3 + k;
+          cx += pos.getX(i);
+        }
+        if (cx / 3 < midX === wantLeft) keep.push(t);
+      }
+      return rebuildGeom(geo, keep, triCount);
+    }
+    // DROP the triangles whose centroid falls inside a model-space AABB - used
+    // to carve a stray sub-part out of a per-material bucket (same OBJ vertex
+    // space as splitGeometryX, since the flip is on the parent, not baked in).
+    function dropTrisInBox(geo, lo, hi) {
+      const pos = geo.attributes.position;
+      const idx = geo.index;
+      const triCount = Math.floor((idx ? idx.count : pos.count) / 3);
+      const keep = [];
+      for (let t = 0; t < triCount; t++) {
+        let cx = 0,
+          cy = 0,
+          cz = 0;
+        for (let k = 0; k < 3; k++) {
+          const i = idx ? idx.getX(t * 3 + k) : t * 3 + k;
+          cx += pos.getX(i);
+          cy += pos.getY(i);
+          cz += pos.getZ(i);
+        }
+        cx /= 3;
+        cy /= 3;
+        cz /= 3;
+        const inside =
+          cx >= lo[0] &&
+          cx <= hi[0] &&
+          cy >= lo[1] &&
+          cy <= hi[1] &&
+          cz >= lo[2] &&
+          cz <= hi[2];
+        if (!inside) keep.push(t);
+      }
+      return rebuildGeom(geo, keep, triCount);
+    }
+    // stray sub-parts of a Town000 per-material bucket that land ON the plaza
+    // and must be carved away (model-space AABBs, found by analysing
+    // Town000.obj). WallClayColor01 carries a lone ~235-unit cylinder in the
+    // model's south-west that the wing framing drops right into the middle of
+    // the arena - remove just those 36 triangles; the wall in the same bucket
+    // is 1000+ units away in model space, so it is untouched.
+    const TOWN_CARVE = [
+      { mesh: "WallClayColor01_rep", lo: [-530, -70, -610], hi: [-250, 210, -300] },
+    ];
     // `which` names the placement in TOWN; `place.half` (or `which` itself)
     // picks which geometry HALF to keep, so several placements can reuse the
     // same wing geometry at different spots.
@@ -694,12 +743,24 @@ export const tostarena = {
             o.visible = false;
             return;
           }
-          const g2 = splitGeometryX(o.geometry, midX, half === "left");
-          if (!g2) {
+          let geo = splitGeometryX(o.geometry, midX, half === "left");
+          if (!geo) {
             o.visible = false;
             return;
           }
-          if (g2 !== o.geometry) o.geometry = track(g2);
+          // carve out any configured stray sub-parts (e.g. the arena cylinder
+          // baked into the WallClayColor01 wall bucket)
+          for (const c of TOWN_CARVE) {
+            if ((o.name || "").includes(c.mesh)) {
+              geo = dropTrisInBox(geo, c.lo, c.hi);
+              if (!geo) break;
+            }
+          }
+          if (!geo) {
+            o.visible = false;
+            return;
+          }
+          if (geo !== o.geometry) o.geometry = track(geo);
         });
         inst.position.set(-ctr.x, -box.min.y, -ctr.z);
         const s = TOWN.size / Math.max(size.x, size.z, 0.001);
