@@ -157,9 +157,9 @@ export function initCpuPanel() {
     paintRange(el);
   };
 
-  // ---- toggle (N key) ----
+  // ---- toggle (M key) ----
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyN' && !/input|select|textarea/i.test(e.target.tagName)) panel.classList.toggle('open');
+    if (e.code === 'KeyM' && !/input|select|textarea/i.test(e.target.tagName)) panel.classList.toggle('open');
   });
 
   // ---- lock / unlock ----

@@ -246,11 +246,11 @@ export function initPanel() {
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
 
-  // ---- toggle (M key only) ----
+  // ---- toggle (N key only) ----
   const toggle = () => panel.classList.toggle('open');
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyM' && !/input|select|textarea/i.test(e.target.tagName)) toggle();
+    if (e.code === 'KeyN' && !/input|select|textarea/i.test(e.target.tagName)) toggle();
   });
 
   // ---- playback ----
