@@ -1795,15 +1795,23 @@ export function createStartMenu({
       font:800 40px "Segoe UI",system-ui,sans-serif;color:#fff;
       text-shadow:0 2px 12px rgba(0,0,0,.55);transition:transform .16s ease,opacity .16s ease;}
     #rl-menu .item:nth-child(n+2){font-size:33px;opacity:.8;}
-    #rl-menu .item .cap{width:0;height:38px;overflow:hidden;flex:none;transition:width .18s ease;
-      background-color:#e8352b;
+    #rl-menu .item .cap{width:0;height:38px;flex:none;transition:width .18s ease;
+      transform-origin:50% 90%;background-color:#e8352b;
       -webkit-mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;
       mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;}
     #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:3px;min-width:560px;
       box-sizing:border-box;padding:16px 96px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;
       position:relative;overflow:visible;}
-    #rl-menu .item.sel .cap{width:62px;}
+    #rl-menu .item.sel .cap{width:62px;animation:rl-cap-idle 1.5s ease-in-out infinite;}
+    /* idle: the mushroom bounces with a springy squash-and-stretch while selected */
+    @keyframes rl-cap-idle{
+      0%{transform:translateY(0) scaleX(1) scaleY(1);}
+      9%{transform:translateY(0) scaleX(1.22) scaleY(.76);}   /* crouch */
+      28%{transform:translateY(-11px) scaleX(.85) scaleY(1.2);} /* spring up + stretch */
+      46%{transform:translateY(0) scaleX(1.16) scaleY(.86);}   /* land squash */
+      60%{transform:translateY(-4px) scaleX(.96) scaleY(1.05);} /* small rebound */
+      72%,100%{transform:translateY(0) scaleX(1) scaleY(1);}}  /* settle + a beat */
     /* ---- confirm sweep (Odyssey CONFIRM WIPE) when a menu item is clicked ----
        the white pill dithers to gray L->R, the label recolours to white in the
        same sweep, and the mushroom shoots off to the right, squashing as it goes */
