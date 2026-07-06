@@ -1799,10 +1799,36 @@ export function createStartMenu({
       background-color:#e8352b;
       -webkit-mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;
       mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;}
-    #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:440px;
-      box-sizing:border-box;padding:16px 84px 16px 20px;transform:rotate(-1.7deg);opacity:1;
-      text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;}
+    #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:560px;
+      box-sizing:border-box;padding:16px 96px 16px 20px;transform:rotate(-1.7deg);opacity:1;
+      text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;
+      position:relative;overflow:visible;}
     #rl-menu .item.sel .cap{width:62px;}
+    /* ---- confirm sweep (Odyssey CONFIRM WIPE) when a menu item is clicked ----
+       the white pill dithers to gray L->R, the label recolours to white in the
+       same sweep, and the mushroom shoots off to the right, squashing as it goes */
+    #rl-menu .item{position:relative;}
+    #rl-menu .item .cap,#rl-menu .item .lblwrap{position:relative;z-index:1;}
+    #rl-menu .item .lblwrap{display:inline-block;}
+    #rl-menu .item .lbl.w{position:absolute;left:0;top:0;color:#fff;visibility:hidden;
+      white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5);}
+    #rl-menu .item .wipe{position:absolute;inset:0;z-index:0;border-radius:8px;
+      background:#4f4f4f;visibility:hidden;pointer-events:none;
+      -webkit-mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;
+      mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;}
+    #rl-menu .item.confirm .wipe,#rl-menu .item.confirm .lbl.w{visibility:visible;
+      animation:rl-confirm-wipe .23s ease-out forwards;}
+    #rl-menu .item.confirm .lbl.w{
+      -webkit-mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;
+      mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;}
+    #rl-menu .item.confirm .cap{animation:rl-confirm-cap .23s cubic-bezier(.5,0,.9,.4) forwards;}
+    @keyframes rl-confirm-wipe{
+      from{-webkit-mask-position:-704px 0;mask-position:-704px 0;}
+      to{-webkit-mask-position:0 0;mask-position:0 0;}}
+    @keyframes rl-confirm-cap{
+      0%{transform:translateX(0) scale(1,1);}
+      32%{transform:translateX(16%) scaleX(1.75) scaleY(.7);}
+      100%{transform:translateX(560%) scaleX(2.6) scaleY(.46);opacity:0;}}
     /* character selector - slides up from the bottom; Player 1 on the left, Player 2
        on the right, the cabin fully visible between them (no backdrop) */
     #rl-select{position:fixed;left:0;right:0;bottom:0;z-index:55;padding:0 0 10vh;
@@ -1943,6 +1969,13 @@ export function createStartMenu({
   document.head.appendChild(style);
 
   const CAP = `<span class="cap"></span>`;
+  // one menu row: a dither-wipe layer, the mushroom, and the label (twice - a
+  // black base + a white copy the confirm sweep reveals over it, L->R)
+  const ITEM = (cls, attr, label) =>
+    `<button class="item ${cls}" type="button" ${attr}>` +
+    `<span class="wipe"></span>${CAP}` +
+    `<span class="lblwrap"><span class="lbl">${label}</span>` +
+    `<span class="lbl w" aria-hidden="true">${label}</span></span></button>`;
 
   const el = document.createElement("div");
   el.id = "rl-menu";
@@ -1950,10 +1983,10 @@ export function createStartMenu({
     <div class="brand"><img src="./assets/ui/rival-minds-logo.png" alt="Rival Minds"></div>
     <div class="panel">
       <div class="items">
-        <button class="item sel" type="button" data-go="1">${CAP}Start</button>
-        <button class="item" type="button" data-algos="1">${CAP}Algorithms</button>
-        <button class="item" type="button" data-open="1">${CAP}Characters</button>
-        <button class="item" type="button" data-howto="1">${CAP}How It Works?</button>
+        ${ITEM("sel", 'data-go="1"', "Start")}
+        ${ITEM("", 'data-algos="1"', "Algorithms")}
+        ${ITEM("", 'data-open="1"', "Characters")}
+        ${ITEM("", 'data-howto="1"', "How It Works?")}
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -3324,15 +3357,26 @@ export function createStartMenu({
       if (tok === gateTok) gateMsg.classList.remove("show");
     }, 2600);
   }
+  // play the Odyssey CONFIRM WIPE on the pill, then run the item's action. keep=
+  // true leaves it in its swept (gray) state (the Start path tears the menu down,
+  // so there's no point resetting); otherwise it resets once the sub-menu covers
+  // it, so it's clean when you come back.
+  function confirmPick(it, done, keep) {
+    it.classList.remove("confirm");
+    void it.offsetWidth; // restart the sweep if the same item is re-clicked
+    it.classList.add("confirm");
+    setTimeout(() => done && done(), 200); // fire as the sweep completes
+    if (!keep) setTimeout(() => it.classList.remove("confirm"), 520);
+  }
   for (const it of items) {
     it.addEventListener("click", () => {
       select(it);
       if (it.dataset.go) {
-        if (selectionReady()) runStart();
+        if (selectionReady()) confirmPick(it, runStart, true);
         else warnStart();
-      } else if (it.dataset.open) openSelect();
-      else if (it.dataset.howto) openHowto();
-      else if (it.dataset.algos) openAlgos();
+      } else if (it.dataset.open) confirmPick(it, openSelect);
+      else if (it.dataset.howto) confirmPick(it, openHowto);
+      else if (it.dataset.algos) confirmPick(it, openAlgos);
     });
   }
 
