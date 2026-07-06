@@ -11,10 +11,11 @@
 //   1. SPIN - the cap tumbles (frames stepped in JS) while main.js loads assets.
 //   2. LAND - finish() eases the tumble to a stop on the default frame (frame 0,
 //             cap facing front). No snap: it decelerates onto a whole rotation.
-//   3. GROW - the cap becomes a window to the scene (a cap-shaped HOLE in the
-//             white) and GROWS until the white is gone. Nothing fades. The white
-//             M badge (#capbadge, M cut out so the scene shows through it) rides
-//             on the cap as it grows. That's it.
+//   3. WIND-UP - the cap pulls back a touch (shrinks) as anticipation.
+//   4. GROW - then it SPRINTS out: the cap becomes a window to the scene (a
+//             cap-shaped HOLE in the white) that grows until the white is gone.
+//             Nothing fades. The white M badge (#capbadge, M cut out so the scene
+//             shows through it) rides on the cap as it grows.
 //
 // The hole (#loadscreen.grow) and the M badge (#capbadge) share the SAME full-cell
 // geometry + the SAME --hole (set on :root), so they're pixel-aligned and grow
@@ -23,10 +24,12 @@
 
 const N = 8; // sprite frames
 const CELL_VMIN = 42.2; // one cell width, matches #capwin / #capstrip cell
-const SPIN_MS = 55; // ms per frame while tumbling (fast = fluid)
+const SPIN_MS = 48; // ms per frame while tumbling (fast = fluid)
 const HANDOFF_HOLE = 42.2; // vmin: = one sprite cell, so the reveal == the landed sprite
+const BACK_HOLE = HANDOFF_HOLE * 0.78; // wind-up: pull back a touch before the sprint
 const FULL_HOLE = 820; // vmin: cap-hole big enough to clear any screen
-const GROW_MS = 720; // hat -> full screen
+const WINDUP_MS = 190; // the little pull-back before it grows
+const GROW_MS = 560; // sprint out to full screen
 
 const easeIn = (p) => p * p;
 const easeOut = (p) => 1 - (1 - p) * (1 - p);
@@ -56,6 +59,7 @@ export function createLoadScreen() {
   let landTo = 0;
   let landStart = 0;
   let landDur = 0;
+  let windupStart = 0;
   let growStart = 0;
 
   const showFrame = (f) => {
@@ -79,8 +83,8 @@ export function createLoadScreen() {
     setHole(HANDOFF_HOLE);
     el.classList.add("grow");
     if (badge) badge.style.opacity = "1";
-    phase = "grow";
-    growStart = now;
+    phase = "windup";
+    windupStart = now;
   };
 
   const tick = () => {
@@ -96,10 +100,18 @@ export function createLoadScreen() {
         showFrame(0); // default frame: cap facing front
         startReveal(now);
       }
+    } else if (phase === "windup") {
+      // pull back a touch (anticipation) - decelerate into the pulled-back size
+      const p = Math.min(1, (now - windupStart) / WINDUP_MS);
+      setHole(HANDOFF_HOLE + (BACK_HOLE - HANDOFF_HOLE) * easeOut(p));
+      if (p >= 1) {
+        phase = "grow";
+        growStart = now;
+      }
     } else if (phase === "grow") {
-      // the cap (a scene window) grows until the white is gone; the M rides along
+      // ...then SPRINT out until the white is gone; the M rides along
       const p = Math.min(1, (now - growStart) / GROW_MS);
-      setHole(HANDOFF_HOLE + (FULL_HOLE - HANDOFF_HOLE) * easeIn(p));
+      setHole(BACK_HOLE + (FULL_HOLE - BACK_HOLE) * easeIn(p));
       if (p >= 1) finishNow();
     }
   };
@@ -120,7 +132,7 @@ export function createLoadScreen() {
       if (to - cur < N * 0.5) to += N; // guarantee at least half a turn to land
       landFrom = cur;
       landTo = to;
-      landDur = (to - cur) * SPIN_MS * 1.7; // ease the tumble to a stop
+      landDur = (to - cur) * SPIN_MS * 1.45; // ease the tumble to a stop
       landStart = performance.now();
       phase = "land";
       return new Promise((resolve) => (resolveDone = resolve));
