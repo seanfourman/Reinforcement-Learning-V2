@@ -1799,7 +1799,7 @@ export function createStartMenu({
       background-color:#e8352b;
       -webkit-mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;
       mask:url(./assets/icons/Mushroom-Super-icon.png) no-repeat center/contain;}
-    #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:8px;min-width:560px;
+    #rl-menu .item.sel{background:#fff;color:#3a3a3a;border-radius:3px;min-width:560px;
       box-sizing:border-box;padding:16px 96px 16px 20px;transform:rotate(-1.7deg);opacity:1;
       text-shadow:none;box-shadow:0 16px 40px rgba(0,0,0,.34);font-size:44px;
       position:relative;overflow:visible;}
@@ -1812,18 +1812,21 @@ export function createStartMenu({
     #rl-menu .item .lblwrap{display:inline-block;}
     #rl-menu .item .lbl.w{position:absolute;left:0;top:0;color:#fff;visibility:hidden;
       white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5);}
-    #rl-menu .item .wipe{position:absolute;inset:0;z-index:0;border-radius:8px;
+    /* the gray bleeds 2px past the pill (overflow is visible) so no white edge is
+       left peeking around it once it's filled */
+    #rl-menu .item .wipe{position:absolute;inset:-2px;z-index:0;border-radius:4px;
       background:#4f4f4f;visibility:hidden;pointer-events:none;
-      -webkit-mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;
-      mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;}
+      -webkit-mask:url(./assets/ui/confirm-wipe.png) -768px 0 / auto repeat-y;
+      mask:url(./assets/ui/confirm-wipe.png) -768px 0 / auto repeat-y;}
     #rl-menu .item.confirm .wipe,#rl-menu .item.confirm .lbl.w{visibility:visible;
-      animation:rl-confirm-wipe .23s ease-out forwards;}
+      animation:rl-confirm-wipe .5s ease-out forwards;}
     #rl-menu .item.confirm .lbl.w{
-      -webkit-mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;
-      mask:url(./assets/ui/confirm-wipe.png) -704px 0 / auto repeat-y;}
+      -webkit-mask:url(./assets/ui/confirm-wipe.png) -768px 0 / auto repeat-y;
+      mask:url(./assets/ui/confirm-wipe.png) -768px 0 / auto repeat-y;
+      animation-delay:.06s;} /* the label sits ~90px in, so trail the gray front */
     #rl-menu .item.confirm .cap{animation:rl-confirm-cap .23s cubic-bezier(.5,0,.9,.4) forwards;}
     @keyframes rl-confirm-wipe{
-      from{-webkit-mask-position:-704px 0;mask-position:-704px 0;}
+      from{-webkit-mask-position:-768px 0;mask-position:-768px 0;}
       to{-webkit-mask-position:0 0;mask-position:0 0;}}
     @keyframes rl-confirm-cap{
       0%{transform:translateX(0) scale(1,1);}
@@ -3365,8 +3368,8 @@ export function createStartMenu({
     it.classList.remove("confirm");
     void it.offsetWidth; // restart the sweep if the same item is re-clicked
     it.classList.add("confirm");
-    setTimeout(() => done && done(), 200); // fire as the sweep completes
-    if (!keep) setTimeout(() => it.classList.remove("confirm"), 520);
+    setTimeout(() => done && done(), 360); // let the sweep read, then fire
+    if (!keep) setTimeout(() => it.classList.remove("confirm"), 760);
   }
   for (const it of items) {
     it.addEventListener("click", () => {
