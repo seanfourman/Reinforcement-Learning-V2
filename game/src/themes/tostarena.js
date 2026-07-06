@@ -607,7 +607,7 @@ export const tostarena = {
       left: { x: -28.5, z: -1.5, ry: -2.97, y: -6 }, // west-side backdrop
       right: { x: 9, z: 2.5, ry: 0 },
       // a DUPLICATE of the left wing filling the empty north end
-      top: { x: 16.5, z: -27, ry: 0, y: 0, half: "left" },
+      top: { x: 16.5, z: -27, ry: 0, y: -0.35, half: "left" },
     };
     // keep only this wing's triangles of one geometry; null = nothing left.
     // Tests geometry-space x directly: OBJ meshes sit at identity transforms,
