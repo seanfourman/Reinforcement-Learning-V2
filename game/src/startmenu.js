@@ -2333,6 +2333,14 @@ export function createStartMenu({
     #rl-howto .hw-ph{display:grid;place-items:center;width:300px;height:118px;box-sizing:border-box;
       border:3px dashed rgba(0,0,0,.3);border-radius:16px;background:rgba(0,0,0,.035);
       color:rgba(0,0,0,.42);font-weight:800;font-size:15px;letter-spacing:2px;text-transform:uppercase;}
+    /* "Face off" stage: the 4 round boards fanned in a stack - R2 + R3 prominent in
+       front, R1 + R4 dimmed behind the top corners (art in game/assets/arenas/) */
+    #rl-howto .hw-arenas{position:absolute;inset:0;pointer-events:none;}
+    #rl-howto .hw-arenas .ar{position:absolute;left:50%;top:50%;width:33%;border-radius:5px;transform-origin:center;}
+    #rl-howto .hw-arenas .a1{transform:translate(-116%,-62%) rotate(-15deg) scale(.64);z-index:1;filter:brightness(.63) drop-shadow(0 4px 7px rgba(0,0,0,.5));}
+    #rl-howto .hw-arenas .a4{transform:translate(16%,-62%) rotate(15deg) scale(.64);z-index:2;filter:brightness(.63) drop-shadow(0 4px 7px rgba(0,0,0,.5));}
+    #rl-howto .hw-arenas .a3{transform:translate(-72%,-44%) rotate(-6deg) scale(1);z-index:3;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45));}
+    #rl-howto .hw-arenas .a2{transform:translate(-28%,-42%) rotate(6deg) scale(1.04);z-index:4;filter:drop-shadow(0 9px 14px rgba(0,0,0,.45));}
     #rl-scr-back{position:fixed;left:1.5vw;bottom:3vh;z-index:63;display:flex;align-items:center;
       gap:11px;cursor:pointer;color:#fff;pointer-events:none;
       transform:translateY(220%);transition:transform .45s cubic-bezier(.4,0,.2,1);}
@@ -3107,6 +3115,14 @@ export function createStartMenu({
   // TEMP: placeholder for the face-off + champion visuals (real designs coming later;
   // hwArena / hwPodium above are kept for when we wire the real thing back in)
   const hwPlaceholder = `<div class="hw-ph">Placeholder</div>`;
+  // the "Face off" visual: the 4 round boards fanned in a stack (R2 + R3 in front)
+  const hwArenaStack =
+    `<div class="hw-arenas">` +
+    `<img class="ar a1" src="./assets/arenas/arena-round1.png" alt="Peach's Castle board">` +
+    `<img class="ar a4" src="./assets/arenas/arena-round4.png" alt="Ruined Kingdom arena">` +
+    `<img class="ar a3" src="./assets/arenas/arena-round3.png" alt="Fossil Falls board">` +
+    `<img class="ar a2" src="./assets/arenas/arena-round2.png" alt="New Donk City board">` +
+    `</div>`;
 
   const HOWTO_PAGES = [
     { frac: "1/4", title: "Build your team",
@@ -3117,7 +3133,7 @@ export function createStartMenu({
       stage: hwAnno("tl", "Climb the roster") + hwLadder + hwAnno("tr", "Tougher each time") },
     { frac: "3/4", title: "Face off",
       para: "Now the duel: your algorithm and the rival's tackle the very same map at once, one Red and one Blue, a fair head-to-head test of who learned better.",
-      stage: hwPlaceholder },
+      stage: hwArenaStack },
     { frac: "4/4", title: "Take the crown",
       para: "Out-score your rival (faster, safer, higher reward) to take the round. Win the most rounds across the bracket to be crowned champion of Rival Minds.",
       stage: hwPlaceholder },
