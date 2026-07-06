@@ -98,7 +98,7 @@ const STYLE = `
 .fb-side.red .fb-dots i.on{background:radial-gradient(circle at 35% 30%,#ff8d80,#d8392c);}
 /* bottom-left key hints (what to press) - a ROW; smaller badges than the menu's
    ESC/Back, with a lighter shadow */
-#rl-keys{position:fixed;left:1.5vw;bottom:3vh;z-index:7;display:flex;flex-direction:row;align-items:center;
+#rl-keys{position:fixed;left:0.8vw;bottom:1.5vh;z-index:7;display:flex;flex-direction:row;align-items:center;
   gap:22px;color:#fff;pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;}
 #rl-keys .kh{display:flex;align-items:center;gap:9px;}
 #rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
