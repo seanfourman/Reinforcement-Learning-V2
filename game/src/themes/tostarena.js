@@ -572,6 +572,7 @@ export const tostarena = {
       const REMOVED = [
         [21.8, 11.9],
         [3.5, -2.3],
+        [6.1, 22.2],
       ];
       if (REMOVED.some(([rx, rz]) => Math.hypot(sx - rx, sz - rz) < 1.5))
         continue;
@@ -935,11 +936,16 @@ export const tostarena = {
       if (cyc < CROSS) {
         const p = cyc / CROSS; // 0..1 across the desert, west -> east
         const pass = Math.floor(t / CYCLE); // which crossing this is
-        const x = -9 + (A + 18) * p;
-        const z = C + (hashFloat(pass, 1, 951) - 0.5) * (A + 6);
-        const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.7;
+        // start + end well OFF-SCREEN so it rolls IN from outside and exits
+        // outside - never popping into existence mid-frame
+        const x = -16 + (A + 32) * p;
+        // stay in the OPEN foreground (south strip in front of the board) - no
+        // buildings there, so it never rolls through a wall
+        const z = A + 2.5 + hashFloat(pass, 1, 951) * 6;
+        // sits low on the sand, with only small bounces
+        const hop = Math.abs(Math.sin(p * 6.5 * Math.PI)) * 0.45;
         tumble.visible = true;
-        tumble.position.set(x, TUMBLE_R + hop, z);
+        tumble.position.set(x, TUMBLE_R * 0.6 + hop, z);
         tumble.rotation.z -= dt * 6.5; // forward roll
         tumble.rotation.x += dt * 2.4; // wobble
       } else {
