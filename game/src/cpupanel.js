@@ -29,6 +29,14 @@ const STYLE = `
 #rl-cpanel .hdr .myalgo{margin-top:11px;}
 #rl-cpanel .hdr .myalgo b{display:block;font-size:21px;font-weight:800;color:#d4141f;letter-spacing:-.3px;line-height:1.15;}
 #rl-cpanel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:4px;}
+/* the lock toggle: a small rounded button top-right of the header (red when unlocked) */
+#rl-cpanel .hdr .lockbtn{position:absolute;top:13px;right:14px;width:34px;height:34px;padding:0;
+  display:grid;place-items:center;border:1px solid #d7dade;border-radius:10px;background:#fff;
+  color:#8a8d94;cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
+#rl-cpanel .hdr .lockbtn:hover{background:#f0f1f3;color:#54565c;border-color:#c4c8ce;}
+#rl-cpanel .hdr .lockbtn.locked{background:#d4141f;border-color:#b8101a;color:#fff;}
+#rl-cpanel .hdr .lockbtn.locked:hover{background:#b8101a;color:#fff;}
+#rl-cpanel .hdr .lockbtn svg{width:18px;height:18px;display:block;}
 #rl-cpanel section{margin:11px 11px;padding:13px 14px;background:#fff;border:1px solid #e6e8ec;border-radius:13px;box-shadow:0 1px 2px rgba(20,20,30,.04);}
 #rl-cpanel h2{margin:0 0 12px;font-size:10.5px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;}
 #rl-cpanel button{width:100%;padding:9px 6px;border:1px solid #d7dade;border-radius:9px;background:#fff;color:#26272b;
@@ -54,8 +62,6 @@ const STYLE = `
 #rl-cpanel input[type=range]:disabled::-webkit-slider-thumb{background:#eef0f3;cursor:default;}
 #rl-cpanel input[type=range]:disabled::-moz-range-thumb{background:#eef0f3;cursor:default;}
 #rl-cpanel .note{font-size:10.5px;color:#a2a5ac;margin:11px 0 0;line-height:1.45;}
-#rl-cpanel .lockrow{margin:0;}
-#rl-cpanel .lockrow.on{}
 #rl-cpanel .stat{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0;border-bottom:1px solid #f0f1f3;}
 #rl-cpanel .stat:last-child{border-bottom:0;}
 #rl-cpanel .stat>span{color:#54565c;}
@@ -89,19 +95,19 @@ export function initCpuPanel() {
         value="${p.min}" style="--fill:${fillOf(p.key)}" disabled>
     </div>`;
 
+  // lock icons for the header toggle (closed = locked, open = editable)
+  const LOCK_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
+  const LOCK_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 7.8-1.1"/></svg>';
+
   const panel = document.createElement('div');
   panel.id = 'rl-cpanel';
   panel.innerHTML = `
     <div class="hdr">
+      <button id="rl-cp-unlock" class="lockbtn locked" type="button" title="Unlock to edit the CPU's values" aria-label="Unlock to edit">${LOCK_CLOSED}</button>
       <h1>CPU Control</h1>
       <p class="sub" id="rl-cp-char">Opponent · read-only</p>
       <div class="myalgo"><b id="rl-cp-algo">-</b><em id="rl-cp-tier"></em></div>
     </div>
-    <section class="lockrow">
-      <button id="rl-cp-unlock">🔓 Unlock to edit</button>
-      <p class="note">The CPU's values are locked. Unlock to override them; the override lasts
-        until the chosen CPU character (tier) changes.</p>
-    </section>
     <section>
       <h2>Hyperparameters</h2>
       <div class="plegend">
@@ -168,8 +174,9 @@ export function initCpuPanel() {
   const setUnlocked = (on) => {
     unlocked = on;
     panel.querySelectorAll('.ctl input[type=range]').forEach((el) => { el.disabled = !on; });
-    unlockBtn.textContent = on ? '🔒 Lock' : '🔓 Unlock to edit';
-    unlockBtn.classList.toggle('primary', on);
+    unlockBtn.innerHTML = on ? LOCK_OPEN : LOCK_CLOSED;
+    unlockBtn.classList.toggle('locked', !on);
+    unlockBtn.title = on ? "Lock the CPU's values" : "Unlock to edit the CPU's values";
   };
   unlockBtn.addEventListener('click', () => setUnlocked(!unlocked));
 
