@@ -1,4 +1,8 @@
-docs/
-levels/
-characters/
+# Source-asset rips at the REPO ROOT only (huge, not needed to run the game -
+# the subsets the game actually uses are vendored into game/assets/). The
+# leading slash anchors these to the root so they do NOT also ignore nested
+# folders like game/assets/models/characters/ (which IS needed at runtime).
+/docs/
+/levels/
+/characters/
 .DS_Store
