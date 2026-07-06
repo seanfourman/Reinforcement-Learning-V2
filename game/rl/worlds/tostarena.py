@@ -9,7 +9,7 @@ never used for this round.
 
 THEME = "tostarena"
 ROUND_ID = 5
-TITLE = "Tostarena"
+TITLE = "Dry Dry Desert"
 CONTINUOUS = True
 
 

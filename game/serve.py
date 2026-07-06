@@ -157,11 +157,27 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "algoRed": match.algo_red, "algoBlue": match.algo_blue}
 
 
+class Server(http.server.ThreadingHTTPServer):
+    """ThreadingHTTPServer that ignores the client hanging up mid-response.
+
+    The browser polls /api/snapshot ~30x/s and fires control POSTs on keypress;
+    when it refreshes, navigates away, or cancels an in-flight request the socket
+    is torn down while we're still writing the reply, so wfile.write raises
+    ConnectionAbortedError / ConnectionResetError / BrokenPipeError (WinError
+    10053 / 10054). That is normal and harmless - swallow it instead of printing
+    a full traceback for every dropped request. Real errors still surface."""
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], ConnectionError):
+            return
+        super().handle_error(request, client_address)
+
+
 def main():
     httpd = None
     for port in range(8008, 8028):          # 8000-8007 are left for other apps
         try:
-            httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            httpd = Server(("127.0.0.1", port), Handler)
             break
         except OSError:
             continue

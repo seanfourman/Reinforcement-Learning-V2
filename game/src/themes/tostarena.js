@@ -32,7 +32,7 @@ function hash(a, b) {
 
 export const tostarena = {
   name: "tostarena",
-  title: "Tostarena",
+  title: "Dry Dry Desert",
   subtitle: "Desert Sunset Rally",
   // GOLDEN HOUR: a dusk-indigo zenith burning down into a low orange sun and a
   // gold horizon, the whole desert bathed warm
