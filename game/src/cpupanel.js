@@ -31,7 +31,7 @@ const STYLE = `
 #rl-cpanel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:4px;}
 /* the lock toggle: a small rounded button top-right of the header (red when unlocked) */
 #rl-cpanel .hdr .lockbtn{position:absolute;top:13px;right:14px;width:34px;height:34px;padding:0;
-  display:grid;place-items:center;border:1px solid #d7dade;border-radius:10px;background:#fff;
+  display:grid;place-items:center;border:1px solid #d7dade;border-radius:50%;background:#fff;
   color:#8a8d94;cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
 #rl-cpanel .hdr .lockbtn:hover{background:#f0f1f3;color:#54565c;border-color:#c4c8ce;}
 #rl-cpanel .hdr .lockbtn.locked{background:#d4141f;border-color:#b8101a;color:#fff;}
