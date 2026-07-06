@@ -25,7 +25,7 @@
 
 const N = 8; // sprite frames
 const CELL_VMIN = 42.2; // one cell width, matches #capwin / #capstrip cell
-const SPIN_MS = 48; // ms per frame while tumbling (fast = fluid)
+const SPIN_MS = 80; // ms per frame while tumbling (higher = slower spin)
 const HANDOFF_HOLE = 42.2; // vmin: = one sprite cell, so the reveal == the landed sprite
 const BACK_HOLE = HANDOFF_HOLE * 0.45; // wind-up: pull back before the sprint
 const FULL_HOLE = 820; // vmin: cap-hole big enough to clear any screen
