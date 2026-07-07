@@ -146,6 +146,7 @@ function applyTheme(theme) {
   renderer.toneMappingExposure = theme.exposure;
   applyEnv(theme); // HDRI image-based lighting/skybox, or clears it
   fx.setBloom(theme.bloom); // per-theme glow (undefined -> default bloom)
+  heatmap.setFlip(!!(theme.camera && theme.camera.flip)); // peach reads the board flipped
 }
 
 // ------------------------------------------------------------------ world + actors
@@ -433,7 +434,7 @@ async function poll() {
     applyStats(snap);
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
-      const m = heatMode === "value" ? "q" : "visits";
+      const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
       const v = await (
         await fetch(`${API}/api/values?agent=${heatAgent}&mode=${m}`, {
           cache: "no-store",
@@ -441,6 +442,7 @@ async function poll() {
       ).json();
       if (v.grid) {
         if (heatMode === "value") heatmap.setNumbers(v.grid);
+        else if (heatMode === "policy") heatmap.setPolicy(v.grid);
         else heatmap.setGrid(v.grid);
       }
     }
@@ -496,7 +498,7 @@ window.RL = {
     heatAgent = agent;
     heatMode = mode || "value";
     if (!agent) heatmap.hide();
-    else if (heatMode === "value") heatmap.showNumbers();
+    else if (heatMode === "value" || heatMode === "policy") heatmap.showNumbers();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)
     window.dispatchEvent(

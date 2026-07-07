@@ -183,7 +183,16 @@ const STYLE = `
 #rl-panel .bar{height:10px;border-radius:6px;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
 #rl-panel .bar i{display:block;height:100%;transition:width .3s;}
 #rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#c6c9cf;}
+#rl-panel .bar .t{background:#8a8d94;}
 #rl-panel .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
+/* action-distribution rows: a label + a Red mini-bar over a Blue mini-bar */
+#rl-panel .actlist{display:flex;flex-direction:column;gap:8px;}
+#rl-panel .actrow{display:flex;align-items:center;gap:9px;}
+#rl-panel .actrow .al{width:34px;flex:none;font-size:11.5px;font-weight:700;color:#54565c;}
+#rl-panel .actrow .ab{flex:1;height:7px;border-radius:4px;background:#eceef1;overflow:hidden;position:relative;}
+#rl-panel .actrow .ab+.ab{margin-top:0;}
+#rl-panel .actrow .ab i{display:block;height:100%;transition:width .3s;}
+#rl-panel .actrow .ab i.r{background:#e60012;} #rl-panel .actrow .ab i.b{background:#1f5fd0;}
 
 /* segmented control (value-map mode) */
 #rl-panel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
@@ -295,6 +304,7 @@ export function initPanel() {
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
         <button id="rl-h-value">Value</button>
+        <button id="rl-h-policy">Policy</button>
         <button id="rl-h-visits">Visits</button>
       </div>
       <p class="hint">Value: each tile shows its Q for N / S / W / E, greedy action in blue (a blue
@@ -327,7 +337,9 @@ export function initPanel() {
   };
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyN' && !/input|select|textarea/i.test(e.target.tagName)) toggle();
+    if (e.code !== 'KeyN' || /input|select|textarea/i.test(e.target.tagName)) return;
+    if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
+    toggle();
   });
   // ---- fullscreen dashboard: expand the panel to fill the screen + reflow to a grid
   const fullBtn = $('#rl-full');
@@ -397,7 +409,7 @@ export function initPanel() {
 
   // ---- value-map mode ----
   // value map: this panel always shows OUR model (Blue), modes Off / Value / Visits
-  const hbtns = { off: $('#rl-h-off'), value: $('#rl-h-value'), visits: $('#rl-h-visits') };
+  const hbtns = { off: $('#rl-h-off'), value: $('#rl-h-value'), policy: $('#rl-h-policy'), visits: $('#rl-h-visits') };
   const setMode = (m) => {
     for (const k in hbtns) hbtns[k].classList.toggle('active', k === m);
     if (m === 'off') { window.RL.setHeatmap(null); $('#rl-qinspect').innerHTML = ''; }
@@ -405,6 +417,7 @@ export function initPanel() {
   };
   hbtns.off.addEventListener('click', () => setMode('off'));
   hbtns.value.addEventListener('click', () => setMode('value'));
+  hbtns.policy.addEventListener('click', () => setMode('policy'));
   hbtns.visits.addEventListener('click', () => setMode('visits'));
   // one shared overlay: if the CPU panel grabs it, fall back to Off here
   window.addEventListener('rl-heatmap', (e) => {

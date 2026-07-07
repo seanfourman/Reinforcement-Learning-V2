@@ -301,8 +301,122 @@ export function initDP(parent) {
   refresh();
 }
 
+const RED = '#e60012', BLUE = '#1f5fd0';
+
+// dual Red-vs-Blue learning curves for the main panel (Red used to only appear on
+// the separate CPU panel; here both models share the axes)
+function dualCharts() {
+  return [
+    { id: 'd-return', title: 'Episode return', legend: [[RED, 'Red'], [BLUE, 'Blue']],
+      series: [{ key: 'retRed', color: RED }, { key: 'retBlue', color: BLUE }], fmt: (v) => v.toFixed(1) },
+    { id: 'd-rate', title: 'Win rate · recent', legend: [[RED, 'Red'], [BLUE, 'Blue']],
+      series: [{ key: 'rateRed', color: RED }, { key: 'rateBlue', color: BLUE }], min: 0, max: 1, fmt: (v) => v.toFixed(1) },
+    { id: 'd-eps', title: 'Exploration ε', legend: [[RED, 'Red'], [BLUE, 'Blue']],
+      series: [{ key: 'redEps', color: RED }, { key: 'eps', color: BLUE }], min: 0, max: 1, fmt: (v) => v.toFixed(2) },
+    { id: 'd-len', title: 'Episode length', legend: [['#1f9d63', 'steps']],
+      series: [{ key: 'len', color: '#1f9d63' }], fmt: (v) => v.toFixed(0) },
+    { id: 'd-td', title: 'Learning signal · |TD error| / DQN loss', legend: [[RED, 'Red'], [BLUE, 'Blue']],
+      series: [{ key: 'tdRed', color: RED }, { key: 'tdBlue', color: BLUE }], fmt: (v) => v.toFixed(3) },
+  ];
+}
+
+export function initCurvesDual(parent) {
+  const CH = dualCharts();
+  parent.insertAdjacentHTML('beforeend',
+    `<section><h2>Learning curves · Red vs Blue</h2>${CH.map(chartBlock).join('')}</section>`);
+  const charts = CH.map((c) => makeChart(parent.querySelector(`#rl-ch-${c.id}`), c));
+  window.addEventListener('resize', () => charts.forEach((c) => c.resize()));
+  async function refresh() {
+    try {
+      const h = await (await fetch('/api/history', { cache: 'no-store' })).json();
+      charts.forEach((c) => c.draw(h.points));
+    } catch (e) { /* warming up */ }
+  }
+  setInterval(refresh, 1000);
+  refresh();
+}
+
+// outcome breakdown + action distribution + (DQN-only) function-approximation
+// diagnostics. Live readouts come from the 'rl-snapshot' stats; the two DQN charts
+// poll /api/history. The DQN card hides itself on non-DQN rounds.
+export function initDiag(parent) {
+  parent.insertAdjacentHTML('beforeend', `
+    <section>
+      <h2>Outcome breakdown</h2>
+      <div class="bar" style="margin-bottom:11px;"><i class="r" id="rl-oc-r"></i><i class="b" id="rl-oc-b"></i><i class="d" id="rl-oc-d"></i><i class="t" id="rl-oc-t"></i></div>
+      <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-oc-rv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-oc-bv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-oc-dv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#8a8d94"></i>Timeouts</span><b id="rl-oc-tv">0</b></div>
+    </section>
+    <section>
+      <h2>Action distribution</h2>
+      <div id="rl-act-body" class="actlist"><p class="hint">Waiting for steps...</p></div>
+    </section>
+    <section id="rl-dqn" hidden>
+      <h2>DQN diagnostics</h2>
+      <div class="stat"><span>Replay buffer</span><b id="rl-dqn-buf">-</b></div>
+      <div class="bar" style="margin:7px 0 11px;"><i class="b" id="rl-dqn-bufbar"></i></div>
+      <div class="stat"><span>Train steps</span><b id="rl-dqn-ts">-</b></div>
+      <div class="stat"><span>Target syncs</span><b id="rl-dqn-sync">-</b></div>
+      <div class="stat"><span>Adam lr</span><b id="rl-dqn-lr">-</b></div>
+      <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Gradient norm (pre-clip)</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-gnorm"></canvas></div>
+      <div class="chart"><div class="ct"><h3>Predicted Q · overestimation</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-predq"></canvas></div>
+    </section>`);
+  const q = (s) => parent.querySelector(s);
+  const dqnSec = q('#rl-dqn');
+  const chGnorm = makeChart(q('#rl-ch-gnorm'), { series: [{ key: 'gnormRed', color: RED }, { key: 'gnormBlue', color: BLUE }], fmt: (v) => v.toFixed(2) });
+  const chPredQ = makeChart(q('#rl-ch-predq'), { series: [{ key: 'predQRed', color: RED }, { key: 'predQBlue', color: BLUE }], fmt: (v) => v.toFixed(2) });
+  window.addEventListener('resize', () => { chGnorm.resize(); chPredQ.resize(); });
+  const pct = (x) => (100 * x).toFixed(1) + '%';
+
+  window.addEventListener('rl-snapshot', (e) => {
+    const s = e.detail && e.detail.stats; if (!s) return;
+    const o = s.outcomes || {};
+    const tot = (o.red || 0) + (o.blue || 0) + (o.draw || 0) + (o.timeout || 0) || 1;
+    q('#rl-oc-r').style.width = pct((o.red || 0) / tot);
+    q('#rl-oc-b').style.width = pct((o.blue || 0) / tot);
+    q('#rl-oc-d').style.width = pct((o.draw || 0) / tot);
+    q('#rl-oc-t').style.width = pct((o.timeout || 0) / tot);
+    q('#rl-oc-rv').textContent = (o.red || 0).toLocaleString();
+    q('#rl-oc-bv').textContent = (o.blue || 0).toLocaleString();
+    q('#rl-oc-dv').textContent = (o.draw || 0).toLocaleString();
+    q('#rl-oc-tv').textContent = (o.timeout || 0).toLocaleString();
+
+    const ad = s.actionDist;
+    if (ad && ad.labels) {
+      q('#rl-act-body').innerHTML = ad.labels.map((lb, i) =>
+        `<div class="actrow"><span class="al">${lb}</span>` +
+        `<span class="ab"><i class="r" style="width:${pct(ad.red[i] || 0)}"></i></span>` +
+        `<span class="ab"><i class="b" style="width:${pct(ad.blue[i] || 0)}"></i></span></div>`).join('');
+    }
+
+    const d = s.diag && s.diag.blue;
+    if (d && d.isDQN) {
+      dqnSec.hidden = false;
+      q('#rl-dqn-buf').textContent = `${d.bufferSize.toLocaleString()} / ${d.bufferCap.toLocaleString()}${d.warmupDone ? '' : ' · warming up'}`;
+      q('#rl-dqn-bufbar').style.width = pct(d.bufferFill);
+      q('#rl-dqn-ts').textContent = d.trainSteps.toLocaleString();
+      q('#rl-dqn-sync').textContent = `${d.syncCount} · next in ${d.stepsToSync}`;
+      q('#rl-dqn-lr').textContent = d.lr;
+    } else {
+      dqnSec.hidden = true;
+    }
+  });
+  async function refresh() {
+    if (dqnSec.hidden) return;
+    try {
+      const h = await (await fetch('/api/history', { cache: 'no-store' })).json();
+      chGnorm.draw(h.points); chPredQ.draw(h.points);
+    } catch (e) { /* warming up */ }
+  }
+  setInterval(refresh, 1500);
+  refresh();
+}
+
 export function initGraphs(parent) {
-  initCurves(parent, 'blue');
-  initDP(parent);
-  initReplay(parent);
+  initCurvesDual(parent);   // dual Red-vs-Blue curves + learning signal
+  initDP(parent);           // DP convergence (Round 1)
+  initDiag(parent);         // outcome breakdown + action distribution + DQN diagnostics
+  initReplay(parent);       // top-30 replay browser
 }

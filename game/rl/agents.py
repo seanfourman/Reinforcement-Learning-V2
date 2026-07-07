@@ -33,6 +33,7 @@ class Tabular:
         self.epsilon = 1.0
         self.rng = random.Random(seed)
         self.Q = {}
+        self.td_ema = 0.0            # smoothed |TD error|, the learning signal
 
     # ------------------------------------------------------------------ tables
     def row(self, state):
@@ -78,9 +79,18 @@ class Tabular:
     def set_epsilon(self, eps):
         self.epsilon = eps
 
+    # the TD error target-Q(s,a) is the signal the update chases; smooth |it| so
+    # the panel can chart the learning signal shrinking toward convergence.
+    def _record_td(self, td):
+        self.td_ema = 0.98 * self.td_ema + 0.02 * abs(td)
+
+    def td_error(self):
+        return self.td_ema
+
     def reset_learning(self):
         self.Q = {}
         self.epsilon = 1.0
+        self.td_ema = 0.0
 
     # ------------------------------------------------------------------ hooks
     def learn_step(self, s, a, r, ns, na, done):
@@ -96,7 +106,9 @@ class QLearning(Tabular):
     def learn_step(self, s, a, r, ns, na, done):
         row = self.row(s)
         target = r if done else r + self.gamma * max(self.row(ns))
-        row[a] += self.alpha * (target - row[a])
+        td = target - row[a]
+        row[a] += self.alpha * td
+        self._record_td(td)
 
 
 class Sarsa(Tabular):
@@ -105,7 +117,9 @@ class Sarsa(Tabular):
     def learn_step(self, s, a, r, ns, na, done):
         row = self.row(s)
         target = r if done else r + self.gamma * self.row(ns)[na]
-        row[a] += self.alpha * (target - row[a])
+        td = target - row[a]
+        row[a] += self.alpha * td
+        self._record_td(td)
 
 
 class ExpectedSarsa(Tabular):
@@ -123,7 +137,9 @@ class ExpectedSarsa(Tabular):
     def learn_step(self, s, a, r, ns, na, done):
         row = self.row(s)
         target = r if done else r + self.gamma * self._expected(ns)
-        row[a] += self.alpha * (target - row[a])
+        td = target - row[a]
+        row[a] += self.alpha * td
+        self._record_td(td)
 
 
 class MonteCarlo(Tabular):
@@ -143,7 +159,9 @@ class MonteCarlo(Tabular):
         for s, a, r in reversed(self._episode):
             G = r + self.gamma * G
             row = self.row(s)
-            row[a] += self.alpha * (G - row[a])
+            td = G - row[a]
+            row[a] += self.alpha * td
+            self._record_td(td)
         self._episode = []
 
     def reset_learning(self):

@@ -13,6 +13,7 @@ whichever side leads its recent contest when you advance; round wins accumulate
 into the tournament ``score`` shown in the HUD.
 """
 
+import math
 import threading
 from collections import deque
 
@@ -146,6 +147,13 @@ class Match:
         # per-cell visit counts per side (the "where do they travel" heatmap)
         self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
         self.blue_visits = [[0] * self.env.W for _ in range(self.env.H)]
+        # outcome breakdown: split the old "draw" bucket into a genuine dead-heat
+        # vs a max-steps timeout (which used to be conflated)
+        self.outcomes = {"red": 0, "blue": 0, "draw": 0, "timeout": 0}
+        self.recent_out = deque(maxlen=200)
+        # action-frequency histogram per side (sized to the current env's actions)
+        self.act_counts = {"red": [0] * self.env.n_actions,
+                           "blue": [0] * self.env.n_actions}
 
     def _apply_epsilon(self):
         # each side follows its own schedule, but a DP planner ignores epsilon and
@@ -185,6 +193,10 @@ class Match:
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
             self.total_steps += 1
+            if self.a_red < len(self.act_counts["red"]):
+                self.act_counts["red"][self.a_red] += 1
+            if self.a_blue < len(self.act_counts["blue"]):
+                self.act_counts["blue"][self.a_blue] += 1
             if self.env.objective != "arena":   # arena positions are floats, not cells
                 for pos, vis in ((self.env.red_pos, self.red_visits),
                                  (self.env.blue_pos, self.blue_visits)):
@@ -202,6 +214,11 @@ class Match:
                 w = info["winner"] or "draw"
                 self.wins[w] += 1
                 self.recent.append(w)
+                # a None winner is a genuine draw only if the episode ended naturally;
+                # a max-steps cutoff (truncated) is a timeout, not a dead-heat
+                out = info["winner"] if info["winner"] in ("red", "blue") else ("timeout" if truncated else "draw")
+                self.outcomes[out] += 1
+                self.recent_out.append(out)
                 self.ep_lengths.append(self.env.steps)
                 self.last_return = dict(self.ep_return)
                 self.episode += 1
@@ -234,6 +251,12 @@ class Match:
             "rateBlue": round(recent.count("blue") / n, 3),
             "retRed": round(self.last_return["red"], 3),
             "retBlue": round(self.last_return["blue"], 3),
+            "tdRed": round(self._learn_signal("red"), 4),
+            "tdBlue": round(self._learn_signal("blue"), 4),
+            "gnormRed": round(self._dqn_field("red", "gradNorm"), 3),
+            "gnormBlue": round(self._dqn_field("blue", "gradNorm"), 3),
+            "predQRed": round(self._dqn_field("red", "predQ"), 3),
+            "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
         })
 
     # --------------------------------------------------------------- controls
@@ -438,6 +461,12 @@ class Match:
                 "redEpsilon": round(self.red_epsilon, 3),
                 "targetEpisodes": self.target_episodes or 0,
                 "cpuTier": self.red_tier,
+                "outcomes": dict(self.outcomes),
+                "recentOutcome": self._recent_outcome(),
+                "actionDist": self.action_dist(),
+                "learnSignal": {"red": round(self._learn_signal("red"), 4),
+                                "blue": round(self._learn_signal("blue"), 4)},
+                "diag": {"red": self._diag("red"), "blue": self._diag("blue")},
             }
 
     def snapshot(self, include_world=False):
@@ -499,6 +528,71 @@ class Match:
 
     def _agent(self, agent):
         return self.red if agent == "red" else self.blue
+
+    # ---- diagnostics helpers (Tier 1) -----------------------------------
+    def _learn_signal(self, side):
+        """The learning signal to chart: smoothed |TD error| for tabular agents,
+        the Huber loss for DQN (its td_error() returns the loss), 0 for DP."""
+        f = getattr(self._agent(side), "td_error", None)
+        return f() if f else 0.0
+
+    def _dqn_field(self, side, key):
+        d = getattr(self._agent(side), "diag", None)
+        return d()[key] if d else 0.0
+
+    def _diag(self, side):
+        d = getattr(self._agent(side), "diag", None)
+        return d() if d else None
+
+    def _recent_outcome(self):
+        ro = list(self.recent_out)
+        n = len(ro) or 1
+        return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
+
+    def _action_labels(self):
+        return ["N", "S", "W", "E", "Use"] if self.env.n_actions == 5 \
+            else [str(i) for i in range(self.env.n_actions)]
+
+    def action_dist(self):
+        """Normalized action-frequency histogram per side (is the policy balanced?)."""
+        out = {"nActions": self.env.n_actions, "labels": self._action_labels()}
+        for side in ("red", "blue"):
+            c = self.act_counts[side]
+            tot = sum(c) or 1
+            out[side] = [round(x / tot, 4) for x in c]
+        return out
+
+    def policy_grid(self, agent):
+        """Per-cell GREEDY action (argmax_a Q) for the policy-arrow overlay."""
+        with self.lock:
+            if self.env.objective == "arena":
+                return self._blank_grid(agent, mode="policy")
+            a = self._agent(agent)
+            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
+            grid = [[None] * self.env.W for _ in range(self.env.H)]
+            for (r, c), idx in self.env.cell_index.items():
+                state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
+                if a.state_value(state) is None:
+                    continue
+                q = a.q_values(state)
+                grid[r][c] = q.index(max(q))
+            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "policy"}
+
+    def visit_stats(self, agent):
+        """Board coverage / unique cells / visitation entropy (exploration breadth)."""
+        with self.lock:
+            if self.env.objective == "arena":
+                return {"agent": agent, "coverage": 0.0, "unique": 0,
+                        "entropy": 0.0, "maxVisits": 0, "floor": 0}
+            vis = self.red_visits if agent == "red" else self.blue_visits
+            floor = list(self.env.floor_cells)
+            counts = [vis[r][c] for (r, c) in floor]
+            total = sum(counts) or 1
+            uniq = sum(1 for x in counts if x > 0)
+            ent = -sum((x / total) * math.log2(x / total) for x in counts if x > 0)
+            return {"agent": agent, "coverage": round(uniq / len(floor), 3) if floor else 0.0,
+                    "unique": uniq, "entropy": round(ent, 3),
+                    "maxVisits": max(counts) if counts else 0, "floor": len(floor)}
 
     def _blank_grid(self, agent, mode=None):
         """Empty H x W grid - the arena round has no cells, so the grid overlays

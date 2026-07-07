@@ -107,7 +107,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(match.visit_grid(agent))
             if mode == "q":
                 return self._json(match.q_grid(agent))
+            if mode == "policy":
+                return self._json(match.policy_grid(agent))
             return self._json(match.value_grid(agent))
+        if route == "/api/vstats":
+            return self._json(match.visit_stats(q.get("agent", ["red"])[0]))
         if route == "/api/history":
             return self._json(match.history())
         if route == "/api/replay":

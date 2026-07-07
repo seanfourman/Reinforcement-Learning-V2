@@ -90,6 +90,11 @@ class DQNAgent:
         self.warmup = warmup
         self.target_sync = target_sync
         self.train_steps = 0
+        # --- live training diagnostics (surfaced to the dashboard) ---
+        self.loss_ema = 0.0         # smoothed Huber TD loss
+        self.grad_ema = 0.0         # smoothed pre-clip gradient L2 norm
+        self.q_pred_ema = 0.0       # smoothed mean predicted max-Q (overestimation)
+        self.sync_count = 0
 
     # alpha (panel "learning rate") maps onto the Adam lr; keep the attribute so
     # the match loop's `agent.alpha = ...` just works and retunes the optimizer.
@@ -144,6 +149,10 @@ class DQNAgent:
         self.buf.clear()
         self.train_steps = 0
         self.epsilon = 1.0
+        self.loss_ema = 0.0
+        self.grad_ema = 0.0
+        self.q_pred_ema = 0.0
+        self.sync_count = 0
 
     # ------------------------------------------------------------- learning
     def learn_step(self, s, a, r, ns, na, done):
@@ -169,12 +178,57 @@ class DQNAgent:
         loss = nn.functional.smooth_l1_loss(q_sa, target)
         self.opt.zero_grad()
         loss.backward()
-        nn.utils.clip_grad_norm_(self.q.parameters(), 10.0)
+        gnorm = nn.utils.clip_grad_norm_(self.q.parameters(), 10.0)  # returns pre-clip norm
         self.opt.step()
 
         self.train_steps += 1
+        # smooth the loss, grad norm, and predicted max-Q (the quantity the max
+        # operator over-estimates - the DQN vs Double-DQN contrast).
+        self.loss_ema = 0.99 * self.loss_ema + 0.01 * float(loss.item())
+        self.grad_ema = 0.9 * self.grad_ema + 0.1 * float(gnorm)
+        with torch.no_grad():
+            self.q_pred_ema = 0.99 * self.q_pred_ema + 0.01 * float(q_sa.mean().item())
         if self.train_steps % self.target_sync == 0:
             self.target.load_state_dict(self.q.state_dict())
+            self.sync_count += 1
+
+    def td_error(self):
+        # the DQN analogue of the tabular TD error is the batch (Huber) loss
+        return self.loss_ema
+
+    def diag(self):
+        """Live DQN training internals for the dashboard (loss, grad, buffer, sync)."""
+        cap = self.buf.maxlen or 1
+        need = max(self.batch, self.warmup)
+        return {
+            "isDQN": True,
+            "loss": round(self.loss_ema, 5),
+            "gradNorm": round(self.grad_ema, 4),
+            "predQ": round(self.q_pred_ema, 4),
+            "bufferSize": len(self.buf),
+            "bufferCap": cap,
+            "bufferFill": round(len(self.buf) / cap, 4),
+            "warmup": need,
+            "warmupDone": len(self.buf) >= need,
+            "trainSteps": self.train_steps,
+            "targetSync": self.target_sync,
+            "stepsToSync": (self.target_sync - self.train_steps % self.target_sync) if self.target_sync else 0,
+            "syncCount": self.sync_count,
+            "lr": round(self._lr(self._alpha), 6),
+            "dueling": self.net_cls is DuelingQNet,
+        }
+
+    def value_advantage(self, state):
+        """Dueling nets only: {v, a:[...]} the V(s) / centered-A(s,a) split, else None."""
+        if self.net_cls is not DuelingQNet:
+            return None
+        with torch.no_grad():
+            t = torch.as_tensor(np.asarray(state, dtype=np.float32), device=self.device).unsqueeze(0)
+            h = self.q.trunk(t)
+            v = float(self.q.value(h)[0, 0].item())
+            a = self.q.adv(h)[0]
+            a = (a - a.mean()).tolist()
+            return {"v": round(v, 4), "a": [round(float(x), 4) for x in a]}
 
     def end_episode(self):
         pass

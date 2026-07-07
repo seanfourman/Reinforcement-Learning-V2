@@ -168,7 +168,9 @@ export function initCpuPanel() {
 
   // ---- toggle (M key) ----
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyM' && !/input|select|textarea/i.test(e.target.tagName)) panel.classList.toggle('open');
+    if (e.code !== 'KeyM' || /input|select|textarea/i.test(e.target.tagName)) return;
+    if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
+    panel.classList.toggle('open');
   });
 
   // ---- lock / unlock ----

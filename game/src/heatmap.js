@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GRID } from './config.js';
-import { cellToWorld, getCell } from './layout.js';
+import { cellToWorld, getCell, getOffset } from './layout.js';
 
 // Two ground overlays for a model's learning:
 //   * Visits  - a colour heatmap (BLUE = least stepped on, RED = most), one quad per tile.
@@ -82,6 +82,20 @@ export function createHeatmap(scene) {
   numPlane.visible = false;
   scene.add(numPlane);
 
+  // peach views the board from the FAR (flipped) side, so the number/arrow texture
+  // reads upside-down there; setFlip lets the overlays draw glyphs upright.
+  let flip = false;
+  function setFlip(f) { flip = !!f; }
+
+  // sit the overlay plane exactly on the board: scale with the cell size AND apply
+  // the per-round board slide (getOffset), which the fixed centre used to ignore -
+  // that offset is why peach's numbers landed off the tiles.
+  function placePlane() {
+    const [ox, oz] = getOffset();
+    numPlane.scale.setScalar(getCell());
+    numPlane.position.set(GRID / 2 + ox, 0.2, GRID / 2 + oz);
+  }
+
   // the TRUE greedy action over ALL actions (may be 4 = Use, which is no move)
   function bestAction(q) {
     let bi = 0, bv = q[0];
@@ -89,8 +103,25 @@ export function createHeatmap(scene) {
     return bi;
   }
 
+  // draw one number at (x,y). On a flipped board the whole texture is seen
+  // upside-down, so spin the GLYPH 180 about its anchor - it keeps its N/S/W/E
+  // slot (greedy stays toward the goal) but reads upright.
+  function putText(txt, x, y) {
+    if (flip) {
+      cctx.save();
+      cctx.translate(x, y);
+      cctx.rotate(Math.PI);
+      cctx.strokeText(txt, 0, 0);
+      cctx.fillText(txt, 0, 0);
+      cctx.restore();
+    } else {
+      cctx.strokeText(txt, x, y);
+      cctx.fillText(txt, x, y);
+    }
+  }
+
   function setNumbers(grid) {
-    numPlane.scale.setScalar(getCell()); // grow the numbers grid with the board
+    placePlane(); // scale + board slide so the numbers sit on the tiles
     cctx.clearRect(0, 0, CW, CH);
     const H = grid.length, W = grid[0] ? grid[0].length : 0;
     const tw = CW / W, th = CH / H;
@@ -113,19 +144,60 @@ export function createHeatmap(scene) {
           cctx.font = `${d === best ? '800 ' : '600 '}${f}px system-ui,Arial,sans-serif`;
           cctx.lineWidth = Math.max(2, f * 0.2);
           cctx.strokeStyle = 'rgba(12,14,18,0.55)';     // dark edge: crisp, never blooms
-          cctx.strokeText(q[d].toFixed(1), x, y);
           cctx.fillStyle = d === best ? '#123fb0' : '#2a2d34';
-          cctx.fillText(q[d].toFixed(1), x, y);
+          putText(q[d].toFixed(1), x, y);
         }
         // greedy action is Use/stay: show it in the centre (blue) so no arrow is wrongly blue
         if (best === 4 && q.length > 4) {
           cctx.font = `800 ${Math.round(f * 0.82)}px system-ui,Arial,sans-serif`;
           cctx.lineWidth = Math.max(2, f * 0.2);
           cctx.strokeStyle = 'rgba(12,14,18,0.55)';
-          cctx.strokeText(q[4].toFixed(1), cx, cy);
           cctx.fillStyle = '#123fb0';
-          cctx.fillText(q[4].toFixed(1), cx, cy);
+          putText(q[4].toFixed(1), cx, cy);
         }
+      }
+    }
+    tex.needsUpdate = true;
+  }
+
+  // ---- greedy-policy ARROWS (per-cell argmax action) on the same canvas plane ----
+  // grid[r][c] = 0=N,1=S,2=W,3=E,4=Use, or null. Fed by /api/values?mode=policy.
+  const PDIR = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // N,S,W,E in canvas (x right, y down)
+  function setPolicy(grid) {
+    placePlane(); // scale + board slide (arrows self-orient under the flip, so no glyph spin)
+    cctx.clearRect(0, 0, CW, CH);
+    const H = grid.length, W = grid[0] ? grid[0].length : 0;
+    const tw = CW / W, th = CH / H;
+    const L = Math.min(tw, th) * 0.30;
+    cctx.lineCap = 'round';
+    cctx.lineJoin = 'round';
+    cctx.fillStyle = '#123fb0';
+    cctx.strokeStyle = '#123fb0';
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const a = grid[r] && grid[r][c];
+        if (a === null || a === undefined) continue;
+        const cx = (c + 0.5) * tw, cy = (r + 0.5) * th;
+        if (a === 4) { // Use / stay: a dot
+          cctx.beginPath();
+          cctx.arc(cx, cy, Math.min(tw, th) * 0.12, 0, Math.PI * 2);
+          cctx.fill();
+          continue;
+        }
+        const [dx, dy] = PDIR[a];
+        const ex = cx + dx * L, ey = cy + dy * L;
+        cctx.lineWidth = Math.max(4, L * 0.26);
+        cctx.beginPath();
+        cctx.moveTo(cx - dx * L, cy - dy * L);
+        cctx.lineTo(ex, ey);
+        cctx.stroke();
+        const hw = L * 0.55, px = -dy, py = dx; // perpendicular for the head
+        cctx.beginPath();
+        cctx.moveTo(ex, ey);
+        cctx.lineTo(ex - dx * hw + px * hw * 0.6, ey - dy * hw + py * hw * 0.6);
+        cctx.lineTo(ex - dx * hw - px * hw * 0.6, ey - dy * hw - py * hw * 0.6);
+        cctx.closePath();
+        cctx.fill();
       }
     }
     tex.needsUpdate = true;
@@ -134,6 +206,8 @@ export function createHeatmap(scene) {
   return {
     setGrid,
     setNumbers,
+    setPolicy,
+    setFlip,
     showColors() { mesh.visible = true; numPlane.visible = false; },
     showNumbers() { numPlane.visible = true; mesh.visible = false; },
     hide() { mesh.visible = false; numPlane.visible = false; },
