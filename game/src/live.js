@@ -76,15 +76,6 @@ export function createLiveActors(scene, walkers) {
   const escGlow = new THREE.PointLight(0xffcf8a, 1.2, 6, 2);
   group.add(escGlow);
 
-  // winner banner (DOM overlay)
-  const banner = document.createElement('div');
-  banner.style.cssText =
-    'position:fixed;top:8%;left:50%;transform:translateX(-50%);padding:14px 30px;' +
-    'border-radius:14px;font:600 30px "Segoe UI",system-ui,sans-serif;color:#fff;' +
-    'background:rgba(20,18,34,0.72);box-shadow:0 6px 30px rgba(0,0,0,0.4);' +
-    'opacity:0;transition:opacity .4s;pointer-events:none;backdrop-filter:blur(4px);z-index:5;';
-  document.body.appendChild(banner);
-
   const heading = { red: Math.PI, blue: Math.PI };
   const spawnFacing = { red: Math.PI, blue: Math.PI }; // restored on episode reset
   const rendered = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
@@ -153,7 +144,6 @@ export function createLiveActors(scene, walkers) {
       king.group.rotation.y = heading.red;
       princess.group.rotation.y = heading.blue;
     }
-    banner.style.opacity = '0';
   }
 
   // continuous arena round: drive the two walkers from world (x,z) floats, no keys
@@ -288,17 +278,11 @@ export function createLiveActors(scene, walkers) {
       }
     }
 
-    if (arena) return; // arena round: no escape glow / King-Queen banner
+    if (arena) return; // arena round: no escape-gate glow
     if (frame.winner) {
       escGlow.intensity = 2 + Math.sin(t * 6) * 1.0;
-      banner.textContent = frame.winner === 'red'
-        ? 'RED wins the round!'
-        : 'BLUE wins the round!';
-      banner.style.color = frame.winner === 'red' ? '#ffd2d2' : '#d2e2ff';
-      banner.style.opacity = '1';
     } else {
       escGlow.intensity = 1.2;
-      banner.style.opacity = '0';
     }
   }
 

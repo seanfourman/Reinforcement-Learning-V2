@@ -92,15 +92,6 @@ export function createPlayback(scene, trajectory, layout, walkers) {
   escGlow.position.set(eW.x + 0.5, 1.4, eW.z);
   group.add(escGlow);
 
-  // --- winner banner (DOM overlay) -----------------------------------------
-  const banner = document.createElement('div');
-  banner.style.cssText =
-    'position:fixed;top:8%;left:50%;transform:translateX(-50%);padding:14px 30px;' +
-    'border-radius:14px;font:600 30px "Segoe UI",system-ui,sans-serif;color:#fff;' +
-    'background:rgba(20,18,34,0.72);box-shadow:0 6px 30px rgba(0,0,0,0.4);' +
-    'opacity:0;transition:opacity .5s;pointer-events:none;backdrop-filter:blur(4px);';
-  document.body.appendChild(banner);
-
   // ------------------------------------------------------------------ helpers
   let t = 0;
   const heading = { red: Math.PI, blue: Math.PI };
@@ -131,7 +122,6 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     t = 0;
     heading.red = Math.PI;
     heading.blue = Math.PI;
-    banner.style.opacity = '0';
   }
 
   function update(dt, elapsed) {
@@ -188,20 +178,15 @@ export function createPlayback(scene, trajectory, layout, walkers) {
       }
     }
 
-    // --- finale: warm flare at the gate + banner (gate stays neutral) --------
+    // --- finale: warm flare at the gate (gate stays neutral) -----------------
     if (i >= last && trajectory.winner) {
-      const win = trajectory.winner;
       escGlow.intensity = 2 + Math.sin(elapsed * 6) * 1.0;
-      banner.textContent = win === 'red' ? 'RED wins the round!' : 'BLUE wins the round!';
-      banner.style.color = win === 'red' ? '#ffd2d2' : '#d2e2ff';
-      banner.style.opacity = '1';
     } else {
       escGlow.intensity = 1.2;
     }
   }
 
   function dispose() {
-    banner.remove();
     scene.remove(group);
   }
 
