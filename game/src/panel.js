@@ -191,6 +191,21 @@ const STYLE = `
 #rl-panel .seg button:last-child{border-right:0;}
 #rl-panel .seg button.active{background:#1f1f21;color:#fff;}
 
+/* top-30 replay browser (per model) */
+#rl-panel .replist{max-height:196px;overflow-y:auto;margin:10px 0 0;border:1px solid #e6e8ec;border-radius:10px;}
+#rl-panel .replist .rrow{display:flex;align-items:center;gap:10px;padding:8px 11px;font-size:12px;cursor:pointer;
+  border-bottom:1px solid #f0f1f3;}
+#rl-panel .replist .rrow:last-child{border-bottom:0;}
+#rl-panel .replist .rrow:hover{background:#f0f1f3;}
+#rl-panel .replist .rrow.sel{background:#eaf0fb;box-shadow:inset 3px 0 0 #1f5fd0;}
+#rl-panel .replist .rrow .rk{color:#9a9da4;font-weight:800;width:30px;flex:none;}
+#rl-panel .replist .rrow .st{font-variant-numeric:tabular-nums;font-weight:700;color:#1f1f21;}
+#rl-panel .replist .rrow .ep{margin-left:auto;color:#9a9da4;font-size:11px;font-variant-numeric:tabular-nums;}
+#rl-panel .replist .empty{padding:15px 12px;color:#9a9da4;font-size:12px;text-align:center;}
+/* fullscreen: let the list breathe */
+#rl-panel.full .replist{max-height:340px;}
+#rl-panel.full .replist .rrow{font-size:14px;padding:11px 14px;}
+
 /* Q inspector */
 #rl-panel .qrow{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;}
 #rl-panel .qrow .qbar{flex:1;margin:0 9px;height:8px;background:#eceef1;border-radius:4px;position:relative;}

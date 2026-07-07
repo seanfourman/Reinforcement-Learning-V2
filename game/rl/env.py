@@ -395,15 +395,21 @@ class GridWorld(gym.Env):
                 else:
                     self.blue_pos = self.world.blue_spawn
 
-        # reach the goal -> win (simultaneous tie -> red)
-        for agent in ("red", "blue"):
-            if self._pos(agent) in self.goal_set:
-                self.done = True
-                self.winner = agent
-                loser = "blue" if agent == "red" else "red"
-                reward[agent] += WIN
+        # reach the goal -> win; both crossing on the SAME step is a genuine DRAW
+        # (no silent default to red - Peach's spawns are equidistant, so a symmetric
+        # deterministic race ties every time). Both are rewarded for arriving.
+        reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
+        if reached:
+            self.done = True
+            if len(reached) == 2:
+                self.winner = None
+                reward["red"] += WIN
+                reward["blue"] += WIN
+            else:
+                self.winner = reached[0]
+                loser = "blue" if self.winner == "red" else "red"
+                reward[self.winner] += WIN
                 reward[loser] += LOSE
-                break
 
         for agent in ("red", "blue"):
             reward[agent] += self._potential(agent) - phi0[agent]

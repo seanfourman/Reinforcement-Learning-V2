@@ -169,15 +169,20 @@ class ContinuousArena:
         if hit_b:
             reward["blue"] -= HIT_PENALTY
 
-        # reach the goal -> win (simultaneous tie -> red)
+        # reach the goal -> win; both entering on the SAME step is a genuine DRAW
         r_in = self._dist_goal(self.red_pos) <= GOAL_R
         b_in = self._dist_goal(self.blue_pos) <= GOAL_R
         if r_in or b_in:
             self.done = True
-            self.winner = "red" if r_in else "blue"
-            loser = "blue" if self.winner == "red" else "red"
-            reward[self.winner] += WIN
-            reward[loser] += LOSE
+            if r_in and b_in:
+                self.winner = None
+                reward["red"] += WIN
+                reward["blue"] += WIN
+            else:
+                self.winner = "red" if r_in else "blue"
+                loser = "blue" if self.winner == "red" else "red"
+                reward[self.winner] += WIN
+                reward[loser] += LOSE
 
         # difference-of-potentials progress shaping
         reward["red"] += self._potential(self.red_pos) - phi0["red"]

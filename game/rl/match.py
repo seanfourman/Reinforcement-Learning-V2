@@ -33,6 +33,7 @@ def is_dqn(algo):
 
 FRAME_CAP = 800            # max frames recorded for one replayable episode
 HISTORY_CAP = 4000         # max learning-curve points kept per round
+TOP_N = 30                 # best replays kept PER MODEL (red/blue), fastest first
 
 # Red (the CPU) is NOT tunable from the panel; its strength comes from the chosen
 # CPU character's tier (1 = easiest .. 5 = hardest). A higher tier means a higher
@@ -140,6 +141,8 @@ class Match:
         self.last_episode = None                # most recent finished episode
         self.best_episode = None                # shortest WINNING episode so far
         self._best_len = 10 ** 9
+        # the TOP_N fastest WINNING episodes per model, for the replay browser
+        self._top = {"red": [], "blue": []}
         # per-cell visit counts per side (the "where do they travel" heatmap)
         self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
         self.blue_visits = [[0] * self.env.W for _ in range(self.env.H)]
@@ -213,6 +216,12 @@ class Match:
         if winner in ("red", "blue") and self.env.steps < self._best_len:
             self._best_len = self.env.steps
             self.best_episode = self.last_episode
+        if winner in ("red", "blue"):
+            lst = self._top[winner]
+            lst.append({"steps": self.env.steps, "episode": self.episode,
+                        "winner": winner, "frames": self._frames})
+            lst.sort(key=lambda e: e["steps"])   # fastest first
+            del lst[TOP_N:]
         recent = list(self.recent)
         n = len(recent) or 1
         self.hist.append({
@@ -447,13 +456,29 @@ class Match:
         with self.lock:
             return {"round": self.round_id, "points": list(self.hist)}
 
-    def replay(self, which="last"):
+    def replay(self, which="last", agent=None, rank=0):
         with self.lock:
+            if which == "top":
+                lst = self._top.get(agent, [])
+                if not (0 <= rank < len(lst)):
+                    return {"available": False}
+                ep = lst[rank]
+                return {"available": True, "which": "top", "agent": agent,
+                        "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
+                        "episode": ep["episode"], "frames": ep["frames"]}
             ep = self.best_episode if which == "best" else self.last_episode
             if not ep:
                 return {"available": False}
             return {"available": True, "which": which, "winner": ep["winner"],
                     "steps": ep["steps"], "frames": ep["frames"]}
+
+    def replays_index(self, agent):
+        """Lightweight metadata (no frames) for the top-30 replay list per model."""
+        with self.lock:
+            lst = self._top.get(agent, [])
+            return {"agent": agent, "count": len(lst),
+                    "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"]}
+                              for i, e in enumerate(lst)]}
 
     def dp_report(self, agent):
         """A DP planner's per-sweep convergence trace + meta, for the training

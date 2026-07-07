@@ -125,18 +125,19 @@ export function initCurves(parent, side) {
   refresh();
 }
 
-// ---- shared episode replay ----
+// ---- shared episode replay: browse each model's TOP-30 fastest winning runs ----
 export function initReplay(parent) {
   parent.insertAdjacentHTML('beforeend', `
     <section>
       <h2>Episode replay</h2>
-      <div class="btns">
-        <button id="rl-rep-last">Last</button>
-        <button id="rl-rep-best">Best</button>
-        <button id="rl-rep-stop">Live</button>
+      <div class="seg" id="rl-rep-model">
+        <button data-a="red" class="active">Red · top 30</button>
+        <button data-a="blue">Blue · top 30</button>
       </div>
+      <div id="rl-rep-list" class="replist"></div>
       <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="margin-top:12px;--fill:#8a8d94">
-      <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">No replay loaded</span><b id="rl-rep-frame"></b></div>
+      <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">Pick a run to replay</span><b id="rl-rep-frame"></b></div>
+      <div class="btns" style="margin-top:10px;"><button id="rl-rep-stop">Back to live</button></div>
     </section>`);
   const $ = (id) => parent.querySelector(id);
   const paintRange = (el) => {
@@ -145,12 +146,16 @@ export function initReplay(parent) {
     const fill = el.style.getPropertyValue('--fill') || '#8a8d94';
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
+  const seg = $('#rl-rep-model');
+  const listEl = $('#rl-rep-list');
   const seek = $('#rl-rep-seek');
   const info = $('#rl-rep-info');
   const frameLbl = $('#rl-rep-frame');
   let frames = [];
   let idx = 0;
   let timer = null;
+  let model = 'red';   // which model's winning runs we're browsing
+  let selRank = -1;    // currently loaded rank (highlighted in the list)
   paintRange(seek);
 
   function showFrame(i) {
@@ -165,13 +170,32 @@ export function initReplay(parent) {
     if (timer) { clearInterval(timer); timer = null; }
     if (toLive) window.RL?.setReplay?.(false);
   }
-  async function load(which) {
+
+  async function refreshList() {
     try {
-      const r = await (await fetch(`/api/replay?which=${which}`, { cache: 'no-store' })).json();
-      if (!r.available) { info.textContent = 'No finished episode yet'; return; }
+      const r = await (await fetch(`/api/replays?agent=${model}`, { cache: 'no-store' })).json();
+      const items = r.items || [];
+      if (!items.length) {
+        listEl.innerHTML = `<div class="empty">No winning runs yet for ${model === 'red' ? 'Red' : 'Blue'}.</div>`;
+        return;
+      }
+      listEl.innerHTML = items.map((it) =>
+        `<div class="rrow${it.rank === selRank ? ' sel' : ''}" data-rank="${it.rank}">` +
+        `<span class="rk">#${it.rank + 1}</span>` +
+        `<span class="st">${it.steps} steps</span>` +
+        `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></div>`).join('');
+    } catch (e) { listEl.innerHTML = '<div class="empty">List fetch failed.</div>'; }
+  }
+
+  async function loadTop(rank) {
+    try {
+      const r = await (await fetch(`/api/replay?which=top&agent=${model}&rank=${rank}`, { cache: 'no-store' })).json();
+      if (!r.available) { info.textContent = 'That run rolled out of the top 30'; refreshList(); return; }
       frames = r.frames || [];
       seek.max = Math.max(0, frames.length - 1);
-      info.textContent = `${which} · ${r.winner || 'draw'} in ${r.steps} steps`;
+      selRank = rank;
+      info.textContent = `${model === 'red' ? 'Red' : 'Blue'} #${rank + 1} · ${r.steps} steps`;
+      [...listEl.children].forEach((el) => el.classList.toggle('sel', +el.dataset.rank === rank));
       window.RL?.setReplay?.(true);
       stopPlayback(false);
       idx = 0; showFrame(0);
@@ -182,9 +206,20 @@ export function initReplay(parent) {
     } catch (e) { info.textContent = 'Replay fetch failed'; }
   }
 
-  $('#rl-rep-last').addEventListener('click', () => load('last'));
-  $('#rl-rep-best').addEventListener('click', () => load('best'));
-  $('#rl-rep-stop').addEventListener('click', () => { stopPlayback(true); info.textContent = 'Live'; });
+  seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    [...seg.children].forEach((x) => x.classList.toggle('active', x === b));
+    model = b.dataset.a; selRank = -1; refreshList();
+  });
+  listEl.addEventListener('click', (e) => {
+    const row = e.target.closest('.rrow'); if (!row) return;
+    loadTop(+row.dataset.rank);
+  });
+  $('#rl-rep-stop').addEventListener('click', () => {
+    stopPlayback(true); selRank = -1;
+    [...listEl.children].forEach((el) => el.classList.remove('sel'));
+    info.textContent = 'Live';
+  });
   seek.addEventListener('input', () => {
     paintRange(seek);
     if (!frames.length) return;
@@ -192,6 +227,10 @@ export function initReplay(parent) {
     window.RL?.setReplay?.(true);
     showFrame(+seek.value);
   });
+
+  refreshList();
+  // keep the list fresh as new fast runs come in, but not while a replay auto-plays
+  setInterval(() => { if (timer === null) refreshList(); }, 4000);
 }
 
 // ---- DP convergence (Round 1's Dynamic-Programming room): per-sweep Bellman

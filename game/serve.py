@@ -111,7 +111,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/history":
             return self._json(match.history())
         if route == "/api/replay":
-            return self._json(match.replay(q.get("which", ["last"])[0]))
+            which = q.get("which", ["last"])[0]
+            agent = q.get("agent", [None])[0]
+            rank = int(q.get("rank", ["0"])[0])
+            return self._json(match.replay(which, agent, rank))
+        if route == "/api/replays":
+            return self._json(match.replays_index(q.get("agent", ["red"])[0]))
         if route == "/api/dp":
             return self._json(match.dp_report(q.get("agent", ["red"])[0]))
         return self._json({"error": "unknown route"}, 404)
