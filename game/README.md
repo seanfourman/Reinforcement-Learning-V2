@@ -1,29 +1,24 @@
-# Rival Minds - a live self-play RL arena
+# Rival Minds - a live self-play RL tournament
 
-Two agents (the **King** = red, the **Queen** = blue) start **untrained** and learn,
-live and on-screen, to solve the **same** competitive task inside a fixed,
-hand-designed 20×20 **castle**:
+Two agents, **Red** and **Blue**, play the **same** task head-to-head while you
+watch them learn (or plan) live and on-screen. It is a five-round tournament, and
+each round pits two **rival algorithms** against each other in a themed arena:
 
-1. find **your** colored key, hidden in a **maze of furniture** inside your sealed
-   bedroom (the arched door is locked until you hold it; the two bedrooms are sealed
-   so colored keys can never be stolen),
-2. leave through the door into the shared **dining hall**,
-3. grab the single **gold key** — the only stealable one (step onto the holder to
-   take it),
-4. reach the north **escape gate** holding the gold key. **First one out wins.**
-
-The castle is two mirrored, furnished bedrooms (bottom) — bookshelves, beds,
-wardrobes, chests — opening through **arched wooden doors** into a grand **dining
-hall** with a carpet runner, chandeliers and long tables.
-
-The world also has learnable **mechanics**: **teleporter mirrors** (step on one,
-warp to its twin), a **wall lever** that arms a **snare trap** (it flings whoever
-steps on it — including you — back to spawn), **key-stealing** by contact, and a
-**ladder + catwalk** that climbs *over* an arena wall as a shortcut.
+| Round | Arena                         | Red vs Blue                          |
+| ----- | ----------------------------- | ------------------------------------ |
+| 1     | Peach's Castle                | **Value Iteration** vs **Policy Iteration** (navigate-to-goal gridworld) |
+| 2     | New Donk City                 | **SARSA** vs **Q-Learning** (on-policy vs off-policy TD) |
+| 3     | Fossil Falls                  | **Q-Learning** vs **Monte-Carlo** (bootstrapping vs episodic returns) |
+| 4     | Ruined Kingdom                | **DQN** vs **Double-DQN** (continuous, function approximation) |
+| 5     | Tostarena                     | **DQN** vs **Dueling-DQN** (sequential checkpoint rally) |
 
 The two models are **real Python reinforcement learning** running in a background
-thread; the browser is a live viewer. Pure self-play — from each agent's point of
-view the rival is just part of the world.
+thread; the browser is a live 3D viewer that polls the match and renders it. Pure
+self-play - from each agent's point of view the rival is just part of the world.
+
+You pick the two characters in the start menu: **Blue is you**, **Red is the CPU**
+(the CPU's strength scales with the character's tier). Red always plays the red half
+of each round's matchup above.
 
 ## Run
 
@@ -31,81 +26,82 @@ view the rival is just part of the world.
 python serve.py
 ```
 
-A local server starts, trains the two models live, and opens the game in your
+A local server starts, runs the two models live, and opens the game in your
 browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
-`torch` only if you add the optional DQN agent.)
+`torch` only for the DQN rounds.)
 
 ## Controls
 
-| Input        | Action                                                             |
-| ------------ | ----------------------------------------------------------------- |
-| `R`          | **Reset** both models — they relearn from scratch on the same castle |
-| `M`          | Open the medieval **panel**                                        |
-| Mouse drag   | Pan the camera                                                     |
-| WASD / arrows| Pan the camera                                                     |
-| Scroll wheel | Zoom                                                               |
+| Input         | Action                                            |
+| ------------- | ------------------------------------------------- |
+| `R`           | **Reset** both models (relearn from scratch)      |
+| `N`           | Open the **Training Control** panel               |
+| `M`           | Open the **CPU** panel                            |
+| Mouse drag    | Pan the camera                                    |
+| WASD / arrows | Pan the camera                                    |
+| Scroll wheel  | Zoom                                              |
 
-## The panel (M)
+## The Training Control panel (N)
 
-- **Algorithm** — switch between **Q-learning**, **SARSA**, **Expected-SARSA**, and
-  **Monte-Carlo** (resets learning on the current world).
-- **Speed slider** — slow (watch them walk) ↔ fast (thousands of iterations fly by,
-  the heatmap fills in). Plus **play/pause**, **new world**, **reset**.
-- **Training stats** — iteration (episode), total steps, **ε** (explore vs exploit),
-  average episode length, learned-state counts.
-- **Contest** — live win tally + recent win-rate bars.
-- **Learned value map** — overlay each model's **V(s)** heatmap on the grid
-  ("what has it learned about standing on each tile"). **Click a tile** to inspect
-  the per-action **Q(s,·)**.
+- **Playback** - play/pause, speed (slow = watch them walk, fast = thousands of
+  iterations fly by), reset, new world, and prev/next round.
+- **Hyperparameters** - discount γ (all rounds), plus learning rate α and the ε
+  exploration schedule on the learning rounds. Blue sliders tune your model.
+- **Training stats** - episode, total steps, ε, average episode length, returns,
+  learned-state counts.
+- **DP convergence** (Round 1) - per-sweep Bellman residual and mean state value for
+  Value Iteration vs Policy Iteration, with a tunable convergence θ.
+- **Learning curves** - return, episode length, ε, and win-rate over time.
+- **Contest** - live win tally + recent win-rate bars.
+- **Value map** - overlay each model's **V(s)** heatmap on the grid; click a tile to
+  inspect the per-action **Q(s,·)**.
+- **Episode replay** - scrub the fastest winning episode step by step.
+- **Fullscreen** - the button top-right expands the panel into a full dashboard.
 
 ## How the RL concepts are captured
 
-| Concept                     | Where                                                            |
-| --------------------------- | --------------------------------------------------------------- |
-| Gymnasium env               | `rl/env.py` subclasses `gymnasium.Env` (reset/step/spaces)      |
-| Explore vs exploit          | ε-greedy with decaying ε (shown live in the panel)              |
-| TD control                  | Q-learning (off-policy), SARSA (on-policy), Expected-SARSA       |
-| Monte-Carlo control         | episode-return updates (`rl/agents.py`)                          |
-| V & Q functions             | the value heatmap (V) + the click-a-tile Q inspector            |
-| Reward shaping              | potential-based shaping makes the long key→gold→escape chain learnable |
-| DQN / Dynamic Programming   | extension points (see `rl/agents.py`, the plan)                 |
+| Concept                   | Where                                                       |
+| ------------------------- | ----------------------------------------------------------- |
+| Gymnasium env             | `rl/env.py` / `rl/continuous.py` subclass `gymnasium.Env`   |
+| Dynamic Programming       | Value Iteration + Policy Iteration (`rl/dp.py`, Round 1)     |
+| TD control                | Q-Learning (off-policy), SARSA (on-policy), Expected-SARSA   |
+| Monte-Carlo control       | episode-return updates                                      |
+| Function approximation    | DQN / Double-DQN / Dueling-DQN (`rl/dqn.py`, Rounds 4-5)     |
+| Explore vs exploit        | ε-greedy with a decaying ε (shown live in the panel)        |
+| V & Q functions           | the value heatmap (V) + the click-a-tile Q inspector        |
 
 ## Code map
 
-| File / folder        | What it does                                                       |
-| -------------------- | ----------------------------------------------------------------- |
-| `serve.py`           | Live RL server: static host + training thread + JSON API           |
-| `rl/worldgen.py`     | The FIXED hand-designed castle (furnished bedrooms, dining hall, furniture list, mechanics) |
-| `rl/env.py`          | `GridWorld(gymnasium.Env)` — mechanics, rewards, shaping, observation |
-| `rl/agents.py`       | Tabular agents: Q-learning, SARSA, Expected-SARSA, Monte-Carlo     |
-| `rl/match.py`        | Live self-play loop, stats, value grids, thread-safe controls      |
-| `rl/train.py`        | Offline CLI smoke-test (proves the agents actually learn)          |
-| `src/main.js`        | Live poll client: builds the scene, drives the loop                |
-| `src/architecture.js`| Plastered castle walls + stone columns (merged runs, not cubes)    |
-| `src/furniture.js`   | Beds/wardrobes/bookshelves/chests/tables + a GLTF model hook       |
-| `src/doors.js`       | Arched wooden bedroom doors (swing open on the key)               |
-| `src/dressing.js`    | Carpet runner, chandeliers, rugs (the dining-hall feel)            |
-| `src/live.js`        | The King/Queen/keys, driven by polled frames                       |
-| `src/mechanics.js`   | Mirrors, levers, traps, ladders/catwalk (3D)                       |
-| `src/panel.js`       | The medieval M-panel + controls                                    |
-| `src/heatmap.js`     | The learned-value heatmap overlay                                  |
-| `src/build.js`       | Castle shell + outside nature                                      |
-| `vendor/three/`      | Bundled three.js (no package manager needed)                       |
-
-## Swapping in real 3D models (the GLTF hook)
-
-Furniture is procedural by default, but you can drop in real models: put a `.glb`
-in `textures/models/` and register it in `src/furniture.js`
-(`registerModel('bed', 'textures/models/bed.glb')`). If a model is registered it
-loads via GLTFLoader and replaces that piece everywhere; otherwise the procedural
-mesh is used. (Add `vendor/three/addons/loaders/GLTFLoader.js` for three r184 first.)
+| File / folder        | What it does                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `serve.py`           | Live RL server: static host + training thread + JSON API      |
+| `rl/env.py`          | `GridWorld(gymnasium.Env)` for the grid rounds                |
+| `rl/continuous.py`   | `ContinuousArena` for the Round 4/5 continuous arenas         |
+| `rl/dp.py`           | Value Iteration + Policy Iteration planners (Round 1)         |
+| `rl/agents.py`       | Tabular agents: Q-Learning, SARSA, Expected-SARSA, Monte-Carlo |
+| `rl/dqn.py`          | The DQN family (Rounds 4-5)                                   |
+| `rl/match.py`        | Live self-play loop, stats, value grids, thread-safe controls |
+| `rl/worlds/`         | Per-round world layouts + the round/algorithm registry        |
+| `src/main.js`        | Live poll client: builds the scene, drives the render loop    |
+| `src/live.js`        | The two board agents, driven by polled frames                 |
+| `src/themes/`        | Per-round arena geometry, palette, sky and camera             |
+| `src/startmenu.js`   | Character select + cinematic start menu                       |
+| `src/panel.js`       | The Training Control panel (N)                                 |
+| `src/cpupanel.js`    | The CPU panel (M)                                             |
+| `src/graphs.js`      | Learning-curve / DP-convergence charts + episode replay       |
+| `src/heatmap.js`     | The learned-value heatmap overlay                             |
+| `vendor/three/`      | Bundled three.js (no package manager needed)                  |
 
 ## API (for the curious)
 
 ```
-GET  /api/snapshot          {worldVersion, frame, stats}     (browser polls ~30Hz)
-GET  /api/world             {worldVersion, world}            (fetched once on load)
+GET  /api/snapshot          {worldVersion, frame, stats}   (browser polls ~30Hz)
+GET  /api/world             {worldVersion, world}          (fetched on each round)
+GET  /api/worlds            every round's world (prebuilt during the menu)
 GET  /api/values?agent=red  value heatmap V(s) per tile
 GET  /api/values?agent=red&cell=r,c   per-action Q for one tile
-POST /api/control           {cmd: regenerate|reset|pause|play|speed|algo, ...}
+GET  /api/dp?agent=red      Round 1 DP convergence trace (per-sweep δ + mean V)
+GET  /api/replay            the fastest winning episode, for the replay scrubber
+POST /api/control           {cmd: play|pause|speed|reset|regenerate|setParams|
+                             cpuTier|prevRound|nextRound|setRound|sideAlgo, ...}
 ```

@@ -131,9 +131,9 @@ export function initReplay(parent) {
     <section>
       <h2>Episode replay</h2>
       <div class="btns">
-        <button id="rl-rep-last">▶ Last</button>
-        <button id="rl-rep-best">★ Best</button>
-        <button id="rl-rep-stop">⏹ Live</button>
+        <button id="rl-rep-last">Last</button>
+        <button id="rl-rep-best">Best</button>
+        <button id="rl-rep-stop">Live</button>
       </div>
       <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="margin-top:12px;--fill:#8a8d94">
       <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">No replay loaded</span><b id="rl-rep-frame"></b></div>

@@ -1,16 +1,8 @@
 import * as THREE from "three";
 import { GRID, PALETTE, CAMERA } from "./config.js";
-import { createTextures } from "./textures.js";
-import { buildWorld } from "./build.js";
-import { buildFixedWorld } from "./fixedworld.js";
-import { buildArchitecture } from "./architecture.js";
-import { createFurniture } from "./furniture.js";
-import { createDoors } from "./doors.js";
-import { createDressing } from "./dressing.js";
 import { parseLayout, setCell, setOffset, worldToCell } from "./layout.js";
 import { makeKing, makePrincess } from "./characters.js";
 import { createLiveActors } from "./live.js";
-import { createMechanics } from "./mechanics.js";
 import { createHeatmap } from "./heatmap.js";
 import { initPanel } from "./panel.js";
 import { initCpuPanel } from "./cpupanel.js";
@@ -153,21 +145,14 @@ function applyTheme(theme) {
   fill.intensity = theme.fillIntensity;
   renderer.toneMappingExposure = theme.exposure;
   applyEnv(theme); // HDRI image-based lighting/skybox, or clears it
-  fx.setBloom(theme.bloom); // per-theme glow (undefined -> default medieval bloom)
+  fx.setBloom(theme.bloom); // per-theme glow (undefined -> default bloom)
 }
 
 // ------------------------------------------------------------------ world + actors
-const textures = createTextures();
 const walkers = { red: makeKing(), blue: makePrincess() };
 const actors = createLiveActors(scene, walkers);
 const heatmap = createHeatmap(scene);
 
-let current = null; // static scene shell (castle, walls, nature)
-let archGroup = null; // plastered architecture (walls + columns)
-let furniture = null; // beds, wardrobes, bookshelves, tables
-let doors = null; // arched bedroom doors
-let dressing = null; // carpet + rugs
-let mechanics = null; // mirrors, levers, traps
 let themeScene = null; // a theme that ships its own geometry (e.g. the city)
 let arenaMode = false; // round 4 (continuous arena): the theme renders its own agents
 let worldVersion = -1; // last world we built
@@ -191,8 +176,8 @@ THREE.Cache.enabled = true;
 const sceneCache = new Map(); // theme name -> { themeScene, rowsKey }
 let activeThemeKey = null; // theme name of the themed scene currently attached
 
-// detach the live world: a resident themed scene is kept warm in the cache; a
-// non-themed (medieval) world is freed as before.
+// detach the live world: a resident themed scene is kept warm in the cache;
+// anything else is disposed.
 function detachActiveWorld() {
   if (activeThemeKey && themeScene) {
     scene.remove(themeScene.group); // keep it resident in sceneCache
@@ -204,32 +189,6 @@ function detachActiveWorld() {
 }
 
 function disposeWorld() {
-  if (current) {
-    scene.remove(current.group);
-    current.dispose?.();
-    current = null;
-  }
-  if (archGroup) {
-    scene.remove(archGroup);
-    archGroup.userData.dispose?.();
-    archGroup = null;
-  }
-  if (furniture) {
-    furniture.dispose();
-    furniture = null;
-  }
-  if (doors) {
-    doors.dispose();
-    doors = null;
-  }
-  if (dressing) {
-    dressing.dispose();
-    dressing = null;
-  }
-  if (mechanics) {
-    mechanics.dispose();
-    mechanics = null;
-  }
   if (themeScene) {
     themeScene.dispose?.();
     themeScene = null;
@@ -269,8 +228,7 @@ function rebuildWorld(worldJson) {
       cached.themeScene.dispose?.();
       sceneCache.delete(key);
     }
-    // a theme that ships its own world geometry (e.g. the city) takes over;
-    // the medieval-only groups stay null, so the render loop simply skips them.
+    // a theme that ships its own world geometry (e.g. the city) takes over
     themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
     if (cacheable) {
       sceneCache.set(key, { themeScene, rowsKey });
@@ -281,18 +239,6 @@ function rebuildWorld(worldJson) {
     // the transition holds its black screen until this resolves (themes that load
     // async models expose .ready; others are ready synchronously)
     themeReady = themeScene?.ready || Promise.resolve();
-  } else {
-    const world = buildFixedWorld(rows); // empty wall grid: floor + castle + nature
-    current = buildWorld(world, textures);
-    scene.add(current.group);
-    archGroup = buildArchitecture(worldJson); // plastered walls + stone columns
-    scene.add(archGroup);
-    furniture = createFurniture(scene, worldJson); // beds, wardrobes, shelves, tables
-    doors = createDoors(scene, worldJson); // arched bedroom doors
-    dressing = createDressing(scene, worldJson); // carpet + rugs
-    mechanics = createMechanics(scene, worldJson);
-    activeThemeKey = null;
-    themeReady = Promise.resolve();
   }
   arenaMode = worldJson.objective === "arena";
   actors.setHidden(false);
@@ -416,7 +362,7 @@ async function whenReady() {
     (function tick() {
       const mgr = THREE.DefaultLoadingManager;
       const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
-      const built = themeScene != null || current != null;
+      const built = themeScene != null;
       if (!idle) lastBusy = performance.now();
       const stable = idle && performance.now() - lastBusy > 250;
       if ((built && stable) || performance.now() - t0 > 8000) resolve();
@@ -603,7 +549,7 @@ menu = createStartMenu({
       (function ready() {
         const mgr = THREE.DefaultLoadingManager;
         const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
-        const built = themeScene != null || current != null;
+        const built = themeScene != null;
         const elapsed = performance.now() - t0;
         // wait for round 1 + walkers (and any menu-time prewarm still in flight) to
         // finish, but CAP it so a fast Start never hangs on a black screen - any
@@ -710,57 +656,6 @@ renderer.setAnimationLoop(() => {
   if (devbar.freecamActive()) devbar.updateFreecam(dt);
   else rig.update(dt);
 
-  if (current) {
-    for (const to of current.animated.torches) {
-      const f =
-        0.82 +
-        0.18 * Math.sin(t * 11 + to.phase) +
-        0.1 * Math.sin(t * 23 + to.phase * 1.7);
-      to.flame.scale.set(0.9 + 0.2 * f, f, 0.9 + 0.2 * f);
-      if (to.light) to.light.intensity = 5 + f * 2.4;
-    }
-    for (const b of current.animated.banners) {
-      b.pivot.rotation.x =
-        Math.sin(t * 1.4 + b.phase) * 0.11 + Math.sin(t * 3.1 + b.phase) * 0.04;
-      b.pivot.rotation.z = Math.sin(t * 1.1 + b.phase * 1.3) * 0.05;
-    }
-    for (const f of current.animated.fog) {
-      f.mesh.position.x = f.baseX + Math.sin(t * f.spd + f.phase) * f.range;
-      f.mesh.position.z =
-        f.baseZ + Math.cos(t * f.spd * 0.8 + f.phase) * f.range;
-      f.mesh.rotation.z += f.spin * dt;
-      f.mesh.material.opacity =
-        f.baseOp * (0.7 + 0.3 * Math.sin(t * 0.5 + f.phase));
-    }
-    for (const w of current.animated.water) {
-      w.tex.offset.x = t * 0.02;
-      w.tex.offset.y = t * 0.014;
-      w.mat.emissiveIntensity = 0.2 + 0.06 * Math.sin(t * 1.3);
-    }
-    for (const d of current.animated.ducks) {
-      d.heading += Math.sin(t * 0.6 + d.weave) * 0.9 * dt;
-      const dx = d.x - d.cx,
-        dz = d.z - d.cz;
-      if (dx * dx + dz * dz > d.roam * d.roam) {
-        const toCentre = Math.atan2(d.cz - d.z, d.cx - d.x);
-        let diff = toCentre - d.heading;
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        d.heading += diff * Math.min(1, dt * 2.5);
-      }
-      d.x += Math.cos(d.heading) * d.speed * dt;
-      d.z += Math.sin(d.heading) * d.speed * dt;
-      d.group.position.set(
-        d.x,
-        d.baseY + Math.sin(t * 1.6 + d.bob) * 0.015,
-        d.z,
-      );
-      d.group.rotation.y = -d.heading;
-    }
-  }
-
-  if (mechanics && latestFrame) mechanics.update(latestFrame, t);
-  if (doors && latestFrame) doors.update(latestFrame, t);
-  if (dressing) dressing.update(t);
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
   actors.update(dt, t);
   fx.composer.render();

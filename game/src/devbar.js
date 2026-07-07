@@ -52,7 +52,7 @@ export function initDevBar({ scene, camera, renderer, rig }) {
   bar.id = "rl-devbar";
   bar.innerHTML = `
     <span class="tag">Dev</span>
-    <button id="rl-dev-inspect">&#128269; Inspect</button>
+    <button id="rl-dev-inspect">Inspect</button>
     <button id="rl-dev-rotate">&#8635; Rotate</button>
     <span class="rot" id="rl-dev-rotbtns">
       <button data-deg="-45">-45&deg;</button>
@@ -69,8 +69,8 @@ export function initDevBar({ scene, camera, renderer, rig }) {
       <button data-ax="y" data-d="-1" title="down (Shift=fine)">y-</button>
       <button data-ax="y" data-d="1" title="up (Shift=fine)">y+</button>
     </span>
-    <button id="rl-dev-fly">&#9992; Free cam</button>
-    <button id="rl-dev-copycam">&#128247; Copy cam</button>
+    <button id="rl-dev-fly">Free cam</button>
+    <button id="rl-dev-copycam">Copy cam</button>
     <span class="readout" id="rl-dev-readout" title="click to copy">press a tool...</span>`;
   document.body.appendChild(bar);
 

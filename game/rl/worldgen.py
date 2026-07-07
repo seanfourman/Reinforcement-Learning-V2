@@ -1,10 +1,10 @@
 """Back-compat shim - the world layouts now live in the ``worlds/`` package.
 
 Historically this module *was* the single fixed castle. It has been split into
-``worlds/grid.py`` (shared core) + ``worlds/medieval.py`` (the castle) + the
-other themed rounds. This module re-exports the grid alphabet, the ``World``
-class, and a ``generate()`` that builds Round 1, so existing
-``import worldgen`` / ``from worldgen import WALL, ...`` call sites keep working.
+``worlds/grid.py`` (shared core) + the per-round theme modules. This module
+re-exports the grid alphabet, the ``World`` class, and a ``generate()`` that
+builds a round's world, so existing ``import worldgen`` /
+``from worldgen import WALL, ...`` call sites keep working.
 """
 
 from worlds.grid import (  # noqa: F401  (re-exported)
@@ -16,7 +16,7 @@ from worlds import make_world, round_meta, ROUNDS  # noqa: F401
 
 
 def generate(seed=None, round_id=1):
-    """Build a round's world (default Round 1 = the medieval castle)."""
+    """Build a round's world (default Round 1 = Peach's Castle)."""
     return make_world(round_id, seed)
 
 

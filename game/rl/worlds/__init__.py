@@ -2,8 +2,7 @@
 
 Each round module exposes ``generate(seed=None) -> World`` and the metadata
 constants ``THEME`` / ``ROUND_ID`` / ``TITLE``. ``ROUNDS`` is the tournament
-running order; the tournament manager walks it. Rounds 2-5 are added in later
-phases — until then only Round 1 (medieval) is registered.
+running order; the tournament manager walks it. All five rounds are registered.
 """
 
 from .grid import (  # re-exported for convenience / back-compat
@@ -11,7 +10,6 @@ from .grid import (  # re-exported for convenience / back-compat
     WALL, FLOOR, ESCAPE, RED_KEY, BLUE_KEY, RED_DOOR, BLUE_DOOR,
     GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
 )
-from . import medieval
 from . import peach
 from . import city
 from . import fossilfalls
@@ -56,7 +54,7 @@ ALGO_LABELS = {
 
 
 def make_world(round_id=1, seed=None):
-    mod = ROUND_MODULES.get(round_id, medieval)
+    mod = ROUND_MODULES.get(round_id, peach)
     return mod.generate(seed)
 
 
@@ -65,7 +63,7 @@ def round_algos(round_id):
 
 
 def round_meta(round_id):
-    mod = ROUND_MODULES.get(round_id, medieval)
+    mod = ROUND_MODULES.get(round_id, peach)
     ar, ab = round_algos(round_id)
     return {
         "roundId": mod.ROUND_ID, "theme": mod.THEME, "title": mod.TITLE,

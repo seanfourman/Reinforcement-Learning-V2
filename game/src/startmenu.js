@@ -26,122 +26,27 @@ export const CHARACTERS = [
   { name: "Parabones", file: "parabones/parabones.dae" },
 ];
 
-// PLACEHOLDER opponent data: Player 2 is the COMPUTER. Each character is a static,
-// pre-trained opponent of increasing difficulty (Mario easiest -> Parabones hardest),
-// with 5 algorithms it "knows" (one per level) and a strength 1-5 for each. The
-// player must beat these. (These models are STATIC - they do NOT train live.)
-// Tune freely; this is just first-pass flavour until the 5 levels are designed.
+// CPU opponent data: Player 2 is the COMPUTER, playing the RED side. The algorithm
+// per level is fixed by the ROUND (Red's half of each matchup, see rl/worlds:
+// R1 Value Iteration, R2 SARSA, R3 Q-Learning, R4 DQN, R5 DQN), so every opponent
+// lists the same five - what differs is the STRENGTH (1-5 pips) each character
+// brings to each level. Mario is the easiest, Parabones the hardest. (These models
+// are STATIC baselines shown for selection - they do NOT train live.)
+const CPU_ALGOS = ["Value Iteration", "SARSA", "Q-Learning", "DQN", "DQN"];
+const opp = (tier, label, strengths) => ({
+  tier, label, picks: CPU_ALGOS.map((a, i) => [a, strengths[i]]),
+});
 const OPPONENTS = [
-  {
-    tier: 1,
-    label: "Rookie",
-    picks: [
-      ["Value Iteration", 2],
-      ["MC Prediction", 1],
-      ["SARSA", 2],
-      ["REINFORCE", 1],
-      ["DQN", 2],
-    ],
-  }, // Mario
-  {
-    tier: 1,
-    label: "Rookie",
-    picks: [
-      ["Policy Iteration", 2],
-      ["MC Control", 2],
-      ["SARSA", 2],
-      ["REINFORCE", 2],
-      ["DQN", 2],
-    ],
-  }, // Luigi
-  {
-    tier: 2,
-    label: "Amateur",
-    picks: [
-      ["Value Iteration", 3],
-      ["MC Control", 2],
-      ["Q-Learning", 3],
-      ["Actor-Critic", 2],
-      ["DQN", 2],
-    ],
-  }, // Yoshi
-  {
-    tier: 2,
-    label: "Amateur",
-    picks: [
-      ["Policy Iteration", 3],
-      ["MC Control", 3],
-      ["Expected-SARSA", 3],
-      ["REINFORCE", 2],
-      ["DQN", 3],
-    ],
-  }, // Toadette
-  {
-    tier: 3,
-    label: "Skilled",
-    picks: [
-      ["Value Iteration", 3],
-      ["MC Control", 3],
-      ["Q-Learning", 4],
-      ["Actor-Critic", 3],
-      ["DQN", 3],
-    ],
-  }, // Pauline
-  {
-    tier: 3,
-    label: "Skilled",
-    picks: [
-      ["Policy Iteration", 4],
-      ["MC Control", 3],
-      ["Q-Learning", 4],
-      ["Actor-Critic", 3],
-      ["DQN from Frames", 3],
-    ],
-  }, // Koopa
-  {
-    tier: 4,
-    label: "Veteran",
-    picks: [
-      ["Policy Iteration", 4],
-      ["Expected-SARSA", 4],
-      ["Q-Learning", 4],
-      ["PPO", 4],
-      ["DQN", 4],
-    ],
-  }, // Bowser
-  {
-    tier: 4,
-    label: "Veteran",
-    picks: [
-      ["Value Iteration", 4],
-      ["Expected-SARSA", 4],
-      ["Q-Learning", 5],
-      ["Actor-Critic", 4],
-      ["DQN from Frames", 4],
-    ],
-  }, // Peach
-  {
-    tier: 5,
-    label: "Master",
-    picks: [
-      ["Policy Iteration", 5],
-      ["Expected-SARSA", 4],
-      ["Q-Learning", 5],
-      ["PPO", 5],
-      ["DQN from Frames", 4],
-    ],
-  }, // Toad
-  {
-    tier: 5,
-    label: "Champion",
-    picks: [
-      ["Policy Iteration", 5],
-      ["Expected-SARSA", 5],
-      ["Q-Learning", 5],
-      ["PPO", 5],
-      ["DQN from Frames", 5],
-    ],
-  }, // Parabones
+  opp(1, "Rookie", [2, 1, 2, 1, 2]),   // Mario
+  opp(1, "Rookie", [2, 2, 2, 2, 2]),   // Luigi
+  opp(2, "Amateur", [3, 2, 3, 2, 2]),  // Yoshi
+  opp(2, "Amateur", [3, 3, 3, 2, 3]),  // Toadette
+  opp(3, "Skilled", [3, 3, 4, 3, 3]),  // Pauline
+  opp(3, "Skilled", [4, 3, 4, 3, 3]),  // Koopa
+  opp(4, "Veteran", [4, 4, 4, 4, 4]),  // Bowser
+  opp(4, "Veteran", [4, 4, 5, 4, 4]),  // Peach
+  opp(5, "Master", [5, 4, 5, 5, 4]),   // Toad
+  opp(5, "Champion", [5, 5, 5, 5, 5]), // Parabones
 ];
 
 // the CPU's difficulty tier (1=easiest .. 5=hardest) from whichever character sits

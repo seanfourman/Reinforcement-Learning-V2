@@ -38,7 +38,7 @@ class World:
     ``slip_prob`` is the per-slip-cell slip chance the env applies.
     """
 
-    def __init__(self, grid, *, theme="medieval", round_id=1, title="",
+    def __init__(self, grid, *, theme="peach", round_id=1, title="",
                  red_spawn, blue_spawn, red_key, blue_key, red_door, blue_door,
                  gold_home, escape, furniture=None, room_doors=None,
                  drop_traps=None, slip_cells=None, slip_prob=0.0, seed=1,
