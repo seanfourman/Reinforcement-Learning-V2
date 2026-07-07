@@ -103,8 +103,8 @@ const STYLE = `
 #rl-keys .kh{display:flex;align-items:center;gap:9px;}
 #rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
-  font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.32);}
-#rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 2px 5px rgba(0,0,0,.6);}
+  font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
+#rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.38);}
 `;
 
 export function initHud() {
