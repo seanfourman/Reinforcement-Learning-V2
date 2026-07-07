@@ -266,8 +266,21 @@ class GridWorld(gym.Env):
         # never misses a manhole drop even when the sim steps faster than it polls
         self.fall_n = {"red": 0, "blue": 0}
         self.fall_cell = {"red": None, "blue": None}
+        # per-episode reward decomposition (terminal / shaping / other) per agent
+        self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
+                         "blue": {"terminal": 0.0, "shape": 0.0, "other": 0.0}}
         obs = (self.observe("red"), self.observe("blue"))
         return obs, {}
+
+    def _accum_parts(self, reward, shape, terminal):
+        """Fold this step's reward into the per-episode decomposition: terminal
+        (win/lose), shaping (Φ' - Φ), and other (step cost + bonuses + penalties)."""
+        for a in ("red", "blue"):
+            p = self.ep_parts[a]
+            s, t = shape.get(a, 0.0), terminal.get(a, 0.0)
+            p["shape"] += s
+            p["terminal"] += t
+            p["other"] += reward[a] - s - t
 
     # ------------------------------------------------------------ observation
     def _gold_loc(self, agent):
@@ -398,21 +411,27 @@ class GridWorld(gym.Env):
         # reach the goal -> win; both crossing on the SAME step is a genuine DRAW
         # (no silent default to red - Peach's spawns are equidistant, so a symmetric
         # deterministic race ties every time). Both are rewarded for arriving.
+        terminal = {"red": 0.0, "blue": 0.0}
         reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
         if reached:
             self.done = True
             if len(reached) == 2:
                 self.winner = None
-                reward["red"] += WIN
-                reward["blue"] += WIN
+                terminal["red"] = terminal["blue"] = WIN
             else:
                 self.winner = reached[0]
                 loser = "blue" if self.winner == "red" else "red"
-                reward[self.winner] += WIN
-                reward[loser] += LOSE
+                terminal[self.winner] = WIN
+                terminal[loser] = LOSE
+            reward["red"] += terminal["red"]
+            reward["blue"] += terminal["blue"]
 
+        shape = {}
         for agent in ("red", "blue"):
-            reward[agent] += self._potential(agent) - phi0[agent]
+            s = self._potential(agent) - phi0[agent]
+            shape[agent] = s
+            reward[agent] += s
+        self._accum_parts(reward, shape, terminal)
 
         truncated = False
         if not self.done and self.steps >= self.max_steps:
@@ -494,18 +513,25 @@ class GridWorld(gym.Env):
                     break
 
         # 6) escape: holding gold AND on the gate -> win
+        terminal = {"red": 0.0, "blue": 0.0}
         for agent in ("red", "blue"):
             if self.gold_holder == agent and self._pos(agent) in self.world.escape:
                 self.done = True
                 self.winner = agent
                 loser = "blue" if agent == "red" else "red"
+                terminal[agent] = WIN
+                terminal[loser] = LOSE
                 reward[agent] += WIN
                 reward[loser] += LOSE
                 break
 
         # difference-of-potentials shaping: F = Φ(s') − Φ(s), added to each agent
+        shape = {}
         for agent in ("red", "blue"):
-            reward[agent] += self._potential(agent) - phi0[agent]
+            s = self._potential(agent) - phi0[agent]
+            shape[agent] = s
+            reward[agent] += s
+        self._accum_parts(reward, shape, terminal)
 
         truncated = False
         if not self.done and self.steps >= self.max_steps:

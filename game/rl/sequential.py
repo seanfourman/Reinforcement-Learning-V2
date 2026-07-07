@@ -159,6 +159,13 @@ class SequentialArena:
             (near[0] - pos[0]) / ARENA, (near[1] - pos[1]) / ARENA,
         ], dtype=np.float32)
 
+    def field_obs(self, which, x, z):
+        """Observation for a STILL probe at (x,z), aimed at the agent's CURRENT
+        checkpoint - drives the value/policy field overlay."""
+        k = self.red_cp if which == "red" else self.blue_cp
+        return self._observe(which, np.array([x, z], dtype=np.float32),
+                             np.zeros(2, dtype=np.float32), k)
+
     # ----------------------------------------------------------------- reset
     def reset(self, *, seed=None, options=None, regenerate=False):
         if seed is not None:

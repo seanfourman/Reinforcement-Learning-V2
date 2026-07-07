@@ -112,6 +112,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(match.value_grid(agent))
         if route == "/api/vstats":
             return self._json(match.visit_stats(q.get("agent", ["red"])[0]))
+        if route == "/api/mdp":
+            return self._json(match.mdp_spec())
+        if route == "/api/field":
+            return self._json(match.arena_field(q.get("agent", ["blue"])[0]))
+        if route == "/api/va":
+            return self._json(match.va_probe(q.get("agent", ["blue"])[0]))
+        if route == "/api/reward":
+            return self._json(match.reward_decomp())
+        if route == "/api/qprobe":
+            return self._json(match.q_probe_series())
+        if route == "/api/polagree":
+            return self._json(match.policy_agreement())
+        if route == "/api/dpsweeps":
+            return self._json(match.dp_sweeps(q.get("agent", ["red"])[0]))
         if route == "/api/history":
             return self._json(match.history())
         if route == "/api/replay":

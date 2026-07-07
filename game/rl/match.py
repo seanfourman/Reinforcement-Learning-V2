@@ -154,6 +154,13 @@ class Match:
         # action-frequency histogram per side (sized to the current env's actions)
         self.act_counts = {"red": [0] * self.env.n_actions,
                            "blue": [0] * self.env.n_actions}
+        # rolling per-episode reward decomposition (terminal / shaping / other),
+        # grid rounds only (the grid env accumulates env.ep_parts)
+        self.reward_parts_hist = deque(maxlen=100)
+        # V at a landmark (the spawn) per episode - the "start-state value climbs" probe
+        self.q_probe = deque(maxlen=HISTORY_CAP)
+        # recent per-episode returns per side, for the MC-vs-TD variance comparison
+        self.ret_hist = {"red": deque(maxlen=100), "blue": deque(maxlen=100)}
 
     def _apply_epsilon(self):
         # each side follows its own schedule, but a DP planner ignores epsilon and
@@ -221,6 +228,8 @@ class Match:
                 self.recent_out.append(out)
                 self.ep_lengths.append(self.env.steps)
                 self.last_return = dict(self.ep_return)
+                self.ret_hist["red"].append(self.ep_return["red"])
+                self.ret_hist["blue"].append(self.ep_return["blue"])
                 self.episode += 1
                 self._finish_episode(w)
                 self._new_episode()
@@ -228,6 +237,10 @@ class Match:
 
     def _finish_episode(self, winner):
         """Snapshot the finished episode for replay + log a learning-curve point."""
+        parts = getattr(self.env, "ep_parts", None)   # grid env's reward decomposition
+        if parts is not None:
+            self.reward_parts_hist.append({s: dict(parts[s]) for s in ("red", "blue")})
+        self._record_probe()
         self.last_episode = {"winner": winner, "steps": self.env.steps,
                              "frames": self._frames}
         if winner in ("red", "blue") and self.env.steps < self._best_len:
@@ -433,6 +446,66 @@ class Match:
         m = worlds.round_meta(self.round_id)
         return m
 
+    def _family(self):
+        a = self.algo_blue
+        if is_dp(a):
+            return "Dynamic Programming"
+        if is_dqn(a):
+            return "Deep RL (function approximation)"
+        if a == "monte_carlo":
+            return "Monte-Carlo"
+        return "Temporal-Difference"
+
+    def mdp_spec(self):
+        """The round's MDP tuple (S, A, R, gamma) + win condition, for the BRIEFING
+        card. Reward constants mirror env.py / continuous.py / sequential.py."""
+        with self.lock:
+            env = self.env
+            arena = env.objective == "arena"
+            meta = self._matchup()
+            if not arena:
+                cross = env.objective == "cross"
+                state_desc = "cell x own-key(2) x gold-loc(5) x opp-region(3) x opp-adjacent(2) x trap(2)"
+                state_size = getattr(env, "state_space_size", None)
+                actions = ["North", "South", "West", "East", "Use"]
+                if cross:
+                    rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
+                               ["Fall in a manhole", -0.5], ["Shaping weight", 0.02]]
+                    win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
+                else:
+                    rewards = [["Step", -0.01], ["Reach your key", 0.10], ["Grab the gold", 0.30],
+                               ["Win (escape)", 1.0], ["Lose", -1.0], ["Snared by a trap", -0.05],
+                               ["Your trap caught the rival", 0.05], ["Shaping weight", 0.02]]
+                    win = "Get your key, take the gold, reach an escape tile. First one out wins."
+            else:
+                seq = type(env).__name__ == "SequentialArena"
+                state_desc = ("continuous 9-vector: position, velocity, current-target offset, leg progress"
+                              if seq else "continuous 6-vector: position, velocity, goal offset (normalized)")
+                state_size = None
+                actions = ["8 compass thrusts + coast (9)"]
+                rewards = [["Step", -0.006], ["Wall hit", -0.02]]
+                if seq:
+                    rewards += [["Tornado hit", -0.06], ["Quicksand step", -0.01], ["Checkpoint", 0.40]]
+                rewards += [["Win (reach goal)", 1.0], ["Lose", -1.0], ["Shaping weight", 0.05]]
+                win = ("Clear every checkpoint in order; first to finish the rally wins."
+                       if seq else "First to reach the goal region wins; a tie is a draw.")
+            g = self.gamma
+            return {
+                "round": self.round_id, "title": meta["title"], "theme": meta["theme"],
+                "objective": env.objective,
+                "kind": "arena" if arena else env.objective,
+                "matchup": meta["matchup"], "labelRed": meta["labelRed"], "labelBlue": meta["labelBlue"],
+                "family": self._family(),
+                "stateDesc": state_desc, "stateSize": state_size,
+                "actions": actions, "nActions": env.n_actions,
+                "maxSteps": env.max_steps,
+                "slipProb": getattr(getattr(env, "world", None), "slip_prob", 0.0),
+                "gammaRed": round(self.red_gamma, 3), "gammaBlue": round(g, 3),
+                "horizon": round(1.0 / (1.0 - g), 1) if g < 1 else None,
+                "winCondition": win,
+                "rewards": rewards,
+            }
+
     def stats(self):
         with self.lock:
             recent = list(self.recent)
@@ -454,6 +527,7 @@ class Match:
                 "recentRate": {k: round(v, 3) for k, v in rate.items()},
                 "avgEpisodeLen": round(avg_len, 1),
                 "lastReturn": {k: round(v, 3) for k, v in self.last_return.items()},
+                "returnStd": self._ret_std(),
                 "qStates": {"red": self.red.learned_count(),
                             "blue": self.blue.learned_count()},
                 "params": self.params(),
@@ -524,7 +598,27 @@ class Match:
                     "theta": getattr(a, "theta", None),
                     "phases": 1 if getattr(a, "cross", True) else 3,
                     "sweepCount": sum(getattr(a, "sweeps", []) or []),
+                    "backups": getattr(a, "backups", 0),
+                    "policyChanges": list(getattr(a, "policy_changes", []) or []),
                     "sweeps": list(log)}
+
+    def dp_sweeps(self, agent):
+        """Per-sweep V snapshots (H x W grids) for the Value-Iteration propagation
+        animation - watch value spread outward from the goal one ring per sweep."""
+        with self.lock:
+            a = self._agent(agent)
+            frames = getattr(a, "v_frames", None)
+            if not frames or self.env.objective == "arena":
+                return {"available": False}
+            H, W = self.env.H, self.env.W
+            out = []
+            for fr in frames:
+                g = [[None] * W for _ in range(H)]
+                for (r, c), v in fr.items():
+                    if 0 <= r < H and 0 <= c < W:
+                        g[r][c] = round(v, 4)
+                out.append(g)
+            return {"available": True, "agent": agent, "n": len(out), "H": H, "W": W, "frames": out}
 
     def _agent(self, agent):
         return self.red if agent == "red" else self.blue
@@ -543,6 +637,18 @@ class Match:
     def _diag(self, side):
         d = getattr(self._agent(side), "diag", None)
         return d() if d else None
+
+    def _ret_std(self):
+        """Std of recent per-episode returns per side (MC is noisier than TD)."""
+        out = {}
+        for s in ("red", "blue"):
+            h = list(self.ret_hist[s])
+            if len(h) > 1:
+                m = sum(h) / len(h)
+                out[s] = round((sum((x - m) ** 2 for x in h) / len(h)) ** 0.5, 3)
+            else:
+                out[s] = 0.0
+        return out
 
     def _recent_outcome(self):
         ro = list(self.recent_out)
@@ -618,6 +724,118 @@ class Match:
                 v = a.state_value(state)
                 grid[r][c] = round(v, 4) if v is not None else None
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
+
+    def arena_field(self, agent, n=22):
+        """Value + greedy-action field for the CONTINUOUS arenas: sample the agent's
+        Q over an n x n grid of still (x,z) probes. Grid rounds return unavailable
+        (they use value_grid). This is what makes R4/R5 not a black box."""
+        with self.lock:
+            env = self.env
+            if env.objective != "arena" or not hasattr(env, "field_obs"):
+                return {"available": False}
+            a = self._agent(agent)
+            if not hasattr(a, "diag"):     # only the DQN family exposes a Q field here
+                return {"available": False}
+            wj = env.to_json()
+            A = float(wj.get("arena", 20.0))
+            solids = list(wj.get("obstacles", []) or [])   # solid circles (skip inside)
+            vals, pols = [], []
+            vmin, vmax = float("inf"), float("-inf")
+            for j in range(n):
+                vr, pr = [], []
+                for i in range(n):
+                    x = (i + 0.5) / n * A
+                    z = (j + 0.5) / n * A
+                    if any((x - c[0]) ** 2 + (z - c[1]) ** 2 < (c[2] + 0.2) ** 2 for c in solids):
+                        vr.append(None)
+                        pr.append(None)
+                        continue
+                    q = a.q_values(env.field_obs(agent, x, z))
+                    v = max(q)
+                    vmin = min(vmin, v)
+                    vmax = max(vmax, v)
+                    vr.append(round(v, 3))
+                    pr.append(int(max(range(len(q)), key=lambda k: q[k])))
+                vals.append(vr)
+                pols.append(pr)
+            return {"available": True, "agent": agent, "n": n, "arena": A,
+                    "value": vals, "policy": pols,
+                    "vmin": round(vmin, 3) if vmin < float("inf") else 0.0,
+                    "vmax": round(vmax, 3) if vmax > float("-inf") else 1.0,
+                    "goal": wj.get("goal"), "goalR": wj.get("goalR"), "obstacles": solids}
+
+    def va_probe(self, agent):
+        """Dueling-DQN V(s) / A(s,a) split at the agent's CURRENT position (Tier 3).
+        Unavailable for plain nets / tabular / DP (only Dueling exposes the split)."""
+        with self.lock:
+            env = self.env
+            a = self._agent(agent)
+            va = getattr(a, "value_advantage", None)
+            if env.objective != "arena" or va is None or not hasattr(env, "field_obs"):
+                return {"available": False}
+            pos = env.blue_pos if agent == "blue" else env.red_pos
+            out = va(env.field_obs(agent, float(pos[0]), float(pos[1])))
+            if out is None:
+                return {"available": False}
+            return {"available": True, "agent": agent, "v": out["v"], "a": out["a"]}
+
+    def reward_decomp(self):
+        """Average per-episode reward decomposition (terminal / shaping / other)
+        per side over recent episodes. Grid rounds only (arena envs don't track it)."""
+        with self.lock:
+            h = list(self.reward_parts_hist)
+            if not h:
+                return {"available": False}
+            out = {"available": True, "episodes": len(h)}
+            for side in ("red", "blue"):
+                out[side] = {k: round(sum(p[side][k] for p in h) / len(h), 3)
+                             for k in ("terminal", "shape", "other")}
+            return out
+
+    def _record_probe(self):
+        """V(spawn) for each side this episode - shows the start-state value rising
+        as the agent learns a path to the goal. Grid rounds only (no lock: called
+        from tick, which already holds it)."""
+        if self.env.objective == "arena":
+            return
+        ci = getattr(self.env, "cell_index", None)
+        sp = getattr(getattr(self.env, "world", None), "blue_spawn", None)
+        if ci is None or sp is None or tuple(sp) not in ci:
+            return
+        idx = ci[tuple(sp)]
+        pt = {"ep": self.episode}
+        for side in ("red", "blue"):
+            a = self._agent(side)
+            _, ok, gl, orr, oa, tr = self.env.observe(side)
+            v = a.state_value((idx, ok, gl, orr, oa, tr))
+            pt[side + "V"] = round(v, 4) if v is not None else 0.0
+        self.q_probe.append(pt)
+
+    def q_probe_series(self):
+        with self.lock:
+            return {"available": bool(self.q_probe), "points": list(self.q_probe)}
+
+    def policy_agreement(self):
+        """Fraction of learned cells where Red's and Blue's greedy actions match.
+        On the DP round VI and PI converge to the SAME optimal policy (-> ~100%);
+        elsewhere the two learners can diverge. Grid rounds only."""
+        with self.lock:
+            if self.env.objective == "arena":
+                return {"available": False}
+            rg = self.policy_grid("red")["grid"]
+            bg = self.policy_grid("blue")["grid"]
+            cells = same = 0
+            for r in range(len(rg)):
+                for c in range(len(rg[r])):
+                    ra, ba = rg[r][c], bg[r][c]
+                    if ra is None or ba is None:
+                        continue
+                    cells += 1
+                    same += (ra == ba)
+            if not cells:
+                return {"available": False}
+            return {"available": True, "cells": cells, "agree": same,
+                    "rate": round(same / cells, 3)}
 
     def visit_grid(self, agent):
         """Per-cell visit counts for the agent (the 'where do they travel' heatmap).

@@ -34,6 +34,43 @@ export function createHeatmap(scene) {
   mesh.frustumCulled = false;
   scene.add(mesh);
 
+  // ---- CONTINUOUS-arena value field: an n x n colour grid sampled from the DQN
+  // over the arena (raw world x,z, the space the agents move in). Fed by /api/field.
+  const AMAX = 40 * 40;
+  const amesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.6, depthWrite: false }), AMAX);
+  amesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  amesh.renderOrder = 3;
+  amesh.visible = false;
+  amesh.frustumCulled = false;
+  scene.add(amesh);
+
+  function setArenaField(field) {
+    const n = field.n, A = field.arena, val = field.value;
+    const lo = field.vmin, span = (field.vmax - field.vmin) || 1;
+    const cell = (A / n) * 0.98;
+    let i = 0;
+    for (let j = 0; j < n && i < AMAX; j++) {
+      for (let k = 0; k < n && i < AMAX; k++) {
+        const v = val[j][k];
+        if (v == null) {
+          dummy.scale.setScalar(0);
+        } else {
+          dummy.position.set((k + 0.5) / n * A, 0.2, (j + 0.5) / n * A);
+          dummy.rotation.set(-Math.PI / 2, 0, 0);
+          dummy.scale.set(cell, cell, 1);
+          amesh.setColorAt(i, ramp((v - lo) / span));
+        }
+        dummy.updateMatrix();
+        amesh.setMatrixAt(i, dummy.matrix);
+        i++;
+      }
+    }
+    amesh.count = i;
+    amesh.instanceMatrix.needsUpdate = true;
+    if (amesh.instanceColor) amesh.instanceColor.needsUpdate = true;
+  }
+
   function setGrid(values) {
     let lo = Infinity, hi = -Infinity;
     for (const row of values) for (const v of row) {
@@ -208,9 +245,11 @@ export function createHeatmap(scene) {
     setNumbers,
     setPolicy,
     setFlip,
-    showColors() { mesh.visible = true; numPlane.visible = false; },
-    showNumbers() { numPlane.visible = true; mesh.visible = false; },
-    hide() { mesh.visible = false; numPlane.visible = false; },
-    get visible() { return mesh.visible || numPlane.visible; },
+    setArenaField,
+    showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; },
+    showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; },
+    showArena() { amesh.visible = true; mesh.visible = false; numPlane.visible = false; },
+    hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; },
+    get visible() { return mesh.visible || numPlane.visible || amesh.visible; },
   };
 }

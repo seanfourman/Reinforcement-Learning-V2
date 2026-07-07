@@ -100,6 +100,10 @@ class ContinuousArena:
             (gx - pos[0]) / ARENA, (gz - pos[1]) / ARENA,
         ], dtype=np.float32)
 
+    def field_obs(self, which, x, z):
+        """Observation for a STILL probe at (x,z) - drives the value/policy field."""
+        return self._observe(np.array([x, z], dtype=np.float32), np.zeros(2, dtype=np.float32))
+
     # ----------------------------------------------------------------- reset
     def reset(self, *, seed=None, options=None, regenerate=False):
         if seed is not None:

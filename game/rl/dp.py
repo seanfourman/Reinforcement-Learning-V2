@@ -51,6 +51,9 @@ class _DPBase:
         self.epsilon = 0.0
         self.sweeps = [0, 0, 0]         # per-phase iteration counts (for the panel)
         self.sweep_log = []             # per-sweep {delta, meanV} for the convergence charts
+        self.backups = 0                # total Bellman backups (sweeps x states) - fair compute
+        self.policy_changes = []        # PI only: states whose greedy action changed, per iteration
+        self.v_frames = []              # per-sweep V snapshots for the propagation animation
         # a "cross" world (no keys/gold) is a single-goal gridworld: plan ONE phase
         # (reach an escape tile) instead of the key->gold->escape race.
         self.cross = getattr(env, "objective", "race") == "cross"
@@ -88,6 +91,9 @@ class _DPBase:
     # ---- planning ----------------------------------------------------------
     def plan(self):
         self.sweep_log = []             # fresh convergence trace on every (re)solve
+        self.backups = 0
+        self.policy_changes = []
+        self.v_frames = []
         self.cells = list(self.env.floor_cells)
         self.V = [None] * N_PHASES
         self.policy = [None] * N_PHASES
@@ -160,6 +166,7 @@ class ValueIteration(_DPBase):
 
     def _solve_phase(self, goals):
         V = {c: 0.0 for c in self.cells}
+        nb = sum(1 for c in self.cells if c not in goals)   # states backed up per sweep
         sweeps = 0
         for _ in range(self.max_sweeps):
             delta = 0.0
@@ -170,8 +177,11 @@ class ValueIteration(_DPBase):
                 delta = max(delta, abs(best_q - V[c]))
                 V[c] = best_q
             sweeps += 1
+            self.backups += nb
             self.sweep_log.append({"delta": round(delta, 6),
                                    "meanV": round(sum(V.values()) / len(V), 4)})
+            if len(self.v_frames) < 80:        # per-sweep V snapshot for the animation
+                self.v_frames.append(dict(V))
             if delta < self.theta:
                 break
         policy = {c: self._greedy(c, V, goals)[0] for c in self.cells if c not in goals}
@@ -183,6 +193,7 @@ class PolicyIteration(_DPBase):
     mode = "policy_iteration"
 
     def _evaluate(self, policy, V, goals):
+        nb = sum(1 for c in self.cells if c not in goals)
         for _ in range(self.max_sweeps):
             delta = 0.0
             for c in self.cells:
@@ -191,6 +202,7 @@ class PolicyIteration(_DPBase):
                 v = self._q_of(c, policy[c], V, goals)
                 delta = max(delta, abs(v - V[c]))
                 V[c] = v
+            self.backups += nb
             self.sweep_log.append({"delta": round(delta, 6),
                                    "meanV": round(sum(V.values()) / len(V), 4)})
             if delta < self.theta:
@@ -206,11 +218,15 @@ class PolicyIteration(_DPBase):
             self._evaluate(policy, V, goals)
             stable = True
             improvements += 1
+            changed = 0
             for c in policy:
                 best_a, _ = self._greedy(c, V, goals)
+                self.backups += 1
                 if best_a != policy[c]:
                     policy[c] = best_a
                     stable = False
+                    changed += 1
+            self.policy_changes.append(changed)   # -> 0 when the policy is stable (PI proof)
             if stable:
                 break
         return V, policy, improvements

@@ -434,16 +434,24 @@ async function poll() {
     applyStats(snap);
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
-      const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
-      const v = await (
-        await fetch(`${API}/api/values?agent=${heatAgent}&mode=${m}`, {
-          cache: "no-store",
-        })
-      ).json();
-      if (v.grid) {
-        if (heatMode === "value") heatmap.setNumbers(v.grid);
-        else if (heatMode === "policy") heatmap.setPolicy(v.grid);
-        else heatmap.setGrid(v.grid);
+      if (arenaMode && heatMode !== "visits") {
+        // continuous rounds have no cells: sample the DQN's value field over the arena
+        const f = await (
+          await fetch(`${API}/api/field?agent=${heatAgent}`, { cache: "no-store" })
+        ).json();
+        if (f.available) { heatmap.setArenaField(f); heatmap.showArena(); }
+      } else {
+        const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
+        const v = await (
+          await fetch(`${API}/api/values?agent=${heatAgent}&mode=${m}`, {
+            cache: "no-store",
+          })
+        ).json();
+        if (v.grid) {
+          if (heatMode === "value") heatmap.setNumbers(v.grid);
+          else if (heatMode === "policy") heatmap.setPolicy(v.grid);
+          else heatmap.setGrid(v.grid);
+        }
       }
     }
     pollCount++;
@@ -498,6 +506,7 @@ window.RL = {
     heatAgent = agent;
     heatMode = mode || "value";
     if (!agent) heatmap.hide();
+    else if (arenaMode && heatMode !== "visits") heatmap.showArena();
     else if (heatMode === "value" || heatMode === "policy") heatmap.showNumbers();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)
