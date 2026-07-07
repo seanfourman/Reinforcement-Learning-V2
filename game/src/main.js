@@ -411,9 +411,10 @@ async function poll() {
         };
         transition
           .play(w.world, snap.stats, async () => {
-            // the screen is fully black now - close the N panel under the black so
-            // it's already gone when the iris opens on the next round
+            // the screen is fully black now - close BOTH side panels (N + M) under
+            // the black so they're already gone when the iris opens on the next round
             document.getElementById("rl-panel")?.classList.remove("open");
+            document.getElementById("rl-cpanel")?.classList.remove("open");
             rebuildWorld(w.world);
             applyStats(snap); // update HUD / panels now, while black covers them
             await whenReady(); // don't open until the new arena is fully ready
