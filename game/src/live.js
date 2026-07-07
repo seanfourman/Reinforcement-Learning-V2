@@ -60,6 +60,9 @@ export function createLiveActors(scene, walkers) {
       const old = side === 'red' ? king : princess;
       if (old && old.group) group.remove(old.group);
       w.group.scale.setScalar(agentScale);
+      w.group.position.x = rendered[side].x;
+      w.group.position.z = rendered[side].z;
+      w.group.rotation.y = heading[side];
       group.add(w.group);
       if (side === 'red') king = w; else princess = w;
     }
@@ -83,6 +86,7 @@ export function createLiveActors(scene, walkers) {
   document.body.appendChild(banner);
 
   const heading = { red: Math.PI, blue: Math.PI };
+  const spawnFacing = { red: Math.PI, blue: Math.PI }; // restored on episode reset
   const rendered = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   const target = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   let frame = null;
@@ -98,6 +102,20 @@ export function createLiveActors(scene, walkers) {
 
   const cw = (cell) => cellToWorld(cell.r, cell.c); // {r,c} -> {x,z}
   const cwArr = (arr) => cellToWorld(arr[0], arr[1]); // [row,col] -> {x,z}
+  const arrPoint = (arr) => Array.isArray(arr) ? { x: arr[0], z: arr[1] } : null;
+
+  function headingTo(from, to, fallback = Math.PI) {
+    if (!from || !to) return fallback;
+    const dx = to.x - from.x, dz = to.z - from.z;
+    return Math.abs(dx) + Math.abs(dz) > 1e-4 ? Math.atan2(dx, dz) : fallback;
+  }
+
+  function placeWalker(side, pos) {
+    const walker = side === 'red' ? king : princess;
+    walker.group.position.x = pos.x;
+    walker.group.position.z = pos.z;
+    walker.group.rotation.y = heading[side];
+  }
 
   function setWorld(lay, cross = false) {
     layout = lay;
@@ -130,6 +148,8 @@ export function createLiveActors(scene, walkers) {
       };
       heading.red = faceGoal(rs);
       heading.blue = faceGoal(bs);
+      spawnFacing.red = heading.red;   // restored on every episode reset (see update)
+      spawnFacing.blue = heading.blue;
       king.group.rotation.y = heading.red;
       princess.group.rotation.y = heading.blue;
     }
@@ -137,7 +157,7 @@ export function createLiveActors(scene, walkers) {
   }
 
   // continuous arena round: drive the two walkers from world (x,z) floats, no keys
-  function setArena(on) {
+  function setArena(on, world = null) {
     arena = on;
     agentScale = on ? 1.8 : 1.2; // a bit larger in the open arena
     king.group.scale.setScalar(agentScale);
@@ -146,6 +166,22 @@ export function createLiveActors(scene, walkers) {
     blueKey.group.visible = !on && !isCross;
     goldKey.group.visible = !on && !isCross;
     escGlow.visible = !on;
+    if (!on) return;
+
+    const defaultSpawns = {
+      red: { x: (world?.arena || 20) - 3, z: (world?.arena || 20) - 2.5 },
+      blue: { x: 3, z: (world?.arena || 20) - 2.5 },
+    };
+    for (const side of ['red', 'blue']) {
+      const sp = arrPoint(world?.spawns?.[side]) || defaultSpawns[side];
+      const firstTour = Array.isArray(world?.tours?.[side]) ? world.tours[side][0] : null;
+      const faceTarget = arrPoint(firstTour) || arrPoint(world?.goal);
+      rendered[side] = { ...sp };
+      target[side] = { ...sp };
+      heading[side] = headingTo(sp, faceTarget, Math.PI);
+      spawnFacing[side] = heading[side];
+      placeWalker(side, sp);
+    }
   }
 
   function onFrame(f) {
@@ -201,16 +237,25 @@ export function createLiveActors(scene, walkers) {
       const r = rendered[key], tg = target[key];
       const dx = tg.x - r.x, dz = tg.z - r.z;
       const moving = Math.abs(dx) + Math.abs(dz) > 0.02;
-      if (Math.hypot(dx, dz) > 1.5) {
-        // a teleport (mirror) or ladder climb - snap instead of sliding through walls
-        r.x = tg.x; r.z = tg.z;
+      const teleport = Math.hypot(dx, dz) > 1.5; // episode reset (goal->spawn), mirror, or ladder
+      if (teleport) {
+        r.x = tg.x; r.z = tg.z; // snap instead of sliding through walls
       } else {
         r.x += dx * k;
         r.z += dz * k;
       }
       walker.group.position.x = r.x;
       walker.group.position.z = r.z;
-      faceToward(walker, key, dx, dz);
+      if (teleport) {
+        // do NOT spin to face the jump vector: a reset teleports from the goal
+        // back to spawn, and turning to face that (backward, toward the camera) is
+        // exactly the "spawns facing the wrong way" bug. Re-face toward the next
+        // spawn objective on cross/arena rounds; otherwise just hold the heading.
+        if (isCross || arena) heading[key] = spawnFacing[key];
+        walker.group.rotation.y = heading[key];
+      } else {
+        faceToward(walker, key, dx, dz);
+      }
       updateWalker(walker, dt, moving);
     }
 
@@ -247,8 +292,8 @@ export function createLiveActors(scene, walkers) {
     if (frame.winner) {
       escGlow.intensity = 2 + Math.sin(t * 6) * 1.0;
       banner.textContent = frame.winner === 'red'
-        ? '👑  The King escapes - RED wins!'
-        : '👑  The Queen escapes - BLUE wins!';
+        ? 'RED wins the round!'
+        : 'BLUE wins the round!';
       banner.style.color = frame.winner === 'red' ? '#ffd2d2' : '#d2e2ff';
       banner.style.opacity = '1';
     } else {
@@ -261,5 +306,14 @@ export function createLiveActors(scene, walkers) {
   // grid actors / keys / escape glow entirely.
   function setHidden(h) { group.visible = !h; }
 
-  return { setWorld, onFrame, update, group, setWalkers, setHidden, setArena };
+  function resetFacing() {
+    for (const [key, walker] of [['red', king], ['blue', princess]]) {
+      fell[key] = null;
+      heading[key] = spawnFacing[key];
+      walker.group.rotation.y = heading[key];
+      walker.group.scale.setScalar(agentScale);
+    }
+  }
+
+  return { setWorld, onFrame, update, group, setWalkers, setHidden, setArena, resetFacing };
 }

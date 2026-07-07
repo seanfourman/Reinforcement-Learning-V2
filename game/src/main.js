@@ -296,7 +296,7 @@ function rebuildWorld(worldJson) {
   }
   arenaMode = worldJson.objective === "arena";
   actors.setHidden(false);
-  actors.setArena(arenaMode); // arena round drives the chosen characters as the racers
+  actors.setArena(arenaMode, worldJson); // arena round drives the chosen characters as the racers
   if (!arenaMode)
     actors.setWorld(parseLayout(rows), worldJson.objective === "cross");
 }
@@ -340,13 +340,40 @@ async function prewarmAllRounds() {
 
 // ------------------------------------------------------------------ live polling
 const API = "";
-async function control(body) {
+const RUN_START_DELAY_MS = 1000;
+
+async function postControl(body) {
+  await fetch(`${API}/api/control`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function holdTrainingForVisualSync() {
   try {
-    await fetch(`${API}/api/control`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    await postControl({ cmd: "syncHold" });
+  } catch (e) {
+    /* server not up yet */
+  }
+}
+
+async function releaseTrainingAfterVisualDelay(delayMs = RUN_START_DELAY_MS) {
+  try {
+    await postControl({ cmd: "syncRelease", delayMs });
+  } catch (e) {
+    /* server not up yet */
+  }
+}
+
+async function control(body) {
+  const autoReleaseReset = body?.cmd === "reset" && body.syncRelease !== false;
+  const serverBody = body && { ...body };
+  if (serverBody) delete serverBody.syncRelease;
+  if (body?.cmd === "reset") actors.resetFacing?.();
+  try {
+    await postControl(serverBody);
+    if (autoReleaseReset) await releaseTrainingAfterVisualDelay();
   } catch (e) {
     /* server not up yet */
   }
@@ -414,6 +441,7 @@ async function poll() {
       await fetch(`${API}/api/snapshot`, { cache: "no-store" })
     ).json();
     if (snap.worldVersion !== worldVersion) {
+      await holdTrainingForVisualSync();
       const w = await (
         await fetch(`${API}/api/world`, { cache: "no-store" })
       ).json();
@@ -421,12 +449,19 @@ async function poll() {
       worldVersion = w.worldVersion;
       if (firstBuild) {
         rebuildWorld(w.world); // initial load: no curtain
+        releaseTrainingAfterVisualDelay();
       } else {
         // Hold ALL live UI (HUD algo names, panels, board pieces) on the CURRENT
         // stage until the iris is fully black; then swap the world + UI together
         // under black, wait until every asset is loaded + settled, and only then
         // open the iris. holdUI stays set until the whole transition finishes.
         holdUI = true;
+        let released = false;
+        const releaseSyncHold = () => {
+          if (released) return;
+          released = true;
+          releaseTrainingAfterVisualDelay();
+        };
         transition
           .play(w.world, snap.stats, async () => {
             // the screen is fully black now - close the N panel under the black so
@@ -435,8 +470,13 @@ async function poll() {
             rebuildWorld(w.world);
             applyStats(snap); // update HUD / panels now, while black covers them
             await whenReady(); // don't open until the new arena is fully ready
+            holdUI = false; // from here on, keep visuals polling during the reveal
+            releaseSyncHold(); // starts the short wait while the iris/name reveal plays
           })
-          .catch((err) => console.warn("arena transition failed:", err))
+          .catch((err) => {
+            console.warn("arena transition failed:", err);
+            releaseSyncHold();
+          })
           .finally(() => {
             holdUI = false;
           });

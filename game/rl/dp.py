@@ -50,6 +50,7 @@ class _DPBase:
         self.max_sweeps = max_sweeps
         self.epsilon = 0.0
         self.sweeps = [0, 0, 0]         # per-phase iteration counts (for the panel)
+        self.sweep_log = []             # per-sweep {delta, meanV} for the convergence charts
         # a "cross" world (no keys/gold) is a single-goal gridworld: plan ONE phase
         # (reach an escape tile) instead of the key->gold->escape race.
         self.cross = getattr(env, "objective", "race") == "cross"
@@ -86,6 +87,7 @@ class _DPBase:
 
     # ---- planning ----------------------------------------------------------
     def plan(self):
+        self.sweep_log = []             # fresh convergence trace on every (re)solve
         self.cells = list(self.env.floor_cells)
         self.V = [None] * N_PHASES
         self.policy = [None] * N_PHASES
@@ -168,6 +170,8 @@ class ValueIteration(_DPBase):
                 delta = max(delta, abs(best_q - V[c]))
                 V[c] = best_q
             sweeps += 1
+            self.sweep_log.append({"delta": round(delta, 6),
+                                   "meanV": round(sum(V.values()) / len(V), 4)})
             if delta < self.theta:
                 break
         policy = {c: self._greedy(c, V, goals)[0] for c in self.cells if c not in goals}
@@ -187,6 +191,8 @@ class PolicyIteration(_DPBase):
                 v = self._q_of(c, policy[c], V, goals)
                 delta = max(delta, abs(v - V[c]))
                 V[c] = v
+            self.sweep_log.append({"delta": round(delta, 6),
+                                   "meanV": round(sum(V.values()) / len(V), 4)})
             if delta < self.theta:
                 break
         return V

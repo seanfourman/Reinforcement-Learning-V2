@@ -192,7 +192,7 @@ export function createPlayback(scene, trajectory, layout, walkers) {
     if (i >= last && trajectory.winner) {
       const win = trajectory.winner;
       escGlow.intensity = 2 + Math.sin(elapsed * 6) * 1.0;
-      banner.textContent = win === 'red' ? '👑  The King escapes - RED wins!' : '👑  The Princess escapes - BLUE wins!';
+      banner.textContent = win === 'red' ? 'RED wins the round!' : 'BLUE wins the round!';
       banner.style.color = win === 'red' ? '#ffd2d2' : '#d2e2ff';
       banner.style.opacity = '1';
     } else {

@@ -194,7 +194,76 @@ export function initReplay(parent) {
   });
 }
 
+// ---- DP convergence (Round 1's Dynamic-Programming room): per-sweep Bellman
+// residual + mean state value - the distinctive "how DP converges" charts ----
+export function initDP(parent) {
+  parent.insertAdjacentHTML('beforeend', `
+    <section id="rl-dp" hidden>
+      <h2>DP convergence</h2>
+      <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
+      <div class="btns" id="rl-dp-seg" style="margin-top:10px;">
+        <button data-a="red" class="active">Value Iteration</button>
+        <button data-a="blue">Policy Iteration</button>
+      </div>
+      <div class="ctl" style="margin-top:12px;">
+        <div class="row"><span>Convergence θ</span><b id="rl-dp-theta-v">1e-5</b></div>
+        <input type="range" id="rl-dp-theta" min="-6" max="0" step="0.5" value="-5" style="--fill:#7c4dd0">
+      </div>
+      <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
+      <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
+    </section>`);
+  const q = (s) => parent.querySelector(s);
+  const sec = q('#rl-dp');
+  let dpAgent = 'red';
+  const chDelta = makeChart(q('#rl-ch-dp-delta'), {
+    series: [{ key: 'logDelta', color: '#e11f2b' }],
+    fmt: (v) => { const d = Math.pow(10, v); return d >= 1 ? d.toFixed(1) : d.toExponential(0); },
+  });
+  const chMeanV = makeChart(q('#rl-ch-dp-meanv'), {
+    series: [{ key: 'meanV', color: '#1f9d63' }], fmt: (v) => v.toFixed(2),
+  });
+  window.addEventListener('resize', () => { chDelta.resize(); chMeanV.resize(); });
+  q('#rl-dp-seg').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-a]'); if (!b) return;
+    [...q('#rl-dp-seg').children].forEach((x) => x.classList.toggle('active', x === b));
+    dpAgent = b.dataset.a; refresh();
+  });
+  // convergence threshold theta: re-solve BOTH planners live -> the charts re-paint
+  const theta = q('#rl-dp-theta'), thetaV = q('#rl-dp-theta-v');
+  const paintTheta = () => {
+    const p = ((+theta.value - +theta.min) / ((+theta.max - +theta.min) || 1)) * 100;
+    theta.style.background = `linear-gradient(to right,#7c4dd0 ${p}%,#e1e3e8 ${p}%)`;
+  };
+  let thTimer = null;
+  theta.addEventListener('input', () => {
+    const th = Math.pow(10, +theta.value);
+    thetaV.textContent = th.toExponential(0);
+    paintTheta();
+    clearTimeout(thTimer);
+    thTimer = setTimeout(() => {
+      window.RL?.control?.({ cmd: 'setParams', params: { dpTheta: th } });
+      setTimeout(refresh, 60);
+    }, 220);
+  });
+  paintTheta();
+  async function refresh() {
+    try {
+      const d = await (await fetch(`/api/dp?agent=${dpAgent}`, { cache: 'no-store' })).json();
+      if (!d.isDP) { sec.hidden = true; return; }   // hidden on non-DP rounds
+      sec.hidden = false;
+      q('#rl-dp-name').textContent = d.name || d.method || 'Dynamic Programming';
+      q('#rl-dp-sweeps').textContent = `${d.sweepCount} sweeps · γ ${d.gamma}`;
+      const pts = (d.sweeps || []).map((s) => ({
+        logDelta: Math.log10(Math.max(s.delta, 1e-6)), meanV: s.meanV }));
+      chDelta.draw(pts); chMeanV.draw(pts);
+    } catch (e) { /* server warming up */ }
+  }
+  setInterval(refresh, 1500);
+  refresh();
+}
+
 export function initGraphs(parent) {
   initCurves(parent, 'blue');
+  initDP(parent);
   initReplay(parent);
 }

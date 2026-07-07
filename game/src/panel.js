@@ -32,6 +32,8 @@ export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
 const SVG = {
   prev: '<svg viewBox="0 0 24 24"><path d="M6 5h2.2v14H6z"/><path d="M18 5 8.5 12 18 19z"/></svg>',
   next: '<svg viewBox="0 0 24 24"><path d="M6 5 15.5 12 6 19z"/><path d="M15.8 5H18v14h-2.2z"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  collapse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
   play: '<svg viewBox="0 0 24 24"><path d="M7.5 5v14L18 12z"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><path d="M7 5h3.2v14H7z"/><path d="M13.8 5h3.2v14h-3.2z"/></svg>',
 };
@@ -53,13 +55,14 @@ export const PARAMS = [
 
 const STYLE = `
 #rl-panel{position:fixed;top:0;left:0;height:100%;width:384px;z-index:10;
-  transform:translateX(-398px);transition:transform .34s cubic-bezier(.2,.8,.2,1);
+  transform:translateX(-398px);
+  transition:transform .34s cubic-bezier(.2,.8,.2,1),width .46s cubic-bezier(.16,1,.3,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 24px rgba(0,0,0,.26);
-  border-right:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;}
+  border-right:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
 #rl-panel.open{transform:translateX(0);}
-#rl-panel::-webkit-scrollbar{width:11px;}
-#rl-panel::-webkit-scrollbar-thumb{background:#cdd0d6;border-radius:6px;border:3px solid #f3f4f6;}
+/* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
+#rl-panel::-webkit-scrollbar{width:0;height:0;display:none;}
 
 /* sticky header with the live matchup */
 #rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 13px;background:#fff;
@@ -72,6 +75,58 @@ const STYLE = `
 #rl-panel .hdr .myalgo span{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
 #rl-panel .hdr .myalgo b{display:block;font-size:21px;font-weight:800;color:#1f5fd0;letter-spacing:-.3px;line-height:1.15;margin-top:2px;}
 #rl-panel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:4px;}
+/* fullscreen toggle (top-right of the header) */
+#rl-panel .hdr .fullbtn{position:absolute;top:12px;right:14px;flex:none;width:32px;height:32px;padding:0;
+  display:grid;place-items:center;border:1px solid #d7dade;border-radius:8px;background:#fff;color:#54565c;cursor:pointer;}
+#rl-panel .hdr .fullbtn:hover{background:#f0f1f3;border-color:#c4c8ce;color:#1f1f21;}
+#rl-panel .hdr .fullbtn svg{width:16px;height:16px;display:block;}
+/* ===== FULLSCREEN DASHBOARD: the panel grows to fill the whole screen (the width
+   above animates) and the layout opens right up - a spacious grid of big cards with
+   big charts + larger type everywhere ===== */
+#rl-panel.full{box-sizing:border-box;width:100vw;max-width:100vw;border-right:none;
+  background:radial-gradient(1500px 760px at 50% -8%,#ffffff 0%,#e9ebf1 72%);
+  padding:26px clamp(20px,5vw,100px) 74px;}
+/* the cards flow through a masonry column set on the INNER wrapper (auto height so
+   the panel scrolls vertically instead of spilling columns off to the right) */
+#rl-panel.full .rl-body{column-count:3;column-gap:24px;}
+@media (max-width:1320px){#rl-panel.full .rl-body{column-count:2;}}
+@media (max-width:840px){#rl-panel.full .rl-body{column-count:1;}}
+/* header becomes a big title bar spanning the top */
+#rl-panel.full .hdr{column-span:all;position:static;background:transparent;border:none;
+  padding:4px 2px 18px;margin:0;}
+#rl-panel.full .hdr h1{font-size:34px;letter-spacing:-.6px;}
+#rl-panel.full .hdr h1::before{width:8px;height:32px;border-radius:4px;}
+#rl-panel.full .hdr .sub{font-size:15px;margin-top:10px;}
+#rl-panel.full .hdr .myalgo{margin-top:14px;}
+#rl-panel.full .hdr .myalgo b{font-size:28px;}
+#rl-panel.full .hdr .fullbtn{top:6px;right:2px;width:42px;height:42px;border-radius:12px;}
+#rl-panel.full .hdr .fullbtn svg{width:21px;height:21px;}
+/* bigger, roomier cards */
+#rl-panel.full .rl-body > section{break-inside:avoid;margin:0 0 24px;padding:24px 26px;border-radius:20px;
+  background:#fff;border:1px solid #eceef2;box-shadow:0 6px 22px rgba(20,20,45,.07);}
+#rl-panel.full h2{font-size:12px;letter-spacing:1.2px;margin-bottom:20px;}
+/* big charts */
+#rl-panel.full .chart{margin:0 0 22px;}
+#rl-panel.full .chart:last-child{margin-bottom:0;}
+#rl-panel.full .chart canvas{height:220px;border-radius:13px;}
+#rl-panel.full .chart .ct h3{font-size:14.5px;}
+#rl-panel.full .chart .ct .lg{font-size:11px;}
+/* bigger stats, sliders + transport */
+#rl-panel.full .stat{font-size:15.5px;padding:11px 0;}
+#rl-panel.full .stat b{font-size:16px;}
+#rl-panel.full .ctl{margin-bottom:20px;}
+#rl-panel.full .ctl .row{font-size:14.5px;margin-bottom:9px;}
+#rl-panel.full input[type=range]{height:6px;}
+#rl-panel.full input[type=range]::-webkit-slider-thumb{width:16px;height:16px;}
+#rl-panel.full input[type=range]::-moz-range-thumb{width:16px;height:16px;}
+#rl-panel.full .btns button{padding:12px 8px;font-size:13px;}
+#rl-panel.full .transport{gap:26px;}
+#rl-panel.full .tbtn{width:52px;height:52px;}
+#rl-panel.full .tplay{width:62px;height:62px;}
+#rl-panel.full .transport button svg{width:22px;height:22px;}
+#rl-panel.full .tplay svg{width:26px;height:26px;}
+#rl-panel.full .seg button{padding:11px 6px;font-size:12.5px;}
+#rl-panel.full .hint,#rl-panel.full .note{font-size:12px;}
 
 /* cards */
 #rl-panel section{margin:11px 11px;padding:13px 14px;background:#fff;border:1px solid #e6e8ec;
@@ -166,7 +221,9 @@ export function initPanel() {
   const panel = document.createElement('div');
   panel.id = 'rl-panel';
   panel.innerHTML = `
+    <div class="rl-body">
     <div class="hdr">
+      <button id="rl-full" class="fullbtn" type="button" title="Fullscreen">${SVG.expand}</button>
       <h1>Training Control</h1>
       <p class="sub" id="rl-round">-</p>
       <div class="myalgo">
@@ -229,11 +286,13 @@ export function initPanel() {
         number in the center means "Use / stay" is best). Visits: where it travels (red = most
         stepped on, blue = least). Zoom in to read the numbers.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
-    </section>`;
+    </section>
+    </div>`;
   document.body.appendChild(panel);
 
-  // learning-curve charts + episode replay (built by graphs.js)
-  initGraphs(panel);
+  // learning-curve charts + episode replay (built by graphs.js) - into the same
+  // .rl-body wrapper so fullscreen can flow every card through one masonry column set
+  initGraphs(panel.querySelector('.rl-body'));
 
   const $ = (id) => panel.querySelector(id);
 
@@ -247,10 +306,22 @@ export function initPanel() {
   };
 
   // ---- toggle (N key only) ----
-  const toggle = () => panel.classList.toggle('open');
+  const toggle = () => {
+    panel.classList.toggle('open');
+    if (!panel.classList.contains('open')) panel.classList.remove('full'); // closing exits fullscreen too
+  };
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyN' && !/input|select|textarea/i.test(e.target.tagName)) toggle();
+  });
+  // ---- fullscreen dashboard: expand the panel to fill the screen + reflow to a grid
+  const fullBtn = $('#rl-full');
+  fullBtn.addEventListener('click', () => {
+    const on = panel.classList.toggle('full');
+    fullBtn.innerHTML = on ? SVG.collapse : SVG.expand;
+    fullBtn.title = on ? 'Exit fullscreen' : 'Fullscreen';
+    // re-fit the charts repeatedly THROUGH the grow animation so they track the width
+    [0, 120, 260, 400, 520].forEach((t) => setTimeout(() => window.dispatchEvent(new Event('resize')), t));
   });
 
   // ---- playback ----

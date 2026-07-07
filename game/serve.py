@@ -39,6 +39,8 @@ match = Match(seed=None, round_id=1)
 _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
 _alive = True
+_sync_hold_until = 0.0 # frontend world-load sync hold; independent of user pause
+SYNC_HOLD_FALLBACK = 30.0
 
 
 def trainer():
@@ -46,7 +48,7 @@ def trainer():
     episodes fly by and the heatmap fills in. Batches at high speed so the HTTP
     handler thread stays responsive."""
     while _alive:
-        if _paused:
+        if _paused or time.monotonic() < _sync_hold_until:
             time.sleep(0.03)
             continue
         sp = _speed
@@ -110,6 +112,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(match.history())
         if route == "/api/replay":
             return self._json(match.replay(q.get("which", ["last"])[0]))
+        if route == "/api/dp":
+            return self._json(match.dp_report(q.get("agent", ["red"])[0]))
         return self._json({"error": "unknown route"}, 404)
 
     # -------------------------------------------------------------------- POST
@@ -124,12 +128,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json(self._control(body))
 
     def _control(self, body):
-        global _speed, _paused
+        global _speed, _paused, _sync_hold_until
         cmd = body.get("cmd")
         if cmd == "regenerate":
             match.regenerate(seed=body.get("seed"))
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "reset":
             match.reset_models()
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "pause":
             _paused = True
         elif cmd == "play":
@@ -146,10 +152,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             match.set_cpu_tier(body.get("value", 1))
         elif cmd == "prevRound":
             match.prev_round()
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "nextRound":
             match.next_round()
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "setRound":
             match.set_round(int(body.get("value", 1)))
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
+        elif cmd == "syncHold":
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
+        elif cmd == "syncRelease":
+            delay = max(0.0, min(10000.0, float(body.get("delayMs", 0)))) / 1000.0
+            _sync_hold_until = time.monotonic() + delay
         else:
             return {"error": f"unknown cmd {cmd!r}"}
         return {"ok": True, "speed": _speed, "paused": _paused,

@@ -18,10 +18,10 @@ const STYLE = `
   transform:translateX(398px);transition:transform .34s cubic-bezier(.2,.8,.2,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:-3px 0 24px rgba(0,0,0,.26);
-  border-left:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;}
+  border-left:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
 #rl-cpanel.open{transform:translateX(0);}
-#rl-cpanel::-webkit-scrollbar{width:11px;}
-#rl-cpanel::-webkit-scrollbar-thumb{background:#cdd0d6;border-radius:6px;border:3px solid #f3f4f6;}
+/* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
+#rl-cpanel::-webkit-scrollbar{width:0;height:0;display:none;}
 #rl-cpanel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 13px;background:#fff;border-bottom:1px solid #e6e8ec;}
 #rl-cpanel .hdr h1{margin:0;font-size:16px;font-weight:800;letter-spacing:-.2px;display:flex;align-items:center;gap:9px;}
 #rl-cpanel .hdr h1::before{content:"";width:5px;height:17px;border-radius:3px;background:#d4141f;}

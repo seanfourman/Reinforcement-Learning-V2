@@ -266,6 +266,14 @@ class Match:
             if "targetEpisodes" in p:
                 t = int(p["targetEpisodes"])
                 self.target_episodes = t if t > 0 else None
+            # DP convergence threshold theta: re-solve BOTH planners (VI + PI) so the
+            # sweep charts react live to a looser/tighter stopping tolerance.
+            if "dpTheta" in p:
+                th = max(1e-9, min(1.0, float(p["dpTheta"])))
+                for ag in (self.red, self.blue):
+                    if hasattr(ag, "theta") and hasattr(ag, "plan"):
+                        ag.theta = th
+                        ag.plan()
             # push learning-rate / discount onto OUR live agent (Blue) only
             if hasattr(self.blue, "alpha"):
                 self.blue.alpha = self.alpha
@@ -446,6 +454,23 @@ class Match:
                 return {"available": False}
             return {"available": True, "which": which, "winner": ep["winner"],
                     "steps": ep["steps"], "frames": ep["frames"]}
+
+    def dp_report(self, agent):
+        """A DP planner's per-sweep convergence trace + meta, for the training
+        console's charts. Returns isDP:false for non-DP agents (Q-learning etc.)."""
+        with self.lock:
+            a = self._agent(agent)
+            log = getattr(a, "sweep_log", None)
+            if log is None:
+                return {"isDP": False, "agent": agent}
+            return {"isDP": True, "agent": agent,
+                    "method": getattr(a, "mode", ""),
+                    "name": getattr(a, "name", ""),
+                    "gamma": getattr(a, "gamma", None),
+                    "theta": getattr(a, "theta", None),
+                    "phases": 1 if getattr(a, "cross", True) else 3,
+                    "sweepCount": sum(getattr(a, "sweeps", []) or []),
+                    "sweeps": list(log)}
 
     def _agent(self, agent):
         return self.red if agent == "red" else self.blue
