@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { cellToWorld, getCell } from './layout.js';
-import { updateWalker } from './characters.js';
+import { updateWalker, swingBone, flapWing } from './characters.js';
 
 // Live actor driver: the King, the Queen and the three keys, driven by frames
 // polled from the Python backend (/api/snapshot). Unlike the old playback.js
@@ -85,11 +85,13 @@ export function createLiveActors(scene, walkers) {
   let isCross = false;   // cross rounds (the hedge maze) have NO keys / gold
   let arena = false;     // continuous arena round: positions are world (x,z), no keys
   let agentScale = 1.2;  // walker scale (bigger in the open arena than in grid cells)
+  let celebration = null;
   // manhole fall animation, latched by the env's count (dormant unless drop_traps)
   const fell = { red: null, blue: null };
   const lastFallN = { red: 0, blue: 0 };
   const FALL_DUR = 0.55;
   const vTmp = new THREE.Vector3();
+  const poseAxis = new THREE.Vector3();
 
   const cw = (cell) => cellToWorld(cell.r, cell.c); // {r,c} -> {x,z}
   const cwArr = (arr) => cellToWorld(arr[0], arr[1]); // [row,col] -> {x,z}
@@ -108,7 +110,17 @@ export function createLiveActors(scene, walkers) {
     walker.group.rotation.y = heading[side];
   }
 
+  const sideWalker = (side) => side === 'red' ? king : princess;
+
+  function clearCelebration() {
+    if (!celebration) return;
+    const walker = sideWalker(celebration.side);
+    walker?.group?.scale.setScalar(agentScale);
+    celebration = null;
+  }
+
   function setWorld(lay, cross = false) {
+    clearCelebration();
     layout = lay;
     isCross = cross;
     // grow the walkers with the board's square size so they fill the bigger tiles
@@ -148,6 +160,7 @@ export function createLiveActors(scene, walkers) {
 
   // continuous arena round: drive the two walkers from world (x,z) floats, no keys
   function setArena(on, world = null) {
+    clearCelebration();
     arena = on;
     agentScale = on ? 1.8 : 1.2; // a bit larger in the open arena
     king.group.scale.setScalar(agentScale);
@@ -195,6 +208,20 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
+  function snapFrame(f) {
+    if (!f) return;
+    clearCelebration();
+    onFrame(f);
+    for (const side of ['red', 'blue']) {
+      rendered[side] = { ...target[side] };
+      fell[side] = null;
+      const walker = sideWalker(side);
+      walker.group.position.y = 0;
+      walker.group.scale.setScalar(agentScale);
+      placeWalker(side, rendered[side]);
+    }
+  }
+
   function faceToward(walker, key, dx, dz) {
     if (Math.abs(dx) + Math.abs(dz) > 1e-4) {
       const t = Math.atan2(dx, dz);
@@ -205,9 +232,53 @@ export function createLiveActors(scene, walkers) {
     walker.group.rotation.y = heading[key];
   }
 
+  function updateVictoryPose(walker, c) {
+    const age = (performance.now() - c.start) / 1000;
+    const wave = Math.sin(age * 9.5) * 0.22;
+    const hop = Math.pow(Math.max(0, Math.sin(age * Math.PI * 2.1)), 1.7) * 0.55;
+    walker.moveAmt = 0;
+    walker.group.position.copy(c.position);
+    walker.group.position.y = c.baseY + hop;
+    walker.group.rotation.y = c.faceYaw + Math.sin(age * 8.5) * 0.07;
+    walker.group.scale.setScalar(agentScale * (1 + Math.sin(age * 18) * 0.025));
+
+    if (walker.fly) {
+      const flap = (Math.sin(age * 14) + 1) * 0.5;
+      const flapTip = (Math.sin(age * 14 - 0.7) + 1) * 0.5;
+      flapWing(walker.parts.wingL1, walker.rest.wingL1, -flap * 0.7);
+      flapWing(walker.parts.wingR1, walker.rest.wingR1, flap * 0.7);
+      flapWing(walker.parts.wingL2, walker.rest.wingL2, -flapTip * 0.42);
+      flapWing(walker.parts.wingR2, walker.rest.wingR2, flapTip * 0.42);
+      return;
+    }
+
+    if (walker.bones) {
+      const hy = walker.group.rotation.y;
+      poseAxis.set(Math.cos(hy), 0, -Math.sin(hy));
+      swingBone(walker.parts.shR, walker.rest.shR, poseAxis, -1.85 + wave);
+      swingBone(walker.parts.shL, walker.rest.shL, poseAxis, 0.5 - wave * 0.35);
+      swingBone(walker.parts.hipL, walker.rest.hipL, poseAxis, 0.18);
+      swingBone(walker.parts.hipR, walker.rest.hipR, poseAxis, -0.18);
+      return;
+    }
+
+    walker.parts.shR.rotation.x = -2.25 + wave;
+    walker.parts.shL.rotation.x = 0.42 - wave * 0.35;
+    walker.parts.hipL.rotation.x = 0.16;
+    walker.parts.hipR.rotation.x = -0.16;
+  }
+
   function update(dt, t) {
+    if (celebration && performance.now() - celebration.start > celebration.duration) {
+      clearCelebration();
+    }
+
     const k = 1 - Math.exp(-dt * 12); // smoothing toward the latest target
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
+      if (celebration && celebration.side === key) {
+        updateVictoryPose(walker, celebration);
+        continue;
+      }
       // mid-fall: drop into the manhole (sink + shrink + spin), then reappear
       if (fell[key]) {
         fell[key].e += dt;
@@ -291,6 +362,7 @@ export function createLiveActors(scene, walkers) {
   function setHidden(h) { group.visible = !h; }
 
   function resetFacing() {
+    clearCelebration();
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
       fell[key] = null;
       heading[key] = spawnFacing[key];
@@ -299,5 +371,37 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
-  return { setWorld, onFrame, update, group, setWalkers, setHidden, setArena, resetFacing };
+  function getSidePosition(side, out = new THREE.Vector3()) {
+    sideWalker(side).group.getWorldPosition(out);
+    return out;
+  }
+
+  function getSideFocus(side, out = new THREE.Vector3()) {
+    const walker = sideWalker(side);
+    walker.group.getWorldPosition(out);
+    out.y += agentScale * (walker.fly ? 0.85 : 1.15);
+    return out;
+  }
+
+  function celebrate(side, opts = {}) {
+    const walker = sideWalker(side);
+    if (!walker) return;
+    celebration = {
+      side,
+      start: performance.now(),
+      duration: opts.duration ?? 5200,
+      position: walker.group.position.clone(),
+      baseY: walker.group.position.y,
+      faceYaw: opts.faceYaw ?? walker.group.rotation.y,
+    };
+    fell[side] = null;
+    heading[side] = celebration.faceYaw;
+    walker.group.rotation.y = celebration.faceYaw;
+    walker.moveAmt = 0;
+  }
+
+  return {
+    setWorld, onFrame, snapFrame, update, group, setWalkers, setHidden, setArena, resetFacing,
+    getSidePosition, getSideFocus, celebrate,
+  };
 }

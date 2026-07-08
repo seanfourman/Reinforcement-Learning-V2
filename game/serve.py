@@ -10,7 +10,7 @@ background thread, streaming the match to the browser over a tiny JSON API:
     GET  /api/world             -> {worldVersion, world}            (on regenerate)
     GET  /api/values?agent=red  -> value heatmap V(s) per tile
     GET  /api/values?agent=red&cell=r,c -> per-action Q for one tile
-    POST /api/control           -> {cmd: regenerate|reset|pause|play|speed|algo, ...}
+    POST /api/control           -> {cmd: regenerate|reset|pause|play|speed|algo|awardRound, ...}
 
 Only third-party dep is gymnasium (+ numpy, already present). The browser is a
 pure viewer: it polls the snapshot and renders the 3D scene.
@@ -153,6 +153,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _control(self, body):
         global _speed, _paused, _sync_hold_until
         cmd = body.get("cmd")
+        extra = {}
         if cmd == "regenerate":
             match.regenerate(seed=body.get("seed"))
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
@@ -173,6 +174,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             match.set_red_params(body.get("params", {}))
         elif cmd == "cpuTier":
             match.set_cpu_tier(body.get("value", 1))
+        elif cmd == "awardRound":
+            extra["award"] = match.award_round()
         elif cmd == "prevRound":
             match.prev_round()
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
@@ -191,7 +194,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return {"error": f"unknown cmd {cmd!r}"}
         return {"ok": True, "speed": _speed, "paused": _paused,
                 "worldVersion": match.world_version, "roundId": match.round_id,
-                "algoRed": match.algo_red, "algoBlue": match.algo_blue}
+                "algoRed": match.algo_red, "algoBlue": match.algo_blue, **extra}
 
 
 class Server(http.server.ThreadingHTTPServer):

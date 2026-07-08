@@ -147,7 +147,7 @@ function buildBiped(opts) {
 const _wq = new THREE.Quaternion();
 const _sw = new THREE.Quaternion();
 const _out = new THREE.Quaternion();
-function swingBone(bone, restQ, axisWorld, angle) {
+export function swingBone(bone, restQ, axisWorld, angle) {
   if (!bone || !restQ) return;
   bone.parent.getWorldQuaternion(_wq);            // parent orientation (1 frame stale, fine)
   _sw.setFromAxisAngle(axisWorld, angle);
@@ -160,7 +160,7 @@ const _ax = new THREE.Vector3();
 // applyIdle: bone.quaternion = rest * euler(0, y, 0)).
 const _e = new THREE.Euler();
 const _fq = new THREE.Quaternion();
-function flapWing(bone, restQ, y) {
+export function flapWing(bone, restQ, y) {
   if (!bone || !restQ) return;
   _e.set(0, y, 0, 'XYZ');
   _fq.setFromEuler(_e);

@@ -10,6 +10,7 @@ import { createCameraRig } from "./camera.js";
 import { createPostFX } from "./postfx.js";
 import { getTheme } from "./themes/index.js";
 import { initHud } from "./hud.js";
+import { createAwardCeremony } from "./award.js";
 import { createTransition } from "./transition.js";
 import { createStartMenu, getCpuTier } from "./startmenu.js";
 import { createLoadScreen } from "./loadscreen.js";
@@ -164,6 +165,11 @@ let menu = null; // start menu (cabin background); gates the game boot
 
 initHud(); // Blue top-left / Red top-right score + round banner
 const transition = createTransition(); // video-game curtain between arenas
+const awardCeremony = createAwardCeremony({
+  camera,
+  actors,
+  onDone: () => control({ cmd: "nextRound" }),
+});
 
 // keep downloaded files (textures, .dae) resident so a re-load never re-fetches
 THREE.Cache.enabled = true;
@@ -290,11 +296,12 @@ const API = "";
 const RUN_START_DELAY_MS = 1000;
 
 async function postControl(body) {
-  await fetch(`${API}/api/control`, {
+  const res = await fetch(`${API}/api/control`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  return res.json();
 }
 
 async function holdTrainingForVisualSync() {
@@ -319,8 +326,9 @@ async function control(body) {
   if (serverBody) delete serverBody.syncRelease;
   if (body?.cmd === "reset") actors.resetFacing?.();
   try {
-    await postControl(serverBody);
+    const result = await postControl(serverBody);
     if (autoReleaseReset) await releaseTrainingAfterVisualDelay();
+    return result;
   } catch (e) {
     /* server not up yet */
   }
@@ -336,10 +344,37 @@ let holdUI = false; // true while an arena transition covers the screen: freeze 
 
 // push a snapshot into the live UI (HUD algo names, panels, board pieces). Kept in
 // one place so a transition can defer it until the screen is fully black.
+let seenAwardSerial = 0;
+let seenFinishSerial = 0;
+function closeTrainingPanels() {
+  document.getElementById("rl-panel")?.classList.remove("open", "full");
+  document.getElementById("rl-cpanel")?.classList.remove("open", "full");
+}
+
+function maybeHandleAwardEvent(stats) {
+  const award = stats?.award;
+  if (!award || award.serial === seenAwardSerial) return;
+  seenAwardSerial = award.serial;
+  if (award.source !== "official") return;
+  closeTrainingPanels();
+}
+
+function maybeStartFinishCeremony(stats) {
+  const finish = stats?.finishEvent;
+  if (!finish || finish.serial === seenFinishSerial) return;
+  seenFinishSerial = finish.serial;
+  const finalRound = (finish.roundIndex ?? 0) + 1 >= (finish.roundTotal ?? 1);
+  closeTrainingPanels();
+  if (finish.winner) awardCeremony.start(finish, stats);
+  else if (finalRound) awardCeremony.showFinal(finish, stats);
+}
+
 function applyStats(snap) {
   latestStats = snap.stats;
   latestFrame = snap.frame;
   if (!replayActive) actors.onFrame(snap.frame);
+  maybeHandleAwardEvent(snap.stats);
+  maybeStartFinishCeremony(snap.stats);
   window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
 }
 
@@ -413,6 +448,7 @@ async function poll() {
           .play(w.world, snap.stats, async () => {
             // the screen is fully black now - close BOTH side panels (N + M) under
             // the black so they're already gone when the iris opens on the next round
+            awardCeremony.stop();
             document.getElementById("rl-panel")?.classList.remove("open");
             document.getElementById("rl-cpanel")?.classList.remove("open");
             rebuildWorld(w.world);
@@ -467,6 +503,12 @@ window.addEventListener("keydown", (e) => {
   // fixed curated world now - R resets the two models (relearn from scratch)
   if (e.code === "KeyR" && !/input|select|textarea/i.test(e.target.tagName))
     control({ cmd: "reset" });
+  if (
+    e.code === "KeyO" &&
+    !/input|select|textarea/i.test(e.target.tagName) &&
+    !(menu && menu.active)
+  )
+    control({ cmd: "awardRound" });
 });
 
 // click a tile while a heatmap is shown -> inspect that tile's per-action Q
@@ -666,9 +708,10 @@ renderer.setAnimationLoop(() => {
   }
   // dev free cam suspends the fixed game rig while it flies
   if (devbar.freecamActive()) devbar.updateFreecam(dt);
-  else rig.update(dt);
+  else if (!awardCeremony.active()) rig.update(dt);
 
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
   actors.update(dt, t);
+  awardCeremony.update(dt, t);
   fx.composer.render();
 });

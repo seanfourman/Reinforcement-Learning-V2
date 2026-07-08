@@ -105,6 +105,10 @@ const STYLE = `
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
   font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
 #rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.38);}
+#rl-keys .kh.finish .txt{min-width:96px;}
+#rl-keys .kh.finish.armed .txt{color:#dfe7ff;}
+#rl-keys .kh.finish.done.blue .txt{color:#7fb4ff;}
+#rl-keys .kh.finish.done.red .txt{color:#ff8d80;}
 `;
 
 export function initHud() {
@@ -136,7 +140,8 @@ export function initHud() {
   keys.innerHTML =
     `<div class="kh"><span class="key">R</span><span class="txt">Reset</span></div>` +
     `<div class="kh"><span class="key">N</span><span class="txt">Controls</span></div>` +
-    `<div class="kh"><span class="key">M</span><span class="txt">CPU</span></div>`;
+    `<div class="kh"><span class="key">M</span><span class="txt">CPU</span></div>` +
+    `<div class="kh finish" id="rl-finish-key"><span class="key">O</span><span class="txt" id="rl-finish-txt">Finish stage</span></div>`;
   document.body.appendChild(keys);
 
   const $ = (id) => hud.querySelector(id);
@@ -278,6 +283,23 @@ export function initHud() {
     $("#fb-dots-red")
       .querySelectorAll("i")
       .forEach((d, i) => d.classList.toggle("on", i < sr));
+
+    const finishKey = document.getElementById("rl-finish-key");
+    const finishTxt = document.getElementById("rl-finish-txt");
+    if (finishKey && finishTxt) {
+      const isFinal = (r.index ?? 0) + 1 >= total;
+      const award = s.award && s.award.roundId === r.roundId ? s.award : null;
+      finishKey.classList.remove("armed", "done", "blue", "red");
+      if (s.finishPending) {
+        finishKey.classList.add("armed");
+        finishTxt.textContent = "Finish armed";
+      } else if (s.roundAwarded && award?.winner) {
+        finishKey.classList.add("done", award.winner);
+        finishTxt.textContent = `${award.winner === "blue" ? "Blue" : "Red"} +1`;
+      } else {
+        finishTxt.textContent = isFinal ? "Finish tournament" : "Finish stage";
+      }
+    }
   });
 
   return { el: hud };

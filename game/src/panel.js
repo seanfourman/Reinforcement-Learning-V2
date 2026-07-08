@@ -155,7 +155,6 @@ const STYLE = `
 #rl-panel .tplay:hover{background:#1a52b8;}
 #rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
 #rl-panel .tplay svg{width:21px;height:21px;}
-
 /* sliders (speed + every hyperparameter) */
 #rl-panel .ctl{margin:0 0 13px;}
 #rl-panel .ctl:last-child{margin-bottom:0;}
