@@ -131,5 +131,34 @@ export function createTransition() {
     }
   }
 
-  return { play, showName };
+  async function cover(onCovered) {
+    if (busy) {
+      await onCovered?.();
+      return;
+    }
+
+    busy = true;
+    try {
+      card.classList.remove("show");
+      const diag = Math.ceil(
+        Math.hypot(window.innerWidth, window.innerHeight) * 1.35,
+      );
+      iris.style.transition = "none";
+      iris.style.boxShadow = `0 0 0 ${diag}px #000`;
+      setIris(diag);
+      void iris.offsetWidth;
+      const t = `${IRIS_MS}ms ${IRIS_EASE}`;
+      iris.style.transition = `width ${t},height ${t},margin ${t}`;
+
+      requestAnimationFrame(() => setIris(0));
+      await wait(IRIS_MS + 60);
+      await onCovered?.();
+      setIris(diag);
+      await wait(IRIS_MS + 60);
+    } finally {
+      busy = false;
+    }
+  }
+
+  return { play, showName, cover };
 }

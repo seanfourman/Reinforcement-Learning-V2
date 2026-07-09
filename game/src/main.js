@@ -169,6 +169,7 @@ const awardCeremony = createAwardCeremony({
   camera,
   actors,
   onDone: () => control({ cmd: "nextRound" }),
+  onExit: () => returnToStartMenu(),
 });
 
 // keep downloaded files (textures, .dae) resident so a re-load never re-fetches
@@ -338,9 +339,14 @@ let heatAgent = null; // 'red' | 'blue' | null - which model's overlay to show
 let heatMode = "value"; // 'value' (V(s)) | 'visits' (where it travels)
 let pollCount = 0;
 let polling = false;
+let pollTimer = null;
 let replayActive = false; // while replaying a recorded episode, ignore live frames
 let holdUI = false; // true while an arena transition covers the screen: freeze all
 //                     live UI (HUD, panels, board) so nothing updates before black
+
+function ensurePolling() {
+  if (!pollTimer) pollTimer = setInterval(poll, 33);
+}
 
 // push a snapshot into the live UI (HUD algo names, panels, board pieces). Kept in
 // one place so a transition can defer it until the screen is fully black.
@@ -376,6 +382,47 @@ function applyStats(snap) {
   maybeHandleAwardEvent(snap.stats);
   maybeStartFinishCeremony(snap.stats);
   window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
+}
+
+let returningToMenu = false;
+async function returnToStartMenu() {
+  if (returningToMenu) return;
+  returningToMenu = true;
+  holdUI = true;
+  closeTrainingPanels();
+  heatmap.hide();
+  replayActive = false;
+
+  try {
+    await transition.cover(async () => {
+      awardCeremony.stop();
+      devbar.disableFreecam?.();
+      await control({ cmd: "resetTournament" });
+
+      const w = await (
+        await fetch(`${API}/api/world`, { cache: "no-store" })
+      ).json();
+      worldVersion = w.worldVersion;
+      rebuildWorld(w.world);
+
+      const snap = await (
+        await fetch(`${API}/api/snapshot`, { cache: "no-store" })
+      ).json();
+      applyStats(snap);
+
+      menu?.dispose?.();
+      showStartMenu();
+      await nextFrame();
+      await nextFrame();
+    });
+  } catch (e) {
+    console.warn("return to start menu failed:", e);
+    holdUI = false;
+  } finally {
+    releaseTrainingAfterVisualDelay();
+    holdUI = false;
+    returningToMenu = false;
+  }
 }
 
 // the freshly rebuilt theme's own "fully loaded + processed" signal (if it exposes
@@ -573,57 +620,64 @@ const fx = createPostFX(renderer, scene, camera);
 
 // show the start menu (cabin background) first; boot the live match on Start.
 // Created after fx so the menu can tune bloom (books shouldn't glow).
-menu = createStartMenu({
-  scene,
-  camera,
-  renderer,
-  actors,
-  heatmap,
-  fx,
-  // boot the live match, then resolve once the world is built AND every asset has
-  // finished loading - the menu keeps the screen black (iris) until this resolves,
-  // so the player never sees the scene pop in.
-  onStart: () =>
-    new Promise((resolve) => {
-      control({ cmd: "cpuTier", value: getCpuTier() }); // Red's strength = chosen CPU character's tier
-      // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
-      let walkersReady = false;
-      loadBoardWalkers()
-        .then((w) => {
-          actors.setWalkers(w);
-          walkersReady = true;
-        })
-        .catch((e) => {
-          console.warn("board characters failed to load:", e);
-          walkersReady = true;
-        });
-      setInterval(poll, 33);
-      poll();
-      const t0 = performance.now();
-      (function ready() {
-        const mgr = THREE.DefaultLoadingManager;
-        const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
-        const built = themeScene != null;
-        const elapsed = performance.now() - t0;
-        // wait for round 1 + walkers (and any menu-time prewarm still in flight) to
-        // finish, but CAP it so a fast Start never hangs on a black screen - any
-        // unfinished prewarm just keeps warming in the background during round 1.
-        if ((built && idle && walkersReady && elapsed > 600) || elapsed > 6000) {
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => {
-              resolve();
-              // announce the first level, over the scene, as the menu iris opens
-              setTimeout(() => {
-                if (lastWorldJson) transition.showName(lastWorldJson, latestStats);
-              }, 750);
-            }),
-          );
-        } else {
-          requestAnimationFrame(ready);
-        }
-      })();
-    }),
-});
+function startFromMenu() {
+  return new Promise((resolve) => {
+    control({ cmd: "cpuTier", value: getCpuTier() }); // Red's strength = chosen CPU character's tier
+    // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
+    let walkersReady = false;
+    loadBoardWalkers()
+      .then((w) => {
+        actors.setWalkers(w);
+        walkersReady = true;
+      })
+      .catch((e) => {
+        console.warn("board characters failed to load:", e);
+        walkersReady = true;
+      });
+    ensurePolling();
+    poll();
+    const t0 = performance.now();
+    (function ready() {
+      const mgr = THREE.DefaultLoadingManager;
+      const idle = !mgr.itemsTotal || mgr.itemsLoaded >= mgr.itemsTotal;
+      const built = themeScene != null;
+      const elapsed = performance.now() - t0;
+      // wait for round 1 + walkers (and any menu-time prewarm still in flight) to
+      // finish, but CAP it so a fast Start never hangs on a black screen - any
+      // unfinished prewarm just keeps warming in the background during round 1.
+      if ((built && idle && walkersReady && elapsed > 600) || elapsed > 6000) {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            resolve();
+            // announce the first level, over the scene, as the menu iris opens
+            setTimeout(() => {
+              if (lastWorldJson) transition.showName(lastWorldJson, latestStats);
+            }, 750);
+          }),
+        );
+      } else {
+        requestAnimationFrame(ready);
+      }
+    })();
+  });
+}
+
+function showStartMenu() {
+  menu = createStartMenu({
+    scene,
+    camera,
+    renderer,
+    actors,
+    heatmap,
+    fx,
+    // boot the live match, then resolve once the world is built AND every asset has
+    // finished loading - the menu keeps the screen black (iris) until this resolves,
+    // so the player never sees the scene pop in.
+    onStart: startFromMenu,
+  });
+}
+
+showStartMenu();
 
 // Hold the Cappy loading screen until EVERYTHING is actually downloaded, then
 // fly Cappy in. The old bug: it treated "nothing has started loading yet" as
@@ -706,9 +760,15 @@ renderer.setAnimationLoop(() => {
     fx.composer.render();
     return;
   }
+  if (holdUI) {
+    fx.composer.render();
+    return;
+  }
   // dev free cam suspends the fixed game rig while it flies
-  if (devbar.freecamActive()) devbar.updateFreecam(dt);
-  else if (!awardCeremony.active()) rig.update(dt);
+  if (!awardCeremony.active()) {
+    if (devbar.freecamActive()) devbar.updateFreecam(dt);
+    else rig.update(dt);
+  }
 
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
   actors.update(dt, t);

@@ -67,38 +67,51 @@ const STYLE = `
 }
 #rl-final{position:fixed;inset:0;z-index:26;pointer-events:none;display:grid;place-items:center;
   opacity:0;transition:opacity .24s ease;font-family:"Segoe UI",system-ui,sans-serif;
-  background:radial-gradient(circle at 50% 44%,rgba(255,232,91,.18),rgba(0,0,0,.46) 58%,rgba(0,0,0,.72));}
-#rl-final.show{opacity:1;}
-#rl-final .f-card{width:min(760px,88vw);padding:28px 30px 30px;border:4px solid #000;border-radius:16px;
-  background:linear-gradient(180deg,#fff 0%,#f3f5fb 100%);box-shadow:0 10px 0 #000,0 28px 48px rgba(0,0,0,.48);
-  transform:translateY(28px) scale(.92);opacity:0;text-align:center;}
-#rl-final.show .f-card{animation:rl-final-card .62s cubic-bezier(.16,1.25,.25,1) .08s both;}
+  background:radial-gradient(circle at 50% 45%,rgba(255,218,73,.16),rgba(0,0,0,.42) 54%,rgba(0,0,0,.72));}
+#rl-final.show{opacity:1;pointer-events:auto;}
+#rl-final .f-card{width:min(680px,90vw);padding:22px 24px 24px;border:3px solid #101114;border-radius:12px;
+  background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(241,244,250,.98));
+  box-shadow:0 7px 0 #000,0 22px 42px rgba(0,0,0,.42);transform:translateY(24px) scale(.96);
+  opacity:0;text-align:center;}
+#rl-final.show .f-card{animation:rl-final-card .5s cubic-bezier(.16,1.18,.25,1) .08s both;}
 @keyframes rl-final-card{to{transform:translateY(0) scale(1);opacity:1;}}
-#rl-final .f-kicker{display:inline-block;padding:7px 18px;border:3px solid #000;border-radius:999px;
-  background:#ffd443;color:#1b1607;font-weight:1000;text-transform:uppercase;letter-spacing:.7px;box-shadow:0 3px 0 #000;}
+#rl-final .f-kicker{display:inline-block;padding:6px 16px;border:2.5px solid #000;border-radius:999px;
+  background:#ffd443;color:#1b1607;font-weight:1000;text-transform:uppercase;letter-spacing:.7px;box-shadow:0 2px 0 #000;}
 #rl-final .f-title{margin:18px 0 5px;font-family:"SuperMario256","Arial Black",sans-serif;
-  font-size:clamp(42px,6.8vw,82px);line-height:.9;color:#ffd43d;-webkit-text-stroke:6px #000;
-  paint-order:stroke fill;text-shadow:0 5px 0 rgba(0,0,0,.45);}
+  font-size:clamp(34px,5.6vw,62px);line-height:.92;color:#ffd43d;-webkit-text-stroke:4px #000;
+  paint-order:stroke fill;text-shadow:0 3px 0 rgba(0,0,0,.38);}
 #rl-final.blue .f-title{color:#67a9ff;}
 #rl-final.red .f-title{color:#ff7468;}
 #rl-final.tie .f-title{color:#ffd43d;}
-#rl-final .f-sub{margin:0 0 20px;color:#54565c;font-size:17px;font-weight:800;}
-#rl-final .f-stand{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px;}
-#rl-final .f-row{position:relative;padding:16px 18px 15px;border:3px solid #000;border-radius:13px;
-  background:#fff;box-shadow:0 4px 0 #000;text-align:left;overflow:hidden;}
-#rl-final .f-row.win{background:linear-gradient(180deg,#fff7bf,#ffe06b);}
-#rl-final .f-row.blue.win{background:linear-gradient(180deg,#eaf3ff,#78b5ff);}
-#rl-final .f-row.red.win{background:linear-gradient(180deg,#ffe8e5,#ff8175);}
-#rl-final .f-side{display:flex;align-items:center;gap:10px;font-size:21px;font-weight:1000;color:#1f1f21;}
-#rl-final .f-dot{width:16px;height:16px;border-radius:50%;border:2px solid #000;box-shadow:0 2px 0 #000;}
+#rl-final .f-sub{margin:0 0 18px;color:#575a62;font-size:15.5px;font-weight:800;}
+#rl-final .f-stand{display:grid;gap:10px;margin-top:16px;}
+#rl-final .f-row{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+  padding:13px 15px;border:2.5px solid #111;border-radius:10px;background:#fff;box-shadow:0 3px 0 #000;
+  text-align:left;overflow:hidden;}
+#rl-final .f-row.win::before{content:"";position:absolute;inset:0 auto 0 0;width:8px;background:#ffd443;}
+#rl-final .f-row.blue.win{background:linear-gradient(90deg,#eaf3ff,#fff 64%);}
+#rl-final .f-row.red.win{background:linear-gradient(90deg,#ffe8e5,#fff 64%);}
+#rl-final .f-row.blue.win::before{background:#67a9ff;}
+#rl-final .f-row.red.win::before{background:#ff7468;}
+#rl-final .f-side{display:contents;font-size:18px;font-weight:1000;color:#1f1f21;}
+#rl-final .f-name{font-size:18px;font-weight:1000;color:#1f1f21;}
+#rl-final .f-crown{display:none;margin-left:7px;padding:2px 7px;border:2px solid #000;border-radius:999px;
+  background:#ffd443;font-size:11px;font-weight:1000;vertical-align:middle;box-shadow:0 2px 0 #000;}
+#rl-final .f-row.win .f-crown{display:inline-block;}
+#rl-final .f-dot{width:15px;height:15px;border-radius:50%;border:2px solid #000;box-shadow:0 2px 0 #000;}
 #rl-final .f-row.blue .f-dot{background:#1f5fd0;}
 #rl-final .f-row.red .f-dot{background:#e60012;}
-#rl-final .f-score{margin-top:10px;font-family:"SuperMario256","Arial Black",sans-serif;font-size:52px;
-  line-height:.9;color:#fff;-webkit-text-stroke:4px #000;paint-order:stroke fill;text-shadow:0 3px 0 rgba(0,0,0,.45);}
-#rl-final .f-note{margin-top:18px;color:#8a8d94;font-size:13px;font-weight:800;}
+#rl-final .f-score{font-family:"SuperMario256","Arial Black",sans-serif;font-size:44px;line-height:.9;color:#fff;
+  -webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:0 2px 0 rgba(0,0,0,.42);}
+#rl-final .f-actions{display:flex;justify-content:center;margin-top:20px;}
+#rl-final .f-exit{pointer-events:auto;border:2.5px solid #000;border-radius:999px;background:#1f1f21;color:#fff;
+  min-width:178px;padding:10px 18px;font:inherit;font-size:15px;font-weight:1000;text-transform:uppercase;
+  letter-spacing:.4px;box-shadow:0 4px 0 #000;cursor:pointer;}
+#rl-final .f-exit:hover{background:#33353a;}
+#rl-final .f-exit:active{transform:translateY(2px);box-shadow:0 2px 0 #000;}
 #rl-final .f-confetti{position:absolute;inset:0;overflow:hidden;}
-#rl-final .f-confetti i{position:absolute;left:50%;top:0;width:12px;height:18px;border:2px solid #000;border-radius:3px;
-  background:var(--c);animation:rl-confetti 2.5s linear var(--d) infinite;transform:translateX(var(--x)) rotate(var(--r));}
+#rl-final .f-confetti i{position:absolute;left:50%;top:0;width:10px;height:15px;border:2px solid #000;border-radius:3px;
+  background:var(--c);opacity:.82;animation:rl-confetti 2.5s linear var(--d) infinite;transform:translateX(var(--x)) rotate(var(--r));}
 @keyframes rl-confetti{0%{top:-8%;opacity:0;}8%{opacity:1;}100%{top:108%;opacity:0;transform:translateX(calc(var(--x) + var(--s))) rotate(calc(var(--r) + 380deg));}}
 `;
 
@@ -143,7 +156,7 @@ function confettiHTML() {
   return bits.join("");
 }
 
-export function createAwardCeremony({ camera, actors, onDone }) {
+export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   const style = document.createElement("style");
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -163,8 +176,22 @@ export function createAwardCeremony({ camera, actors, onDone }) {
     `<div class="f-confetti">${confettiHTML()}</div>` +
     `<div class="f-card"><div class="f-kicker">Final Standings</div>` +
     `<div class="f-title"></div><p class="f-sub"></p>` +
-    `<div class="f-stand"></div><p class="f-note">Tournament complete</p></div>`;
+    `<div class="f-stand"></div><div class="f-actions">` +
+    `<button class="f-exit" type="button">Play Again</button></div></div>`;
   document.body.appendChild(finalEl);
+  let exiting = false;
+  finalEl.querySelector(".f-exit").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (exiting) return;
+    exiting = true;
+    finalEl.querySelector(".f-exit").disabled = true;
+    try {
+      await onExit?.();
+    } finally {
+      exiting = false;
+      finalEl.querySelector(".f-exit").disabled = false;
+    }
+  });
 
   const tmpFocus = new THREE.Vector3();
   const tmpActor = new THREE.Vector3();
@@ -209,13 +236,19 @@ export function createAwardCeremony({ camera, actors, onDone }) {
     finalEl.classList.add(champ);
     finalEl.querySelector(".f-title").textContent = title;
     finalEl.querySelector(".f-sub").textContent = sub;
-    finalEl.querySelector(".f-stand").innerHTML =
-      `<div class="f-row blue ${champ === "blue" ? "win" : ""}">` +
-      `<div class="f-side"><span class="f-dot"></span><span>Blue Model</span></div>` +
-      `<div class="f-score">${blue}</div></div>` +
-      `<div class="f-row red ${champ === "red" ? "win" : ""}">` +
-      `<div class="f-side"><span class="f-dot"></span><span>Red Model</span></div>` +
-      `<div class="f-score">${red}</div></div>`;
+    const rows = [
+      { side: "blue", label: "Blue Model", points: blue },
+      { side: "red", label: "Red Model", points: red },
+    ].sort((a, b) => b.points - a.points);
+    finalEl.querySelector(".f-stand").innerHTML = rows
+      .map(
+        (row) =>
+          `<div class="f-row ${row.side} ${champ === row.side ? "win" : ""}">` +
+          `<div class="f-side"><span class="f-dot"></span><span class="f-name">${row.label}` +
+          `<span class="f-crown">Winner</span></span></div>` +
+          `<div class="f-score">${row.points}</div></div>`,
+      )
+      .join("");
     void finalEl.offsetWidth;
     finalEl.classList.add("show");
   }
@@ -312,6 +345,6 @@ export function createAwardCeremony({ camera, actors, onDone }) {
       hide();
       finalEl.classList.remove("show", "blue", "red", "tie");
     },
-    active: () => !!state,
+    active: () => !!state || finalEl.classList.contains("show"),
   };
 }

@@ -368,6 +368,12 @@ class Match:
             self._reset_stats()
             self._new_episode()
 
+    def reset_tournament(self):
+        """Start a fresh tournament from round 1 and clear all stage points."""
+        with self.lock:
+            first = worlds.ROUNDS[0] if worlds.ROUNDS else self.round_id
+            self.set_round(first, keep_score=False)
+
     def set_params(self, p):
         """Update tunable hyperparameters live from the panel. They apply to OUR
         model (Blue): alpha and the epsilon schedule to the TD/MC learners, the

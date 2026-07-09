@@ -10,7 +10,7 @@ background thread, streaming the match to the browser over a tiny JSON API:
     GET  /api/world             -> {worldVersion, world}            (on regenerate)
     GET  /api/values?agent=red  -> value heatmap V(s) per tile
     GET  /api/values?agent=red&cell=r,c -> per-action Q for one tile
-    POST /api/control           -> {cmd: regenerate|reset|pause|play|speed|algo|awardRound, ...}
+    POST /api/control           -> {cmd: regenerate|reset|resetTournament|pause|play|speed|algo|awardRound, ...}
 
 Only third-party dep is gymnasium (+ numpy, already present). The browser is a
 pure viewer: it polls the snapshot and renders the 3D scene.
@@ -159,6 +159,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "reset":
             match.reset_models()
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
+        elif cmd == "resetTournament":
+            match.reset_tournament()
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "pause":
             _paused = True

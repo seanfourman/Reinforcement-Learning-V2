@@ -323,6 +323,9 @@ export function initDevBar({ scene, camera, renderer, rig }) {
 
   return {
     freecamActive: () => flying,
+    disableFreecam: () => {
+      if (flying) setFly(false);
+    },
     updateFreecam,
   };
 }
