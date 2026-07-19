@@ -192,7 +192,9 @@ export function updateWalker(w, dt, moving) {
     // left-right axis (in world), so legs/arms pivot forward-back as it faces.
     const hy = w.group.rotation.y;
     _ax.set(Math.cos(hy), 0, -Math.sin(hy));
-    const la = amp, aa = amp * 0.95;
+    // per-walker swing dampers (default 1): armSwing keeps a posed arm (e.g. the
+    // chase's hands-up panic run) from flailing; legSwing mirrors the other branch
+    const la = amp * (w.legSwing ?? 1), aa = amp * 0.95 * (w.armSwing ?? 1);
     swingBone(w.parts.hipL, w.rest.hipL, _ax, s * la);
     swingBone(w.parts.hipR, w.rest.hipR, _ax, -s * la);
     swingBone(w.parts.shL, w.rest.shL, _ax, -s * aa);

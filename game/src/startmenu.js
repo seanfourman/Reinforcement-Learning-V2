@@ -3077,11 +3077,12 @@ export function createStartMenu({
   }
   hwNextBtn.addEventListener("click", () => hwGo(1));
   hwPrevBtn.addEventListener("click", () => hwGo(-1));
-  window.addEventListener("keydown", (e) => {
+  const onHowtoKeys = (e) => {
     if (!howtoEl.classList.contains("open")) return;
     if (e.key === "ArrowRight") hwGo(1);
     else if (e.key === "ArrowLeft") hwGo(-1);
-  });
+  };
+  window.addEventListener("keydown", onHowtoKeys);
   // pre-load Cappy in the background so he's ready before the wizard opens and flies the
   // FULL arc instead of snapping in late
   setTimeout(() => initCappy3D(), 400);
@@ -3176,7 +3177,7 @@ export function createStartMenu({
     if (flipped || upCard) goBack();
     else closeScreens();
   });
-  window.addEventListener("keydown", (e) => {
+  const onEscKey = (e) => {
     if (e.key !== "Escape") return;
     if (flipped || upCard) {
       goBack();
@@ -3187,7 +3188,8 @@ export function createStartMenu({
       howtoEl.classList.contains("open")
     )
       closeScreens();
-  });
+  };
+  window.addEventListener("keydown", onEscKey);
 
   // ---- Mario-style iris wipe: a circular transparent hole in a full-screen black
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
@@ -3354,6 +3356,8 @@ export function createStartMenu({
     disposed = true;
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("keydown", onSelectKey);
+    window.removeEventListener("keydown", onHowtoKeys);
+    window.removeEventListener("keydown", onEscKey);
     disposeSeated(-1);
     disposeSeated(1);
     stopCappy3D();
@@ -3381,6 +3385,16 @@ export function createStartMenu({
     gateMsg.remove();
     cpuStatsEl.remove();
     style.remove();
+    // the sub-screens + their shared chrome (created once per menu instance):
+    // without these a second createStartMenu (Play Again) duplicates their ids,
+    // and getElementById then finds the DEAD first instance
+    algosEl.remove();
+    howtoEl.remove();
+    scrBack.remove();
+    titleAlgos.remove();
+    titleChars.remove();
+    titleHowto.remove();
+    screenCSS.remove();
   }
 
   function dispose() {

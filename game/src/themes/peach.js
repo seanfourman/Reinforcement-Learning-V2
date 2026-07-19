@@ -14,6 +14,9 @@
 import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { getCell, getOffset } from "../layout.js";
+import { loadBoardWalker } from "../boardchars.js";
+import { CHARACTERS } from "../startmenu.js";
+import { updateWalker } from "../characters.js";
 
 const MODEL = "./assets/models/peach-castle/interior.dae";
 const TEXDIR = "./assets/models/peach-castle/";
@@ -435,6 +438,74 @@ export const peach = {
     };
     // spawn medallions removed (no start-position icons on the board)
 
+    // ---- the chase: Bowser hunts Peach around the grand staircase ----------
+    // A decorative loop along the big gold-fringed throne carpet that fills
+    // the BOTTOM of the frame (its fringed edge crosses the whole screen; the
+    // ground there is flat - probed). The camera views from the north, so +x
+    // is screen-LEFT: they burst in at the frame's left edge, run down along
+    // the fringe diagonal onto the red, sprint right across the entire screen
+    // just above the frame's bottom edge (ground is visible down to z~-1.9),
+    // rise over the fringe on the right and exit - then loop back unseen on a
+    // return lane at z~-6, below what the camera (or any pan) can show.
+    const CHASE_PATH = [
+      [31.0, 0.1, 5.5], // enters at the screen's left edge
+      [26.0, 0.1, 2.0], // down along the gold fringe diagonal
+      [20.0, 0.1, -0.5], // onto the red carpet
+      [10.0, 0.1, -1.0], // flat out across the bottom of the screen
+      [0.0, 0.1, -0.5],
+      [-6.0, 0.1, 2.0], // up over the fringe on the right
+      [-11.0, 0.1, 5.5], // exits at the screen's right edge
+      [-15.0, 0.1, -3.0], // hidden U-turn below the visible frame
+      [-6.0, 0.1, -6.0],
+      [10.0, 0.1, -6.5], // hidden return lane, right back to left
+      [26.0, 0.1, -6.0],
+      [35.0, 0.1, -3.0], // hidden U-turn back to the entry
+    ];
+    const CHASE_SPEED = 6.0; // world units / s along the path
+    const CHASE_CAST = [
+      // armSwing damps the run cycle's arm pump so the raised arms only sway
+      { key: "peach", scale: 1.45, lead: 0, pose: "panic", armSwing: 0.3 },
+      { key: "bowser", scale: 1.8, lead: -4.2, pose: "reach" }, // arms out, grabbing
+    ];
+    const chaseCurve = new THREE.CatmullRomCurve3(
+      CHASE_PATH.map((p) => new THREE.Vector3(...p)),
+      true,
+      "centripetal",
+    );
+    chaseCurve.arcLengthDivisions = 800;
+    const chaseLen = chaseCurve.getLength();
+    const runners = [];
+    for (const c of CHASE_CAST) {
+      const idx = CHARACTERS.findIndex((ch) => ch.file.startsWith(c.key));
+      loadBoardWalker(idx, { armPose: c.pose })
+        .then((w) => {
+          if (disposed) return;
+          w.baseY = 0.05; // feet just kissing the carpet pile
+          w.cadence = 14; // full sprint
+          if (c.armSwing != null) w.armSwing = c.armSwing;
+          w.group.scale.setScalar(c.scale);
+          w.group.traverse((o) => o.isMesh && (o.castShadow = true));
+          const mover = new THREE.Group();
+          mover.add(w.group);
+          group.add(mover);
+          runners.push({ w, mover, dist: c.lead });
+        })
+        .catch((e) => console.warn(`chase ${c.key} failed to load`, e));
+    }
+    const chasePos = new THREE.Vector3();
+    const chaseTan = new THREE.Vector3();
+    function updateChase(dt) {
+      for (const r of runners) {
+        r.dist = (((r.dist + dt * CHASE_SPEED) % chaseLen) + chaseLen) % chaseLen;
+        const u = r.dist / chaseLen;
+        chaseCurve.getPointAt(u, chasePos);
+        r.mover.position.copy(chasePos);
+        chaseCurve.getTangentAt(u, chaseTan);
+        r.w.group.rotation.y = Math.atan2(chaseTan.x, chaseTan.z);
+        updateWalker(r.w, dt, true);
+      }
+    }
+
     // ---- the FULL Peach's Castle interior (loaded async, fit onto the board)
     // `ready` resolves only after the model is loaded AND fully processed (backing
     // shell built), so the arena transition can hold its black screen until then.
@@ -569,10 +640,12 @@ export const peach = {
     return {
       group,
       ready,
-      update(t) {
-        // single subtle animation: the goal inlay breathes
+      update(t, dt) {
+        // subtle animation: the goal inlay breathes
         if (animated.inlay)
           animated.inlay.emissiveIntensity = 0.25 + 0.15 * Math.sin(1.6 * t);
+        // the Bowser-chases-Peach loop around the grand staircase
+        updateChase(Math.min(dt || 0.016, 0.05));
       },
       dispose() {
         disposed = true;

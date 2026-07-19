@@ -114,11 +114,15 @@ export function createTransition() {
       await wait(IRIS_MS + 60); // wait until FULLY black
 
       // 2) under black: rebuild the arena + swap the UI, and WAIT until it's all
-      // loaded and settled (onCovered resolves only when everything's ready)
-      await onCovered?.();
-
-      // 3) open the iris onto the fully-ready world (still no text)
-      setIris(diag);
+      // loaded and settled (onCovered resolves only when everything's ready).
+      // Even if the rebuild THROWS, the iris must reopen - a swallowed error
+      // here used to strand the screen on black forever.
+      try {
+        await onCovered?.();
+      } finally {
+        // 3) open the iris onto the (hopefully) ready world (still no text)
+        setIris(diag);
+      }
       await wait(Math.max(0, IRIS_MS - NAME_LEAD));
 
       // 4) once the world is visible, fade the level name up OVER it, hold, fade out
@@ -132,6 +136,11 @@ export function createTransition() {
   }
 
   async function cover(onCovered) {
+    // if a round transition is mid-flight, WAIT for it instead of degrading to
+    // running onCovered with no black (that tore the menu swap down on-screen).
+    // Bounded so a stuck transition can never deadlock the Play Again flow.
+    const t0 = performance.now();
+    while (busy && performance.now() - t0 < 8000) await wait(120);
     if (busy) {
       await onCovered?.();
       return;
@@ -152,8 +161,12 @@ export function createTransition() {
 
       requestAnimationFrame(() => setIris(0));
       await wait(IRIS_MS + 60);
-      await onCovered?.();
-      setIris(diag);
+      // reopen even if the menu swap throws - never strand the screen on black
+      try {
+        await onCovered?.();
+      } finally {
+        setIris(diag);
+      }
       await wait(IRIS_MS + 60);
     } finally {
       busy = false;

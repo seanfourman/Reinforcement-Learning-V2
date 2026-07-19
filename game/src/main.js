@@ -348,6 +348,20 @@ function ensurePolling() {
   if (!pollTimer) pollTimer = setInterval(poll, 33);
 }
 
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+// true while the player is parked at the start menu (boot or Play Again). The
+// menu shares the scene with the game and the cabin sits at the world origin,
+// so no poll may build/attach a world while it's up - a stray rebuild puts the
+// arena (and the carpet chase) INSIDE the cabin view. Cleared by startFromMenu,
+// which is also when polling resumes.
+let menuIdle = true;
+
 // push a snapshot into the live UI (HUD algo names, panels, board pieces). Kept in
 // one place so a transition can defer it until the screen is fully black.
 let seenAwardSerial = 0;
@@ -375,10 +389,23 @@ function maybeStartFinishCeremony(stats) {
   else if (finalRound) awardCeremony.showFinal(finish, stats);
 }
 
+// absorb whatever award/finish event the server is still broadcasting the FIRST
+// time we ever see a snapshot (a page reload mid-tournament keeps the last
+// finish_event in every snapshot): those happened in the past, and replaying
+// them fired a surprise ceremony + round transition seconds after Start.
+let seededSerials = false;
+function seedEventSerials(stats) {
+  if (seededSerials) return;
+  seededSerials = true;
+  seenAwardSerial = stats?.award?.serial ?? seenAwardSerial;
+  seenFinishSerial = stats?.finishEvent?.serial ?? seenFinishSerial;
+}
+
 function applyStats(snap) {
   latestStats = snap.stats;
   latestFrame = snap.frame;
   if (!replayActive) actors.onFrame(snap.frame);
+  seedEventSerials(snap.stats);
   maybeHandleAwardEvent(snap.stats);
   maybeStartFinishCeremony(snap.stats);
   window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
@@ -397,18 +424,19 @@ async function returnToStartMenu() {
     await transition.cover(async () => {
       awardCeremony.stop();
       devbar.disableFreecam?.();
+      // back to the exact BOOT state: polling stopped, no world attached,
+      // version unseen. The menu shares the scene and the cabin sits at the
+      // world origin - keeping the round-1 castle attached here rendered the
+      // arena (Bowser included) inside the cabin view. On the next Start, the
+      // first poll takes the same first-build path as a cold boot and re-attaches
+      // round 1 from the warm cache under the menu's held black.
+      stopPolling();
+      menuIdle = true;
       await control({ cmd: "resetTournament" });
-
-      const w = await (
-        await fetch(`${API}/api/world`, { cache: "no-store" })
-      ).json();
-      worldVersion = w.worldVersion;
-      rebuildWorld(w.world);
-
-      const snap = await (
-        await fetch(`${API}/api/snapshot`, { cache: "no-store" })
-      ).json();
-      applyStats(snap);
+      detachActiveWorld();
+      worldVersion = -1;
+      lastWorldJson = null;
+      latestFrame = null;
 
       menu?.dispose?.();
       showStartMenu();
@@ -417,7 +445,6 @@ async function returnToStartMenu() {
     });
   } catch (e) {
     console.warn("return to start menu failed:", e);
-    holdUI = false;
   } finally {
     releaseTrainingAfterVisualDelay();
     holdUI = false;
@@ -463,17 +490,26 @@ async function whenReady() {
 }
 
 async function poll() {
-  if (polling || holdUI) return; // frozen while a transition covers the screen
+  // frozen while a transition covers the screen or the start menu is idle
+  if (polling || holdUI || menuIdle) return;
   polling = true;
   try {
     const snap = await (
       await fetch(`${API}/api/snapshot`, { cache: "no-store" })
     ).json();
+    // re-check after the await: a Play Again cover may have started while the
+    // fetch was in flight - acting on this stale snapshot would rebuild the
+    // world (or play an iris) over the open menu
+    if (holdUI || menuIdle) return;
     if (snap.worldVersion !== worldVersion) {
       await holdTrainingForVisualSync();
       const w = await (
         await fetch(`${API}/api/world`, { cache: "no-store" })
       ).json();
+      // a Play Again cover may have started during these awaits too - bail
+      // before the version bookkeeping attaches a world behind the open menu
+      // (the server's sync hold self-releases on its fallback timeout)
+      if (holdUI || menuIdle) return;
       const firstBuild = worldVersion === -1;
       worldVersion = w.worldVersion;
       if (firstBuild) {
@@ -523,6 +559,7 @@ async function poll() {
         const f = await (
           await fetch(`${API}/api/field?agent=${heatAgent}`, { cache: "no-store" })
         ).json();
+        if (holdUI || menuIdle) return; // don't surface an overlay into the menu
         if (f.available) { heatmap.setArenaField(f); heatmap.showArena(); }
       } else {
         const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
@@ -531,6 +568,7 @@ async function poll() {
             cache: "no-store",
           })
         ).json();
+        if (holdUI || menuIdle) return; // don't surface an overlay into the menu
         if (v.grid) {
           if (heatMode === "value") heatmap.setNumbers(v.grid);
           else if (heatMode === "policy") heatmap.setPolicy(v.grid);
@@ -622,6 +660,7 @@ const fx = createPostFX(renderer, scene, camera);
 // Created after fx so the menu can tune bloom (books shouldn't glow).
 function startFromMenu() {
   return new Promise((resolve) => {
+    menuIdle = false; // leaving the menu: polling may build the world again
     control({ cmd: "cpuTier", value: getCpuTier() }); // Red's strength = chosen CPU character's tier
     // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
     let walkersReady = false;

@@ -30,6 +30,7 @@ const collada = new ColladaLoader();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _cur = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _pq = new THREE.Quaternion();
 const _DOWN = new THREE.Vector3(0, -1, 0);
+const _UP = new THREE.Vector3(0, 1, 0);
 const _FWD = new THREE.Vector3(0, 0, 1);
 // aim a bone's limb (bone -> child) toward a world-space target, then bake. Rig-
 // agnostic (uses the real limb direction), same idea as the menu's bone aimer.
@@ -46,7 +47,7 @@ function aimTo(bone, child, target) {
   bone.updateMatrixWorld(true);
 }
 
-export async function loadBoardWalker(idx) {
+export async function loadBoardWalker(idx, opts = {}) {
   const def = CHARACTERS[idx] || CHARACTERS[0];
   const charKey = def.file.split('/')[0];
   const tweak = TWEAK[charKey] || {};
@@ -91,17 +92,32 @@ export async function loadBoardWalker(idx) {
     if (cfg.hideLimbs) for (const bn of [rig.legL1, rig.legR1, rig.armL1, rig.armR1]) if (bn) bn.scale.setScalar(0.0001);
     parts = { wingL1: rig.wingL1, wingR1: rig.wingR1, wingL2: rig.wingL2, wingR2: rig.wingR2 };
   } else {
-    // hang the arms down-and-slightly-out using the shoulder side-axis (like the
-    // menu's seated aim), so they sit at the sides instead of clipping into the body,
-    // then straighten the forearm. Capture rest from this pose; the walk swings it.
+    // pose the arms using the shoulder side-axis (like the menu's seated aim),
+    // then capture rest from that pose; the walk cycle swings about it.
+    // opts.armPose: default = hang down-and-slightly-out at the sides;
+    // 'reach' = both arms straight ahead (a pursuer grabbing at whoever is in
+    // front); 'panic' = both arms thrown up in the air (a fleeing scaredy-run).
     const sl = rig.shoulderL || rig.armL1, sr = rig.shoulderR || rig.armR1;
     const sideAxis = (sl && sr)
       ? sl.getWorldPosition(new THREE.Vector3()).sub(sr.getWorldPosition(new THREE.Vector3())).normalize()
       : new THREE.Vector3(1, 0, 0);
     const out = tweak.armOut ?? 0.22;
-    const armTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * out)
-      .addScaledVector(_DOWN, 1.0).addScaledVector(_FWD, 0.07);
-    const foreTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.06).addScaledVector(_DOWN, 1.0);
+    let armTgt, foreTgt;
+    if (opts.armPose === 'reach') {
+      // forward but angled down a bit - a lumbering grab, not zombie-straight
+      armTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.18)
+        .addScaledVector(_FWD, 1.0).addScaledVector(_DOWN, 0.45);
+      foreTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.06)
+        .addScaledVector(_FWD, 1.0).addScaledVector(_DOWN, 0.35);
+    } else if (opts.armPose === 'panic') {
+      armTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.45)
+        .addScaledVector(_UP, 1.0).addScaledVector(_FWD, 0.1);
+      foreTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.15).addScaledVector(_UP, 1.0);
+    } else {
+      armTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * out)
+        .addScaledVector(_DOWN, 1.0).addScaledVector(_FWD, 0.07);
+      foreTgt = (sign) => new THREE.Vector3().copy(sideAxis).multiplyScalar(sign * 0.06).addScaledVector(_DOWN, 1.0);
+    }
     aimTo(rig.armL1, rig.armL2 || rig.handL, armTgt(1));
     aimTo(rig.armL2, rig.handL, foreTgt(1));
     aimTo(rig.armR1, rig.armR2 || rig.handR, armTgt(-1));
