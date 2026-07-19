@@ -439,27 +439,39 @@ export const peach = {
     // spawn medallions removed (no start-position icons on the board)
 
     // ---- the chase: Bowser hunts Peach around the grand staircase ----------
-    // A decorative loop along the big gold-fringed throne carpet that fills
-    // the BOTTOM of the frame (its fringed edge crosses the whole screen; the
-    // ground there is flat - probed). The camera views from the north, so +x
-    // is screen-LEFT: they burst in at the frame's left edge, run down along
-    // the fringe diagonal onto the red, sprint right across the entire screen
-    // just above the frame's bottom edge (ground is visible down to z~-1.9),
-    // rise over the fringe on the right and exit - then loop back unseen on a
-    // return lane at z~-6, below what the camera (or any pan) can show.
+    // A decorative lap between the two SIDE staircases, whose feet sit right
+    // at the frame edges (their newel towers are the white posts at the
+    // screen's mid-left/right). The camera views from the north, so +x is
+    // screen-LEFT. Visible arc: come off the east side stair into the frame's
+    // left edge (under the gold-deco pillar cluster probed at x 32..36,
+    // z 2..5), sprint right across the throne carpet at the bottom of the
+    // screen (flat and clear, probed), then swing up the WEST side staircase,
+    // climbing out through the right frame edge. Hidden return: across the
+    // balcony behind the grand stair head and down the east side staircase -
+    // beyond what the game camera can show (pan clamp), so the loop never pops.
     const CHASE_PATH = [
-      [31.0, 0.1, 5.5], // enters at the screen's left edge
-      [26.0, 0.1, 2.0], // down along the gold fringe diagonal
-      [20.0, 0.1, -0.5], // onto the red carpet
-      [10.0, 0.1, -1.0], // flat out across the bottom of the screen
-      [0.0, 0.1, -0.5],
-      [-6.0, 0.1, 2.0], // up over the fringe on the right
-      [-11.0, 0.1, 5.5], // exits at the screen's right edge
-      [-15.0, 0.1, -3.0], // hidden U-turn below the visible frame
-      [-6.0, 0.1, -6.0],
-      [10.0, 0.1, -6.5], // hidden return lane, right back to left
-      [26.0, 0.1, -6.0],
-      [35.0, 0.1, -3.0], // hidden U-turn back to the entry
+      [32.5, 0.1, 9.0], // enters at the screen's left edge, off the east stair
+      [27.5, 0.1, 4.5], // clear of the pillar cluster at x>=32
+      [22.0, 0.1, 0.5], // curls onto the red carpet
+      [16.0, 0.1, -0.9],
+      [8.0, 0.1, -1.0], // flat out across the bottom of the screen
+      [2.0, 0.1, 0.2],
+      [-3.0, 0.1, 3.2], // rounds toward the west staircase (screen right)
+      [-8.5, 0.1, 7.3],
+      [-15.2, 0.1, 11.8], // west side stair foot, at the right frame edge
+      [-18.9, 2.8, 15.0], // climbs the middle of the stair at normal speed
+      [-21.9, 5.0, 18.0],
+      [-24.8, 7.0, 20.9],
+      [-26.8, 8.5, 22.9], // ~the 10th step - the speed boost starts HERE
+      [-29.0, 10.15, 25.1], // west stair top (never visible in-game)
+      [-27.5, 10.3, 36.5], // hidden: behind the grand stair head, balcony level
+      [10.0, 10.3, 40.0],
+      [47.0, 10.3, 36.5],
+      [49.0, 10.15, 25.1], // hidden: east side stair top
+      [44.8, 7.0, 20.9], // descends its probed centerline
+      [41.9, 5.0, 18.0],
+      [38.9, 2.8, 15.0],
+      [35.2, 0.1, 11.8], // east foot, a step from the entry
     ];
     const CHASE_SPEED = 6.0; // world units / s along the path
     const CHASE_CAST = [
@@ -474,6 +486,18 @@ export const peach = {
     );
     chaseCurve.arcLengthDivisions = 800;
     const chaseLen = chaseCurve.getLength();
+    // speed boost from ~the 10th step of the west stair (waypoint 12 - they
+    // climb the visible lower steps at NORMAL speed first) until the descent
+    // of the east stair begins (waypoint 17). The boosted stretch - upper
+    // steps, balcony crossover - is off-camera, and hurrying through it
+    // brings the pair back around the loop much sooner. On a closed
+    // CatmullRom, control point i sits at parameter i/N, so its arc offset
+    // comes from the length table.
+    const chaseLens = chaseCurve.getLengths(800);
+    const arcAt = (i) => chaseLens[Math.round((i / CHASE_PATH.length) * 800)];
+    const FAST_FROM = arcAt(12);
+    const FAST_TO = arcAt(17);
+    const CHASE_CLIMB_BOOST = 2.5;
     const runners = [];
     for (const c of CHASE_CAST) {
       const idx = CHARACTERS.findIndex((ch) => ch.file.startsWith(c.key));
@@ -496,13 +520,18 @@ export const peach = {
     const chaseTan = new THREE.Vector3();
     function updateChase(dt) {
       for (const r of runners) {
-        r.dist = (((r.dist + dt * CHASE_SPEED) % chaseLen) + chaseLen) % chaseLen;
+        const boost =
+          r.dist >= FAST_FROM && r.dist < FAST_TO ? CHASE_CLIMB_BOOST : 1;
+        r.dist =
+          (((r.dist + dt * CHASE_SPEED * boost) % chaseLen) + chaseLen) %
+          chaseLen;
         const u = r.dist / chaseLen;
         chaseCurve.getPointAt(u, chasePos);
         r.mover.position.copy(chasePos);
         chaseCurve.getTangentAt(u, chaseTan);
         r.w.group.rotation.y = Math.atan2(chaseTan.x, chaseTan.z);
-        updateWalker(r.w, dt, true);
+        // scaled dt keeps the leg churn in step with the boosted ground speed
+        updateWalker(r.w, dt * boost, true);
       }
     }
 
