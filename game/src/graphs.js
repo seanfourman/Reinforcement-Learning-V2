@@ -57,8 +57,10 @@ function chartBlock(c) {
   const lg = c.legend
     .map(([col, t]) => `<i style="background:${col}"></i>${t}`)
     .join("");
+  // c.fullonly charts are hidden in the docked quick view (only the win-rate
+  // chart rides along there); they all show in fullscreen.
   return `
-    <div class="chart">
+    <div class="chart${c.fullonly ? " fullonly" : ""}">
       <div class="ct"><h3>${c.title}</h3><span class="lg">${lg}</span></div>
       <canvas id="rl-ch-${c.id}"></canvas>
     </div>`;
@@ -312,9 +314,10 @@ function drawVSurface(canvas, grid) {
 // ---- per-side learning curves ----
 export function initCurves(parent, side) {
   const CH = chartsFor(side);
+  // one card per chart, so they tile as uniform grid cells in fullscreen
   parent.insertAdjacentHTML(
     "beforeend",
-    `<section><h2>Learning curves</h2>${CH.map(chartBlock).join("")}</section>`,
+    CH.map((c) => `<section id="rl-curve-${c.id}">${chartBlock(c)}</section>`).join(""),
   );
   const charts = CH.map((c) =>
     makeChart(parent.querySelector(`#rl-ch-${c.id}`), c),
@@ -339,7 +342,7 @@ export function initReplay(parent) {
   parent.insertAdjacentHTML(
     "beforeend",
     `
-    <section>
+    <section id="rl-replay">
       <h2>Episode replay</h2>
       <div class="seg" id="rl-rep-model">
         <button data-a="red" class="active">Red · top 30</button>
@@ -650,6 +653,7 @@ function dualCharts() {
   return [
     {
       id: "d-return",
+      fullonly: true,
       title: "Episode return",
       legend: [
         [RED, "Red"],
@@ -678,6 +682,7 @@ function dualCharts() {
     },
     {
       id: "d-eps",
+      fullonly: true,
       title: "Exploration ε",
       legend: [
         [RED, "Red"],
@@ -693,6 +698,7 @@ function dualCharts() {
     },
     {
       id: "d-len",
+      fullonly: true,
       title: "Episode length",
       legend: [["#1f9d63", "steps"]],
       series: [{ key: "len", color: "#1f9d63" }],
@@ -700,6 +706,7 @@ function dualCharts() {
     },
     {
       id: "d-td",
+      fullonly: true,
       title: "Learning signal · |TD error| / DQN loss",
       legend: [
         [RED, "Red"],
@@ -716,9 +723,15 @@ function dualCharts() {
 
 export function initCurvesDual(parent) {
   const CH = dualCharts();
+  // one card PER chart, so they tile as uniform cells in the fullscreen grid
+  // (instead of one very tall stacked card). Only the win-rate card (d-rate) is
+  // marked '.qk', so it's the single curve the docked quick view shows.
   parent.insertAdjacentHTML(
     "beforeend",
-    `<section><h2>Learning curves · Red vs Blue</h2>${CH.map(chartBlock).join("")}</section>`,
+    CH.map(
+      (c) =>
+        `<section id="rl-curve-${c.id}"${c.id === "d-rate" ? ' class="qk"' : ""}>${chartBlock(c)}</section>`,
+    ).join(""),
   );
   const charts = CH.map((c) =>
     makeChart(parent.querySelector(`#rl-ch-${c.id}`), c),
@@ -745,7 +758,7 @@ export function initDiag(parent) {
   parent.insertAdjacentHTML(
     "beforeend",
     `
-    <section>
+    <section id="rl-outcomes">
       <h2>Outcome breakdown</h2>
       <div class="bar" style="margin-bottom:11px;"><i class="r" id="rl-oc-r"></i><i class="b" id="rl-oc-b"></i><i class="d" id="rl-oc-d"></i><i class="t" id="rl-oc-t"></i></div>
       <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-oc-rv">0</b></div>
@@ -753,7 +766,7 @@ export function initDiag(parent) {
       <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-oc-dv">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#8a8d94"></i>Timeouts</span><b id="rl-oc-tv">0</b></div>
     </section>
-    <section>
+    <section id="rl-actdist">
       <h2>Action distribution</h2>
       <div id="rl-act-body" class="actlist"><p class="hint">Waiting for steps...</p></div>
     </section>

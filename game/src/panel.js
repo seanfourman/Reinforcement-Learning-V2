@@ -54,79 +54,110 @@ export const PARAMS = [
 ];
 
 const STYLE = `
-#rl-panel{position:fixed;top:0;left:0;height:100%;width:384px;z-index:10;
-  transform:translateX(-398px);
-  transition:transform .34s cubic-bezier(.2,.8,.2,1),width .46s cubic-bezier(.16,1,.3,1);
+#rl-panel{position:fixed;top:0;left:0;height:100%;width:388px;z-index:10;
+  transform:translateX(calc(-100% - 24px));
+  transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 24px rgba(0,0,0,.26);
+  color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 30px rgba(0,0,0,.24);
   border-right:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
 #rl-panel.open{transform:translateX(0);}
 /* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
 #rl-panel::-webkit-scrollbar{width:0;height:0;display:none;}
 
 /* sticky header with the live matchup */
-#rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 13px;background:#fff;
+#rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 14px;background:#fff;
   border-bottom:1px solid #e6e8ec;}
-#rl-panel .hdr h1{margin:0;font-size:16px;font-weight:800;letter-spacing:-.2px;
-  display:flex;align-items:center;gap:9px;}
-#rl-panel .hdr h1::before{content:"";width:5px;height:17px;border-radius:3px;background:#1f5fd0;}
-#rl-panel .hdr .sub{margin:7px 0 0;font-size:11px;color:#9a9da4;}
-#rl-panel .hdr .myalgo{margin-top:11px;}
-#rl-panel .hdr .myalgo span{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
-#rl-panel .hdr .myalgo b{display:block;font-size:21px;font-weight:800;color:#1f5fd0;letter-spacing:-.3px;line-height:1.15;margin-top:2px;}
-#rl-panel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:4px;}
+#rl-panel .hdr h1{margin:0;font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;
+  display:flex;align-items:center;gap:8px;}
+#rl-panel .hdr h1::before{content:"";width:4px;height:12px;border-radius:2px;background:#1f5fd0;}
+/* round badge + arena name */
+#rl-panel .hdr .harena{display:flex;align-items:center;gap:9px;margin-top:9px;}
+#rl-panel .hdr .rbadge{flex:none;font-size:10px;font-weight:800;color:#fff;background:#1f5fd0;border-radius:6px;
+  padding:3px 8px;font-variant-numeric:tabular-nums;letter-spacing:.3px;}
+#rl-panel .hdr .harena b{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#1f1f21;}
+/* the model being trained + who it faces */
+#rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
+#rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
+#rl-panel .hdr .myalgo b{display:block;font-size:20px;font-weight:800;color:#1f5fd0;letter-spacing:-.3px;line-height:1.15;margin-top:3px;}
+#rl-panel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:5px;}
 /* fullscreen toggle (top-right of the header) */
 #rl-panel .hdr .fullbtn{position:absolute;top:12px;right:14px;flex:none;width:32px;height:32px;padding:0;
   display:grid;place-items:center;border:1px solid #d7dade;border-radius:8px;background:#fff;color:#54565c;cursor:pointer;}
 #rl-panel .hdr .fullbtn:hover{background:#f0f1f3;border-color:#c4c8ce;color:#1f1f21;}
 #rl-panel .hdr .fullbtn svg{width:16px;height:16px;display:block;}
-/* ===== FULLSCREEN DASHBOARD: the panel grows to fill the whole screen (the width
-   above animates) and the layout opens right up - a spacious grid of big cards with
-   big charts + larger type everywhere ===== */
-#rl-panel.full{box-sizing:border-box;width:100vw;max-width:100vw;border-right:none;
-  background:radial-gradient(1500px 760px at 50% -8%,#ffffff 0%,#e9ebf1 72%);
-  padding:26px clamp(20px,5vw,100px) 74px;}
-/* the cards flow through a masonry column set on the INNER wrapper (auto height so
-   the panel scrolls vertically instead of spilling columns off to the right) */
-#rl-panel.full .rl-body{column-count:3;column-gap:24px;}
-@media (max-width:1320px){#rl-panel.full .rl-body{column-count:2;}}
-@media (max-width:840px){#rl-panel.full .rl-body{column-count:1;}}
-/* header becomes a big title bar spanning the top */
-#rl-panel.full .hdr{column-span:all;position:static;background:transparent;border:none;
-  padding:4px 2px 18px;margin:0;}
-#rl-panel.full .hdr h1{font-size:34px;letter-spacing:-.6px;}
-#rl-panel.full .hdr h1::before{width:8px;height:32px;border-radius:4px;}
-#rl-panel.full .hdr .sub{font-size:15px;margin-top:10px;}
-#rl-panel.full .hdr .myalgo{margin-top:14px;}
-#rl-panel.full .hdr .myalgo b{font-size:28px;}
-#rl-panel.full .hdr .fullbtn{top:6px;right:2px;width:42px;height:42px;border-radius:12px;}
-#rl-panel.full .hdr .fullbtn svg{width:21px;height:21px;}
-/* bigger, roomier cards */
-#rl-panel.full .rl-body > section{break-inside:avoid;margin:0 0 24px;padding:24px 26px;border-radius:20px;
-  background:#fff;border:1px solid #eceef2;box-shadow:0 6px 22px rgba(20,20,45,.07);}
-#rl-panel.full h2{font-size:12px;letter-spacing:1.2px;margin-bottom:20px;}
-/* big charts */
-#rl-panel.full .chart{margin:0 0 22px;}
+/* ===== FULLSCREEN DASHBOARD: ONE centred grid. Group wrappers melt away
+   (display:contents) so every card shares the same columns, and JS gives each
+   card a row-span equal to its height - a true masonry that stays column-aligned
+   and packs tight (no ragged gaps, no stray empty space). ===== */
+#rl-panel.full{box-sizing:border-box;width:100vw;max-width:100vw;border-right:none;background:#edeff4;padding:0;}
+#rl-panel.full .rl-body{max-width:1440px;margin:0 auto;padding:30px 32px 96px;display:block;}
+/* each group is a full-width BAND: a title, then a grid whose columns STRETCH to
+   fill the width (auto-fit), so there is never an empty column on the right. JS
+   then row-spans each card to its height, so heights pack with no ragged gaps. */
+#rl-panel.full .rl-group{margin:0 0 28px;}
+#rl-panel.full .rl-group-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
+  grid-auto-rows:8px;gap:16px;align-items:start;grid-auto-flow:row dense;}
+#rl-panel.full .rl-group-h{display:block;margin:0 0 16px;padding:6px 0 12px;
+  font-size:19px;font-weight:800;letter-spacing:-.3px;text-transform:none;color:#22232a;border-bottom:2px solid #dce0e8;}
+#rl-panel.full .rl-group-h::before{content:"";display:inline-block;width:6px;height:18px;border-radius:3px;
+  background:#1f5fd0;vertical-align:-2px;margin-right:10px;}
+#rl-panel.full .rl-group:not(:has(section:not([hidden]))){display:none;}
+/* header = the page title bar */
+#rl-panel.full .hdr{position:static;background:transparent;border:none;padding:0 2px 18px;margin:0;}
+#rl-panel.full .hdr h1{font-size:12px;letter-spacing:1px;}
+#rl-panel.full .hdr h1::before{width:4px;height:13px;border-radius:2px;}
+#rl-panel.full .hdr .harena{margin-top:11px;gap:11px;}
+#rl-panel.full .hdr .harena b{font-size:27px;letter-spacing:-.7px;}
+#rl-panel.full .hdr .rbadge{font-size:12px;padding:4px 11px;}
+#rl-panel.full .hdr .myalgo{display:inline-block;margin-top:13px;padding-top:0;border-top:none;}
+#rl-panel.full .hdr .myalgo b{font-size:21px;}
+#rl-panel.full .hdr .fullbtn{top:2px;right:2px;width:40px;height:40px;border-radius:11px;}
+#rl-panel.full .hdr .fullbtn svg{width:20px;height:20px;}
+/* every card: identical chrome, sized to its content (align-self:start), row-span set by JS */
+#rl-panel.full .rl-group-cards > section{margin:0;align-self:start;padding:17px 18px;border-radius:15px;background:#fff;
+  border:1px solid #e6e9f0;box-shadow:0 1px 3px rgba(20,20,40,.05);min-width:0;}
+#rl-panel.full section h2{font-size:10px;letter-spacing:1px;margin-bottom:13px;}
+/* wide cards (charts, tables, replays) take two columns */
+#rl-panel.full section.span2{grid-column:span 2;}
+@media (max-width:940px){#rl-panel.full section.span2{grid-column:span 2;}}
+/* consistent chart height across the whole board */
+#rl-panel.full .chart{margin:0 0 13px;}
 #rl-panel.full .chart:last-child{margin-bottom:0;}
-#rl-panel.full .chart canvas{height:220px;border-radius:13px;}
-#rl-panel.full .chart .ct h3{font-size:14.5px;}
-#rl-panel.full .chart .ct .lg{font-size:11px;}
-/* bigger stats, sliders + transport */
-#rl-panel.full .stat{font-size:15.5px;padding:11px 0;}
-#rl-panel.full .stat b{font-size:16px;}
-#rl-panel.full .ctl{margin-bottom:20px;}
-#rl-panel.full .ctl .row{font-size:14.5px;margin-bottom:9px;}
-#rl-panel.full input[type=range]{height:6px;}
-#rl-panel.full input[type=range]::-webkit-slider-thumb{width:16px;height:16px;}
-#rl-panel.full input[type=range]::-moz-range-thumb{width:16px;height:16px;}
-#rl-panel.full .btns button{padding:12px 8px;font-size:13px;}
-#rl-panel.full .transport{gap:26px;}
-#rl-panel.full .tbtn{width:52px;height:52px;}
-#rl-panel.full .tplay{width:62px;height:62px;}
-#rl-panel.full .transport button svg{width:22px;height:22px;}
-#rl-panel.full .tplay svg{width:26px;height:26px;}
-#rl-panel.full .seg button{padding:11px 6px;font-size:12.5px;}
-#rl-panel.full .hint,#rl-panel.full .note{font-size:12px;}
+#rl-panel.full .chart canvas{height:132px;border-radius:10px;}
+#rl-panel.full .chart .ct h3{font-size:12.5px;}
+#rl-panel.full .chart .ct .lg{font-size:10px;}
+/* the MDP briefing is a lone full-width card -> lay its rows out in 2 columns so
+   it reads as a filled spec sheet instead of a sparse label/value strip */
+#rl-panel.full #rl-brief-body{columns:2;column-gap:44px;}
+#rl-panel.full #rl-brief-body>*{break-inside:avoid;}
+#rl-panel.full #rl-brief-body .brief-matchup,#rl-panel.full #rl-brief-body .brief-sub:first-child{column-span:all;}
+#rl-panel.full .stat{font-size:13.5px;padding:9px 0;}
+#rl-panel.full .stat b{font-size:14px;}
+#rl-panel.full .ctl{margin-bottom:15px;}
+#rl-panel.full .ctl .row{font-size:13px;margin-bottom:7px;}
+#rl-panel.full input[type=range]{height:5px;}
+#rl-panel.full .btns button{padding:10px 8px;font-size:12.5px;}
+#rl-panel.full .transport{gap:16px;}
+#rl-panel.full .tbtn{width:44px;height:44px;}
+#rl-panel.full .tplay{width:52px;height:52px;}
+#rl-panel.full .seg button{padding:9px 6px;font-size:12px;}
+#rl-panel.full .hint,#rl-panel.full .note{font-size:11px;}
+
+/* ===== quick (docked) vs full view =========================================
+   Docked = a curated QUICK VIEW: only the '.qk' cards, and inside them only the
+   quick rows/charts ('.fullonly' bits hidden). Fullscreen shows everything,
+   organised into the big titled groups above. */
+#rl-panel .rl-group-h{display:none;}                 /* group titles: fullscreen only */
+#rl-panel:not(.full) .rl-group{margin:0;}
+#rl-panel:not(.full) .rl-group-cards > section:not(.qk){display:none;}
+#rl-panel:not(.full) .fullonly{display:none;}
+#rl-panel:not(.full) section.qk-nohdr > h2{display:none;} /* one chart, no heavy header */
+/* a small "expand for everything" hint under the quick view */
+#rl-panel .rl-morehint{display:none;margin:2px 12px 16px;padding:10px 13px;border-radius:11px;
+  background:#eef1f7;border:1px solid #e2e6ee;color:#6a6d75;font-size:11.5px;line-height:1.4;cursor:pointer;}
+#rl-panel .rl-morehint b{color:#1f5fd0;}
+#rl-panel:not(.full) .rl-morehint{display:block;}
+#rl-panel .rl-morehint:hover{background:#e7ebf4;}
 
 /* cards */
 #rl-panel section{margin:11px 11px;padding:13px 14px;background:#fff;border:1px solid #e6e8ec;
@@ -243,6 +274,87 @@ const STYLE = `
 #rl-panel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 `;
 
+// Fold every card into big titled groups. The fullscreen dashboard shows the
+// group titles + all cards; the docked quick view (CSS) reveals only the '.qk'
+// cards. A catch-all 'More' group guarantees any unmapped/future section still
+// appears (never silently dropped). Shared by both the N and M panels.
+//   groups   = [[id, title, [sectionId, ...]], ...]
+//   fullSel  = selector of the expand-to-fullscreen button (for the hint click)
+//   hintHTML = docked "expand for more" hint text
+export function organizeGroups(body, groups, fullSel, hintHTML, wideIds = []) {
+  const wide = new Set(wideIds);
+  const mk = (id, title) => {
+    const g = document.createElement('div');
+    g.className = 'rl-group';
+    g.dataset.group = id;
+    g.innerHTML = `<h2 class="rl-group-h">${title}</h2><div class="rl-group-cards"></div>`;
+    return g;
+  };
+  const els = groups.map(([id, title, ids]) => {
+    const g = mk(id, title);
+    const cards = g.querySelector('.rl-group-cards');
+    for (const sid of ids) {
+      const sec = body.querySelector('#' + sid);
+      if (sec) {
+        if (wide.has(sid)) sec.classList.add('span2'); // charts/tables take 2 cols
+        cards.appendChild(sec); // moves the node out of the flat body
+      }
+    }
+    return g;
+  });
+  const leftover = [...body.querySelectorAll(':scope > section')];
+  if (leftover.length) {
+    const g = mk('more', 'More');
+    const cards = g.querySelector('.rl-group-cards');
+    leftover.forEach((s) => cards.appendChild(s));
+    els.push(g);
+  }
+  for (const g of els) body.appendChild(g);
+}
+
+// True masonry on the fullscreen grid: give each visible card (and the group
+// titles / header) a grid-row-span equal to its measured height, so the columns
+// stay aligned while cards pack tight. Re-runs on resize, snapshots (content can
+// grow) and whenever a card resizes (charts drawing). No-op while docked.
+export function attachMasonry(panel, body) {
+  const relayout = () => {
+    if (!panel.classList.contains('full')) return;
+    const cs = getComputedStyle(body);
+    const rowH = parseFloat(cs.gridAutoRows) || 8;
+    const gap = parseFloat(cs.rowGap || cs.gap) || 18;
+    const items = body.querySelectorAll('.rl-group-cards > section');
+    items.forEach((el) => (el.style.gridRowEnd = '')); // reset to measure natural height
+    void body.offsetHeight; // reflow
+    items.forEach((el) => {
+      if (el.offsetParent === null) return; // hidden this round
+      const h = el.getBoundingClientRect().height;
+      el.style.gridRowEnd = 'span ' + Math.max(1, Math.ceil((h + gap) / (rowH + gap)));
+    });
+  };
+  let raf = 0;
+  const schedule = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(relayout);
+  };
+  panel._relayout = schedule;
+  window.addEventListener('resize', schedule);
+  window.addEventListener('rl-snapshot', () => panel.classList.contains('full') && schedule());
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => panel.classList.contains('full') && schedule());
+    body.querySelectorAll('.rl-group-cards > section').forEach((s) => ro.observe(s));
+  }
+  return schedule;
+}
+
+const N_GROUPS = [
+  ['control', 'Control', ['rl-sec-playback', 'rl-sec-hyper']],
+  ['status', 'Live Status', ['rl-sec-training', 'rl-sec-contest', 'rl-compare']],
+  ['problem', 'The Problem', ['rl-brief']],
+  ['learning', 'Learning Progress', ['rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore']],
+  ['policy', 'Policy &amp; Value', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-outcomes', 'rl-actdist']],
+  ['replays', 'Replays', ['rl-replay', 'rl-traj']],
+];
+
 export function initPanel() {
   const style = document.createElement('style');
   style.textContent = STYLE;
@@ -261,13 +373,14 @@ export function initPanel() {
     <div class="hdr">
       <button id="rl-full" class="fullbtn" type="button" title="Fullscreen">${SVG.expand}</button>
       <h1>Training Control</h1>
-      <p class="sub" id="rl-round">-</p>
+      <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
       <div class="myalgo">
+        <span class="mlabel">Your model</span>
         <b id="rl-mb">-</b>
         <em id="rl-vs"></em>
       </div>
     </div>
-    <section>
+    <section id="rl-sec-playback" class="qk">
       <h2>Playback</h2>
       <div class="transport">
         <button id="rl-prev" class="tbtn">${SVG.prev}</button>
@@ -283,35 +396,35 @@ export function initPanel() {
         <input type="range" id="rl-speed" min="0" max="100" value="10" style="--fill:#8a8d94">
       </div>
     </section>
-    <section>
+    <section id="rl-sec-hyper" class="qk">
       <h2>Hyperparameters</h2>
       <div class="plegend">
         <span><i style="background:#1f5fd0"></i>Your model (Blue)</span>
         <span><i style="background:#8a8d94"></i>Both models</span>
       </div>
       ${PARAMS.map(ctlHTML).join('')}
-      <p class="note">Blue sliders tune your model. Red (the CPU) trains at a strength set by the
+      <p class="note fullonly">Blue sliders tune your model. Red (the CPU) trains at a strength set by the
         chosen character's tier. Gray sliders are shared by both. Each round shows only the
         controls its algorithm uses: DP rounds plan with the discount γ; the learning rounds
         add the learning rate α and the ε exploration schedule.</p>
     </section>
-    <section>
+    <section id="rl-sec-training" class="qk">
       <h2>Training</h2>
       <div class="stat"><span>Episode</span><b id="rl-ep">0</b></div>
-      <div class="stat"><span>Total steps</span><b id="rl-steps">0</b></div>
       <div class="stat"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
-      <div class="stat"><span>Avg episode length</span><b id="rl-len">-</b></div>
-      <div class="stat"><span>Last return (R / B)</span><b id="rl-ret">-</b></div>
-      <div class="stat"><span>Learned states (R / B)</span><b id="rl-q">0 / 0</b></div>
+      <div class="stat fullonly"><span>Total steps</span><b id="rl-steps">0</b></div>
+      <div class="stat fullonly"><span>Avg episode length</span><b id="rl-len">-</b></div>
+      <div class="stat fullonly"><span>Last return (R / B)</span><b id="rl-ret">-</b></div>
+      <div class="stat fullonly"><span>Learned states (R / B)</span><b id="rl-q">0 / 0</b></div>
     </section>
-    <section>
+    <section id="rl-sec-contest" class="qk">
       <h2>Contest - recent</h2>
       <div class="bar"><i class="r" id="rl-br"></i><i class="b" id="rl-bb"></i><i class="d" id="rl-bd"></i></div>
       <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-wr">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-wb">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
-    <section>
+    <section id="rl-sec-value" class="qk">
       <h2>Value map · your model</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
@@ -319,7 +432,7 @@ export function initPanel() {
         <button id="rl-h-policy">Policy</button>
         <button id="rl-h-visits">Visits</button>
       </div>
-      <p class="hint">Value: each tile shows its Q for N / S / W / E, greedy action in blue (a blue
+      <p class="hint fullonly">Value: each tile shows its Q for N / S / W / E, greedy action in blue (a blue
         number in the center means "Use / stay" is best). Visits: where it travels (red = most
         stepped on, blue = least). Zoom in to read the numbers.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
@@ -329,7 +442,20 @@ export function initPanel() {
 
   // learning-curve charts + episode replay (built by graphs.js) - into the same
   // .rl-body wrapper so fullscreen can flow every card through one masonry column set
-  initGraphs(panel.querySelector('.rl-body'));
+  const body = panel.querySelector('.rl-body');
+  initGraphs(body);
+  // fold every card (native + the ~14 graphs.js sections) into the six big titled
+  // groups the fullscreen dashboard shows; docked quick view then reveals only the
+  // '.qk' cards. Any section not named still shows (catch-all group) so nothing is
+  // ever silently dropped.
+  organizeGroups(
+    body,
+    N_GROUPS,
+    '#rl-full',
+    'Quick view. <b>Expand ↗</b> for the full dashboard: hyperparameters, ' +
+      'learning curves, value maps, replays and more.',
+  );
+  attachMasonry(panel, body);
 
   const $ = (id) => panel.querySelector(id);
 
@@ -359,8 +485,15 @@ export function initPanel() {
     const on = panel.classList.toggle('full');
     fullBtn.innerHTML = on ? SVG.collapse : SVG.expand;
     fullBtn.title = on ? 'Exit fullscreen' : 'Fullscreen';
-    // re-fit the charts repeatedly THROUGH the grow animation so they track the width
-    [0, 120, 260, 400, 520].forEach((t) => setTimeout(() => window.dispatchEvent(new Event('resize')), t));
+    // going fullscreen takes over the screen -> close the other (CPU) panel
+    if (on) document.getElementById('rl-cpanel')?.classList.remove('open', 'full');
+    // re-fit the charts + re-pack the masonry THROUGH the grow animation
+    [0, 120, 260, 400, 560].forEach((t) =>
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        panel._relayout?.();
+      }, t),
+    );
   });
 
   // ---- playback ----
@@ -452,11 +585,15 @@ export function initPanel() {
       paramsInit = true;
     }
     $('#rl-mb').textContent = NAMES[s.algoBlue] || s.algoBlue || '-';
-    $('#rl-vs').textContent = s.cpuTier ? `vs CPU · Tier ${s.cpuTier}` : '';
+    const redNm = NAMES[s.algoRed] || s.algoRed || '';
+    const tier = s.cpuTier ? `CPU · Tier ${s.cpuTier}` : '';
+    $('#rl-vs').textContent = redNm
+      ? `vs ${redNm}${tier ? ` · ${tier}` : ''}`
+      : (tier ? `vs ${tier}` : '');
     if (s.algoBlue !== lastAlgoBlue) { lastAlgoBlue = s.algoBlue; showRelevant(s.algoBlue); }
     const r = s.round || {};
-    $('#rl-round').textContent = r.title
-      ? `Round ${(r.index ?? 0) + 1} / ${r.total || 1} · ${r.title}` : '';
+    $('#rl-round').textContent = `R${(r.index ?? 0) + 1} · ${r.total || 1}`;
+    $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0
       ? `${s.episode.toLocaleString()} / ${tgt.toLocaleString()}`
