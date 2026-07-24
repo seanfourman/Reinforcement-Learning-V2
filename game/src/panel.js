@@ -462,7 +462,7 @@ export function initPanel() {
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>
-        <input type="range" id="rl-speed" min="0" max="100" value="10" style="--fill:#8a8d94">
+        <input type="range" id="rl-speed" min="0" max="100" value="10" style="--fill:#141518">
       </div>
     </section>
     <section id="rl-sec-hyper" class="qk">
