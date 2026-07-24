@@ -206,8 +206,8 @@ const STYLE = `
 #rl-panel .transport button{flex:none;padding:0;display:flex;align-items:center;justify-content:center;}
 #rl-panel .tbtn{width:44px;height:44px;border-radius:50%;border:1.5px solid #d7dade;background:#fff;color:#3a3d44;}
 #rl-panel .tbtn:hover{background:#f0f1f3;border-color:#c4c8ce;}
-#rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#6d717a;color:#fff;}
-#rl-panel .tplay:hover{background:#5b5f68;}
+#rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#141518;color:#fff;}
+#rl-panel .tplay:hover{background:#2a2b30;}
 #rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
 #rl-panel .tplay svg{width:21px;height:21px;}
 /* sliders (speed + every hyperparameter) */
