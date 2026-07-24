@@ -22,7 +22,7 @@ const IRIS_EASE = "cubic-bezier(.66,0,.34,1)";
 const STYLE = `
 #rl-iris{position:fixed;top:50%;left:50%;border-radius:50%;pointer-events:none;z-index:60;
   background:transparent;}
-#rl-iris-card{position:fixed;inset:0;z-index:61;pointer-events:none;display:flex;
+#rl-iris-card{position:fixed;inset:0;z-index:66;pointer-events:none;display:flex;
   flex-direction:column;align-items:center;justify-content:center;text-align:center;
   opacity:0;transform:translateY(12px);
   transition:opacity .6s ease,transform .6s cubic-bezier(.2,.9,.2,1);color:#fff;
@@ -65,14 +65,16 @@ export function createTransition() {
   };
 
   let busy = false;
+  let nameTimer = null; // fire-and-forget timer for the level-name hold + fade-out
 
-  // populate the level card (arena name + a short thematic subtitle) and hide it
+  // populate the level card TEXT (arena name + a short thematic subtitle). Does NOT
+  // touch visibility - callers control when the card shows/hides so the text is only
+  // ever changed while the card is hidden (never a visible swap over the old arena).
   function fillCard(worldJson, stats) {
     const r = (stats && stats.round) || {};
     ttl.textContent = worldJson.title || r.title || "Arena";
     const theme = getTheme(worldJson.theme);
     sub.textContent = (theme && theme.subtitle) || "";
-    card.classList.remove("show");
   }
 
   // Show the level name over the CURRENT view (no iris), then fade it out. Used on
@@ -87,15 +89,25 @@ export function createTransition() {
   }
 
   async function play(worldJson, stats, onCovered) {
+    // If a previous transition is still finishing, WAIT for it and then play THIS
+    // one's iris - never skip the animation and swap the world instantly (the
+    // "move to the next arena, then move again a second later and it just jumps
+    // with no fade" bug). busy releases as soon as the world is REVEALED (the
+    // level-name hold/fade runs on its own, below), so this wait stays short.
+    const t0 = performance.now();
+    while (busy && performance.now() - t0 < 12000) await wait(80);
     if (busy) {
+      // safety valve: a genuinely stuck transition must not deadlock the next move
       await onCovered?.();
       return;
-    } // never skip the rebuild
+    }
 
+    clearTimeout(nameTimer); // cancel a prior transition's still-pending name fade
     busy = true;
+    // fade the CURRENT (old) level name out with ITS OWN text as we cover; the new
+    // name's text is set later, UNDER BLACK, so it never visibly swaps on the old arena
+    card.classList.remove("show");
     try {
-      fillCard(worldJson, stats); // shown later, over the revealed world
-
       // circle big enough to clear the screen corners even after resize
       const diag = Math.ceil(
         Math.hypot(window.innerWidth, window.innerHeight) * 1.35,
@@ -113,6 +125,10 @@ export function createTransition() {
       requestAnimationFrame(() => setIris(0));
       await wait(IRIS_MS + 60); // wait until FULLY black
 
+      // now that the screen is black, set the NEW arena's name text - so it never
+      // visibly swaps on top of the old arena before the iris covered it
+      fillCard(worldJson, stats);
+
       // 2) under black: rebuild the arena + swap the UI, and WAIT until it's all
       // loaded and settled (onCovered resolves only when everything's ready).
       // Even if the rebuild THROWS, the iris must reopen - a swallowed error
@@ -125,14 +141,18 @@ export function createTransition() {
       }
       await wait(Math.max(0, IRIS_MS - NAME_LEAD));
 
-      // 4) once the world is visible, fade the level name up OVER it, hold, fade out
+      // 4) once the world is visible, fade the level name up OVER it
       card.classList.add("show");
-      await wait(NAME_LEAD + HOLD_MS);
-      card.classList.remove("show");
-      await wait(650);
     } finally {
-      busy = false;
+      busy = false; // released as soon as the world is revealed
     }
+
+    // hold the level name, then fade it out - fire-and-forget so a quick NEXT move
+    // isn't blocked by the ~2s name display (a following play() cancels this timer)
+    nameTimer = setTimeout(() => {
+      card.classList.remove("show");
+      nameTimer = null;
+    }, NAME_LEAD + HOLD_MS);
   }
 
   async function cover(onCovered) {
@@ -148,6 +168,7 @@ export function createTransition() {
 
     busy = true;
     try {
+      clearTimeout(nameTimer); // drop any pending name fade from a prior play()
       card.classList.remove("show");
       const diag = Math.ceil(
         Math.hypot(window.innerWidth, window.innerHeight) * 1.35,

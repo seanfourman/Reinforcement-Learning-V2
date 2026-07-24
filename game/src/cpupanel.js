@@ -23,7 +23,7 @@ const M_GROUPS = [
 ];
 
 const STYLE = `
-#rl-cpanel{position:fixed;top:0;right:0;height:100%;width:460px;z-index:10;
+#rl-cpanel{position:fixed;top:0;right:0;height:100%;width:465px;z-index:62;
   transform:translateX(calc(100% + 24px));transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:-3px 0 30px rgba(0,0,0,.24);
