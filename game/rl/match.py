@@ -269,7 +269,10 @@ class Match:
         self.a_red = self.red.policy_action(self.s_red)
         self.a_blue = self.blue.policy_action(self.s_blue)
         self.ep_return = {"red": 0.0, "blue": 0.0}
-        self._frames = []
+        # frame 0 = the TRUE start (spawn positions, before any move). tick() records
+        # snapshots AFTER stepping, so without this seed the replay began one move in
+        # and agents appeared to start a square off their real spawn.
+        self._frames = [self.env.snapshot()]
 
     # ------------------------------------------------------------------- tick
     def tick(self):
