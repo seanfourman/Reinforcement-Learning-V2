@@ -48,6 +48,21 @@ TOP_N = 30                 # best replays kept PER MODEL (red/blue), fastest fir
 RED_GAMMA = 0.98
 
 
+def _int_or_none(v, lo=0, hi=10 ** 9):
+    """Coerce a panel value to a clamped int, or None. The panel sends -1 (or an
+    empty/None value) to mean 'use the built-in default' for the optional knobs
+    (hazard counts, train seed)."""
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return None
+    if n < 0:
+        return None
+    return max(lo, min(hi, n))
+
+
 def red_params(tier):
     """Map a CPU tier (1..5) to Red's learning-rate + epsilon schedule."""
     t = max(1, min(5, int(tier)))
@@ -66,7 +81,32 @@ class Match:
         self.lock = threading.RLock()
         self.seed = seed
         self.round_id = round_id
+        # ---- panel-driven GLOBAL config (apply to BOTH agents / the env) -------
+        # These are structural: the algorithms' internals and the world dynamics,
+        # as opposed to the per-side learning knobs (alpha/gamma/epsilon) below.
+        self.train_seed = seed                 # reproducibility: seeds env rng + agents
+        self.max_steps_override = None          # None -> each env's own default cap
+        # DP planners (rounds with Value/Policy Iteration)
+        self.dp_theta = 1e-5                    # convergence threshold
+        self.dp_max_sweeps = 2000               # hard iteration cap per phase
+        # DQN learners (continuous rounds 4-5)
+        self.dqn_batch = 64
+        self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
+        self.dqn_warmup = 1_000                 # steps before learning starts
+        self.dqn_target_sync = 500              # target-net copy interval
+        self.dqn_hidden = 128                   # hidden width     (rebuild on change)
+        # world dynamics + hazards (continuous arenas + slippery grids)
+        self.env_thrust = 16.0                  # acceleration per thrust action
+        self.env_damp = 0.90                    # velocity retained per step (drag)
+        self.env_vmax = 7.0                     # speed cap
+        self.env_sand_damp = 0.72               # heavier drag in quicksand (R5)
+        self.env_slip_ctrl = 0.25               # lose-control chance on ice/wet junctions
+        self.obstacle_count = None              # R4 ruins  (None -> hand-placed default)
+        self.tornado_count = 2                  # R5 dust tornados
+        self.quicksand_count = None             # R5 pools  (None -> hand-placed default)
+        # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
+        self._apply_env_config()
         self.world_version = 1
         self.score = {"red": 0, "blue": 0}     # cumulative tournament round-wins
         self.awarded_rounds = set()            # round ids already scored this tournament
@@ -91,15 +131,47 @@ class Match:
 
     # ------------------------------------------------------------------ setup
     def _make_env(self, round_id):
-        """Pick the env for a round: the module's own make_env() when it ships
-        one (Round 5's sequential rally), the shared continuous arena for any
-        other CONTINUOUS round (Round 4), the tabular grid world otherwise."""
+        """Pick the env for a round, threading the current world config: the
+        module's own make_env() when it ships one (Round 5's sequential rally),
+        the shared continuous arena for any other CONTINUOUS round (Round 4), the
+        tabular grid world otherwise. Continuous rounds get the shared dynamics
+        (thrust/drag/speed cap) + their hazard counts; grids get the slip model."""
         mod = worlds.ROUND_MODULES.get(round_id)
-        if hasattr(mod, "make_env"):
-            return mod.make_env(self.seed)
+        seed = self.train_seed
         if getattr(mod, "CONTINUOUS", False):
-            return ContinuousArena(self.seed, round_id=round_id)
-        return GridWorld(self.seed, round_id=round_id)
+            dyn = dict(thrust=self.env_thrust, damp=self.env_damp, vmax=self.env_vmax)
+            if hasattr(mod, "make_env"):        # R5 sequential rally (its own hazards)
+                return mod.make_env(seed, sand_damp=self.env_sand_damp,
+                                    tornado_count=self.tornado_count,
+                                    quicksand_count=self.quicksand_count, **dyn)
+            return ContinuousArena(seed, round_id=round_id,
+                                   obstacle_count=self.obstacle_count, **dyn)
+        return GridWorld(seed, round_id=round_id, slip_ctrl=self.env_slip_ctrl)
+
+    def _apply_env_config(self):
+        """Push the live dynamics knobs (which arenas read off instance attrs each
+        step) + the step-cap override onto the current env, after any (re)build."""
+        e = self.env
+        for attr, val in (("thrust", self.env_thrust), ("damp", self.env_damp),
+                          ("vmax", self.env_vmax), ("sand_damp", self.env_sand_damp),
+                          ("slip_ctrl", self.env_slip_ctrl)):
+            if hasattr(e, attr):
+                setattr(e, attr, float(val))
+        if self.max_steps_override is not None:
+            e.max_steps = self.max_steps_override
+
+    def _rebuild_world(self):
+        """Rebuild the live env from the current world config (hazard counts / seed)
+        and the agents on top of it, then restart the contest. For a STRUCTURAL
+        change where the scene layout itself moves, so the client re-fetches it."""
+        self.env = self._make_env(self.round_id)
+        self.world_version += 1
+        self._apply_env_config()
+        self._build_agents()
+        self.finish_waiting = False
+        self.finish_event = None
+        self._reset_stats()
+        self._new_episode()
 
     def world_for_round(self, round_id):
         """A round's world built READ-ONLY (does not touch the live env/match),
@@ -115,11 +187,15 @@ class Match:
 
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
-            return make_dp(algo, self.env, color, gamma=gamma)
+            return make_dp(algo, self.env, color, gamma=gamma,
+                           theta=self.dp_theta, max_sweeps=self.dp_max_sweeps)
         if is_dqn(algo):
             from dqn import make_dqn   # lazy: only Round 4 needs PyTorch
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
-                            seed=seed, alpha=alpha, gamma=gamma)
+                            seed=seed, alpha=alpha, gamma=gamma,
+                            buffer=self.dqn_buffer, batch=self.dqn_batch,
+                            warmup=self.dqn_warmup, target_sync=self.dqn_target_sync,
+                            hidden=self.dqn_hidden)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
@@ -134,10 +210,13 @@ class Match:
         self.red_epsilon = rp["eps_start"]
 
     def _build_agents(self):
-        # Red = CPU (params from its tier, or a manual override); Blue = ours, panel-tunable
-        self.red = self._make_one(self.algo_red, "red", seed=1,
+        # Red = CPU (params from its tier, or a manual override); Blue = ours, panel-tunable.
+        # The train seed offsets BOTH agents' seeds so a different seed gives a
+        # genuinely different-but-reproducible run (layouts stay hand-designed).
+        off = 0 if self.train_seed is None else int(self.train_seed) * 101
+        self.red = self._make_one(self.algo_red, "red", seed=1 + off,
                                   alpha=self.red_alpha, gamma=self.red_gamma)
-        self.blue = self._make_one(self.algo_blue, "blue", seed=2,
+        self.blue = self._make_one(self.algo_blue, "blue", seed=2 + off,
                                    alpha=self.alpha, gamma=self.gamma)
 
     def _reset_stats(self):
@@ -375,12 +454,20 @@ class Match:
             self.set_round(first, keep_score=False)
 
     def set_params(self, p):
-        """Update tunable hyperparameters live from the panel. They apply to OUR
-        model (Blue): alpha and the epsilon schedule to the TD/MC learners, the
-        discount gamma to the learners AND to the DP planners (which re-solve), and
-        the step cap / episode target take effect immediately."""
+        """Update tunable settings live from the panel. Three tiers:
+          * per-side LEARNING (alpha / gamma / epsilon schedule) -> OUR model, Blue;
+          * GLOBAL algorithm internals (DP theta+sweeps, DQN batch/buffer/warmup/
+            sync/width) -> BOTH agents; buffer+width need an agent rebuild;
+          * GLOBAL world dynamics (thrust/drag/speed cap/sand/slip) apply live, and
+            structural world knobs (hazard counts, train seed) rebuild the scene.
+        Learning + dynamics apply instantly; structural changes restart the contest."""
         with self.lock:
             old_gamma = self.gamma
+            need_env_rebuild = False   # scene layout moved (counts / seed)
+            need_agent_rebuild = False  # network shape changed (buffer / width)
+            replan = False              # DP planners must re-solve
+
+            # ---- per-side LEARNING (Blue) ----
             if "alpha" in p:
                 self.alpha = max(0.0, min(1.0, float(p["alpha"])))
             if "gamma" in p:
@@ -391,28 +478,95 @@ class Match:
                 self.eps_end = max(0.0, min(1.0, float(p["epsEnd"])))
             if "epsEpisodes" in p:
                 self.eps_episodes = max(1, int(p["epsEpisodes"]))
-            if "maxSteps" in p:
-                self.env.max_steps = max(10, int(p["maxSteps"]))
             if "targetEpisodes" in p:
                 t = int(p["targetEpisodes"])
                 self.target_episodes = t if t > 0 else None
-            # DP convergence threshold theta: re-solve BOTH planners (VI + PI) so the
-            # sweep charts react live to a looser/tighter stopping tolerance.
+            if "maxSteps" in p:
+                self.max_steps_override = max(10, int(p["maxSteps"]))
+                self.env.max_steps = self.max_steps_override
+
+            # ---- GLOBAL: DP internals (both planners re-solve) ----
             if "dpTheta" in p:
-                th = max(1e-9, min(1.0, float(p["dpTheta"])))
-                for ag in (self.red, self.blue):
-                    if hasattr(ag, "theta") and hasattr(ag, "plan"):
-                        ag.theta = th
-                        ag.plan()
-            # push learning-rate / discount onto OUR live agent (Blue) only
+                self.dp_theta = max(1e-9, min(1.0, float(p["dpTheta"])))
+                replan = True
+            if "dpMaxIters" in p:
+                self.dp_max_sweeps = max(1, min(100_000, int(p["dpMaxIters"])))
+                replan = True
+
+            # ---- GLOBAL: DQN internals ----
+            if "dqnBatch" in p:
+                self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
+            if "dqnWarmup" in p:
+                self.dqn_warmup = max(0, int(p["dqnWarmup"]))
+            if "dqnTargetSync" in p:
+                self.dqn_target_sync = max(1, int(p["dqnTargetSync"]))
+            if "dqnBuffer" in p:
+                self.dqn_buffer = max(1_000, min(2_000_000, int(p["dqnBuffer"])))
+                need_agent_rebuild = True
+            if "dqnHidden" in p:
+                self.dqn_hidden = max(16, min(1024, int(p["dqnHidden"])))
+                need_agent_rebuild = True
+
+            # ---- GLOBAL: world dynamics (live) ----
+            if "thrust" in p:
+                self.env_thrust = max(0.0, min(80.0, float(p["thrust"])))
+            if "drag" in p:
+                self.env_damp = max(0.0, min(1.0, float(p["drag"])))
+            if "speedCap" in p:
+                self.env_vmax = max(0.5, min(30.0, float(p["speedCap"])))
+            if "sandDamp" in p:
+                self.env_sand_damp = max(0.0, min(1.0, float(p["sandDamp"])))
+            if "slip" in p:
+                self.env_slip_ctrl = max(0.0, min(0.9, float(p["slip"])))
+
+            # ---- GLOBAL: structural world (rebuild the scene) ----
+            if "obstacleCount" in p:
+                self.obstacle_count = _int_or_none(p["obstacleCount"], lo=0, hi=12)
+                need_env_rebuild = True
+            if "tornadoCount" in p:
+                self.tornado_count = max(0, min(8, int(p["tornadoCount"])))
+                need_env_rebuild = True
+            if "quicksandCount" in p:
+                self.quicksand_count = _int_or_none(p["quicksandCount"], lo=0, hi=10)
+                need_env_rebuild = True
+            if "trainSeed" in p:
+                self.train_seed = _int_or_none(p["trainSeed"], lo=0, hi=10_000_000)
+                need_env_rebuild = True
+
+            # push live learning-rate / discount onto OUR live agent (Blue) only
             if hasattr(self.blue, "alpha"):
                 self.blue.alpha = self.alpha
             if hasattr(self.blue, "gamma"):
                 self.blue.gamma = self.gamma
-            # a DP planner must RE-SOLVE its plan to reflect a new discount
-            if self.gamma != old_gamma and is_dp(self.algo_blue) and hasattr(self.blue, "plan"):
-                self.blue.plan()
-            self._apply_epsilon()
+            # live-settable DQN attrs on BOTH agents (buffer/width handled by rebuild)
+            for ag in (self.red, self.blue):
+                if hasattr(ag, "batch"):
+                    ag.batch = self.dqn_batch
+                if hasattr(ag, "warmup"):
+                    ag.warmup = self.dqn_warmup
+                if hasattr(ag, "target_sync"):
+                    ag.target_sync = self.dqn_target_sync
+
+            if need_env_rebuild:
+                self._rebuild_world()
+            elif need_agent_rebuild:
+                self._apply_env_config()   # keep live env dynamics unchanged
+                self._build_agents()
+                self._reset_stats()
+                self._new_episode()
+            else:
+                self._apply_env_config()
+                if replan:
+                    for ag in (self.red, self.blue):
+                        if hasattr(ag, "theta") and hasattr(ag, "plan"):
+                            ag.theta = self.dp_theta
+                            if hasattr(ag, "max_sweeps"):
+                                ag.max_sweeps = self.dp_max_sweeps
+                            ag.plan()
+                # a DP planner must RE-SOLVE its plan to reflect a new discount
+                if self.gamma != old_gamma and is_dp(self.algo_blue) and hasattr(self.blue, "plan"):
+                    self.blue.plan()
+                self._apply_epsilon()
             return self.params()
 
     def params(self):
@@ -424,6 +578,24 @@ class Match:
             "epsEpisodes": self.eps_episodes,
             "maxSteps": self.env.max_steps,
             "targetEpisodes": self.target_episodes or 0,
+            # global algorithm internals
+            "dpTheta": self.dp_theta,
+            "dpMaxIters": self.dp_max_sweeps,
+            "dqnBatch": self.dqn_batch,
+            "dqnBuffer": self.dqn_buffer,
+            "dqnWarmup": self.dqn_warmup,
+            "dqnTargetSync": self.dqn_target_sync,
+            "dqnHidden": self.dqn_hidden,
+            # world dynamics + hazards
+            "thrust": round(self.env_thrust, 3),
+            "drag": round(self.env_damp, 3),
+            "speedCap": round(self.env_vmax, 3),
+            "sandDamp": round(self.env_sand_damp, 3),
+            "slip": round(self.env_slip_ctrl, 3),
+            "obstacleCount": self.obstacle_count if self.obstacle_count is not None else -1,
+            "tornadoCount": self.tornado_count,
+            "quicksandCount": self.quicksand_count if self.quicksand_count is not None else -1,
+            "trainSeed": self.train_seed if self.train_seed is not None else -1,
         }
 
     def set_red_params(self, p):
@@ -505,6 +677,7 @@ class Match:
         with self.lock:
             self.round_id = round_id
             self.env = self._make_env(round_id)   # rebuild: round may switch env class
+            self._apply_env_config()              # carry dynamics/slip/step-cap across
             self.world_version += 1
             self.algo_red, self.algo_blue = worlds.round_algos(round_id)
             if not keep_score:

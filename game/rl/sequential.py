@@ -91,10 +91,17 @@ class SequentialArena:
 
     objective = "arena"
 
-    def __init__(self, seed=None, round_id=5):
+    def __init__(self, seed=None, round_id=5, thrust=THRUST, damp=DAMP, vmax=VMAX,
+                 sand_damp=SAND_DAMP, tornado_count=2, quicksand_count=None):
         self.round_id = round_id
         self.rng = random.Random(seed)
         self.max_steps = MAX_STEPS
+        # tunable dynamics + hazard counts (panel-driven; constants are defaults)
+        self.thrust = float(thrust)
+        self.damp = float(damp)
+        self.vmax = float(vmax)
+        self.sand_damp = float(sand_damp)
+        self.tornado_count = max(0, min(8, int(tornado_count)))
         self.n_actions = N_ACTIONS
         self.obs_dim = OBS_DIM
         self.H = self.W = int(ARENA)        # coarse grid for the blank overlays
@@ -107,7 +114,7 @@ class SequentialArena:
             "blue": [r for (_x, _z, r) in BLUE_TOUR],
         }
         self.n_legs = len(RED_TOUR)
-        self.quicksand = [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in QUICKSAND]
+        self.quicksand = self._gen_quicksand(quicksand_count)
         self.red_spawn = RED_SPAWN
         self.blue_spawn = BLUE_SPAWN
         self.steps = 0
@@ -116,6 +123,29 @@ class SequentialArena:
         self.reset()
 
     # --------------------------------------------------------------- helpers
+    def _gen_quicksand(self, count):
+        """Quicksand pools. None -> the hand-placed default (1 midfield + 2
+        flanking the pyramid); a count -> symmetric pools about the centre line
+        (odd -> a central pool first, then mirrored flanking pairs)."""
+        if count is None:
+            base = QUICKSAND
+        else:
+            count = max(0, min(10, int(count)))
+            cx = ARENA / 2
+            base = []
+            rem = count
+            if rem % 2 == 1:                       # central midfield pool
+                base.append((cx, 10.2, 1.6))
+                rem -= 1
+            zs = [5.2, 13.5, 8.0, 3.5]             # flanking rows (pyramid approach first)
+            dxs = [6.5, 5.0, 7.0, 4.0]
+            for p in range(rem // 2):
+                z = zs[p % len(zs)]
+                dx = dxs[p % len(dxs)]
+                base.append((cx - dx, z, 1.2))
+                base.append((cx + dx, z, 1.2))
+        return [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in base]
+
     def _spawn_pos(self, which):
         x, z = self.red_spawn if which == "red" else self.blue_spawn
         return np.array([x, z], dtype=np.float32)
@@ -134,12 +164,18 @@ class SequentialArena:
         return -SHAPE_W * self._dist_target(which, pos, k)
 
     def _tornado_pos(self, steps=None):
+        # Tornados roam in MIRRORED PAIRS about the centre line (fair to both
+        # sides). tornado_count sets how many twisters; each pair gets its own
+        # phase offset so they don't stack. count=2 -> the original single pair.
         t = self.steps if steps is None else steps
-        d = TORNADO_D0 + TORNADO_D1 * math.sin(TORNADO_WD * t)
-        z = TORNADO_Z0 + TORNADO_Z1 * math.sin(TORNADO_WZ * t + 1.1)
         cx = ARENA / 2
-        return [np.array([cx - d, z], dtype=np.float32),
-                np.array([cx + d, z], dtype=np.float32)]
+        out = []
+        for i in range(max(0, self.tornado_count // 2)):
+            d = TORNADO_D0 + TORNADO_D1 * math.sin(TORNADO_WD * t + i * 0.7)
+            z = TORNADO_Z0 + TORNADO_Z1 * math.sin(TORNADO_WZ * t + 1.1 + i * 2.0)
+            out.append(np.array([cx - d, z], dtype=np.float32))
+            out.append(np.array([cx + d, z], dtype=np.float32))
+        return out
 
     def _in_sand(self, pos):
         for c, r in self.quicksand:
@@ -150,10 +186,10 @@ class SequentialArena:
     def _observe(self, which, pos, vel, k):
         t, _r = self._target(which, k)
         tor = self._tornado_pos()
-        near = min(tor, key=lambda c: float(np.linalg.norm(pos - c)))
+        near = min(tor, key=lambda c: float(np.linalg.norm(pos - c))) if tor else pos
         return np.array([
             pos[0] / ARENA, pos[1] / ARENA,
-            vel[0] / VMAX, vel[1] / VMAX,
+            vel[0] / self.vmax, vel[1] / self.vmax,
             (t[0] - pos[0]) / ARENA, (t[1] - pos[1]) / ARENA,
             k / (self.n_legs - 1) if self.n_legs > 1 else 0.0,
             (near[0] - pos[0]) / ARENA, (near[1] - pos[1]) / ARENA,
@@ -192,12 +228,12 @@ class SequentialArena:
         move, collide with walls + tornados. Returns (pos, vel, hit_wall,
         hit_tornado, in_sand)."""
         dx, dz = DIRS[action]
-        vel = vel + np.array([dx, dz], dtype=np.float32) * THRUST * DT
+        vel = vel + np.array([dx, dz], dtype=np.float32) * self.thrust * DT
         in_sand = self._in_sand(pos)
-        vel = vel * (SAND_DAMP if in_sand else DAMP)
+        vel = vel * (self.sand_damp if in_sand else self.damp)
         sp = float(np.linalg.norm(vel))
-        if sp > VMAX:
-            vel = vel * (VMAX / sp)
+        if sp > self.vmax:
+            vel = vel * (self.vmax / sp)
         npos = pos + vel * DT
         hit = False
         for i in (0, 1):
@@ -321,7 +357,7 @@ class SequentialArena:
                 "red": [[float(x), float(z), float(r)] for (x, z, r) in RED_TOUR],
                 "blue": [[float(x), float(z), float(r)] for (x, z, r) in BLUE_TOUR],
             },
-            "quicksand": [[float(x), float(z), float(r)] for (x, z, r) in QUICKSAND],
+            "quicksand": [[float(c[0]), float(c[1]), float(r)] for (c, r) in self.quicksand],
             "tornadoR": float(TORNADO_R),
             # no static blockers in this round; kept for arena-code parity
             "obstacles": [],

@@ -13,9 +13,11 @@ TITLE = "Dry Dry Desert"
 CONTINUOUS = True
 
 
-def make_env(seed=None):
+def make_env(seed=None, **kwargs):
+    # kwargs (thrust/damp/vmax/sand_damp/tornado_count/quicksand_count) are the
+    # panel-tunable dynamics + hazard counts threaded through by match.py.
     from sequential import SequentialArena
-    return SequentialArena(seed, round_id=ROUND_ID)
+    return SequentialArena(seed, round_id=ROUND_ID, **kwargs)
 
 
 def generate(seed=None):

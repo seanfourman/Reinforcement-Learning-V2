@@ -63,21 +63,47 @@ class ContinuousArena:
 
     objective = "arena"
 
-    def __init__(self, seed=None, round_id=4):
+    def __init__(self, seed=None, round_id=4, thrust=THRUST, damp=DAMP,
+                 vmax=VMAX, obstacle_count=None):
         self.round_id = round_id
         self.rng = random.Random(seed)
         self.max_steps = MAX_STEPS
+        # tunable dynamics (panel-driven; module constants are the defaults)
+        self.thrust = float(thrust)
+        self.damp = float(damp)
+        self.vmax = float(vmax)
         self.n_actions = N_ACTIONS          # match.py reads these off the env
         self.obs_dim = OBS_DIM
         self.H = self.W = int(ARENA)        # coarse grid the value field samples on
         self.goal = np.array(GOAL, dtype=np.float32)
-        self.obstacles = [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in OBSTACLES]
+        self.obstacles = self._gen_obstacles(obstacle_count)
         self.red_spawn = (ARENA - 3.0, ARENA - 2.5)   # red on the viewer's RIGHT
         self.blue_spawn = (3.0, ARENA - 2.5)           # blue on the viewer's LEFT (matches the HUD)
         self.steps = 0
         self.done = False
         self.winner = None
         self.reset()
+
+    def _gen_obstacles(self, count):
+        """Obstacle ruins. None -> the hand-tuned default 5; otherwise generate
+        `count` mirror-symmetric ruins (central pillar for odd counts) so the
+        race stays fair whatever the panel sets."""
+        if count is None:
+            base = OBSTACLES
+        else:
+            count = max(0, min(12, int(count)))
+            cx = ARENA / 2
+            base, rem = [], count
+            if rem % 2 == 1:
+                base.append((cx, 9.0, 1.8))
+                rem -= 1
+            zs = [13.5, 5.5, 11.0, 7.5, 15.5, 3.5]
+            dxs = [4.0, 4.0, 6.5, 6.5, 3.0, 3.0]
+            for p in range(rem // 2):
+                z, dx = zs[p % len(zs)], dxs[p % len(dxs)]
+                base.append((cx - dx, z, 1.5))
+                base.append((cx + dx, z, 1.5))
+        return [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in base]
 
     # --------------------------------------------------------------- helpers
     def _spawn_pos(self, which):
@@ -96,7 +122,7 @@ class ContinuousArena:
         gx, gz = self.goal
         return np.array([
             pos[0] / ARENA, pos[1] / ARENA,
-            vel[0] / VMAX, vel[1] / VMAX,
+            vel[0] / self.vmax, vel[1] / self.vmax,
             (gx - pos[0]) / ARENA, (gz - pos[1]) / ARENA,
         ], dtype=np.float32)
 
@@ -127,11 +153,11 @@ class ContinuousArena:
         """Apply one thrust action: accelerate, drag, cap speed, move, collide.
         Returns (new_pos, new_vel, hit) - hit True if it bumped an obstacle/wall."""
         dx, dz = DIRS[action]
-        vel = vel + np.array([dx, dz], dtype=np.float32) * THRUST * DT
-        vel = vel * DAMP
+        vel = vel + np.array([dx, dz], dtype=np.float32) * self.thrust * DT
+        vel = vel * self.damp
         sp = float(np.linalg.norm(vel))
-        if sp > VMAX:
-            vel = vel * (VMAX / sp)
+        if sp > self.vmax:
+            vel = vel * (self.vmax / sp)
         npos = pos + vel * DT
         hit = False
         # arena walls: clamp and kill the offending velocity component

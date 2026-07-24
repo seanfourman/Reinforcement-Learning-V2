@@ -42,7 +42,11 @@ const SVG = {
 const C_OURS = '#1f5fd0';
 const C_GLOBAL = '#8a8d94';
 
-// tunable training hyperparameters - the panel writes these to the trainer live
+// tunable training hyperparameters - the panel writes these to the trainer live.
+// PARAMS = the per-side LEARNING knobs (both the N and the mirrored M panel use
+// this array). The global structural settings live in GLOBAL_PARAMS below and
+// are rendered by the N (Training) panel only, since they are match-wide (not
+// "Red's params") and route through setParams.
 export const PARAMS = [
   { key: 'targetEpisodes', label: 'Stop after (episodes)', min: 0, max: 20000, step: 100, color: C_GLOBAL, scope: 'always', fmt: (v) => (v <= 0 ? 'no limit' : (+v).toLocaleString()) },
   { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 1000, step: 10, color: C_GLOBAL, scope: 'always', fmt: (v) => (+v).toLocaleString() },
@@ -52,6 +56,45 @@ export const PARAMS = [
   { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toLocaleString() },
 ];
+
+// shared display + reset helpers
+const fLoc = (v) => (+v).toLocaleString();
+const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = built-in
+
+// GLOBAL structural settings (N panel only). Three families, scoped per round by
+// showRelevant():
+//   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap
+//   'dqn'  -> neural rounds: replay / batch / target-net / width
+//   'cont' -> continuous-arena dynamics (rounds 4-5)
+//   'slip' -> slippery grid rounds (2-3)
+//   'r4'/'r5' -> that round's hazard counts
+//   'always' -> every round (the reproducibility seed)
+// `sect` places the slider in the Algorithm-internals ('algo') or World ('world')
+// card. `def` is the backend default (for Reset). `enc`/`dec` map slider-space
+// <-> backend-space where they differ (dpTheta rides a log/exponent slider).
+export const GLOBAL_PARAMS = [
+  // --- algorithm internals ---
+  { key: 'dpTheta', label: 'Convergence θ', min: 1, max: 9, step: 1, sect: 'algo', scope: 'dp', def: 1e-5,
+    enc: (e) => Math.pow(10, -Math.round(e)), dec: (t) => Math.max(1, Math.min(9, Math.round(-Math.log10(t || 1e-5)))),
+    fmt: (e) => `1e-${Math.round(e)}` },
+  { key: 'dpMaxIters', label: 'Max sweeps / phase', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000, fmt: fLoc },
+  { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
+  { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
+  { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
+  { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, fmt: fLoc },
+  { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, fmt: fLoc },
+  // --- world dynamics + hazards ---
+  { key: 'slip', label: 'Slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'slip', def: 0.25, fmt: (v) => (+v).toFixed(2) },
+  { key: 'thrust', label: 'Thrust', min: 2, max: 40, step: 1, sect: 'world', scope: 'cont', def: 16, fmt: (v) => (+v).toFixed(0) },
+  { key: 'drag', label: 'Momentum kept', min: 0.5, max: 0.99, step: 0.01, sect: 'world', scope: 'cont', def: 0.9, fmt: (v) => (+v).toFixed(2) },
+  { key: 'speedCap', label: 'Speed cap', min: 2, max: 20, step: 0.5, sect: 'world', scope: 'cont', def: 7, fmt: (v) => (+v).toFixed(1) },
+  { key: 'sandDamp', label: 'Quicksand drag', min: 0.4, max: 0.95, step: 0.01, sect: 'world', scope: 'r5', def: 0.72, fmt: (v) => (+v).toFixed(2) },
+  { key: 'obstacleCount', label: 'Ruins', min: -1, max: 12, step: 1, sect: 'world', scope: 'r4', def: -1, fmt: fCount },
+  { key: 'tornadoCount', label: 'Tornados', min: 0, max: 8, step: 1, sect: 'world', scope: 'r5', def: 2, fmt: (v) => String(Math.round(v)) },
+  { key: 'quicksandCount', label: 'Quicksand pools', min: -1, max: 10, step: 1, sect: 'world', scope: 'r5', def: -1, fmt: fCount },
+  { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
+];
+
 
 const STYLE = `
 #rl-panel{position:fixed;top:0;left:0;height:100%;width:388px;z-index:10;
@@ -237,6 +280,9 @@ const STYLE = `
 #rl-panel .cmp-row .cr{color:#e60012;} #rl-panel .cmp-row .cb{color:#1f5fd0;}
 #rl-panel .cmp-row .win::after{content:"";position:absolute;right:1px;top:50%;transform:translateY(-50%);width:5px;height:5px;border-radius:50%;background:currentColor;}
 
+/* descriptive note under the Algorithm-internals / World settings cards */
+#rl-panel .cfgnote{font-size:10.5px;color:#a2a5ac;margin:12px 0 0;line-height:1.45;}
+
 /* segmented control (value-map mode) */
 #rl-panel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
 #rl-panel .seg button{flex:1;border:0;border-right:1px solid #d7dade;border-radius:0;background:#fff;}
@@ -312,23 +358,28 @@ export function organizeGroups(body, groups, fullSel, hintHTML, wideIds = []) {
   for (const g of els) body.appendChild(g);
 }
 
-// True masonry on the fullscreen grid: give each visible card (and the group
-// titles / header) a grid-row-span equal to its measured height, so the columns
-// stay aligned while cards pack tight. Re-runs on resize, snapshots (content can
-// grow) and whenever a card resizes (charts drawing). No-op while docked.
+// True masonry on the fullscreen grid: give each visible card a grid-row-span
+// equal to its measured height, so the columns stay aligned while cards pack
+// tight. Re-runs on resize, snapshots (content can grow) and whenever a card
+// resizes (charts drawing). No-op while docked.
+//
+// The cards are `align-self:start`, so getBoundingClientRect already reports each
+// card's NATURAL content height - we must NOT reset every span to '' first (that
+// momentarily collapses the whole grid, and since this runs ~30x/s on snapshots
+// the scroll container clamps its scrollTop to the tiny collapsed range every
+// time, making it impossible to scroll down). Measure in place; only write a span
+// when it actually changes, so a steady stream of snapshots is a no-op.
 export function attachMasonry(panel, body) {
   const relayout = () => {
     if (!panel.classList.contains('full')) return;
     const cs = getComputedStyle(body);
     const rowH = parseFloat(cs.gridAutoRows) || 8;
     const gap = parseFloat(cs.rowGap || cs.gap) || 18;
-    const items = body.querySelectorAll('.rl-group-cards > section');
-    items.forEach((el) => (el.style.gridRowEnd = '')); // reset to measure natural height
-    void body.offsetHeight; // reflow
-    items.forEach((el) => {
+    body.querySelectorAll('.rl-group-cards > section').forEach((el) => {
       if (el.offsetParent === null) return; // hidden this round
       const h = el.getBoundingClientRect().height;
-      el.style.gridRowEnd = 'span ' + Math.max(1, Math.ceil((h + gap) / (rowH + gap)));
+      const span = 'span ' + Math.max(1, Math.ceil((h + gap) / (rowH + gap)));
+      if (el.style.gridRowEnd !== span) el.style.gridRowEnd = span;
     });
   };
   let raf = 0;
@@ -347,7 +398,7 @@ export function attachMasonry(panel, body) {
 }
 
 const N_GROUPS = [
-  ['control', 'Control', ['rl-sec-playback', 'rl-sec-hyper']],
+  ['control', 'Control', ['rl-sec-playback', 'rl-sec-hyper', 'rl-sec-algo', 'rl-sec-world']],
   ['status', 'Live Status', ['rl-sec-training', 'rl-sec-contest', 'rl-compare']],
   ['problem', 'The Problem', ['rl-brief']],
   ['learning', 'Learning Progress', ['rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore']],
@@ -363,8 +414,10 @@ export function initPanel() {
   const ctlHTML = (p) => `
     <div class="ctl" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
-      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${p.color}">
+      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${p.color || C_GLOBAL}">
     </div>`;
+  const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
+  const worldParams = GLOBAL_PARAMS.filter((p) => p.sect === 'world');
 
   const panel = document.createElement('div');
   panel.id = 'rl-panel';
@@ -407,6 +460,18 @@ export function initPanel() {
         chosen character's tier. Gray sliders are shared by both. Each round shows only the
         controls its algorithm uses: DP rounds plan with the discount γ; the learning rounds
         add the learning rate α and the ε exploration schedule.</p>
+    </section>
+    <section id="rl-sec-algo">
+      <h2>Algorithm internals</h2>
+      <p class="cfgnote" style="margin-top:0;margin-bottom:12px;">Shared by both models. Each round shows only
+        its family: DP rounds expose convergence + sweeps; the neural rounds expose the replay / batch / target-net knobs.</p>
+      ${algoParams.map(ctlHTML).join('')}
+    </section>
+    <section id="rl-sec-world">
+      <h2>World &amp; dynamics</h2>
+      <p class="cfgnote" style="margin-top:0;margin-bottom:12px;">The environment itself: how slippery, how fast the
+        agents move, and how many hazards. Changing a hazard count or the seed rebuilds the arena and restarts the contest.</p>
+      ${worldParams.map(ctlHTML).join('')}
     </section>
     <section id="rl-sec-training" class="qk">
       <h2>Training</h2>
@@ -516,39 +581,70 @@ export function initPanel() {
   $('#rl-regen').addEventListener('click', () => window.RL.control({ cmd: 'regenerate' }));
   $('#rl-reset').addEventListener('click', () => window.RL.control({ cmd: 'reset' }));
 
-  // ---- hyperparameters: drive the trainer live (debounced) ----
+  // ---- hyperparameters + global settings: drive the trainer live (debounced) ----
+  // one combined list so labels / seeding / sends cover both the per-side learning
+  // sliders (PARAMS) and the global structural sliders (GLOBAL_PARAMS).
+  const ALL_PARAMS = [...PARAMS, ...GLOBAL_PARAMS];
   const setLabel = (p) => {
     $(`#rl-pv-${p.key}`).textContent = p.fmt(+$(`#rl-p-${p.key}`).value);
     paintRange($(`#rl-p-${p.key}`));
   };
+  // send only the keys the user actually touched, so nudging α never triggers the
+  // world rebuild that a structural key (hazard counts / seed) does.
   let applyTimer = null;
-  const sendParams = () => {
-    const params = {};
-    for (const p of PARAMS) params[p.key] = +$(`#rl-p-${p.key}`).value;
-    window.RL.control({ cmd: 'setParams', params });
+  let pending = {};
+  const flush = () => {
+    if (Object.keys(pending).length) window.RL.control({ cmd: 'setParams', params: pending });
+    pending = {};
   };
-  for (const p of PARAMS) {
+  const queue = (p) => {
+    const raw = +$(`#rl-p-${p.key}`).value;
+    pending[p.key] = p.enc ? p.enc(raw) : raw;
+    clearTimeout(applyTimer);
+    applyTimer = setTimeout(flush, 160);
+  };
+  for (const p of ALL_PARAMS) {
     setLabel(p);
-    $(`#rl-p-${p.key}`).addEventListener('input', () => {
-      setLabel(p);
-      clearTimeout(applyTimer);
-      applyTimer = setTimeout(sendParams, 160);
-    });
+    $(`#rl-p-${p.key}`).addEventListener('input', () => { setLabel(p); queue(p); });
   }
+  // set a slider from a BACKEND-space value (dec-maps enc params) - seeding only
+  const setFromBackend = (p, val) => {
+    const el = $(`#rl-p-${p.key}`);
+    if (!el || val == null) return;
+    el.value = p.dec ? p.dec(val) : val;
+    setLabel(p);
+  };
+
   let paramsInit = false;   // pull the backend defaults onto the sliders just once
   let lastAlgoBlue = null;  // to re-show only the relevant controls when the round changes
+  let lastRoundIndex = -1;  // r4/r5 hazard sliders are scoped by round, not just algo
 
-  // show only the controls that matter for our model's algorithm: hide α / ε on DP
-  // rounds (planners use only γ), and show neural-net controls on DQN rounds only.
-  const showRelevant = (algoBlue) => {
+  // show only the controls that matter for THIS round: hide α / ε on DP rounds
+  // (planners use only γ); DP / DQN internals + arena dynamics + hazard counts each
+  // appear only where they apply. Then hide any settings card left empty.
+  const showRelevant = (algoBlue, roundIndex) => {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
+    const vis = (sc) => {
+      switch (sc) {
+        case 'learn': return !isDP;               // learning rate + exploration: not for DP
+        case 'dp': return isDP;                   // convergence + sweeps: DP rounds
+        case 'dqn': return isDqn;                 // replay / batch / target-net: neural rounds
+        case 'cont': return isDqn;                // arena dynamics: continuous rounds
+        case 'slip': return !isDP && !isDqn;      // slippery junctions: model-free grids (R2/R3)
+        case 'r4': return roundIndex === 3;       // ruins count: Round 4 only
+        case 'r5': return roundIndex === 4;       // tornados / quicksand: Round 5 only
+        default: return true;                     // 'always'
+      }
+    };
     panel.querySelectorAll('.ctl[data-scope]').forEach((el) => {
-      const sc = el.dataset.scope;
-      let show = true;
-      if (sc === 'learn') show = !isDP;      // learning rate + exploration: not for DP
-      else if (sc === 'dqn') show = isDqn;   // neural-net controls: DQN rounds only
-      el.style.display = show ? '' : 'none';
+      el.style.display = vis(el.dataset.scope) ? '' : 'none';
+    });
+    // collapse a settings card whose every slider is now hidden
+    ['rl-sec-hyper', 'rl-sec-algo', 'rl-sec-world'].forEach((id) => {
+      const sec = panel.querySelector('#' + id);
+      if (!sec) return;
+      sec.hidden = ![...sec.querySelectorAll('.ctl[data-scope]')].some((el) => el.style.display !== 'none');
     });
   };
 
@@ -576,12 +672,9 @@ export function initPanel() {
   window.addEventListener('rl-snapshot', (e) => {
     const s = e.detail.stats;
     if (!s) return;
-    // seed the hyperparameter sliders from the backend's current values, once
+    // seed every slider from the backend's current values, once
     if (!paramsInit && s.params) {
-      for (const p of PARAMS) {
-        const el = $(`#rl-p-${p.key}`);
-        if (el && s.params[p.key] != null) { el.value = s.params[p.key]; setLabel(p); }
-      }
+      for (const p of ALL_PARAMS) setFromBackend(p, s.params[p.key]);
       paramsInit = true;
     }
     $('#rl-mb').textContent = NAMES[s.algoBlue] || s.algoBlue || '-';
@@ -590,9 +683,13 @@ export function initPanel() {
     $('#rl-vs').textContent = redNm
       ? `vs ${redNm}${tier ? ` · ${tier}` : ''}`
       : (tier ? `vs ${tier}` : '');
-    if (s.algoBlue !== lastAlgoBlue) { lastAlgoBlue = s.algoBlue; showRelevant(s.algoBlue); }
     const r = s.round || {};
-    $('#rl-round').textContent = `R${(r.index ?? 0) + 1} · ${r.total || 1}`;
+    const ri = r.index ?? 0;
+    if (s.algoBlue !== lastAlgoBlue || ri !== lastRoundIndex) {
+      lastAlgoBlue = s.algoBlue; lastRoundIndex = ri;
+      showRelevant(s.algoBlue, ri);
+    }
+    $('#rl-round').textContent = `R${ri + 1} · ${r.total || 1}`;
     $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0

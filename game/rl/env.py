@@ -83,11 +83,14 @@ _UNREACH = 999
 class GridWorld(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, seed=None, round_id=1):
+    def __init__(self, seed=None, round_id=1, slip_ctrl=0.25):
         super().__init__()
         self._seed = seed
         self.round_id = round_id
         self.max_steps = MAX_STEPS      # per-episode step cap (tunable from the panel)
+        # chance an agent LOSES CONTROL on a slippery junction (cross rounds).
+        # 0 -> deterministic, 0.25 -> the classic 75/10/10/5 model. Panel-driven.
+        self.slip_ctrl = max(0.0, min(0.9, float(slip_ctrl)))
         self.world = None
         self.rng = random.Random(seed)   # the ENVIRONMENT's own stochasticity (slips)
         self.action_space = spaces.Discrete(N_ACTIONS)
@@ -367,21 +370,25 @@ class GridWorld(gym.Env):
 
     def _cross_move(self, agent, pos, action):
         """Maze transition. On a normal cell the move is deterministic. On a
-        SLIPPERY junction the agent loses control: 75% it's shoved the BEST way
-        (the optimal direction only the env knows), 10% left / 10% right / 5%
-        backward of that - and if the shoved direction hits a bush it stays put.
-        That makes risky junctions genuinely dangerous but still learnable."""
+        SLIPPERY junction the agent loses control with probability ``slip_ctrl``
+        (default 0.25 = the classic 75/10/10/5 model): it's shoved the BEST way
+        (the optimal direction only the env knows) most of the time, else
+        left / right / backward of that - and if the shoved direction hits a bush
+        it stays put. That makes risky junctions dangerous but still learnable."""
         if action not in MOVE_ACTIONS:
             return pos
-        if pos not in self.slip_set:
+        if pos not in self.slip_set or self.slip_ctrl <= 0.0:
             return self._resolve(agent, pos, action)
         best = self._best_dir(agent, pos)
+        # keep the classic 40/40/20 split of the lost-control mass across
+        # left / right / backward, scaled by slip_ctrl.
+        s = self.slip_ctrl
         roll = self.rng.random()
-        if roll < 0.75:
+        if roll < 1.0 - s:
             d = best
-        elif roll < 0.85:
+        elif roll < 1.0 - s + 0.4 * s:
             d = LEFT_OF[best]
-        elif roll < 0.95:
+        elif roll < 1.0 - s + 0.8 * s:
             d = RIGHT_OF[best]
         else:
             d = BACK_OF[best]
