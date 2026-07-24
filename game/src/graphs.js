@@ -1238,6 +1238,16 @@ export function initTrajectories(parent) {
       return null;
     }
   }
+  let lastPr = null,
+    lastPb = null;
+  // redraw the STORED paths (no fetch) - only meaningful once the canvas has its
+  // real on-screen size. Drawing while the tab is hidden (clientWidth 0 -> the 140
+  // fallback) rendered a small canvas the browser then scaled UP = thick lines that
+  // only "snapped" right on the next 5s fetch; redrawing on resize fixes it instantly.
+  function redraw() {
+    if (cr.clientWidth) drawPath(cr, lastPr, "#e60012");
+    if (cb.clientWidth) drawPath(cb, lastPb, "#1f5fd0");
+  }
   async function refresh() {
     const [pr, pb] = await Promise.all([loadPath("red"), loadPath("blue")]);
     if ((!pr || !pr.length) && (!pb || !pb.length)) {
@@ -1245,10 +1255,17 @@ export function initTrajectories(parent) {
       return;
     }
     sec.hidden = false;
-    drawPath(cr, pr, "#e60012");
-    drawPath(cb, pb, "#1f5fd0");
+    lastPr = pr;
+    lastPb = pb;
+    redraw();
   }
-  window.addEventListener("resize", refresh);
+  window.addEventListener("resize", redraw);
+  // redraw the moment the canvas gets a real size (e.g. switching to the Replays tab)
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => redraw());
+    ro.observe(cr);
+    ro.observe(cb);
+  }
   setInterval(refresh, 5000);
   refresh();
 }
