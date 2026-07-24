@@ -642,6 +642,7 @@ const replay = {
   playing: false,
   fps: 12,
   label: "",
+  agent: "blue", // which model this run belongs to (colours the scrubber)
   _timer: null,
   active() {
     return this.frames.length > 0;
@@ -662,6 +663,7 @@ const replay = {
           idx: this.idx,
           total: this.frames.length,
           label: this.label,
+          agent: this.agent,
         },
       }),
     );
@@ -685,11 +687,12 @@ const replay = {
     }
   },
   // load a run PAUSED at frame 0 (does NOT auto-play - the user presses play)
-  load(frames, label) {
+  load(frames, label, agent) {
     this._stopTimer();
     this.frames = Array.isArray(frames) ? frames : [];
     this.idx = 0;
     this.label = label || "";
+    this.agent = agent === "red" ? "red" : "blue";
     this.playing = false;
     replayActive = this.frames.length > 0;
     this._render();

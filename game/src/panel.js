@@ -158,20 +158,22 @@ const STYLE = `
 #rl-panel h2{margin:0 0 12px;font-size:10.5px;font-weight:800;letter-spacing:.9px;
   text-transform:uppercase;color:#8a8d94;}
 /* ---- Playback: the REPLAY corner tag + the grow-in replay scrubber ---- */
-#rl-panel #rl-sec-playback{position:relative;}
-/* REPLAY tag: a plain rounded-corner rectangle in the card's top-right. It drops in
-   (top->bottom) via .show, and on HOVER its two stacked faces slide DOWN so it swaps
-   to a red "Back to live" (clicking it exits the replay). */
-#rl-panel .reptag{position:absolute;top:9px;right:12px;z-index:4;width:112px;height:24px;margin:0;padding:0;border:0;
-  background:none;overflow:hidden;border-radius:8px;cursor:pointer;outline:none;
-  opacity:0;transform:translateY(-9px);pointer-events:none;
+#rl-panel #rl-sec-playback{position:relative;overflow:hidden;} /* clip the tag to the card's corner */
+/* REPLAY tag: fills the card's TOP-RIGHT corner (flush to the top + right edges; the
+   top-right rounds with the card via the section's overflow, the inner bottom-left is
+   rounded). Drops in top->bottom via .show; on HOVER its two stacked faces slide DOWN
+   so it swaps to a red "Back to live" (clicking it exits the replay). */
+#rl-panel .reptag{position:absolute;top:0;right:0;z-index:4;width:118px;height:26px;margin:0;padding:0;border:0;
+  background:none;overflow:hidden;border-radius:0 0 0 12px;cursor:pointer;outline:none;
+  opacity:0;transform:translateY(-100%);pointer-events:none;
   transition:transform .3s cubic-bezier(.34,1.28,.5,1),opacity .22s ease;}
 #rl-panel .reptag.show{opacity:1;transform:translateY(0);pointer-events:auto;}
 #rl-panel .reptag-face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap;
   transition:transform .3s cubic-bezier(.4,0,.2,1);}
 #rl-panel .reptag-front{background:#1f5fd0;transform:translateY(0);}
-#rl-panel .reptag-back{background:#d4141f;transform:translateY(-100%);}   /* starts ABOVE */
+#rl-panel .reptag.red .reptag-front{background:#e60012;}                  /* red model -> red REPLAY */
+#rl-panel .reptag-back{background:#5e626b;transform:translateY(-100%);}   /* BACK TO LIVE = grey (both models) */
 #rl-panel .reptag:hover .reptag-front{transform:translateY(100%);}       /* front exits DOWN */
 #rl-panel .reptag:hover .reptag-back{transform:translateY(0);}           /* back drops in from top */
 /* replay scrubber: grows in / collapses out instead of popping */
@@ -275,6 +277,7 @@ const STYLE = `
 #rl-panel .replist .rrow:last-child{border-bottom:0;}
 #rl-panel .replist .rrow:hover{background:#f0f1f3;}
 #rl-panel .replist .rrow.sel{background:#eaf0fb;box-shadow:inset 3px 0 0 #1f5fd0;}
+#rl-panel .replist.red .rrow.sel{background:#fceceb;box-shadow:inset 3px 0 0 #e60012;} /* red model = red selection */
 #rl-panel .replist .rrow .rk{color:#9a9da4;font-weight:800;width:30px;flex:none;}
 #rl-panel .replist .rrow .st{font-variant-numeric:tabular-nums;font-weight:700;color:#1f1f21;}
 #rl-panel .replist .rrow .ep{margin-left:auto;color:#9a9da4;font-size:11px;font-variant-numeric:tabular-nums;}
@@ -609,6 +612,7 @@ export function initPanel() {
     scrubEl.classList.toggle('show', on);  // grows in / collapses
     if (on) {
       if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
+      seekEl.style.setProperty('--fill', s.agent === 'red' ? '#e60012' : '#1f5fd0'); // scrubber matches the model
       seekEl.max = Math.max(0, (s.total || 1) - 1);
       if (document.activeElement !== seekEl) { seekEl.value = s.idx; paintRange(seekEl); } // don't fight a drag
       repInfo.textContent = s.label || 'Replay';

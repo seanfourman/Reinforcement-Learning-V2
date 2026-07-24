@@ -397,9 +397,10 @@ export function initReplay(parent) {
       [...listEl.children].forEach((el) =>
         el.classList.toggle("sel", +el.dataset.rank === rank),
       );
-      // hand the frames to the shared player, PAUSED (Playback takes over from here)
+      // hand the frames to the shared player, PAUSED (Playback takes over from here);
+      // pass the model so the Playback scrubber matches (red for Red runs)
       const label = `${model === "red" ? "Red" : "Blue"} #${rank + 1} - ${r.steps} steps`;
-      window.RL?.replay?.load?.(r.frames || [], label);
+      window.RL?.replay?.load?.(r.frames || [], label, model);
     } catch (e) {
       /* ignore a failed fetch - the list stays as-is */
     }
@@ -410,6 +411,7 @@ export function initReplay(parent) {
     if (!b) return;
     [...seg.children].forEach((x) => x.classList.toggle("active", x === b));
     model = b.dataset.a;
+    listEl.classList.toggle("red", model === "red"); // red model -> red row selection
     selRank = -1;
     refreshList();
   });
