@@ -3,14 +3,12 @@
 // * initCurves(parent, side) polls /api/history and plots ONLY that side's signals
 //   (Blue on the player panel, Red on the CPU panel): its per-episode return, its
 //   rolling win rate, its exploration epsilon, and the shared episode length.
-// * initReplay(parent) builds the replay player (one shared replay): it fetches
-//   /api/replay (last or best episode) and feeds the recorded frames back through
-//   the live actors via window.RL.playFrame, with play/pause + a scrubber.
+// * initReplay(parent) builds the replay BROWSER (pick a model + a top run); picking
+//   a run hands its frames to the shared player window.RL.replay (loaded PAUSED). The
+//   panel's Playback card owns play/pause/scrub/speed + Back-to-live.
 //
 // initGraphs(parent) = initCurves(parent, 'blue') + initReplay(parent), the
 // player's left panel. The CPU panel calls initCurves(panel, 'red') on its own.
-
-const REPLAY_FPS = 12;
 
 // the four charts for one side; only that model's series are plotted
 function chartsFor(side) {
@@ -27,7 +25,7 @@ function chartsFor(side) {
     },
     {
       id: `rate-${side}`,
-      title: "Win rate · recent",
+      title: "Win rate - recent",
       legend: [[c, label]],
       series: [{ key: isRed ? "rateRed" : "rateBlue", color: c }],
       min: 0,
@@ -339,57 +337,27 @@ export function initCurves(parent, side) {
 
 // ---- shared episode replay: browse each model's TOP-30 fastest winning runs ----
 export function initReplay(parent) {
+  // Just the BROWSER now: pick a model (Blue left, Red right) and a top run. Picking
+  // a run LOADS it into the shared player (window.RL.replay) PAUSED - the panel's
+  // Playback card drives play/pause/scrub/speed + Back to live.
   parent.insertAdjacentHTML(
     "beforeend",
     `
     <section id="rl-replay">
       <h2>Episode replay</h2>
       <div class="seg" id="rl-rep-model">
-        <button data-a="red" class="active">Red · top 30</button>
-        <button data-a="blue">Blue · top 30</button>
+        <button data-a="blue" class="active">Blue top 30</button>
+        <button data-a="red">Red top 30</button>
       </div>
       <div id="rl-rep-list" class="replist"></div>
-      <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="margin-top:12px;--fill:#8a8d94">
-      <div class="stat" style="margin-top:8px;"><span id="rl-rep-info">Pick a run to replay</span><b id="rl-rep-frame"></b></div>
-      <div class="btns" style="margin-top:10px;"><button id="rl-rep-stop">Back to live</button></div>
+      <p class="hint">Pick a run - it loads into Playback (top), paused. Press play there to watch it.</p>
     </section>`,
   );
   const $ = (id) => parent.querySelector(id);
-  const paintRange = (el) => {
-    const min = +el.min,
-      max = +el.max,
-      v = +el.value;
-    const pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
-    const fill = el.style.getPropertyValue("--fill") || "#8a8d94";
-    el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
-  };
   const seg = $("#rl-rep-model");
   const listEl = $("#rl-rep-list");
-  const seek = $("#rl-rep-seek");
-  const info = $("#rl-rep-info");
-  const frameLbl = $("#rl-rep-frame");
-  let frames = [];
-  let idx = 0;
-  let timer = null;
-  let model = "red"; // which model's winning runs we're browsing
+  let model = "blue"; // default: the player's own model (Blue), on the left
   let selRank = -1; // currently loaded rank (highlighted in the list)
-  paintRange(seek);
-
-  function showFrame(i) {
-    if (!frames.length) return;
-    idx = Math.max(0, Math.min(frames.length - 1, i));
-    seek.value = idx;
-    paintRange(seek);
-    frameLbl.textContent = `${idx + 1}/${frames.length}`;
-    window.RL?.playFrame?.(frames[idx]);
-  }
-  function stopPlayback(toLive = true) {
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-    if (toLive) window.RL?.setReplay?.(false);
-  }
 
   async function refreshList() {
     try {
@@ -423,30 +391,18 @@ export function initReplay(parent) {
         })
       ).json();
       if (!r.available) {
-        info.textContent = "That run rolled out of the top 30";
-        refreshList();
+        refreshList(); // rolled out of the top 30 - refresh
         return;
       }
-      frames = r.frames || [];
-      seek.max = Math.max(0, frames.length - 1);
       selRank = rank;
-      info.textContent = `${model === "red" ? "Red" : "Blue"} #${rank + 1} · ${r.steps} steps`;
       [...listEl.children].forEach((el) =>
         el.classList.toggle("sel", +el.dataset.rank === rank),
       );
-      window.RL?.setReplay?.(true);
-      stopPlayback(false);
-      idx = 0;
-      showFrame(0);
-      timer = setInterval(() => {
-        if (idx >= frames.length - 1) {
-          stopPlayback(true);
-          return;
-        }
-        showFrame(idx + 1);
-      }, 1000 / REPLAY_FPS);
+      // hand the frames to the shared player, PAUSED (Playback takes over from here)
+      const label = `${model === "red" ? "Red" : "Blue"} #${rank + 1} - ${r.steps} steps`;
+      window.RL?.replay?.load?.(r.frames || [], label);
     } catch (e) {
-      info.textContent = "Replay fetch failed";
+      /* ignore a failed fetch - the list stays as-is */
     }
   }
 
@@ -463,27 +419,19 @@ export function initReplay(parent) {
     if (!row) return;
     loadTop(+row.dataset.rank);
   });
-  $("#rl-rep-stop").addEventListener("click", () => {
-    stopPlayback(true);
-    selRank = -1;
-    [...listEl.children].forEach((el) => el.classList.remove("sel"));
-    info.textContent = "Live";
-  });
-  seek.addEventListener("input", () => {
-    paintRange(seek);
-    if (!frames.length) return;
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
+  // when the panel exits replay (Back to live / arena change), drop the highlight
+  window.addEventListener("rl-replay-state", (e) => {
+    if (!e.detail?.active && selRank !== -1) {
+      selRank = -1;
+      [...listEl.children].forEach((el) => el.classList.remove("sel"));
     }
-    window.RL?.setReplay?.(true);
-    showFrame(+seek.value);
   });
 
   refreshList();
-  // keep the list fresh as new fast runs come in, but not while a replay auto-plays
+  // keep the list fresh as new fast runs come in, but not while a run is loaded
+  // (so the current selection stays put)
   setInterval(() => {
-    if (timer === null) refreshList();
+    if (!window.RL?.replay?.active?.()) refreshList();
   }, 4000);
 }
 
@@ -624,7 +572,7 @@ export function initDP(parent) {
       sec.hidden = false;
       q("#rl-dp-name").textContent =
         d.name || d.method || "Dynamic Programming";
-      q("#rl-dp-sweeps").textContent = `${d.sweepCount} sweeps · γ ${d.gamma}`;
+      q("#rl-dp-sweeps").textContent = `${d.sweepCount} sweeps - γ ${d.gamma}`;
       q("#rl-dp-backups").textContent = (d.backups || 0).toLocaleString();
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),
@@ -667,7 +615,7 @@ function dualCharts() {
     },
     {
       id: "d-rate",
-      title: "Win rate · recent",
+      title: "Win rate - recent",
       legend: [
         [RED, "Red"],
         [BLUE, "Blue"],
@@ -707,7 +655,7 @@ function dualCharts() {
     {
       id: "d-td",
       fullonly: true,
-      title: "Learning signal · |TD error| / DQN loss",
+      title: "Learning signal - |TD error| / DQN loss",
       legend: [
         [RED, "Red"],
         [BLUE, "Blue"],
@@ -778,7 +726,7 @@ export function initDiag(parent) {
       <div class="stat"><span>Target syncs</span><b id="rl-dqn-sync">-</b></div>
       <div class="stat"><span>Adam lr</span><b id="rl-dqn-lr">-</b></div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Gradient norm (pre-clip)</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-gnorm"></canvas></div>
-      <div class="chart"><div class="ct"><h3>Predicted Q · overestimation</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-predq"></canvas></div>
+      <div class="chart"><div class="ct"><h3>Predicted Q - overestimation</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-predq"></canvas></div>
     </section>`,
   );
   const q = (s) => parent.querySelector(s);
@@ -834,11 +782,11 @@ export function initDiag(parent) {
     if (d && d.isDQN) {
       dqnSec.hidden = false;
       q("#rl-dqn-buf").textContent =
-        `${d.bufferSize.toLocaleString()} / ${d.bufferCap.toLocaleString()}${d.warmupDone ? "" : " · warming up"}`;
+        `${d.bufferSize.toLocaleString()} / ${d.bufferCap.toLocaleString()}${d.warmupDone ? "" : " - warming up"}`;
       q("#rl-dqn-bufbar").style.width = pct(d.bufferFill);
       q("#rl-dqn-ts").textContent = d.trainSteps.toLocaleString();
       q("#rl-dqn-sync").textContent =
-        `${d.syncCount} · next in ${d.stepsToSync}`;
+        `${d.syncCount} - next in ${d.stepsToSync}`;
       q("#rl-dqn-lr").textContent = d.lr;
     } else {
       dqnSec.hidden = true;
@@ -864,7 +812,7 @@ export function initDiag(parent) {
 export function initBriefing(parent) {
   const html = `
     <section id="rl-brief">
-      <h2>Briefing · the MDP</h2>
+      <h2>Briefing - the MDP</h2>
       <div id="rl-brief-body"><p class="hint">Loading round spec...</p></div>
     </section>`;
   const hdr = parent.querySelector(".hdr");
@@ -889,7 +837,7 @@ export function initBriefing(parent) {
         `<div class="stat"><span>State space</span><b>${s.stateSize ? s.stateSize.toLocaleString() : "continuous"}</b></div>` +
         `<p class="note"><b>S:</b> ${s.stateDesc}</p>` +
         `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
-        `<div class="stat"><span>Discount γ · R / B</span><b>${s.gammaRed} / ${s.gammaBlue}</b></div>` +
+        `<div class="stat"><span>Discount γ - R / B</span><b>${s.gammaRed} / ${s.gammaBlue}</b></div>` +
         `<div class="stat"><span>Effective horizon</span><b>${s.horizon || "∞"} steps</b></div>` +
         (s.slipProb
           ? `<div class="stat"><span>Slip probability</span><b>${s.slipProb}</b></div>`
@@ -1037,7 +985,7 @@ export function initDueling(parent) {
     "beforeend",
     `
     <section id="rl-va" hidden>
-      <h2>Dueling · value / advantage</h2>
+      <h2>Dueling - value / advantage</h2>
       <p class="hint">Q(s,a) = V(s) + A(s,a). The net rates the STATE apart from each action's edge.</p>
       <div class="stat"><span>State value V(s)</span><b id="rl-va-v">-</b></div>
       <div id="rl-va-body" class="actlist" style="margin-top:8px;"></div>
@@ -1122,7 +1070,7 @@ export function initReward(parent) {
       }
       sec.hidden = false;
       body.innerHTML =
-        `<div class="brief-sub" style="color:#e60012">Red · ${d.episodes}-ep avg</div>` +
+        `<div class="brief-sub" style="color:#e60012">Red - ${d.episodes}-ep avg</div>` +
         rows(d.red, "#e60012") +
         `<div class="brief-sub" style="color:#1f5fd0;margin-top:12px">Blue</div>` +
         rows(d.blue, "#1f5fd0");
@@ -1264,7 +1212,7 @@ export function initTrajectories(parent) {
     "beforeend",
     `
     <section id="rl-traj" hidden>
-      <h2>Best runs · side by side</h2>
+      <h2>Best runs - side by side</h2>
       <div style="display:flex;gap:12px;">
         <div style="flex:1;"><div class="brief-sub" style="color:#1f5fd0;margin:0 0 5px;">Blue</div><canvas id="rl-traj-b" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
         <div style="flex:1;"><div class="brief-sub" style="color:#e60012;margin:0 0 5px;">Red</div><canvas id="rl-traj-r" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>

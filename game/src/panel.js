@@ -157,9 +157,14 @@ const STYLE = `
   border-radius:13px;box-shadow:0 1px 2px rgba(20,20,30,.04);}
 #rl-panel h2{margin:0 0 12px;font-size:10.5px;font-weight:800;letter-spacing:.9px;
   text-transform:uppercase;color:#8a8d94;}
+/* REPLAY badge in the Playback header (shown while a recorded run is loaded) */
+#rl-panel .reptag{float:right;margin-top:-1px;font-size:9px;font-weight:800;letter-spacing:.6px;
+  color:#1f5fd0;background:#e9f0fc;border:1px solid #cfe0fb;border-radius:6px;padding:2px 7px;}
+#rl-panel .reptag[hidden]{display:none;}
 
 /* buttons */
 #rl-panel .btns{display:flex;gap:7px;}
+#rl-panel .btns[hidden]{display:none;}   /* [hidden] must beat the flex rule above */
 #rl-panel .btns+.btns{margin-top:7px;}
 #rl-panel button{flex:1;padding:9px 6px;border:1px solid #d7dade;border-radius:9px;background:#fff;
   color:#26272b;font:inherit;font-size:12px;font-weight:600;cursor:pointer;outline:none;
@@ -319,8 +324,7 @@ const N_GROUPS = [
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'Advanced'],
   ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
-  ['replays', 'Replays', ['rl-replay', 'rl-traj'],
-    'Rewatch the fastest winning runs.', 'Replays'],
+  ['replays', 'Replays', ['rl-replay', 'rl-traj'], '', 'Replays'],
 ];
 
 // Build the sticky tab bar (one tab per group) and wire it to swap sections. The
@@ -411,15 +415,22 @@ export function initPanel() {
       </div>
     </div>
     <section id="rl-sec-playback" class="qk">
-      <h2>Playback</h2>
+      <h2>Playback<span id="rl-rep-tag" class="reptag" hidden>Replay</span></h2>
       <div class="transport">
         <button id="rl-prev" class="tbtn">${SVG.prev}</button>
         <button id="rl-play" class="tplay">${SVG.pause}</button>
         <button id="rl-next" class="tbtn">${SVG.next}</button>
       </div>
-      <div class="btns" style="margin-top:14px;">
+      <div class="ctl" id="rl-rep-scrub" style="margin-top:13px;" hidden>
+        <div class="row"><span id="rl-rep-info">Replay</span><b id="rl-rep-frame"></b></div>
+        <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="--fill:#1f5fd0">
+      </div>
+      <div class="btns" id="rl-live-btns" style="margin-top:14px;">
         <button id="rl-reset">↺ Reset</button>
         <button id="rl-regen">⟳ New world</button>
+      </div>
+      <div class="btns" id="rl-backlive-btns" style="margin-top:14px;" hidden>
+        <button id="rl-rep-stop">← Back to live</button>
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>
@@ -467,7 +478,7 @@ export function initPanel() {
       <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
-      <h2>Value map · your model</h2>
+      <h2>Value map - your model</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
         <button id="rl-h-value">Value</button>
@@ -536,16 +547,54 @@ export function initPanel() {
     $('#rl-spd-val').textContent = `${sliderToSpeed(+speed.value).toLocaleString()} / s`;
     paintRange(speed);
   };
-  speed.addEventListener('input', () => { showSpeed(); window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) }); });
+  // a loaded replay plays at the CURRENT speed setting (mapped to a watchable fps)
+  const replayFps = () => Math.max(2, Math.min(60, sliderToSpeed(+speed.value)));
+  speed.addEventListener('input', () => {
+    showSpeed();
+    window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) });
+    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
+  });
   showSpeed();
   window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) });
-  $('#rl-play').addEventListener('click', () => {
-    paused = !paused;
-    window.RL.control({ cmd: paused ? 'pause' : 'play' });
-    $('#rl-play').innerHTML = paused ? SVG.play : SVG.pause;
+
+  // play/pause is DUAL-MODE: drives the loaded replay when there is one, else the live game
+  const playBtn = $('#rl-play');
+  const setLiveIcon = () => { playBtn.innerHTML = paused ? SVG.play : SVG.pause; };
+  playBtn.addEventListener('click', () => {
+    if (window.RL.replay?.active?.()) window.RL.replay.toggle(); // icon updates via rl-replay-state
+    else {
+      paused = !paused;
+      window.RL.control({ cmd: paused ? 'pause' : 'play' });
+      setLiveIcon();
+    }
   });
   $('#rl-regen').addEventListener('click', () => window.RL.control({ cmd: 'regenerate' }));
   $('#rl-reset').addEventListener('click', () => window.RL.control({ cmd: 'reset' }));
+
+  // ---- replay controls: shown in Playback ONLY while a recorded run is loaded ----
+  const repTag = $('#rl-rep-tag'), scrubEl = $('#rl-rep-scrub'), seekEl = $('#rl-rep-seek');
+  const repInfo = $('#rl-rep-info'), repFrame = $('#rl-rep-frame');
+  const liveBtns = $('#rl-live-btns'), backliveBtns = $('#rl-backlive-btns');
+  seekEl.addEventListener('input', () => { paintRange(seekEl); window.RL.replay?.seek?.(+seekEl.value); });
+  $('#rl-rep-stop').addEventListener('click', () => window.RL.replay?.stop?.());
+  let lastReplayActive = false;
+  window.addEventListener('rl-replay-state', (e) => {
+    const s = e.detail || {};
+    const on = !!s.active;
+    repTag.hidden = !on; scrubEl.hidden = !on;
+    liveBtns.hidden = on; backliveBtns.hidden = !on;
+    if (on) {
+      if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
+      seekEl.max = Math.max(0, (s.total || 1) - 1);
+      if (document.activeElement !== seekEl) { seekEl.value = s.idx; paintRange(seekEl); } // don't fight a drag
+      repInfo.textContent = s.label || 'Replay';
+      repFrame.textContent = s.total ? `${s.idx + 1}/${s.total}` : '';
+      playBtn.innerHTML = s.playing ? SVG.pause : SVG.play;
+    } else {
+      setLiveIcon(); // back to live: restore the live play/pause icon
+    }
+    lastReplayActive = on;
+  });
 
   // ---- hyperparameters + global settings: drive the trainer live (debounced) ----
   // one combined list so labels / seeding / sends cover both the per-side learning
@@ -645,9 +694,9 @@ export function initPanel() {
     }
     $('#rl-mb').textContent = NAMES[s.algoBlue] || s.algoBlue || '-';
     const redNm = NAMES[s.algoRed] || s.algoRed || '';
-    const tier = s.cpuTier ? `CPU · Tier ${s.cpuTier}` : '';
+    const tier = s.cpuTier ? `CPU - Tier ${s.cpuTier}` : '';
     $('#rl-vs').textContent = redNm
-      ? `vs ${redNm}${tier ? ` · ${tier}` : ''}`
+      ? `vs ${redNm}${tier ? ` - ${tier}` : ''}`
       : (tier ? `vs ${tier}` : '');
     const r = s.round || {};
     const ri = r.index ?? 0;
@@ -655,7 +704,7 @@ export function initPanel() {
       lastAlgoBlue = s.algoBlue; lastRoundIndex = ri;
       showRelevant(s.algoBlue, ri);
     }
-    $('#rl-round').textContent = `R${ri + 1} · ${r.total || 1}`;
+    $('#rl-round').textContent = `R${ri + 1} - ${r.total || 1}`;
     $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0
@@ -684,7 +733,7 @@ export function initPanel() {
     const lo = Math.min(...d.q, 0), hi = Math.max(...d.q, 0), span = hi - lo || 1;
     const best = d.q.indexOf(Math.max(...d.q));
     $('#rl-qinspect').innerHTML =
-      `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) · ${d.agent === 'red' ? 'Red' : 'Blue'}</div>` +
+      `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) - ${d.agent === 'red' ? 'Red' : 'Blue'}</div>` +
       d.q.map((q, i) =>
         `<div class="qrow"><span>${ACTION_NAMES[i]}${i === best ? ' ★' : ''}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;

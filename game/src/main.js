@@ -204,6 +204,7 @@ function disposeWorld() {
 }
 
 function rebuildWorld(worldJson) {
+  window.RL?.replay?.stop?.(); // a new arena invalidates any loaded replay -> back to live
   lastWorldJson = worldJson;
   const key = worldJson.theme;
   const rowsKey = (worldJson.rows || []).join("\n"); // arena rounds have no rows
@@ -403,8 +404,13 @@ function seedEventSerials(stats) {
 
 function applyStats(snap) {
   latestStats = snap.stats;
-  latestFrame = snap.frame;
-  if (!replayActive) actors.onFrame(snap.frame);
+  // while a replay is playing, the SCENE (actors + themeScene, which reads
+  // latestFrame) shows the recorded frames - don't clobber it with live frames.
+  // The HUD / panels below still get the live stats (training keeps running).
+  if (!replayActive) {
+    latestFrame = snap.frame;
+    actors.onFrame(snap.frame);
+  }
   seedEventSerials(snap.stats);
   maybeHandleAwardEvent(snap.stats);
   maybeStartFinishCeremony(snap.stats);
@@ -418,7 +424,7 @@ async function returnToStartMenu() {
   holdUI = true;
   closeTrainingPanels();
   heatmap.hide();
-  replayActive = false;
+  window.RL?.replay?.stop?.(); // clear any loaded replay (also sets replayActive=false)
 
   try {
     await transition.cover(async () => {
@@ -625,6 +631,113 @@ renderer.domElement.addEventListener("click", async (e) => {
 // While its free cam is on, the render loop suspends the game rig below.
 const devbar = initDevBar({ scene, camera, renderer, rig });
 
+// ---- replay controller: one shared recorded-episode player. The replay BROWSER
+// (graphs.js) only LOADS a run into it (paused); the panel's Playback card plays /
+// pauses / scrubs / sets speed and exits back to live. Every change is broadcast on
+// 'rl-replay-state' so the Playback UI mirrors it. While a run is loaded,
+// replayActive gates the live frames in applyStats.
+const replay = {
+  frames: [],
+  idx: 0,
+  playing: false,
+  fps: 12,
+  label: "",
+  _timer: null,
+  active() {
+    return this.frames.length > 0;
+  },
+  _render() {
+    const f = this.frames[this.idx];
+    if (f) {
+      latestFrame = f;
+      actors.onFrame(f);
+    }
+  },
+  _emit() {
+    window.dispatchEvent(
+      new CustomEvent("rl-replay-state", {
+        detail: {
+          active: this.active(),
+          playing: this.playing,
+          idx: this.idx,
+          total: this.frames.length,
+          label: this.label,
+        },
+      }),
+    );
+  },
+  _startTimer() {
+    this._stopTimer();
+    this._timer = setInterval(() => {
+      if (this.idx >= this.frames.length - 1) {
+        this.pause(); // reached the end - park on the last frame
+        return;
+      }
+      this.idx += 1;
+      this._render();
+      this._emit();
+    }, 1000 / this.fps);
+  },
+  _stopTimer() {
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
+  },
+  // load a run PAUSED at frame 0 (does NOT auto-play - the user presses play)
+  load(frames, label) {
+    this._stopTimer();
+    this.frames = Array.isArray(frames) ? frames : [];
+    this.idx = 0;
+    this.label = label || "";
+    this.playing = false;
+    replayActive = this.frames.length > 0;
+    this._render();
+    this._emit();
+  },
+  play() {
+    if (!this.frames.length) return;
+    if (this.idx >= this.frames.length - 1) this.idx = 0; // restart if parked at end
+    this.playing = true;
+    replayActive = true;
+    this._render();
+    this._startTimer();
+    this._emit();
+  },
+  pause() {
+    this.playing = false;
+    this._stopTimer();
+    this._emit();
+  },
+  toggle() {
+    if (this.playing) this.pause();
+    else this.play();
+  },
+  seek(i) {
+    if (!this.frames.length) return;
+    this._stopTimer();
+    this.playing = false; // scrubbing pauses
+    this.idx = Math.max(0, Math.min(this.frames.length - 1, i | 0));
+    replayActive = true;
+    this._render();
+    this._emit();
+  },
+  setFps(fps) {
+    this.fps = Math.max(1, +fps || 1);
+    if (this.playing) this._startTimer(); // re-arm at the new rate
+  },
+  stop() {
+    // exit replay -> back to the live game (the next poll renders live frames)
+    this._stopTimer();
+    this.frames = [];
+    this.idx = 0;
+    this.playing = false;
+    this.label = "";
+    replayActive = false;
+    this._emit();
+  },
+};
+
 // expose a tiny control API for the panel
 window.RL = {
   control,
@@ -641,6 +754,7 @@ window.RL = {
       new CustomEvent("rl-heatmap", { detail: { agent, mode: heatMode } }),
     );
   },
+  replay,
   playFrame: (frame) => {
     latestFrame = frame;
     actors.onFrame(frame);

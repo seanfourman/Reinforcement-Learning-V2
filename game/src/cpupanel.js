@@ -153,7 +153,7 @@ export function initCpuPanel() {
       <div class="stat"><span>Learned states</span><b id="rl-cp-q">-</b></div>
     </section>
     <section id="rl-cp-value" class="qk">
-      <h2>Value map · CPU</h2>
+      <h2>Value map - CPU</h2>
       <div class="seg">
         <button id="rl-cp-h-off" class="active">Off</button>
         <button id="rl-cp-h-value">Value</button>
@@ -264,7 +264,7 @@ export function initCpuPanel() {
     $('#rl-cp-char').textContent = nm || 'The Computer';
     $('#rl-cp-algo').textContent = NAMES[s.algoRed] || s.algoRed || '-';
     const t = s.cpuTier || 0;
-    $('#rl-cp-tier').textContent = t ? `Tier ${t} · ${TIER_LABELS[t] || ''}` : '';
+    $('#rl-cp-tier').textContent = t ? `Tier ${t} - ${TIER_LABELS[t] || ''}` : '';
     if (s.algoRed !== lastAlgoRed) { lastAlgoRed = s.algoRed; showRelevant(s.algoRed); }
     // while LOCKED, mirror the backend's live values; while unlocked, keep the user's edits
     if (!unlocked && s.redParams) {
