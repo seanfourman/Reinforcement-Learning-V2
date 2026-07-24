@@ -610,9 +610,13 @@ export function initPanel() {
     const on = !!s.active;
     repTag.classList.toggle('show', on);   // slides in from the corner / out again
     scrubEl.classList.toggle('show', on);  // grows in / collapses
+    // red model -> the whole replay UI (tag REPLAY bg, play button, scrubber) goes red
+    const red = on && s.agent === 'red';
+    repTag.classList.toggle('red', red);
+    playBtn.style.background = red ? '#e60012' : ''; // '' = default blue (live or blue replay)
     if (on) {
       if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
-      seekEl.style.setProperty('--fill', s.agent === 'red' ? '#e60012' : '#1f5fd0'); // scrubber matches the model
+      seekEl.style.setProperty('--fill', red ? '#e60012' : '#1f5fd0'); // scrubber matches the model
       seekEl.max = Math.max(0, (s.total || 1) - 1);
       if (document.activeElement !== seekEl) { seekEl.value = s.idx; paintRange(seekEl); } // don't fight a drag
       repInfo.textContent = s.label || 'Replay';
