@@ -346,11 +346,10 @@ export function initReplay(parent) {
     <section id="rl-replay">
       <h2>Episode replay</h2>
       <div class="seg" id="rl-rep-model">
-        <button data-a="blue" class="active">Blue top 30</button>
-        <button data-a="red">Red top 30</button>
+        <button data-a="blue" class="active">Blue - top 30</button>
+        <button data-a="red">Red - top 30</button>
       </div>
       <div id="rl-rep-list" class="replist"></div>
-      <p class="hint">Pick a run - it loads into Playback (top), paused. Press play there to watch it.</p>
     </section>`,
   );
   const $ = (id) => parent.querySelector(id);
@@ -1217,7 +1216,6 @@ export function initTrajectories(parent) {
         <div style="flex:1;"><div class="brief-sub" style="color:#1f5fd0;margin:0 0 5px;">Blue</div><canvas id="rl-traj-b" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
         <div style="flex:1;"><div class="brief-sub" style="color:#e60012;margin:0 0 5px;">Red</div><canvas id="rl-traj-r" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
       </div>
-      <p class="hint">Each model's FASTEST winning route (dot = start). Compare how directly the two policies reach the goal.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-traj");

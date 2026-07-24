@@ -157,10 +157,34 @@ const STYLE = `
   border-radius:13px;box-shadow:0 1px 2px rgba(20,20,30,.04);}
 #rl-panel h2{margin:0 0 12px;font-size:10.5px;font-weight:800;letter-spacing:.9px;
   text-transform:uppercase;color:#8a8d94;}
-/* REPLAY badge in the Playback header (shown while a recorded run is loaded) */
-#rl-panel .reptag{float:right;margin-top:-1px;font-size:9px;font-weight:800;letter-spacing:.6px;
-  color:#1f5fd0;background:#e9f0fc;border:1px solid #cfe0fb;border-radius:6px;padding:2px 7px;}
-#rl-panel .reptag[hidden]{display:none;}
+/* ---- Playback: the REPLAY corner tag + the grow-in replay scrubber ---- */
+#rl-panel #rl-sec-playback{position:relative;}
+/* REPLAY tag: a plain rounded-corner rectangle in the card's top-right. It drops in
+   (top->bottom) via .show, and on HOVER its two stacked faces slide DOWN so it swaps
+   to a red "Back to live" (clicking it exits the replay). */
+#rl-panel .reptag{position:absolute;top:9px;right:12px;z-index:4;width:112px;height:24px;margin:0;padding:0;border:0;
+  background:none;overflow:hidden;border-radius:8px;cursor:pointer;outline:none;
+  opacity:0;transform:translateY(-9px);pointer-events:none;
+  transition:transform .3s cubic-bezier(.34,1.28,.5,1),opacity .22s ease;}
+#rl-panel .reptag.show{opacity:1;transform:translateY(0);pointer-events:auto;}
+#rl-panel .reptag-face{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;white-space:nowrap;
+  transition:transform .3s cubic-bezier(.4,0,.2,1);}
+#rl-panel .reptag-front{background:#1f5fd0;transform:translateY(0);}
+#rl-panel .reptag-back{background:#d4141f;transform:translateY(-100%);}   /* starts ABOVE */
+#rl-panel .reptag:hover .reptag-front{transform:translateY(100%);}       /* front exits DOWN */
+#rl-panel .reptag:hover .reptag-back{transform:translateY(0);}           /* back drops in from top */
+/* replay scrubber: grows in / collapses out instead of popping */
+#rl-panel #rl-rep-scrub{max-height:0;opacity:0;overflow:hidden;margin:0;
+  transition:max-height .34s ease,opacity .26s ease,margin-top .34s ease;}
+#rl-panel #rl-rep-scrub.show{max-height:74px;opacity:1;margin-top:13px;}
+/* slim, rounded scrollbar inside the replay list */
+#rl-panel .replist{scrollbar-width:thin;scrollbar-color:#c6ccd6 transparent;}
+#rl-panel .replist::-webkit-scrollbar{width:10px;}
+#rl-panel .replist::-webkit-scrollbar-button{display:none;width:0;height:0;}
+#rl-panel .replist::-webkit-scrollbar-track{background:transparent;}
+#rl-panel .replist::-webkit-scrollbar-thumb{background:#c6ccd6;border-radius:99px;border:3px solid #fff;background-clip:padding-box;}
+#rl-panel .replist::-webkit-scrollbar-thumb:hover{background:#aab2bf;background-clip:padding-box;}
 
 /* buttons */
 #rl-panel .btns{display:flex;gap:7px;}
@@ -415,22 +439,23 @@ export function initPanel() {
       </div>
     </div>
     <section id="rl-sec-playback" class="qk">
-      <h2>Playback<span id="rl-rep-tag" class="reptag" hidden>Replay</span></h2>
+      <h2>Playback</h2>
+      <button id="rl-rep-tag" class="reptag" type="button" aria-label="Back to live">
+        <span class="reptag-face reptag-front">Replay</span>
+        <span class="reptag-face reptag-back">Back to live</span>
+      </button>
       <div class="transport">
         <button id="rl-prev" class="tbtn">${SVG.prev}</button>
         <button id="rl-play" class="tplay">${SVG.pause}</button>
         <button id="rl-next" class="tbtn">${SVG.next}</button>
       </div>
-      <div class="ctl" id="rl-rep-scrub" style="margin-top:13px;" hidden>
+      <div class="ctl" id="rl-rep-scrub">
         <div class="row"><span id="rl-rep-info">Replay</span><b id="rl-rep-frame"></b></div>
         <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="--fill:#1f5fd0">
       </div>
-      <div class="btns" id="rl-live-btns" style="margin-top:14px;">
+      <div class="btns" style="margin-top:14px;">
         <button id="rl-reset">↺ Reset</button>
         <button id="rl-regen">⟳ New world</button>
-      </div>
-      <div class="btns" id="rl-backlive-btns" style="margin-top:14px;" hidden>
-        <button id="rl-rep-stop">← Back to live</button>
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>
@@ -571,18 +596,17 @@ export function initPanel() {
   $('#rl-regen').addEventListener('click', () => window.RL.control({ cmd: 'regenerate' }));
   $('#rl-reset').addEventListener('click', () => window.RL.control({ cmd: 'reset' }));
 
-  // ---- replay controls: shown in Playback ONLY while a recorded run is loaded ----
+  // ---- replay controls: revealed in Playback while a recorded run is loaded ----
   const repTag = $('#rl-rep-tag'), scrubEl = $('#rl-rep-scrub'), seekEl = $('#rl-rep-seek');
   const repInfo = $('#rl-rep-info'), repFrame = $('#rl-rep-frame');
-  const liveBtns = $('#rl-live-btns'), backliveBtns = $('#rl-backlive-btns');
   seekEl.addEventListener('input', () => { paintRange(seekEl); window.RL.replay?.seek?.(+seekEl.value); });
-  $('#rl-rep-stop').addEventListener('click', () => window.RL.replay?.stop?.());
+  repTag.addEventListener('click', () => window.RL.replay?.stop?.()); // the tag itself = Back to live
   let lastReplayActive = false;
   window.addEventListener('rl-replay-state', (e) => {
     const s = e.detail || {};
     const on = !!s.active;
-    repTag.hidden = !on; scrubEl.hidden = !on;
-    liveBtns.hidden = on; backliveBtns.hidden = !on;
+    repTag.classList.toggle('show', on);   // slides in from the corner / out again
+    scrubEl.classList.toggle('show', on);  // grows in / collapses
     if (on) {
       if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
       seekEl.max = Math.max(0, (s.total || 1) - 1);
