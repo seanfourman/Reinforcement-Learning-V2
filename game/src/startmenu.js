@@ -1839,6 +1839,16 @@ export function createStartMenu({
     #rl-gate.show{opacity:1;animation:rl-gate-pop .45s cubic-bezier(.34,1.6,.5,1) both;}
     @keyframes rl-gate-pop{0%{transform:translateX(-50%) translateY(22px) scale(.72);opacity:0;}
       55%{opacity:1;}100%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;}}
+    /* leaving: a small anticipation hop, then it falls away and shrinks out.
+       per-keyframe easings (the animation itself is linear): the hop eases OUT,
+       the drop eases IN, so it lifts softly and then accelerates off-screen */
+    #rl-gate.hide{animation:rl-gate-out .42s linear both;}
+    @keyframes rl-gate-out{
+      0%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;
+        animation-timing-function:cubic-bezier(.2,.8,.35,1);}
+      30%{transform:translateX(-50%) translateY(-7px) scale(1.05);opacity:1;
+        animation-timing-function:cubic-bezier(.45,0,.75,.5);}
+      100%{transform:translateX(-50%) translateY(26px) scale(.66);opacity:0;}}
     #rl-gate .gate-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
       background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
       color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
@@ -3290,10 +3300,20 @@ export function createStartMenu({
   document.body.appendChild(gateMsg);
   let gateTok = 0;
   function warnStart() {
+    // if it's still sliding out (or already up), restart the pop from scratch
+    gateMsg.classList.remove("hide", "show");
+    void gateMsg.offsetWidth;
     gateMsg.classList.add("show");
     const tok = ++gateTok;
     setTimeout(() => {
-      if (tok === gateTok) gateMsg.classList.remove("show");
+      if (tok !== gateTok) return;
+      // hand off to the exit animation: drop .show only once .hide is on, so the
+      // transform never snaps back to the resting (off-screen) state mid-way
+      gateMsg.classList.add("hide");
+      gateMsg.classList.remove("show");
+      setTimeout(() => {
+        if (tok === gateTok) gateMsg.classList.remove("hide");
+      }, 420); // matches rl-gate-out
     }, 2600);
   }
   // play the Odyssey CONFIRM WIPE on the pill, then run the item's action. keep=
