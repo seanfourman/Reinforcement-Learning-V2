@@ -131,8 +131,8 @@ const STYLE = `
   background:#fff;border-bottom:1px solid #e6e8ec;}
 #rl-panel .rl-tab{flex:1 1 0;min-width:0;position:relative;padding:11px 3px 12px;border:0;border-radius:0;background:none;
   color:#8a8d94;font:inherit;font-size:10.5px;font-weight:700;letter-spacing:-.2px;cursor:pointer;outline:none;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s;}
-#rl-panel .rl-tab:hover{color:#54565c;}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s ease,background-color .22s ease;}
+#rl-panel .rl-tab:hover{background:#eff1f5;}   /* soft light bg fades in on hover */
 /* our .active also matches the global button.active (dark segmented-control style),
    so override its background/border back off for tabs */
 #rl-panel .rl-tab.active{color:#1f5fd0;background:none;border-color:transparent;}
@@ -143,7 +143,7 @@ const STYLE = `
   transform:translateX(0);transition:transform .24s cubic-bezier(.4,0,.2,1),width .24s cubic-bezier(.4,0,.2,1);}
 #rl-panel .rl-tab-hl::before{content:"";position:absolute;inset:0;
   background:radial-gradient(72% 118% at 50% 100%,rgba(31,95,208,.15),rgba(31,95,208,0) 70%);}
-#rl-panel .rl-tab-hl::after{content:"";position:absolute;left:2px;right:2px;bottom:0;height:3.5px;background:#1f5fd0;}
+#rl-panel .rl-tab-hl::after{content:"";position:absolute;left:2px;right:2px;bottom:0;height:2.5px;background:#1f5fd0;}
 #rl-panel .rl-tab{z-index:1;}   /* text/labels sit above the sliding highlight */
 /* show only the active section; the tab names it, so hide the big in-panel heading
    and keep just the one-line description at the top of the section */
