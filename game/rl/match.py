@@ -37,7 +37,8 @@ DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
 def is_dqn(algo):
     return algo in DQN_ALGOS
 
-FRAME_CAP = 800            # max frames recorded for one replayable episode
+FRAME_CAP = 801            # max frames recorded for one replayable episode
+                           # (800 steps + the seeded frame-0 spawn snapshot)
 HISTORY_CAP = 4000         # max learning-curve points kept per round
 TOP_N = 30                 # best replays kept PER MODEL (red/blue), fastest first
 
