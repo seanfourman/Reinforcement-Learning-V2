@@ -1678,6 +1678,21 @@ export function createStartMenu({
     @media (max-width:540px){:root{--ui:.42;--card:.27;}}
     @media (max-width:440px){:root{--ui:.38;--card:.22;}}
     @media (max-width:360px){:root{--ui:.34;--card:.18;}}
+    /* the CPU stat sheet is a fixed-px panel pinned to the right edge, so it needs
+       its OWN knob: --cpu-w tracks the window width (keep it in step with the
+       character tiles) and --cpu-h the height (a short laptop screen is what makes
+       it crowd the tile grid) - the smaller of the two wins. --cpu-y rides the card
+       higher on short screens so its bottom stays clear of the tiles. Both are 1 /
+       50% on a full desktop window, so nothing there moves. */
+    :root{--cpu-w:1;--cpu-h:1;--cpu:min(var(--cpu-w),var(--cpu-h));--cpu-y:50%;}
+    @media (max-width:1650px){:root{--cpu-w:.88;}}
+    @media (max-width:1400px){:root{--cpu-w:.8;}}
+    @media (max-width:1200px){:root{--cpu-w:.72;}}
+    @media (max-width:1000px){:root{--cpu-w:.62;}}
+    @media (max-height:900px){:root{--cpu-h:.86;--cpu-y:46%;}}
+    @media (max-height:800px){:root{--cpu-h:.78;--cpu-y:44%;}}
+    @media (max-height:700px){:root{--cpu-h:.68;--cpu-y:42%;}}
+    @media (max-height:600px){:root{--cpu-h:.58;--cpu-y:40%;}}
     #rl-menu{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;
       align-items:flex-start;justify-content:flex-end;padding:0 0 13vh 3.5vw;pointer-events:none;
       perspective:1600px;font-family:"Segoe UI",system-ui,sans-serif;opacity:0;transition:opacity .9s ease;}
@@ -1785,30 +1800,30 @@ export function createStartMenu({
     #rl-select .side.right .pnum{color:#dc2b2b;}
     #rl-select .plab.cpu{padding:6px 20px;}
     /* the computer's static stat sheet - its OWN Mario-style panel pinned right */
-    #rl-cpu{position:fixed;right:2.5vw;top:50%;z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
-      transform:translate(calc(100% + 6vw),-50%) scale(.96);transform-origin:right center;
+    #rl-cpu{position:fixed;right:2.5vw;top:var(--cpu-y);z-index:58;width:330px;box-sizing:border-box;pointer-events:none;
+      transform:translate(calc(100% + 6vw),-50%) scale(calc(var(--cpu) * .96));transform-origin:right center;
       background:linear-gradient(180deg,#fff7e6 0%,#f3e3c0 100%);
       border:4px solid #000;border-radius:22px;padding:16px 18px 18px;color:#3a2a14;
       box-shadow:2px 2px 0 #000,4px 4px 0 #000,6px 6px 0 #000,8px 8px 0 #000,
         9px 11px 0 #000,9px 22px 34px rgba(0,0,0,.45);
       font-family:"Segoe UI",system-ui,sans-serif;opacity:1;
       transition:none;}
-    #rl-cpu.show{transform:translate(0,-50%) scale(1);animation:rl-cpu-in .8s .06s both;}
+    #rl-cpu.show{transform:translate(0,-50%) scale(var(--cpu));animation:rl-cpu-in .8s .06s both;}
     /* exit (.leaving added on close): small wind-up, then launches off the right edge */
     #rl-cpu.leaving{animation:rl-cpu-out .5s both;}
     @keyframes rl-cpu-out{
-      0%{transform:translate(0,-50%) scale(1);animation-timing-function:cubic-bezier(.3,0,.5,1);}
-      22%{transform:translate(-24px,-50%) scale(1.02);animation-timing-function:cubic-bezier(.55,0,.75,.2);}
-      100%{transform:translate(calc(100% + 7vw),-50%) scale(.94);}}
+      0%{transform:translate(0,-50%) scale(var(--cpu));animation-timing-function:cubic-bezier(.3,0,.5,1);}
+      22%{transform:translate(-24px,-50%) scale(calc(var(--cpu) * 1.02));animation-timing-function:cubic-bezier(.55,0,.75,.2);}
+      100%{transform:translate(calc(100% + 7vw),-50%) scale(calc(var(--cpu) * .94));}}
     /* slides in from off the right edge, slams into its resting "wall" and bounces
        a couple of times with decreasing recoil - mirrors the title's rl-title-drop */
     @keyframes rl-cpu-in{
-      0%{transform:translate(calc(100% + 6vw),-50%) scale(.96);animation-timing-function:cubic-bezier(.5,.02,.9,.3);}
-      46%{transform:translate(0,-50%) scale(1);animation-timing-function:ease-out;}
-      62%{transform:translate(34px,-50%) scale(1);animation-timing-function:ease-in;}
-      78%{transform:translate(0,-50%) scale(1);animation-timing-function:ease-out;}
-      89%{transform:translate(13px,-50%) scale(1);animation-timing-function:ease-in;}
-      100%{transform:translate(0,-50%) scale(1);}}
+      0%{transform:translate(calc(100% + 6vw),-50%) scale(calc(var(--cpu) * .96));animation-timing-function:cubic-bezier(.5,.02,.9,.3);}
+      46%{transform:translate(0,-50%) scale(var(--cpu));animation-timing-function:ease-out;}
+      62%{transform:translate(34px,-50%) scale(var(--cpu));animation-timing-function:ease-in;}
+      78%{transform:translate(0,-50%) scale(var(--cpu));animation-timing-function:ease-out;}
+      89%{transform:translate(13px,-50%) scale(var(--cpu));animation-timing-function:ease-in;}
+      100%{transform:translate(0,-50%) scale(var(--cpu));}}
     #rl-cpu .cpu-badge{position:absolute;top:-16px;left:18px;background:#e23333;color:#fff;
       font-weight:900;font-size:13px;letter-spacing:2px;padding:4px 13px;border-radius:999px;
       border:3px solid #000;box-shadow:0 3px 0 #000;}
