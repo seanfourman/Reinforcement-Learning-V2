@@ -97,7 +97,7 @@ export const GLOBAL_PARAMS = [
 
 
 const STYLE = `
-#rl-panel{position:fixed;top:0;left:0;height:100%;width:388px;z-index:10;
+#rl-panel{position:fixed;top:0;left:0;height:100%;width:460px;z-index:10;
   transform:translateX(calc(-100% - 24px));
   transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -123,84 +123,34 @@ const STYLE = `
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
 #rl-panel .hdr .myalgo b{display:block;font-size:20px;font-weight:800;color:#1f5fd0;letter-spacing:-.3px;line-height:1.15;margin-top:3px;}
 #rl-panel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:5px;}
-/* fullscreen toggle (top-right of the header) */
-#rl-panel .hdr .fullbtn{position:absolute;top:12px;right:14px;flex:none;width:32px;height:32px;padding:0;
-  display:grid;place-items:center;border:1px solid #d7dade;border-radius:8px;background:#fff;color:#54565c;cursor:pointer;}
-#rl-panel .hdr .fullbtn:hover{background:#f0f1f3;border-color:#c4c8ce;color:#1f1f21;}
-#rl-panel .hdr .fullbtn svg{width:16px;height:16px;display:block;}
-/* ===== FULLSCREEN DASHBOARD: ONE centred grid. Group wrappers melt away
-   (display:contents) so every card shares the same columns, and JS gives each
-   card a row-span equal to its height - a true masonry that stays column-aligned
-   and packs tight (no ragged gaps, no stray empty space). ===== */
-#rl-panel.full{box-sizing:border-box;width:100vw;max-width:100vw;border-right:none;background:#edeff4;padding:0;}
-#rl-panel.full .rl-body{max-width:1440px;margin:0 auto;padding:30px 32px 96px;display:block;}
-/* each group is a full-width BAND: a title, then a grid whose columns STRETCH to
-   fill the width (auto-fit), so there is never an empty column on the right. JS
-   then row-spans each card to its height, so heights pack with no ragged gaps. */
-#rl-panel.full .rl-group{margin:0 0 28px;}
-#rl-panel.full .rl-group-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
-  grid-auto-rows:8px;gap:16px;align-items:start;grid-auto-flow:row dense;}
-#rl-panel.full .rl-group-h{display:block;margin:0 0 16px;padding:6px 0 12px;
-  font-size:19px;font-weight:800;letter-spacing:-.3px;text-transform:none;color:#22232a;border-bottom:2px solid #dce0e8;}
-#rl-panel.full .rl-group-h::before{content:"";display:inline-block;width:6px;height:18px;border-radius:3px;
-  background:#1f5fd0;vertical-align:-2px;margin-right:10px;}
-#rl-panel.full .rl-group:not(:has(section:not([hidden]))){display:none;}
-/* header = the page title bar */
-#rl-panel.full .hdr{position:static;background:transparent;border:none;padding:0 2px 18px;margin:0;}
-#rl-panel.full .hdr h1{font-size:12px;letter-spacing:1px;}
-#rl-panel.full .hdr h1::before{width:4px;height:13px;border-radius:2px;}
-#rl-panel.full .hdr .harena{margin-top:11px;gap:11px;}
-#rl-panel.full .hdr .harena b{font-size:27px;letter-spacing:-.7px;}
-#rl-panel.full .hdr .rbadge{font-size:12px;padding:4px 11px;}
-#rl-panel.full .hdr .myalgo{display:inline-block;margin-top:13px;padding-top:0;border-top:none;}
-#rl-panel.full .hdr .myalgo b{font-size:21px;}
-#rl-panel.full .hdr .fullbtn{top:2px;right:2px;width:40px;height:40px;border-radius:11px;}
-#rl-panel.full .hdr .fullbtn svg{width:20px;height:20px;}
-/* every card: identical chrome, sized to its content (align-self:start), row-span set by JS */
-#rl-panel.full .rl-group-cards > section{margin:0;align-self:start;padding:17px 18px;border-radius:15px;background:#fff;
-  border:1px solid #e6e9f0;box-shadow:0 1px 3px rgba(20,20,40,.05);min-width:0;}
-#rl-panel.full section h2{font-size:10px;letter-spacing:1px;margin-bottom:13px;}
-/* wide cards (charts, tables, replays) take two columns */
-#rl-panel.full section.span2{grid-column:span 2;}
-@media (max-width:940px){#rl-panel.full section.span2{grid-column:span 2;}}
-/* consistent chart height across the whole board */
-#rl-panel.full .chart{margin:0 0 13px;}
-#rl-panel.full .chart:last-child{margin-bottom:0;}
-#rl-panel.full .chart canvas{height:132px;border-radius:10px;}
-#rl-panel.full .chart .ct h3{font-size:12.5px;}
-#rl-panel.full .chart .ct .lg{font-size:10px;}
-/* the MDP briefing is a lone full-width card -> lay its rows out in 2 columns so
-   it reads as a filled spec sheet instead of a sparse label/value strip */
-#rl-panel.full #rl-brief-body{columns:2;column-gap:44px;}
-#rl-panel.full #rl-brief-body>*{break-inside:avoid;}
-#rl-panel.full #rl-brief-body .brief-matchup,#rl-panel.full #rl-brief-body .brief-sub:first-child{column-span:all;}
-#rl-panel.full .stat{font-size:13.5px;padding:9px 0;}
-#rl-panel.full .stat b{font-size:14px;}
-#rl-panel.full .ctl{margin-bottom:15px;}
-#rl-panel.full .ctl .row{font-size:13px;margin-bottom:7px;}
-#rl-panel.full input[type=range]{height:5px;}
-#rl-panel.full .btns button{padding:10px 8px;font-size:12.5px;}
-#rl-panel.full .transport{gap:16px;}
-#rl-panel.full .tbtn{width:44px;height:44px;}
-#rl-panel.full .tplay{width:52px;height:52px;}
-#rl-panel.full .seg button{padding:9px 6px;font-size:12px;}
-#rl-panel.full .hint,#rl-panel.full .note{font-size:11px;}
-
-/* ===== quick (docked) vs full view =========================================
-   Docked = a curated QUICK VIEW: only the '.qk' cards, and inside them only the
-   quick rows/charts ('.fullonly' bits hidden). Fullscreen shows everything,
-   organised into the big titled groups above. */
-#rl-panel .rl-group-h{display:none;}                 /* group titles: fullscreen only */
-#rl-panel:not(.full) .rl-group{margin:0;}
-#rl-panel:not(.full) .rl-group-cards > section:not(.qk){display:none;}
-#rl-panel:not(.full) .fullonly{display:none;}
-#rl-panel:not(.full) section.qk-nohdr > h2{display:none;} /* one chart, no heavy header */
-/* a small "expand for everything" hint under the quick view */
-#rl-panel .rl-morehint{display:none;margin:2px 12px 16px;padding:10px 13px;border-radius:11px;
-  background:#eef1f7;border:1px solid #e2e6ee;color:#6a6d75;font-size:11.5px;line-height:1.4;cursor:pointer;}
-#rl-panel .rl-morehint b{color:#1f5fd0;}
-#rl-panel:not(.full) .rl-morehint{display:block;}
-#rl-panel .rl-morehint:hover{background:#e7ebf4;}
+/* ===== Playback sits at the top ALWAYS (not a tab); an underline tab row below
+   it picks ONE section. Active tab = coloured text + a line under it with a soft
+   glow rising above the line. ===== */
+#rl-panel .hdr{z-index:4;}                            /* header stays above the tab bar */
+#rl-panel .rl-tabs{position:sticky;top:0;z-index:3;display:flex;gap:0;padding:0 8px;
+  background:#fff;border-bottom:1px solid #e6e8ec;}
+#rl-panel .rl-tab{flex:1 1 0;min-width:0;position:relative;padding:11px 3px 12px;border:0;border-radius:0;background:none;
+  color:#8a8d94;font:inherit;font-size:10.5px;font-weight:700;letter-spacing:-.2px;cursor:pointer;outline:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s;}
+#rl-panel .rl-tab:hover{color:#54565c;}
+/* our .active also matches the global button.active (dark segmented-control style),
+   so override its background/border back off for tabs */
+#rl-panel .rl-tab.active{color:#1f5fd0;background:none;border-color:transparent;}
+/* one sliding highlight (glow + underline) that animates between tabs; JS sets its
+   width + translateX to the active tab. The glow fades on the sides AND the top
+   (radial from the bottom centre), the line is the crisp bar at the bottom. */
+#rl-panel .rl-tab-hl{position:absolute;bottom:0;left:0;height:100%;width:0;pointer-events:none;z-index:0;
+  transform:translateX(0);transition:transform .24s cubic-bezier(.4,0,.2,1),width .24s cubic-bezier(.4,0,.2,1);}
+#rl-panel .rl-tab-hl::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(72% 118% at 50% 100%,rgba(31,95,208,.15),rgba(31,95,208,0) 70%);}
+#rl-panel .rl-tab-hl::after{content:"";position:absolute;left:2px;right:2px;bottom:0;height:3.5px;background:#1f5fd0;}
+#rl-panel .rl-tab{z-index:1;}   /* text/labels sit above the sliding highlight */
+/* show only the active section; the tab names it, so hide the big in-panel heading
+   and keep just the one-line description at the top of the section */
+#rl-panel .rl-group{display:none;margin:0;}
+#rl-panel .rl-group.active{display:block;}
+#rl-panel .rl-group-h{display:none;}
+#rl-panel .rl-group-sub{display:block;margin:14px 12px 2px;font-size:11.5px;line-height:1.45;color:#6a6d75;}
 
 /* cards */
 #rl-panel section{margin:11px 11px;padding:13px 14px;background:#fff;border:1px solid #e6e8ec;
@@ -253,7 +203,7 @@ const STYLE = `
 #rl-panel .stat b{font-variant-numeric:tabular-nums;font-weight:700;}
 
 /* contest bar */
-#rl-panel .bar{height:10px;border-radius:6px;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
+#rl-panel .bar{height:10px;border-radius:0;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
 #rl-panel .bar i{display:block;height:100%;transition:width .3s;}
 #rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#c6c9cf;}
 #rl-panel .bar .t{background:#8a8d94;}
@@ -300,9 +250,6 @@ const STYLE = `
 #rl-panel .replist .rrow .st{font-variant-numeric:tabular-nums;font-weight:700;color:#1f1f21;}
 #rl-panel .replist .rrow .ep{margin-left:auto;color:#9a9da4;font-size:11px;font-variant-numeric:tabular-nums;}
 #rl-panel .replist .empty{padding:15px 12px;color:#9a9da4;font-size:12px;text-align:center;}
-/* fullscreen: let the list breathe */
-#rl-panel.full .replist{max-height:340px;}
-#rl-panel.full .replist .rrow{font-size:14px;padding:11px 14px;}
 
 /* Q inspector */
 #rl-panel .qrow{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;}
@@ -320,31 +267,28 @@ const STYLE = `
 #rl-panel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 `;
 
-// Fold every card into big titled groups. The fullscreen dashboard shows the
-// group titles + all cards; the docked quick view (CSS) reveals only the '.qk'
-// cards. A catch-all 'More' group guarantees any unmapped/future section still
-// appears (never silently dropped). Shared by both the N and M panels.
-//   groups   = [[id, title, [sectionId, ...]], ...]
-//   fullSel  = selector of the expand-to-fullscreen button (for the hint click)
-//   hintHTML = docked "expand for more" hint text
-export function organizeGroups(body, groups, fullSel, hintHTML, wideIds = []) {
-  const wide = new Set(wideIds);
-  const mk = (id, title) => {
+// Fold every card into big titled groups, in the given order. Each group renders
+// a large plain-language heading, an optional one-line subtitle, then its cards
+// stacked vertically (one scrolling column). A catch-all 'More' group guarantees
+// any unmapped/future section still appears (never silently dropped). Shared by
+// both the N and M panels.
+//   groups = [[id, title, [sectionId, ...], subtitle?], ...]
+export function organizeGroups(body, groups) {
+  const mk = (id, title, sub) => {
     const g = document.createElement('div');
     g.className = 'rl-group';
     g.dataset.group = id;
-    g.innerHTML = `<h2 class="rl-group-h">${title}</h2><div class="rl-group-cards"></div>`;
+    g.innerHTML = `<h2 class="rl-group-h">${title}</h2>` +
+      (sub ? `<p class="rl-group-sub">${sub}</p>` : '') +
+      '<div class="rl-group-cards"></div>';
     return g;
   };
-  const els = groups.map(([id, title, ids]) => {
-    const g = mk(id, title);
+  const els = groups.map(([id, title, ids, sub]) => {
+    const g = mk(id, title, sub);
     const cards = g.querySelector('.rl-group-cards');
     for (const sid of ids) {
       const sec = body.querySelector('#' + sid);
-      if (sec) {
-        if (wide.has(sid)) sec.classList.add('span2'); // charts/tables take 2 cols
-        cards.appendChild(sec); // moves the node out of the flat body
-      }
+      if (sec) cards.appendChild(sec); // moves the node out of the flat body
     }
     return g;
   });
@@ -358,53 +302,87 @@ export function organizeGroups(body, groups, fullSel, hintHTML, wideIds = []) {
   for (const g of els) body.appendChild(g);
 }
 
-// True masonry on the fullscreen grid: give each visible card a grid-row-span
-// equal to its measured height, so the columns stay aligned while cards pack
-// tight. Re-runs on resize, snapshots (content can grow) and whenever a card
-// resizes (charts drawing). No-op while docked.
-//
-// The cards are `align-self:start`, so getBoundingClientRect already reports each
-// card's NATURAL content height - we must NOT reset every span to '' first (that
-// momentarily collapses the whole grid, and since this runs ~30x/s on snapshots
-// the scroll container clamps its scrollTop to the tiny collapsed range every
-// time, making it impossible to scroll down). Measure in place; only write a span
-// when it actually changes, so a steady stream of snapshots is a no-op.
-export function attachMasonry(panel, body) {
-  const relayout = () => {
-    if (!panel.classList.contains('full')) return;
-    const cs = getComputedStyle(body);
-    const rowH = parseFloat(cs.gridAutoRows) || 8;
-    const gap = parseFloat(cs.rowGap || cs.gap) || 18;
-    body.querySelectorAll('.rl-group-cards > section').forEach((el) => {
-      if (el.offsetParent === null) return; // hidden this round
-      const h = el.getBoundingClientRect().height;
-      const span = 'span ' + Math.max(1, Math.ceil((h + gap) / (rowH + gap)));
-      if (el.style.gridRowEnd !== span) el.style.gridRowEnd = span;
-    });
-  };
-  let raf = 0;
-  const schedule = () => {
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(relayout);
-  };
-  panel._relayout = schedule;
-  window.addEventListener('resize', schedule);
-  window.addEventListener('rl-snapshot', () => panel.classList.contains('full') && schedule());
-  if (window.ResizeObserver) {
-    const ro = new ResizeObserver(() => panel.classList.contains('full') && schedule());
-    body.querySelectorAll('.rl-group-cards > section').forEach((s) => ro.observe(s));
-  }
-  return schedule;
-}
-
+// Playback is pinned at the top (handled separately, not a tab). The rest are
+// TABS in a story order a newcomer can follow: understand the task -> see the
+// score -> watch it learn -> tune it -> deeper knobs -> look inside its head ->
+// rewatch great runs. Tuple is [id, title, [sectionIds], subtitle, tabLabel].
 const N_GROUPS = [
-  ['control', 'Control', ['rl-sec-playback', 'rl-sec-hyper', 'rl-sec-algo', 'rl-sec-world']],
-  ['status', 'Live Status', ['rl-sec-training', 'rl-sec-contest', 'rl-compare']],
-  ['problem', 'The Problem', ['rl-brief']],
-  ['learning', 'Learning Progress', ['rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore']],
-  ['policy', 'Policy &amp; Value', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-outcomes', 'rl-actdist']],
-  ['replays', 'Replays', ['rl-replay', 'rl-traj']],
+  ['challenge', "What's the challenge?", ['rl-brief'],
+    'The task both AIs are racing to solve, and how their two methods differ.', 'Challenge'],
+  ['score', 'Scoreboard', ['rl-sec-contest', 'rl-compare', 'rl-outcomes'],
+    'Who is winning right now.', 'Score'],
+  ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
+    'Watch your AI (Blue) get better over time.', 'Progress'],
+  ['tune', 'Tune your AI', ['rl-sec-hyper'],
+    'Change how your AI learns. Effects show up live.', 'Tune'],
+  ['advanced', 'Advanced settings', ['rl-sec-algo', 'rl-sec-world'],
+    'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'Advanced'],
+  ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
+    'Peek at what your AI has actually learned.', 'Inside'],
+  ['replays', 'Replays', ['rl-replay', 'rl-traj'],
+    'Rewatch the fastest winning runs.', 'Replays'],
 ];
+
+// Build the sticky tab bar (one tab per group) and wire it to swap sections. The
+// tab bar pins right under the sticky header; clicking a tab shows only that
+// group and scrolls the panel back to the top. Shared by the N and M panels.
+export function buildTabs(panel, body, groups) {
+  const hdr = body.querySelector('.hdr');
+  const bar = document.createElement('div');
+  bar.className = 'rl-tabs';
+  const tabs = [...body.querySelectorAll('.rl-group')].map((g) => {
+    const meta = groups.find((x) => x[0] === g.dataset.group);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'rl-tab';
+    btn.dataset.group = g.dataset.group;
+    btn.textContent = (meta && (meta[4] || meta[1])) || g.dataset.group;
+    bar.appendChild(btn);
+    return { btn, g };
+  });
+  // place the tab bar right before the first section (i.e. below any pinned-top
+  // cards like Playback), falling back to just after the header
+  const firstGroup = body.querySelector('.rl-group');
+  if (firstGroup) body.insertBefore(bar, firstGroup);
+  else hdr.insertAdjacentElement('afterend', bar);
+  // one sliding highlight (glow + underline) that animates between tabs; sits
+  // behind the labels (inserted first) and is positioned by JS to the active tab
+  const hl = document.createElement('div');
+  hl.className = 'rl-tab-hl';
+  bar.insertBefore(hl, bar.firstChild);
+  let hlPlaced = false;
+  const moveHl = () => {
+    const act = tabs.find((t) => t.btn.classList.contains('active'));
+    if (!act || !act.btn.offsetWidth) return;              // hidden: metrics not ready yet
+    if (!hlPlaced) hl.style.transition = 'none';           // first placement must not slide in from 0
+    hl.style.width = act.btn.offsetWidth + 'px';
+    hl.style.transform = 'translateX(' + act.btn.offsetLeft + 'px)';
+    if (!hlPlaced) { void hl.offsetWidth; hl.style.transition = ''; hlPlaced = true; }
+  };
+  // keep the tab bar pinned directly below the (also-sticky) header, and the
+  // highlight aligned. The header can measure 0 while the panel is hidden during
+  // the start menu, so recompute on tab switch, first snapshot, and resize.
+  const setOffset = () => { if (hdr.offsetHeight) bar.style.top = hdr.offsetHeight + 'px'; moveHl(); };
+  const activate = (id) => {
+    for (const { btn, g } of tabs) {
+      const on = g.dataset.group === id;
+      g.classList.toggle('active', on);
+      btn.classList.toggle('active', on);
+    }
+    moveHl();
+    panel.scrollTop = 0;
+  };
+  tabs.forEach(({ btn }) => btn.addEventListener('click', () => activate(btn.dataset.group)));
+  if (tabs.length) activate(tabs[0].g.dataset.group);
+  setOffset();
+  window.addEventListener('resize', setOffset);
+  window.addEventListener('rl-snapshot', setOffset, { once: true });
+  if (window.ResizeObserver) {
+    new ResizeObserver(setOffset).observe(hdr);
+    new ResizeObserver(moveHl).observe(bar);   // reposition the highlight if the bar reflows
+  }
+  return activate;
+}
 
 export function initPanel() {
   const style = document.createElement('style');
@@ -424,7 +402,6 @@ export function initPanel() {
   panel.innerHTML = `
     <div class="rl-body">
     <div class="hdr">
-      <button id="rl-full" class="fullbtn" type="button" title="Fullscreen">${SVG.expand}</button>
       <h1>Training Control</h1>
       <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
       <div class="myalgo">
@@ -505,22 +482,20 @@ export function initPanel() {
     </div>`;
   document.body.appendChild(panel);
 
-  // learning-curve charts + episode replay (built by graphs.js) - into the same
-  // .rl-body wrapper so fullscreen can flow every card through one masonry column set
+  // learning-curve charts + episode replay (built by graphs.js) into the same
+  // .rl-body wrapper, then fold every card (native + the graphs.js sections) into
+  // the big titled groups. Any section not named still shows (catch-all group) so
+  // nothing is ever silently dropped.
   const body = panel.querySelector('.rl-body');
   initGraphs(body);
-  // fold every card (native + the ~14 graphs.js sections) into the six big titled
-  // groups the fullscreen dashboard shows; docked quick view then reveals only the
-  // '.qk' cards. Any section not named still shows (catch-all group) so nothing is
-  // ever silently dropped.
-  organizeGroups(
-    body,
-    N_GROUPS,
-    '#rl-full',
-    'Quick view. <b>Expand ↗</b> for the full dashboard: hyperparameters, ' +
-      'learning curves, value maps, replays and more.',
-  );
-  attachMasonry(panel, body);
+  // Playback is pinned at the top always - pull it out so organizeGroups doesn't
+  // fold it into a tab, then drop it back right under the header.
+  const hdrEl = body.querySelector('.hdr');
+  const playback = body.querySelector('#rl-sec-playback');
+  playback.remove();
+  organizeGroups(body, N_GROUPS);
+  hdrEl.insertAdjacentElement('afterend', playback);
+  buildTabs(panel, body, N_GROUPS);   // inserts the tab bar right below Playback
 
   const $ = (id) => panel.querySelector(id);
 
@@ -534,31 +509,12 @@ export function initPanel() {
   };
 
   // ---- toggle (N key only) ----
-  const toggle = () => {
-    panel.classList.toggle('open');
-    if (!panel.classList.contains('open')) panel.classList.remove('full'); // closing exits fullscreen too
-  };
+  const toggle = () => panel.classList.toggle('open');
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyN' || /input|select|textarea/i.test(e.target.tagName)) return;
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
     toggle();
-  });
-  // ---- fullscreen dashboard: expand the panel to fill the screen + reflow to a grid
-  const fullBtn = $('#rl-full');
-  fullBtn.addEventListener('click', () => {
-    const on = panel.classList.toggle('full');
-    fullBtn.innerHTML = on ? SVG.collapse : SVG.expand;
-    fullBtn.title = on ? 'Exit fullscreen' : 'Fullscreen';
-    // going fullscreen takes over the screen -> close the other (CPU) panel
-    if (on) document.getElementById('rl-cpanel')?.classList.remove('open', 'full');
-    // re-fit the charts + re-pack the masonry THROUGH the grow animation
-    [0, 120, 260, 400, 560].forEach((t) =>
-      setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-        panel._relayout?.();
-      }, t),
-    );
   });
 
   // ---- playback ----

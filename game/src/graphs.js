@@ -1266,8 +1266,8 @@ export function initTrajectories(parent) {
     <section id="rl-traj" hidden>
       <h2>Best runs · side by side</h2>
       <div style="display:flex;gap:12px;">
-        <div style="flex:1;"><div class="brief-sub" style="color:#e60012;margin:0 0 5px;">Red</div><canvas id="rl-traj-r" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
         <div style="flex:1;"><div class="brief-sub" style="color:#1f5fd0;margin:0 0 5px;">Blue</div><canvas id="rl-traj-b" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
+        <div style="flex:1;"><div class="brief-sub" style="color:#e60012;margin:0 0 5px;">Red</div><canvas id="rl-traj-r" style="width:100%;aspect-ratio:1/1;background:#f0f1f3;border-radius:9px;display:block;"></canvas></div>
       </div>
       <p class="hint">Each model's FASTEST winning route (dot = start). Compare how directly the two policies reach the goal.</p>
     </section>`,

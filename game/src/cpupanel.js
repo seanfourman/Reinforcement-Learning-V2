@@ -6,25 +6,24 @@
 // Red params route to setRedParams; the two shared globals (max steps, stop after)
 // route to setParams, same as the left panel.
 
-import { PARAMS, DP_ALGOS, DQN_ALGOS, NAMES, organizeGroups, attachMasonry } from './panel.js';
+import { PARAMS, DP_ALGOS, DQN_ALGOS, NAMES, organizeGroups, buildTabs } from './panel.js';
 import { getCpuName } from './startmenu.js';
 import { initCurves } from './graphs.js';
 
 const GLOBAL_KEYS = new Set(['maxSteps', 'targetEpisodes']);   // shared by both models
 const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 'Master' };
 
-// fullscreen expand / collapse icons (match the player panel's)
-const SVG_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
-const SVG_COLLAPSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
-
-// the CPU panel is small (4 cards); two 2-card bands fill the width cleanly
+// tabbed sections (mirrors the player panel), CPU/Red view. Tuple is
+// [id, title, [sectionIds], subtitle, tabLabel].
 const M_GROUPS = [
-  ['status', 'Status &amp; Value', ['rl-cp-stats', 'rl-cp-value']],
-  ['learn', 'Hyperparameters &amp; Curves', ['rl-cp-hyper', 'rl-curve-rate-red', 'rl-curve-return-red', 'rl-curve-eps-red', 'rl-curve-len-red']],
+  ['status', "The opponent's brain", ['rl-cp-stats', 'rl-cp-value'],
+    'How much the CPU has learned, and a map of what it values.', 'Brain'],
+  ['learn', 'How the opponent learns', ['rl-cp-hyper', 'rl-curve-rate-red', 'rl-curve-return-red', 'rl-curve-eps-red', 'rl-curve-len-red'],
+    'The CPU trains on its own settings (locked). Unlock the padlock to experiment.', 'Learning'],
 ];
 
 const STYLE = `
-#rl-cpanel{position:fixed;top:0;right:0;height:100%;width:388px;z-index:10;
+#rl-cpanel{position:fixed;top:0;right:0;height:100%;width:460px;z-index:10;
   transform:translateX(calc(100% + 24px));transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:-3px 0 30px rgba(0,0,0,.24);
@@ -44,14 +43,6 @@ const STYLE = `
 #rl-cpanel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
 #rl-cpanel .hdr .myalgo b{display:block;font-size:20px;font-weight:800;color:#d4141f;letter-spacing:-.3px;line-height:1.15;margin-top:3px;}
 #rl-cpanel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:5px;}
-/* fullscreen: arena/char name becomes the big title */
-#rl-cpanel.full .hdr h1{font-size:12px;letter-spacing:1px;}
-#rl-cpanel.full .hdr h1::before{width:4px;height:13px;}
-#rl-cpanel.full .hdr .harena{margin-top:11px;gap:11px;}
-#rl-cpanel.full .hdr .harena b{font-size:27px;letter-spacing:-.7px;}
-#rl-cpanel.full .hdr .rbadge{font-size:12px;padding:4px 11px;}
-#rl-cpanel.full .hdr .myalgo{display:inline-block;margin-top:13px;padding-top:0;border-top:none;}
-#rl-cpanel.full .hdr .myalgo b{font-size:21px;}
 /* the lock toggle: a small rounded button top-right of the header (red when unlocked) */
 #rl-cpanel .hdr .lockbtn{position:absolute;top:13px;right:14px;width:34px;height:34px;padding:0;
   display:grid;place-items:center;border:1px solid #d7dade;border-radius:50%;background:#fff;
@@ -106,54 +97,26 @@ const STYLE = `
 #rl-cpanel .chart .ct .lg i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px;}
 #rl-cpanel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 
-/* fullscreen expand button in the header (sits left of the lock) */
-#rl-cpanel .hdr .fullbtn{position:absolute;top:13px;right:56px;width:34px;height:34px;padding:0;display:grid;
-  place-items:center;border:1px solid #d7dade;border-radius:8px;background:#fff;color:#54565c;cursor:pointer;}
-#rl-cpanel .hdr .fullbtn:hover{background:#f0f1f3;border-color:#c4c8ce;color:#1f1f21;}
-#rl-cpanel .hdr .fullbtn svg{width:16px;height:16px;display:block;}
-/* ===== FULLSCREEN: centred; per-group auto-fit bands fill the width; JS masonry ===== */
-#rl-cpanel.full{box-sizing:border-box;width:100vw;max-width:100vw;border-left:none;background:#f1edee;padding:0;}
-#rl-cpanel.full .rl-body{max-width:1180px;margin:0 auto;padding:30px 32px 96px;display:block;}
-#rl-cpanel.full .rl-group{margin:0 0 28px;}
-#rl-cpanel.full .rl-group-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-  grid-auto-rows:8px;gap:16px;align-items:start;grid-auto-flow:row dense;}
-#rl-cpanel.full .rl-group-h{display:block;margin:0 0 16px;padding:6px 0 12px;font-size:19px;font-weight:800;
-  letter-spacing:-.3px;text-transform:none;color:#22232a;border-bottom:2px solid #ecdede;}
-#rl-cpanel.full .rl-group-h::before{content:"";display:inline-block;width:6px;height:18px;border-radius:3px;
-  background:#d4141f;vertical-align:-2px;margin-right:10px;}
-#rl-cpanel.full .rl-group:not(:has(section:not([hidden]))){display:none;}
-#rl-cpanel.full .hdr{position:static;background:transparent;border:none;padding:0 2px 18px;margin:0;}
-#rl-cpanel.full .hdr h1{font-size:28px;letter-spacing:-.6px;}
-#rl-cpanel.full .hdr h1::before{width:7px;height:26px;border-radius:4px;}
-#rl-cpanel.full .hdr .sub{font-size:13.5px;margin-top:7px;}
-#rl-cpanel.full .hdr .myalgo{margin-top:10px;}
-#rl-cpanel.full .hdr .myalgo b{font-size:22px;}
-#rl-cpanel.full .hdr .fullbtn{top:2px;right:2px;width:40px;height:40px;border-radius:11px;}
-#rl-cpanel.full .hdr .fullbtn svg{width:20px;height:20px;}
-#rl-cpanel.full .hdr .lockbtn{top:4px;right:52px;width:38px;height:38px;}
-#rl-cpanel.full .hdr .lockbtn svg{width:19px;height:19px;}
-#rl-cpanel.full .rl-group-cards > section{margin:0;align-self:start;padding:17px 18px;border-radius:15px;background:#fff;
-  border:1px solid #e6e9f0;box-shadow:0 1px 3px rgba(20,20,40,.05);min-width:0;}
-#rl-cpanel.full section h2{font-size:10px;letter-spacing:1px;margin-bottom:13px;}
-#rl-cpanel.full .chart canvas{height:132px;border-radius:10px;}
-#rl-cpanel.full .stat{font-size:13.5px;padding:9px 0;}
-#rl-cpanel.full .stat b{font-size:14px;}
-#rl-cpanel.full .ctl{margin-bottom:15px;}
-#rl-cpanel.full .ctl .row{font-size:13px;margin-bottom:7px;}
-#rl-cpanel.full input[type=range]{height:5px;}
-#rl-cpanel.full .seg button{padding:9px 6px;font-size:12px;}
-#rl-cpanel.full .hint,#rl-cpanel.full .note{font-size:11px;}
-
-/* ===== quick (docked) vs full view ===== */
-#rl-cpanel .rl-group-h{display:none;}                /* group titles: fullscreen only */
-#rl-cpanel:not(.full) .rl-group{margin:0;}
-#rl-cpanel:not(.full) .rl-group-cards > section:not(.qk){display:none;}
-#rl-cpanel:not(.full) .fullonly{display:none;}
-#rl-cpanel .rl-morehint{display:none;margin:2px 12px 16px;padding:10px 13px;border-radius:11px;background:#f6eeee;
-  border:1px solid #eaddde;color:#7a6d6e;font-size:11.5px;line-height:1.4;cursor:pointer;}
-#rl-cpanel .rl-morehint b{color:#d4141f;}
-#rl-cpanel:not(.full) .rl-morehint{display:block;}
-#rl-cpanel .rl-morehint:hover{background:#f0e5e5;}
+/* ===== underline tab row (mirrors the player panel), red accent ===== */
+#rl-cpanel .hdr{z-index:4;}
+#rl-cpanel .rl-tabs{position:sticky;top:0;z-index:3;display:flex;gap:0;padding:0 8px;
+  background:#fff;border-bottom:1px solid #ecdede;}
+#rl-cpanel .rl-tab{flex:1 1 0;min-width:0;position:relative;padding:11px 3px 12px;border:0;border-radius:0;background:none;
+  color:#8a8d94;font:inherit;font-size:10.5px;font-weight:700;letter-spacing:-.2px;cursor:pointer;outline:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s;}
+#rl-cpanel .rl-tab:hover{color:#54565c;}
+#rl-cpanel .rl-tab.active{color:#d4141f;background:none;border-color:transparent;}
+/* sliding glow+underline highlight (JS positions it); glow fades on sides + top */
+#rl-cpanel .rl-tab-hl{position:absolute;bottom:0;left:0;height:100%;width:0;pointer-events:none;z-index:0;
+  transform:translateX(0);transition:transform .24s cubic-bezier(.4,0,.2,1),width .24s cubic-bezier(.4,0,.2,1);}
+#rl-cpanel .rl-tab-hl::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(72% 118% at 50% 100%,rgba(212,20,31,.13),rgba(212,20,31,0) 70%);}
+#rl-cpanel .rl-tab-hl::after{content:"";position:absolute;left:2px;right:2px;bottom:0;height:3.5px;background:#d4141f;}
+#rl-cpanel .rl-tab{z-index:1;}
+#rl-cpanel .rl-group{display:none;margin:0;}
+#rl-cpanel .rl-group.active{display:block;}
+#rl-cpanel .rl-group-h{display:none;}
+#rl-cpanel .rl-group-sub{display:block;margin:14px 12px 2px;font-size:11.5px;line-height:1.45;color:#6a6d75;}
 `;
 
 export function initCpuPanel() {
@@ -179,7 +142,6 @@ export function initCpuPanel() {
   panel.innerHTML = `
     <div class="rl-body">
     <div class="hdr">
-      <button id="rl-cp-full" class="fullbtn" type="button" title="Fullscreen">${SVG_EXPAND}</button>
       <button id="rl-cp-unlock" class="lockbtn locked" type="button" title="Unlock to edit the CPU's values" aria-label="Unlock to edit">${LOCK_CLOSED}</button>
       <h1>CPU Control</h1>
       <div class="harena"><span class="rbadge">CPU</span><b id="rl-cp-char">-</b></div>
@@ -212,13 +174,8 @@ export function initCpuPanel() {
   document.body.appendChild(panel);
   const body = panel.querySelector('.rl-body');
   initCurves(body, 'red');   // Red's learning curves as individual cards
-  organizeGroups(
-    body,
-    M_GROUPS,
-    '#rl-cp-full',
-    "Quick view. <b>Expand ↗</b> for the CPU's full dashboard: all hyperparameters and learning curves.",
-  );
-  attachMasonry(panel, body);
+  organizeGroups(body, M_GROUPS);
+  buildTabs(panel, body, M_GROUPS);
 
   const $ = (id) => panel.querySelector(id);
 
@@ -254,24 +211,6 @@ export function initCpuPanel() {
     if (e.code !== 'KeyM' || /input|select|textarea/i.test(e.target.tagName)) return;
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
     panel.classList.toggle('open');
-    if (!panel.classList.contains('open')) panel.classList.remove('full'); // closing exits fullscreen
-  });
-
-  // ---- fullscreen dashboard ----
-  const fullBtn = $('#rl-cp-full');
-  fullBtn.addEventListener('click', () => {
-    const on = panel.classList.toggle('full');
-    fullBtn.innerHTML = on ? SVG_COLLAPSE : SVG_EXPAND;
-    fullBtn.title = on ? 'Exit fullscreen' : 'Fullscreen';
-    // going fullscreen takes over the screen -> close the other (Training) panel
-    if (on) document.getElementById('rl-panel')?.classList.remove('open', 'full');
-    // re-fit the charts + re-pack the masonry through the grow animation
-    [0, 120, 260, 400, 560].forEach((t) =>
-      setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-        panel._relayout?.();
-      }, t),
-    );
   });
 
   // ---- lock / unlock ----
