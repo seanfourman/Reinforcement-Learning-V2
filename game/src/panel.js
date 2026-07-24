@@ -175,8 +175,6 @@ const STYLE = `
 #rl-panel .transport button{flex:none;padding:0;display:flex;align-items:center;justify-content:center;}
 #rl-panel .tbtn{width:44px;height:44px;border-radius:50%;border:1.5px solid #d7dade;background:#fff;color:#3a3d44;}
 #rl-panel .tbtn:hover{background:#f0f1f3;border-color:#c4c8ce;}
-#rl-panel .tbtn:disabled{opacity:.35;cursor:default;}
-#rl-panel .tbtn:disabled:hover{background:#fff;border-color:#d7dade;}
 #rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#1f5fd0;color:#fff;}
 #rl-panel .tplay:hover{background:#1a52b8;}
 #rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
