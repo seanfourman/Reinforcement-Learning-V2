@@ -66,11 +66,6 @@ const STYLE = `
 .fb-side.red .fb-fill{background-image:linear-gradient(90deg,#bf1c1c,#ff7a6c,#ffd6cf,#ff7a6c,#bf1c1c);
   box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35);}
 @keyframes fb-shimmer{0%{background-position:0 0}100%{background-position:200% 0}}
-/* glow on its own UNMASKED full-bar layer so it fades in via opacity across the whole bar
-   instead of popping at 100% (the fill's tip mask would otherwise clip its outset glow). */
-.fb-glow{position:absolute;inset:0;border-radius:3px;opacity:0;pointer-events:none;}
-.fb-side.blue .fb-glow{box-shadow:0 0 14px 1px #57a0ff;}
-.fb-side.red .fb-glow{box-shadow:0 0 14px 1px #ff7060;}
 .fb-rate{position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:800;color:#fff;
   text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;}
 .fb-side.blue .fb-rate{right:6px;} .fb-side.red .fb-rate{left:6px;}
@@ -123,7 +118,7 @@ export function initHud() {
       <img class="fb-port" id="fb-port-${side}" alt="" />
       <div class="fb-col">
         <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">-</span></div>
-        <div class="fb-meter"><div class="fb-glow" id="fb-glow-${side}"></div><div class="fb-fill" id="fb-fill-${side}"></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
+        <div class="fb-meter"><div class="fb-fill" id="fb-fill-${side}"></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
         <div class="fb-dots" id="fb-dots-${side}"></div>
       </div>
     </div>`;
@@ -220,14 +215,10 @@ export function initHud() {
   // jumpy recent-rate data gets smoothed out.
   const fillBlue = $("#fb-fill-blue"),
     fillRed = $("#fb-fill-red");
-  const glowBlue = $("#fb-glow-blue"),
-    glowRed = $("#fb-glow-red");
   const rateBlue = $("#fb-rate-blue"),
     rateRed = $("#fb-rate-red");
   const barTarget = { blue: 0, red: 0 },
     barCur = { blue: 0, red: 0 };
-  // glow opacity ramps in as the bar fills (0 below ~45%, full at 100%) so it never pops
-  const glowAmt = (val) => Math.max(0, Math.min(1, (val - 45) / 55));
   // fade the charging tip into the track (mask gradient), but not once the bar is full.
   // the mask is relative to the fill width, so it auto-tracks the tip; only re-set on toggle.
   const setTipFade = (el, val, dir) => {
@@ -250,8 +241,6 @@ export function initHud() {
     barCur.red += (barTarget.red - barCur.red) * 0.08;
     fillBlue.style.width = `${barCur.blue.toFixed(2)}%`;
     fillRed.style.width = `${barCur.red.toFixed(2)}%`;
-    glowBlue.style.opacity = glowAmt(barCur.blue).toFixed(3);
-    glowRed.style.opacity = glowAmt(barCur.red).toFixed(3);
     rateBlue.textContent = `${Math.round(barCur.blue)}%`;
     rateRed.textContent = `${Math.round(barCur.red)}%`;
     setTipFade(fillBlue, barCur.blue, "right"); // blue charges right, fade the right tip
