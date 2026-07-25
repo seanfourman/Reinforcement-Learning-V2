@@ -104,7 +104,7 @@ const STYLE = `
   transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1),--hue .3s ease;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 30px rgba(0,0,0,.24);
-  border-right:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
+  overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
 #rl-panel.open{transform:translateX(0);}
 /* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
 #rl-panel::-webkit-scrollbar{width:0;height:0;display:none;}
@@ -126,16 +126,20 @@ const STYLE = `
 /* the model selector: two plain text columns (Your model | CPU model), NO card boxes.
    A solid colour block (blue for you, red for CPU) sits behind the ACTIVE column;
    switching slides that block to the other side and recolours it (--hue). */
-#rl-panel .hdr .mselect{position:relative;display:flex;gap:0;margin-top:12px;margin-bottom:-14px;isolation:isolate;}
-/* the solid colour block: square, full-bleed. left:-16px cancels the .hdr side padding to
-   reach the panel edges; the mselect's -14px margin-bottom drops it to the header's bottom
-   line; width 50%+16px keeps each half bleeding to its OUTER edge, meeting flush at centre. */
-#rl-panel .hdr .msel-wash{position:absolute;z-index:0;top:0;bottom:0;left:-16px;width:calc(50% + 16px);pointer-events:none;
+/* mselect spans the FULL panel width: -16px side margins cancel the .hdr padding, so each
+   half of the block reaches a panel edge on its own (no reliance on bleeding through padding);
+   -14px margin-bottom drops it to the header's bottom line. */
+#rl-panel .hdr .mselect{position:relative;display:flex;gap:0;margin:12px -16px -14px;isolation:isolate;}
+/* the solid colour block: square. Positioned by left/right INSETS (not width+transform) so
+   the reaching edge is pinned straight to the panel edge (right:-2px / left:-2px overshoot,
+   clipped by #rl-panel's overflow-x:hidden) with no transform sub-pixel rounding. The inner
+   edge sits on centre; animating left+right keeps a constant width, so it still slides. */
+#rl-panel .hdr .msel-wash{position:absolute;z-index:0;top:0;bottom:0;left:-2px;right:50%;pointer-events:none;
   background:var(--hue);border-radius:0;opacity:.82;
-  transform:translateX(0);transition:transform .34s cubic-bezier(.4,.75,.2,1);}
-#rl-panel[data-model="cpu"] .hdr .msel-wash{transform:translateX(100%);}
+  transition:left .34s cubic-bezier(.4,.75,.2,1),right .34s cubic-bezier(.4,.75,.2,1);}
+#rl-panel[data-model="cpu"] .hdr .msel-wash{left:50%;right:-2px;}
 #rl-panel .hdr .msel{flex:1;min-width:0;text-align:left;border:0;border-radius:0;background:transparent;
-  position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:13px 14px;cursor:pointer;transition:opacity .2s;}
+  position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:13px 16px;cursor:pointer;transition:opacity .2s;}
 #rl-panel .hdr .msel.active{background:transparent;color:inherit;border-color:transparent;} /* neutralise the global button.active dark fill/white text */
 #rl-panel .hdr .msel:not(.active){opacity:.45;}
 #rl-panel .hdr .msel:not(.active):hover{opacity:.75;}
@@ -241,8 +245,8 @@ const STYLE = `
   transition:opacity .26s ease,transform .4s cubic-bezier(.34,1.42,.5,1),background .12s,color .12s,border-color .12s;}
 #rl-panel .lockbtn.show{opacity:1;transform:translateX(0) rotate(0);pointer-events:auto;}
 #rl-panel .lockbtn:hover{background:#f0f1f3;color:#54565c;border-color:#c4c8ce;}
-#rl-panel .lockbtn.locked{background:#d4141f;border-color:#b8101a;color:#fff;}
-#rl-panel .lockbtn.locked:hover{background:#b8101a;color:#fff;}
+#rl-panel .lockbtn.locked{background:#dc3e47;border-color:#dc3e47;color:#fff;} /* same red as the CPU model block: #d4141f at 82% over white */
+#rl-panel .lockbtn.locked:hover{background:#d4141f;border-color:#d4141f;color:#fff;}
 #rl-panel .lockbtn svg{width:18px;height:18px;display:block;}
 /* locked learning sliders (CPU + locked) read grayed out; black shared sliders stay open */
 #rl-panel .ctl.learn{transition:opacity .15s;}
