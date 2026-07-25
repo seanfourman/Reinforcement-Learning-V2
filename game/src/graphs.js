@@ -1114,7 +1114,7 @@ export function initReward(parent) {
     <section id="rl-reward" hidden>
       <h2 style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">Reward decomposition<span id="rl-reward-avg" style="flex:none;font-weight:700;font-size:9.5px;letter-spacing:.2px;text-transform:none;color:#a2a5ac;"></span></h2>
       <div id="rl-reward-body"></div>
-      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective. Other = the per-step time cost and misc bonuses.</p>
+      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective.<br>Other = the per-step time cost and misc bonuses.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-reward");

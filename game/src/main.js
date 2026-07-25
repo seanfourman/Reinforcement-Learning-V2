@@ -782,6 +782,10 @@ function startFromMenu() {
   return new Promise((resolve) => {
     menuIdle = false; // leaving the menu: polling may build the world again
     control({ cmd: "cpuTier", value: getCpuTier() }); // Red's strength = chosen CPU character's tier
+    // starting from the menu = always resume training. The server keeps _paused across
+    // page reloads, so a stale pause from a previous session could leave the board frozen
+    // while the Playback UI (which resets to "playing") shows play - clear it here.
+    control({ cmd: "play" });
     // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
     let walkersReady = false;
     loadBoardWalkers()
