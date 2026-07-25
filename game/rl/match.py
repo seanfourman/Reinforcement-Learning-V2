@@ -833,33 +833,75 @@ class Match:
             env = self.env
             arena = env.objective == "arena"
             meta = self._matchup()
+            slip = float(getattr(getattr(env, "world", None), "slip_prob", 0.0) or 0.0)
             if not arena:
                 cross = env.objective == "cross"
-                state_desc = "cell x own-key(2) x gold-loc(5) x opp-region(3) x opp-adjacent(2) x trap(2)"
-                state_size = getattr(env, "state_space_size", None)
                 actions = ["North", "South", "West", "East"]
                 if cross:
+                    state_desc = "your tile only: the (row, column) cell index"
+                    state_size = getattr(env, "n_cells", None)
+                    observation = ("Each model sees ONLY its own tile. It learns as a single-agent "
+                                   "navigator: the map is shared, but neither model perceives the other.")
+                    sees_opp = False
+                    opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
+                                "invisible to the agent.")
+                    dynamics = (("Moves are deterministic. " if slip <= 0 else
+                                 "Moves are deterministic on normal tiles; on a slippery tile a move "
+                                 "slips to a perpendicular direction with probability %s. " % slip) +
+                                "Walls and the map edge block movement (you stay put).")
                     rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
                                ["Fall in a manhole", -0.5], ["Shaping weight", 0.02]]
                     win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
                 else:
+                    state_desc = ("cell x hold-key(2) x gold-location(5) x opponent-region(3) "
+                                  "x opponent-adjacent(2) x trap-armed(2)")
+                    state_size = getattr(env, "state_space_size", None)
+                    observation = ("Its own cell, whether it holds its key, where the gold is (5 cases), "
+                                   "which third of the map the opponent is in, whether the opponent is "
+                                   "adjacent (<=1 tile), and whether the snare trap is armed.")
+                    sees_opp = True
+                    opp_info = ("Coarse only: the opponent's REGION (which third of the map) and whether "
+                                "it is within 1 tile. Never the opponent's exact position.")
+                    dynamics = ("Moves are deterministic on normal tiles" +
+                                (", slipping to a perpendicular direction with probability %s on slippery "
+                                 "tiles" % slip if slip > 0 else "") +
+                                ". Walls block; a coloured door opens only for its owner, and only while "
+                                "that model is carrying its key.")
                     rewards = [["Step", -0.01], ["Reach your key", 0.10], ["Grab the gold", 0.30],
                                ["Win (escape)", 1.0], ["Lose", -1.0], ["Snared by a trap", -0.05],
                                ["Your trap caught the rival", 0.05], ["Shaping weight", 0.02]]
                     win = "Get your key, take the gold, reach an escape tile. First one out wins."
             else:
                 seq = type(env).__name__ == "SequentialArena"
-                state_desc = ("continuous 9-vector: position, velocity, current-target offset, leg progress"
-                              if seq else "continuous 6-vector: position, velocity, goal offset (normalized)")
-                state_size = None
                 actions = ["8 compass thrusts + coast (9)"]
-                rewards = [["Step", -0.006], ["Wall hit", -0.02]]
+                state_size = None
+                sees_opp = False
                 if seq:
-                    rewards += [["Tornado hit", -0.06], ["Quicksand step", -0.01], ["Checkpoint", 0.40]]
-                rewards += [["Win (reach goal)", 1.0], ["Lose", -1.0], ["Shaping weight", 0.05]]
-                win = ("Clear every checkpoint in order; first to finish the rally wins."
-                       if seq else "First to reach the goal region wins; a tie is a draw.")
-            g = self.gamma
+                    state_desc = ("continuous 9-vector: position, velocity, current-checkpoint offset, "
+                                  "leg progress, nearest-tornado offset")
+                    observation = ("Its own position and velocity, the vector to its CURRENT checkpoint, "
+                                   "how far along the rally it is, and the vector to the nearest tornado "
+                                   "- all normalized to the arena.")
+                    opp_info = "Nothing. It perceives the hazards (tornados) but not the rival."
+                    dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
+                                "bounce it, tornados shove it, quicksand slows it.")
+                    rewards = [["Step", -0.006], ["Wall hit", -0.02], ["Tornado hit", -0.06],
+                               ["Quicksand step", -0.01], ["Checkpoint", 0.40],
+                               ["Win (reach goal)", 1.0], ["Lose", -1.0], ["Shaping weight", 0.05]]
+                    win = "Clear every checkpoint in order; first to finish the rally wins."
+                else:
+                    state_desc = "continuous 6-vector: position, velocity, goal offset (all normalized)"
+                    observation = ("Its own position and velocity, and the vector to the goal - all "
+                                   "normalized to the arena size.")
+                    opp_info = ("Nothing. Each model flies its own copy of the physics; the opponent "
+                                "is not part of the observation.")
+                    dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
+                                "bounce it back.")
+                    rewards = [["Step", -0.006], ["Wall hit", -0.02], ["Win (reach goal)", 1.0],
+                               ["Lose", -1.0], ["Shaping weight", 0.05]]
+                    win = "First to reach the goal region wins; a tie is a draw."
+            g, gr = self.gamma, self.red_gamma
+            horizon = lambda x: (round(1.0 / (1.0 - x), 1) if x < 1 else None)
             return {
                 "round": self.round_id, "title": meta["title"], "theme": meta["theme"],
                 "objective": env.objective,
@@ -867,11 +909,14 @@ class Match:
                 "matchup": meta["matchup"], "labelRed": meta["labelRed"], "labelBlue": meta["labelBlue"],
                 "family": self._family(),
                 "stateDesc": state_desc, "stateSize": state_size,
+                "observation": observation, "seesOpponent": sees_opp, "opponentInfo": opp_info,
+                "dynamics": dynamics,
                 "actions": actions, "nActions": env.n_actions,
                 "maxSteps": env.max_steps,
-                "slipProb": getattr(getattr(env, "world", None), "slip_prob", 0.0),
-                "gammaRed": round(self.red_gamma, 3), "gammaBlue": round(g, 3),
-                "horizon": round(1.0 / (1.0 - g), 1) if g < 1 else None,
+                "slipProb": slip if not arena else 0.0,
+                "gammaRed": round(gr, 3), "gammaBlue": round(g, 3),
+                "horizonBlue": horizon(g), "horizonRed": horizon(gr),
+                "horizon": horizon(g),
                 "winCondition": win,
                 "rewards": rewards,
             }

@@ -77,7 +77,7 @@ export const GLOBAL_PARAMS = [
   // --- algorithm internals ---
   { key: 'dpTheta', label: 'Convergence θ', min: 1, max: 9, step: 1, sect: 'algo', scope: 'dp', def: 1e-5,
     enc: (e) => Math.pow(10, -Math.round(e)), dec: (t) => Math.max(1, Math.min(9, Math.round(-Math.log10(t || 1e-5)))),
-    fmt: (e) => `1e-${Math.round(e)}` },
+    fmt: (e) => (10 ** -Math.round(e)).toFixed(Math.round(e)) },
   { key: 'dpMaxIters', label: 'Max sweeps / phase', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000, fmt: fLoc },
   { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
@@ -303,6 +303,10 @@ const STYLE = `
 /* briefing card + two-column (Red vs Blue) comparison tables */
 #rl-panel .brief-matchup{font-size:14.5px;font-weight:800;color:#1f1f21;margin:0 0 3px;letter-spacing:-.2px;}
 #rl-panel .brief-sub{font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;margin:15px 0 7px;}
+#rl-panel #rl-brief .stat b.rw-pos{color:#1f7a3d;}   /* positive rewards green */
+#rl-panel #rl-brief .stat b.rw-neg{color:#c0392b;}   /* penalties red */
+#rl-panel #rl-brief .note .opp-yes{color:#1f5fd0;font-weight:800;}
+#rl-panel #rl-brief .note .opp-no{color:#8a8d94;font-weight:800;}
 #rl-panel .cmp-head{display:flex;align-items:center;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#a2a5ac;padding:0 0 6px;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-head span{flex:1;}
 #rl-panel .cmp-head .cr,#rl-panel .cmp-head .cb{flex:none;width:100px;text-align:center;white-space:nowrap;}
@@ -551,14 +555,10 @@ export function initPanel() {
     </section>
     <section id="rl-sec-algo">
       <h2>Algorithm internals</h2>
-      <p class="cfgnote" style="margin-top:0;margin-bottom:12px;">Shared by both models. Each round shows only
-        its family: DP rounds expose convergence + sweeps; the neural rounds expose the replay / batch / target-net knobs.</p>
       ${algoParams.map(ctlHTML).join('')}
     </section>
     <section id="rl-sec-world">
       <h2>World &amp; dynamics</h2>
-      <p class="cfgnote" style="margin-top:0;margin-bottom:12px;">The environment itself: how slippery, how fast the
-        agents move, and how many hazards. Changing a hazard count or the seed rebuilds the arena and restarts the contest.</p>
       ${worldParams.map(ctlHTML).join('')}
     </section>
     <section id="rl-sec-training" class="qk">

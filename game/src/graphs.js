@@ -899,34 +899,67 @@ export function initBriefing(parent) {
   else parent.insertAdjacentHTML("beforeend", html);
   const body = parent.querySelector("#rl-brief-body");
   let lastRound = -1;
+  const horizon = (g) => (g != null && g < 1 ? (1 / (1 - g)).toFixed(1) : "∞");
+  // keep the live discount/horizon in sync with the training stream (params carry live γ)
+  function updateLive(gb, gr) {
+    const gEl = body.querySelector("#rl-brief-gamma");
+    const hEl = body.querySelector("#rl-brief-horizon");
+    if (gb == null) return;
+    if (gEl) gEl.textContent = `${(+gb).toFixed(2)}  /  ${(+gr).toFixed(2)}`;
+    if (hEl) hEl.textContent = `${horizon(gb)}  /  ${horizon(gr)} steps`;
+  }
   async function refresh() {
     try {
       const s = await (await fetch("/api/mdp", { cache: "no-store" })).json();
-      if (s.round === lastRound) return; // rebuild only when the round changes
+      if (s.round === lastRound) return updateLive(s.gammaBlue, s.gammaRed);
       lastRound = s.round;
       const rewards = (s.rewards || [])
         .map(
           ([k, v]) =>
-            `<div class="stat"><span>${k}</span><b>${v > 0 ? "+" : ""}${v}</b></div>`,
+            `<div class="stat"><span>${k}</span><b class="${v > 0 ? "rw-pos" : v < 0 ? "rw-neg" : ""}">${v > 0 ? "+" : ""}${v}</b></div>`,
         )
         .join("");
+      const opp = s.seesOpponent
+        ? `<b class="opp-yes">Yes</b> - ${s.opponentInfo}`
+        : `<b class="opp-no">No</b> - ${s.opponentInfo}`;
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
-        `<div class="stat"><span>State space</span><b>${s.stateSize ? s.stateSize.toLocaleString() : "continuous"}</b></div>` +
-        `<p class="note"><b>S:</b> ${s.stateDesc}</p>` +
+
+        `<h3 class="brief-sub">State &amp; observation</h3>` +
+        `<div class="stat"><span>State space</span><b>${s.stateSize ? s.stateSize.toLocaleString() + " states" : "continuous"}</b></div>` +
+        `<p class="note"><b>State (S):</b> ${s.stateDesc}</p>` +
+        `<p class="note"><b>Each model observes:</b> ${s.observation}</p>` +
+        `<p class="note"><b>Sees the opponent?</b> ${opp}</p>` +
+
+        `<h3 class="brief-sub">Actions</h3>` +
         `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
-        `<div class="stat"><span>Discount γ - B / R</span><b>${s.gammaBlue} / ${s.gammaRed}</b></div>` +
-        `<div class="stat"><span>Effective horizon</span><b>${s.horizon || "∞"} steps</b></div>` +
+
+        `<h3 class="brief-sub">Transition dynamics</h3>` +
+        `<p class="note">${s.dynamics}</p>` +
         (s.slipProb
           ? `<div class="stat"><span>Slip probability</span><b>${s.slipProb}</b></div>`
           : "") +
         `<div class="stat"><span>Max steps / episode</span><b>${s.maxSteps}</b></div>` +
-        `<h3 class="brief-sub">Reward structure</h3>${rewards}`;
+
+        `<h3 class="brief-sub">Discount &amp; horizon</h3>` +
+        `<div class="stat"><span>Discount γ - Blue / Red</span><b id="rl-brief-gamma">${(+s.gammaBlue).toFixed(2)}  /  ${(+s.gammaRed).toFixed(2)}</b></div>` +
+        `<div class="stat"><span>Effective horizon - B / R</span><b id="rl-brief-horizon">${horizon(s.gammaBlue)}  /  ${horizon(s.gammaRed)} steps</b></div>` +
+        `<p class="note">γ sets how much a future reward is worth versus an immediate one. The effective horizon &asymp; 1/(1-γ) is roughly how many steps ahead still sway a decision - a higher γ makes the agent more far-sighted.</p>` +
+
+        `<h3 class="brief-sub">Reward structure</h3>${rewards}` +
+        `<p class="note"><b>Shaping</b> is a small potential-based bonus for getting closer to the goal each step. It speeds up learning without changing who actually wins.</p>`;
     } catch (e) {
       /* warming up */
     }
   }
+  window.addEventListener("rl-snapshot", (e) => {
+    const st = e.detail && e.detail.stats;
+    if (!st) return;
+    const gb = st.params && st.params.gamma,
+      gr = st.redParams && st.redParams.gamma;
+    if (gb != null) updateLive(gb, gr == null ? gb : gr);
+  });
   setInterval(refresh, 2000);
   refresh();
 }
