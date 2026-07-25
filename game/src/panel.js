@@ -117,10 +117,13 @@ const STYLE = `
 #rl-panel .hdr .harena{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;
   padding-right:0;transition:padding-right .3s ease;}
 #rl-panel[data-model="cpu"] .hdr .harena{padding-right:42px;}
-#rl-panel .hdr .rbadge{flex:none;font-size:11px;font-weight:800;color:#fff;background:#1f1f21;border-radius:7px;
-  padding:4px 10px;font-variant-numeric:tabular-nums;letter-spacing:.3px;}
-#rl-panel .hdr .harena b{font-size:23px;font-weight:800;letter-spacing:-.5px;color:#1f1f21;line-height:1.1;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* 5 round-result dots (right of the arena name): the colour of who won each round */
+#rl-panel .hdr .rdots{flex:none;display:flex;gap:6px;align-items:center;}
+#rl-panel .hdr .rdot{width:12px;height:12px;border-radius:50%;background:#d7dade;}   /* not played yet = grey */
+#rl-panel .hdr .rdot.b{background:#1f5fd0;} #rl-panel .hdr .rdot.r{background:#e60012;} #rl-panel .hdr .rdot.d{background:#8b5cf6;}
+#rl-panel .hdr .rdot.cur{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #c4c8ce;}   /* the round in progress */
+#rl-panel .hdr .harena b{font-size:23px;font-weight:800;letter-spacing:-.5px;color:#1f1f21;line-height:1.3;
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-bottom:1px;}
 /* the model being trained + who it faces */
 #rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
@@ -526,7 +529,7 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
-      <div class="harena"><b id="rl-arena">-</b><span class="rbadge" id="rl-round">-</span></div>
+      <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
       <div class="mselect">
         <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your">
@@ -919,7 +922,18 @@ export function initPanel() {
       lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
       reShowRelevant();
     }
-    $('#rl-round').textContent = `R ${ri + 1}/${r.total || 1}`;
+    // 5 round-result dots: blue / red / draw(purple) for played rounds, grey otherwise,
+    // with a ring on the round currently in progress.
+    const roundResults = s.roundResults || [];
+    const roundTotal = r.total || roundResults.length || 5;
+    let dotsHTML = '';
+    for (let i = 0; i < roundTotal; i++) {
+      const res = roundResults[i];
+      const cls = res === 'blue' ? ' b' : res === 'red' ? ' r' : res === 'draw' ? ' d' : '';
+      dotsHTML += `<i class="rdot${cls}${i === ri ? ' cur' : ''}"></i>`;
+    }
+    const roundEl = $('#rl-round');
+    if (roundEl.innerHTML !== dotsHTML) roundEl.innerHTML = dotsHTML;
     $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0

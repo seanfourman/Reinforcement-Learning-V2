@@ -111,6 +111,7 @@ class Match:
         self.world_version = 1
         self.score = {"red": 0, "blue": 0}     # cumulative tournament round-wins
         self.awarded_rounds = set()            # round ids already scored this tournament
+        self.round_results = {}                # round INDEX -> "red"/"blue"/"draw" (header dots)
         self.award_serial = 0                  # increments when the frontend should react
         self.last_award = None                 # latest official/auto award event
         self.finish_waiting = False            # official finish pressed; wait for next winner
@@ -694,6 +695,7 @@ class Match:
             if not keep_score:
                 self.score = {"red": 0, "blue": 0}
                 self.awarded_rounds.clear()
+                self.round_results = {}
                 self.last_award = None
             self.finish_waiting = False
             self.finish_event = None
@@ -771,6 +773,8 @@ class Match:
         if winner and not already:
             self.score[winner] += 1
             self.awarded_rounds.add(self.round_id)
+        if not already:  # record who took THIS round (draw included) for the header dots
+            self.round_results[meta.get("index", 0)] = winner if winner in ("red", "blue") else "draw"
 
         # Auto-award is a compatibility fallback for the Next button. If the
         # round was already officially awarded, keep the previous event intact so
@@ -927,6 +931,7 @@ class Match:
             return {
                 "round": meta,
                 "score": dict(self.score),
+                "roundResults": [self.round_results.get(i) for i in range(len(worlds.ROUNDS))],
                 "roundAwarded": self.round_id in self.awarded_rounds,
                 "award": dict(self.last_award) if self.last_award else None,
                 "finishPending": bool(self.finish_waiting),

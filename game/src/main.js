@@ -382,11 +382,9 @@ function maybeStartFinishCeremony(stats) {
   const finish = stats?.finishEvent;
   if (!finish || finish.serial === seenFinishSerial) return;
   seenFinishSerial = finish.serial;
-  const finalRound = (finish.roundIndex ?? 0) + 1 >= (finish.roundTotal ?? 1);
   closeTrainingPanels();
   if (finish.winner) awardCeremony.start(finish, stats);
-  else if (finalRound) awardCeremony.showFinal(finish, stats);
-  else awardCeremony.showDraw(finish, stats);
+  else awardCeremony.showDraw(finish, stats); // draw handles its own final-round case
 }
 
 // absorb whatever award/finish event the server is still broadcasting the FIRST
@@ -439,6 +437,16 @@ async function returnToStartMenu() {
       menuIdle = true;
       await control({ cmd: "resetTournament" });
       detachActiveWorld();
+      // a round's HDRI environment/background keeps lighting the cabin after we leave
+      // ("glowing like crazy"): the menu dims the scene LIGHTS but never clears the IBL.
+      // Reset the scene env back to the menu's plain gradient sky.
+      scene.environment = null;
+      scene.environmentIntensity = 1;
+      if (skyTex) {
+        scene.background = skyTex;
+        scene.backgroundBlurriness = 0;
+        scene.backgroundIntensity = 1;
+      }
       worldVersion = -1;
       lastWorldJson = null;
       latestFrame = null;

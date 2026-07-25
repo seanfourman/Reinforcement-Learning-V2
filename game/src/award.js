@@ -23,13 +23,12 @@ const STYLE = `
   16%{opacity:1;}
   100%{transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.9);opacity:0;}
 }
-#rl-award .banner{align-self:start;margin-top:13vh;text-align:center;transform:translateY(-24px) scale(.9);
-  opacity:0;filter:drop-shadow(0 8px 0 rgba(0,0,0,.42));}
+#rl-award .banner{align-self:center;margin-top:0;text-align:center;transform:translateY(-24px) scale(.9);opacity:0;}
 #rl-award.show .banner{animation:rl-award-pop .52s cubic-bezier(.16,1.35,.25,1) .18s both;}
 @keyframes rl-award-pop{to{transform:translateY(0) scale(1);opacity:1;}}
 #rl-award .winner{font-family:"SuperMario256","Arial Black",sans-serif;font-size:clamp(46px,7vw,96px);
-  line-height:.92;letter-spacing:1px;color:#ffd43d;-webkit-text-stroke:6px #000;paint-order:stroke fill;
-  text-shadow:0 5px 0 rgba(0,0,0,.55);}
+  line-height:.92;letter-spacing:1px;color:#ffd43d;-webkit-text-stroke:7px #000;paint-order:stroke fill;
+  text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000,5px 5px 0 #000,6px 6px 0 #000,7px 7px 0 #000,8px 8px 0 #000;}
 #rl-award.blue .winner{color:#67a9ff;}
 #rl-award.red .winner{color:#ff7468;}
 #rl-award.draw .winner{color:#b79cff;}
@@ -37,12 +36,10 @@ const STYLE = `
 #rl-award.draw{background:rgba(0,0,0,.4);}
 #rl-award.draw .banner{align-self:center;margin-top:0;}
 #rl-award.draw .point{display:none;}
-#rl-award .sub{display:inline-block;margin-top:10px;padding:7px 18px;border:3px solid #000;border-radius:999px;
-  background:#fff;color:#1f1f21;font-size:16px;font-weight:900;box-shadow:0 4px 0 #000;}
-#rl-award .point{position:absolute;left:50%;bottom:13vh;transform:translateX(-50%);
-  padding:8px 18px;border-radius:999px;border:3px solid #000;background:#ffd443;color:#1b1607;
-  font-size:18px;font-weight:1000;letter-spacing:.4px;box-shadow:0 4px 0 #000;
-  opacity:0;}
+#rl-award .sub{display:block;margin-top:12px;position:relative;left:20px;color:#fff;font-family:"SuperMario256","Arial Black",sans-serif;
+  font-size:20px;letter-spacing:.5px;-webkit-text-stroke:4px #000;paint-order:stroke fill;
+  text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000;}
+#rl-award .point{display:none;}   /* the +1 POINT pill is gone - just the middle text now */
 #rl-award.show .point{animation:rl-point-in .42s cubic-bezier(.16,1.35,.25,1) .72s both;}
 @keyframes rl-point-in{to{opacity:1;transform:translateX(-50%) translateY(-10px);}}
 #rl-award.stage{background:
@@ -126,7 +123,7 @@ const ease = (t) => {
 };
 
 function sideLabel(side) {
-  return side === "blue" ? "Blue" : "Red";
+  return side === "blue" ? "Player" : "CPU";
 }
 
 function modelLabel(side, award, stats) {
@@ -213,21 +210,26 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     state = null;
   }
 
-  function showDraw(award, stats) {
-    // a genuine tie: no zoom, no celebrate, NO stage ring/spotlight - just a centred
-    // DRAW card over a plain dim, then advance.
+  // ONE simple finish banner for both a winner and a draw: NO camera zoom, NO celebrate,
+  // NO point pill - just the centred-ish text, held a moment, then advance / final standings.
+  function finishBanner(cls, main, sub, finalRound, award, stats) {
     clearTimeout(drawTimer);
-    el.classList.remove("show", "blue", "red", "stage", "close");
-    el.classList.add("draw");
-    el.querySelector(".winner").textContent = "DRAW";
-    el.querySelector(".sub").textContent = "No clear winner this round";
-    el.querySelector(".point").textContent = "";
+    el.classList.remove("show", "blue", "red", "stage", "close", "draw");
+    el.classList.add(cls);
+    el.querySelector(".winner").textContent = main;
+    el.querySelector(".sub").textContent = sub;
     void el.offsetWidth;
     el.classList.add("show");
     drawTimer = setTimeout(() => {
-      el.classList.remove("show", "draw");
-      onDone?.({ draw: true, award, stats });
-    }, 2600);
+      el.classList.remove("show", cls);
+      if (finalRound) showFinal(award, stats);
+      else onDone?.({ award, stats });
+    }, 4800);
+  }
+
+  function showDraw(award, stats) {
+    const finalRound = (award.roundIndex ?? 0) + 1 >= (award.roundTotal ?? 1);
+    finishBanner("draw", "DRAW", "No clear winner this round", finalRound, award, stats);
   }
 
   function setStageSpot(side) {
@@ -261,8 +263,8 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     finalEl.querySelector(".f-title").textContent = title;
     finalEl.querySelector(".f-sub").textContent = sub;
     const rows = [
-      { side: "blue", label: "Blue Model", points: blue },
-      { side: "red", label: "Red Model", points: red },
+      { side: "blue", label: "Player", points: blue },
+      { side: "red", label: "CPU", points: red },
     ].sort((a, b) => b.points - a.points);
     finalEl.querySelector(".f-stand").innerHTML = rows
       .map(
@@ -280,40 +282,10 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   function start(award, stats) {
     const side = award?.winner;
     if (side !== "red" && side !== "blue") return false;
-    actors.snapFrame?.(award.frame);
+    // no zoom, no celebrate, no point pill - just finish the round and announce it.
     const finalRound = (award.roundIndex ?? 0) + 1 >= (award.roundTotal ?? 1);
-
-    actors.getSideFocus(side, tmpFocus);
-    actors.getSidePosition(side, tmpActor);
-    const dir = camera.position.clone().sub(tmpFocus);
-    dir.y = 0;
-    if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
-    dir.normalize();
-
-    tmpClose.copy(tmpFocus).addScaledVector(dir, 4.25);
-    tmpClose.y = tmpFocus.y + 1.05;
-    const faceYaw = Math.atan2(tmpClose.x - tmpActor.x, tmpClose.z - tmpActor.z);
-    actors.celebrate(side, { duration: finalRound ? FINAL_DURATION : STAGE_DURATION + 1600, faceYaw });
-
-    el.classList.remove("show", "blue", "red", "stage", "close");
-    el.classList.add(side, "close");
-    el.querySelector(".winner").textContent = "WINNER!";
-    el.querySelector(".sub").textContent =
-      `${sideLabel(side)} model - ${modelLabel(side, award, stats)}`;
-    el.querySelector(".point").textContent = finalRound ? "+1 FINAL POINT" : "+1 STAGE POINT";
-    void el.offsetWidth;
-    el.classList.add("show");
-
-    state = {
-      side,
-      award,
-      stats,
-      finalRound,
-      dir,
-      startTime: performance.now(),
-      startPos: camera.position.clone(),
-      advanceStarted: false,
-    };
+    finishBanner(side, "WINNER!",
+      `${sideLabel(side)} - ${modelLabel(side, award, stats)}`, finalRound, award, stats);
     return true;
   }
 
