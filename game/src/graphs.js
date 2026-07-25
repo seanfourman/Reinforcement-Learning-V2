@@ -719,7 +719,6 @@ function dualCharts() {
       max: 1,
       showValues: true,
       fmt: (v) => v.toFixed(2),
-      note: "ε is the exploration rate: how often the agent makes a random move instead of its best one. It starts high (explore a lot) and decays toward 0 (mostly use what it learned). The value at each line's end is that side's current ε.",
     },
     {
       id: "d-len",
@@ -1170,8 +1169,7 @@ export function initProbe(parent) {
     `
     <section id="rl-probe" hidden>
       <h2>Start-state value</h2>
-      <div class="chart"><div class="ct"><h3>V(spawn) over episodes</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-probe"></canvas></div>
-      <p class="hint">The agent's own estimate of how good the START tile is - the total future reward it expects from spawn. As it learns a reliable path to the goal, this climbs and then levels off.</p>
+      <div class="chart"><div class="ct"><h3>Value of start tile over episodes</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-probe"></canvas></div>
     </section>`,
   );
   const sec = parent.querySelector("#rl-probe");
