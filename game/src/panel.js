@@ -312,10 +312,18 @@ const STYLE = `
 #rl-panel #rl-brief .so-row:last-child{border-bottom:0;padding-bottom:1px;}
 #rl-panel #rl-brief .so-k{display:block;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;margin-bottom:4px;}
 #rl-panel #rl-brief .so-v{display:block;font-size:11.5px;color:#4b4d53;line-height:1.5;}
-#rl-panel #rl-brief .so-badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
-  padding:2px 8px;border-radius:99px;margin-right:7px;vertical-align:1px;}
-#rl-panel #rl-brief .so-badge.yes{background:#e7f0ff;color:#1f5fd0;}
-#rl-panel #rl-brief .so-badge.no{background:#f3eaea;color:#b0555a;}
+/* the observation vector, shown as a code-style tuple */
+#rl-panel #rl-brief .so-tuple{display:block;margin-top:7px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11px;font-weight:700;color:#1f5fd0;background:#eef2fa;border:1px solid #e0e6f2;border-radius:8px;
+  padding:7px 9px;letter-spacing:.2px;line-height:1.5;}
+/* opponent visibility: a square two-line badge with the explanation to its right */
+#rl-panel #rl-brief .so-opp{display:flex;align-items:center;gap:12px;margin-top:3px;}
+#rl-panel #rl-brief .so-sq{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  width:68px;height:68px;border-radius:13px;text-align:center;}
+#rl-panel #rl-brief .so-sq b{display:block;font-size:11px;font-weight:800;letter-spacing:.7px;line-height:1.5;}
+#rl-panel #rl-brief .so-sq.no{background:#f3eaea;color:#b0555a;}
+#rl-panel #rl-brief .so-sq.yes{background:#e7f0ff;color:#1f5fd0;}
+#rl-panel #rl-brief .so-opp-txt{font-size:11.5px;color:#4b4d53;line-height:1.5;}
 #rl-panel .cmp-head{display:flex;align-items:center;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#a2a5ac;padding:0 0 6px;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-head span{flex:1;}
 #rl-panel .cmp-head .cr,#rl-panel .cmp-head .cb{flex:none;width:100px;text-align:center;white-space:nowrap;}

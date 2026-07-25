@@ -928,9 +928,17 @@ export function initBriefing(parent) {
         heroBig = m ? m[1] + "-D" : "cont.";
         heroUnit = "continuous state";
       }
-      const oppBadge = s.seesOpponent
-        ? `<span class="so-badge yes">Sees rival</span>`
-        : `<span class="so-badge no">Rival hidden</span>`;
+      const seq = (s.stateDesc || "").includes("9-vector");
+      const obsTuple =
+        s.objective === "cross"
+          ? "(cell)"
+          : s.objective === "race"
+            ? "(cell, key, gold, opp-region, adjacent, trap)"
+            : seq
+              ? "(x, z, vx, vz, →cp x, →cp y, leg, →storm x, →storm y)"
+              : "(x, z, vx, vz, →goal x, →goal y)";
+      const sqCls = s.seesOpponent ? "yes" : "no";
+      const sqLabel = s.seesOpponent ? "VISIBLE" : "HIDDEN";
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
@@ -939,8 +947,11 @@ export function initBriefing(parent) {
         `<div class="so-card">` +
         `<div class="so-hero"><div class="so-big">${heroBig}</div><div class="so-unit">${heroUnit}</div></div>` +
         `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>` +
-        `<div class="so-row"><span class="so-k">Each model observes</span><span class="so-v">${s.observation}</span></div>` +
-        `<div class="so-row"><span class="so-k">Sees the opponent?</span><span class="so-v">${oppBadge}${s.opponentInfo}</span></div>` +
+        `<div class="so-row"><span class="so-k">Each model observes</span><span class="so-v">${s.observation}</span>` +
+        `<span class="so-tuple">${obsTuple}</span></div>` +
+        `<div class="so-row"><span class="so-k">Sees the opponent?</span>` +
+        `<div class="so-opp"><span class="so-sq ${sqCls}"><b>RIVAL</b><b>${sqLabel}</b></span>` +
+        `<span class="so-opp-txt">${s.opponentInfo}</span></div></div>` +
         `</div>` +
 
         `<h3 class="brief-sub">Actions</h3>` +
