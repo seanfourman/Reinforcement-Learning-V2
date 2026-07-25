@@ -9,10 +9,10 @@ const FINAL_POSE_DURATION = 10 * 60 * 1000;
 
 const STYLE = `
 @font-face{font-family:"SuperMario256";src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
-/* z 61 = ABOVE the round-transition iris (z 60) so the text stays visible OVER the
-   closing black circle; main.js hides it (awardCeremony.stop) at full black. The dim
-   backdrop fades in with the element's opacity. */
-#rl-award{position:fixed;inset:0;z-index:61;pointer-events:none;display:grid;place-items:center;
+/* z 24 = BELOW the round-transition iris (z 60): the closing black circle SWALLOWS the
+   banner (its text sits dead-centre, the last thing the shrinking iris covers), and main.js
+   also hides it (awardCeremony.stop) at full black. The dim backdrop fades in. */
+#rl-award{position:fixed;inset:0;z-index:24;pointer-events:none;display:grid;place-items:center;
   background:rgba(0,0,0,.42);opacity:0;transition:opacity .35s ease;font-family:"Segoe UI",system-ui,sans-serif;}
 #rl-award.show{opacity:1;}
 #rl-award .burst{position:absolute;inset:0;overflow:hidden;}
@@ -26,9 +26,17 @@ const STYLE = `
   16%{opacity:1;}
   100%{transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.9);opacity:0;}
 }
-#rl-award .banner{align-self:center;margin-top:0;text-align:center;transform:translateY(-120px);opacity:0;}
-#rl-award.show .banner{animation:rl-award-drop .6s cubic-bezier(.2,1.12,.32,1) .05s both;}
-@keyframes rl-award-drop{0%{opacity:0;transform:translateY(-120px);}55%{opacity:1;}100%{opacity:1;transform:translateY(0);}}
+/* drops in from OFF-SCREEN above and bounces a couple of times (same feel as the menu's
+   rl-title-drop): starts a full viewport-half + its own height above, overshoots, settles. */
+#rl-award .banner{align-self:center;margin-top:0;text-align:center;transform:translateY(calc(-50vh - 100%));}
+#rl-award.show .banner{animation:rl-award-drop .9s .08s both;}
+@keyframes rl-award-drop{
+  0%{transform:translateY(calc(-50vh - 100%));animation-timing-function:cubic-bezier(.55,.02,.9,.26);}
+  44%{transform:translateY(0);animation-timing-function:ease-out;}
+  62%{transform:translateY(-42px);animation-timing-function:ease-in;}
+  78%{transform:translateY(0);animation-timing-function:ease-out;}
+  89%{transform:translateY(-18px);animation-timing-function:ease-in;}
+  100%{transform:translateY(0);}}
 #rl-award .winner{font-family:"SuperMario256","Arial Black",sans-serif;font-size:clamp(46px,7vw,96px);
   line-height:.92;letter-spacing:1px;color:#ffd43d;-webkit-text-stroke:7px #000;paint-order:stroke fill;
   text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000,5px 5px 0 #000,6px 6px 0 #000,7px 7px 0 #000,8px 8px 0 #000;}
@@ -36,7 +44,7 @@ const STYLE = `
 #rl-award.red .winner{color:#ff7468;}
 #rl-award.draw .winner{color:#b79cff;}
 /* draw uses the same dim backdrop + centred banner as a winner now (base rules) */
-#rl-award .sub{display:block;margin-top:12px;position:relative;left:20px;color:#fff;font-family:"SuperMario256","Arial Black",sans-serif;
+#rl-award .sub{display:block;margin-top:12px;color:#fff;font-family:"SuperMario256","Arial Black",sans-serif;
   font-size:20px;letter-spacing:.5px;-webkit-text-stroke:4px #000;paint-order:stroke fill;
   text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000;}
 #rl-award .point{display:none;}   /* the +1 POINT pill is gone - just the middle text now */
