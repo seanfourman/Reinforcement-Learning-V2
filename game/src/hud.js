@@ -95,7 +95,9 @@ const STYLE = `
    ESC/Back, with a lighter shadow */
 #rl-keys{position:fixed;left:0.8vw;bottom:1.5vh;z-index:7;display:flex;flex-direction:row;align-items:center;
   gap:22px;color:#fff;pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;}
-#rl-keys .kh{display:flex;align-items:center;gap:9px;}
+#rl-keys .kh{display:flex;align-items:center;gap:9px;pointer-events:auto;cursor:pointer;}
+#rl-keys .kh:hover .key{background:#eef1f6;}
+#rl-keys .kh:active{transform:translateY(1px);}
 #rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
   font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
@@ -133,10 +135,19 @@ export function initHud() {
   const keys = document.createElement("div");
   keys.id = "rl-keys";
   keys.innerHTML =
-    `<div class="kh"><span class="key">R</span><span class="txt">Reset</span></div>` +
-    `<div class="kh"><span class="key">C</span><span class="txt">Controls</span></div>` +
-    `<div class="kh finish" id="rl-finish-key"><span class="key">T</span><span class="txt" id="rl-finish-txt">Finish stage</span></div>`;
+    `<div class="kh" data-act="controls"><span class="key">C</span><span class="txt">Controls</span></div>` +
+    `<div class="kh" data-act="reset"><span class="key">R</span><span class="txt">Reset</span></div>` +
+    `<div class="kh finish" id="rl-finish-key" data-act="terminate"><span class="key">T</span><span class="txt" id="rl-finish-txt">Terminate</span></div>`;
   document.body.appendChild(keys);
+  // the hints themselves are clickable (not only the keyboard keys) - same actions.
+  keys.addEventListener("click", (e) => {
+    const kh = e.target.closest(".kh");
+    if (!kh) return;
+    const act = kh.dataset.act;
+    if (act === "controls") window.RL?.panels?.toggle?.();
+    else if (act === "reset") window.RL?.control?.({ cmd: "reset" });
+    else if (act === "terminate") window.RL?.control?.({ cmd: "awardRound" });
+  });
 
   const $ = (id) => hud.querySelector(id);
   // crop each icon's transparent padding so the image box edge IS the character edge - then
@@ -275,17 +286,13 @@ export function initHud() {
     const finishKey = document.getElementById("rl-finish-key");
     const finishTxt = document.getElementById("rl-finish-txt");
     if (finishKey && finishTxt) {
-      const isFinal = (r.index ?? 0) + 1 >= total;
       const award = s.award && s.award.roundId === r.roundId ? s.award : null;
       finishKey.classList.remove("armed", "done", "blue", "red");
-      if (s.finishPending) {
-        finishKey.classList.add("armed");
-        finishTxt.textContent = "Finish armed";
-      } else if (s.roundAwarded && award?.winner) {
+      if (s.roundAwarded && award?.winner) {
         finishKey.classList.add("done", award.winner);
-        finishTxt.textContent = `${award.winner === "blue" ? "Blue" : "Red"} +1`;
+        finishTxt.textContent = `${award.winner === "blue" ? "Player" : "CPU"} +1`;
       } else {
-        finishTxt.textContent = isFinal ? "Finish tournament" : "Finish stage";
+        finishTxt.textContent = "Terminate";
       }
     }
   });
