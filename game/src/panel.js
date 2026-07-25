@@ -9,7 +9,6 @@
 // and listens for 'rl-snapshot' (live stats) and 'rl-qinspect' (clicked tile Q).
 
 import { initGraphs } from './graphs.js';
-import { initCpuPanel } from './cpupanel.js';
 
 // read-only display names for whichever algorithms the current round pits together
 export const NAMES = {
@@ -42,6 +41,7 @@ const SVG = {
 // slider fill colours: blue = tunes OUR model (Blue); gray = global / both models
 const C_OURS = '#1f5fd0';
 const C_GLOBAL = '#141518'; // black fill for the global / structural sliders (was gray)
+const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 'Master' };
 
 // tunable training hyperparameters - the panel writes these to the trainer live.
 // PARAMS = the per-side LEARNING knobs (both the N and the mirrored M panel use
@@ -98,9 +98,10 @@ export const GLOBAL_PARAMS = [
 
 
 const STYLE = `
-#rl-panel{position:fixed;top:0;left:0;height:100%;width:465px;z-index:62;
+@property --hue{syntax:'<color>';inherits:true;initial-value:#1f5fd0;}
+#rl-panel{position:fixed;top:0;left:0;height:100%;width:465px;z-index:62;--hue:#1f5fd0;
   transform:translateX(calc(-100% - 24px));
-  transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1);
+  transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1),--hue .3s ease;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 30px rgba(0,0,0,.24);
   border-right:1px solid #e0e2e6;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
@@ -138,13 +139,9 @@ const STYLE = `
 #rl-panel .hdr .msel.your.active .msel-n{color:#1f5fd0;}
 #rl-panel .hdr .msel.cpu.active{background:#fff;border-color:#d4141f;box-shadow:0 0 0 1px #d4141f,0 2px 12px rgba(212,20,31,.16);}
 #rl-panel .hdr .msel.cpu.active .msel-n{color:#d4141f;}
-/* model-specific sections swap with the selector; nothing else moves */
-#rl-panel[data-model="your"] [data-model="cpu"]{display:none;}
-#rl-panel[data-model="cpu"] [data-model="your"]{display:none;}
-/* quick fade of the tabs-down content while the model swaps (the tab bar stays) */
-#rl-panel .rl-group-cards{transition:opacity .16s ease;}
-#rl-panel.mswap .rl-group-cards{opacity:0;}
-/* on the CPU model the tab underline + gradient go red */
+/* the CPU model tints the learning sliders + the tab accent red (--hue transitions) */
+#rl-panel[data-model="cpu"]{--hue:#d4141f;}
+#rl-panel .plegend .ple-hue{background:var(--hue);}
 #rl-panel[data-model="cpu"] .rl-tab.active{color:#d4141f;}
 #rl-panel[data-model="cpu"] .rl-tab-hl::before{background:radial-gradient(72% 118% at 50% 100%,rgba(212,20,31,.13),rgba(212,20,31,0) 70%);}
 #rl-panel[data-model="cpu"] .rl-tab-hl::after{background:#d4141f;}
@@ -228,6 +225,22 @@ const STYLE = `
 #rl-panel button.primary{background:#1f5fd0;border-color:#1a52b8;color:#fff;}
 #rl-panel button.primary:hover{background:#1a52b8;}
 #rl-panel button.active{background:#1f1f21;border-color:#1f1f21;color:#fff;}
+/* the CPU lock: top-right of the header; swings in from the right on the CPU model */
+#rl-panel .lockbtn{position:absolute;top:13px;right:14px;z-index:6;width:34px;height:34px;padding:0;
+  display:grid;place-items:center;border:1px solid #d7dade;border-radius:50%;background:#fff;color:#8a8d94;cursor:pointer;
+  opacity:0;transform:translateX(64px) rotate(14deg);pointer-events:none;
+  transition:opacity .26s ease,transform .4s cubic-bezier(.34,1.42,.5,1),background .12s,color .12s,border-color .12s;}
+#rl-panel .lockbtn.show{opacity:1;transform:translateX(0) rotate(0);pointer-events:auto;}
+#rl-panel .lockbtn:hover{background:#f0f1f3;color:#54565c;border-color:#c4c8ce;}
+#rl-panel .lockbtn.locked{background:#d4141f;border-color:#b8101a;color:#fff;}
+#rl-panel .lockbtn.locked:hover{background:#b8101a;color:#fff;}
+#rl-panel .lockbtn svg{width:18px;height:18px;display:block;}
+/* locked learning sliders (CPU + locked) read grayed out; black shared sliders stay open */
+#rl-panel .ctl.learn{transition:opacity .15s;}
+#rl-panel .ctl.learn:has(input:disabled){opacity:.5;}
+#rl-panel input[type=range]:disabled{cursor:default;}
+#rl-panel input[type=range]:disabled::-webkit-slider-thumb{background:#eef0f3;cursor:default;}
+#rl-panel input[type=range]:disabled::-moz-range-thumb{background:#eef0f3;cursor:default;}
 /* media-player transport: prev round | play/pause | next round */
 #rl-panel .transport{display:flex;align-items:center;justify-content:center;gap:20px;margin-top:2px;}
 #rl-panel .transport button{flex:none;padding:0;display:flex;align-items:center;justify-content:center;}
@@ -372,7 +385,7 @@ export function organizeGroups(body, groups) {
 const N_GROUPS = [
   ['challenge', "What's the challenge?", ['rl-brief'],
     'The task both AIs are racing to solve, and how their two methods differ.', 'Challenge'],
-  ['tune', 'Tune your AI', ['rl-sec-hyper', 'rl-cp-hyper'],
+  ['tune', 'Tune your AI', ['rl-sec-hyper'],
     'Change how your AI learns. Effects show up live.', 'Tune'],
   ['advanced', 'World', ['rl-sec-algo', 'rl-sec-world'],
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
@@ -453,11 +466,15 @@ export function initPanel() {
   style.textContent = STYLE;
   document.head.appendChild(style);
 
-  const ctlHTML = (p) => `
-    <div class="ctl" data-scope="${p.scope}">
+  const ctlHTML = (p) => {
+    const learn = p.color === C_OURS;   // a per-model learning knob (tints blue <-> red)
+    const fill = learn ? 'var(--hue)' : (p.color || C_GLOBAL);
+    return `
+    <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
-      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${p.color || C_GLOBAL}">
+      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
     </div>`;
+  };
   const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
   const worldParams = GLOBAL_PARAMS.filter((p) => p.sect === 'world');
 
@@ -509,14 +526,10 @@ export function initPanel() {
     <section id="rl-sec-hyper" class="qk">
       <h2>Hyperparameters</h2>
       <div class="plegend">
-        <span><i style="background:#1f5fd0"></i>Your model (Blue)</span>
-        <span><i style="background:#8a8d94"></i>Both models</span>
+        <span><i class="ple-hue"></i><span id="rl-ple-model">Your model</span></span>
+        <span><i style="background:#141518"></i>Both models</span>
       </div>
       ${PARAMS.map(ctlHTML).join('')}
-      <p class="note fullonly">Blue sliders tune your model. Red (the CPU) trains at a strength set by the
-        chosen character's tier. Gray sliders are shared by both. Each round shows only the
-        controls its algorithm uses: DP rounds plan with the discount γ; the learning rounds
-        add the learning rate α and the ε exploration schedule.</p>
     </section>
     <section id="rl-sec-algo">
       <h2>Algorithm internals</h2>
@@ -560,12 +573,7 @@ export function initPanel() {
   const playback = body.querySelector('#rl-sec-playback');
   const lockBtn = body.querySelector('.lockbtn');
   const hdrEl = body.querySelector('.hdr');
-  initGraphs(body);                    // the player's graph sections
-  initCpuPanel(panel, body, lockBtn);  // the CPU's sections, tagged data-model="cpu"
-
-  // the model-specific PLAYER sections (tuning sliders + value map) are swapped OUT for
-  // the CPU's equivalents when the CPU model is selected; everything else is shared.
-  body.querySelector('#rl-sec-hyper')?.setAttribute('data-model', 'your');
+  initGraphs(body); // the player's graph sections
 
   // Playback pinned at the top (not a tab); fold everything else into the tabbed groups.
   playback.remove();
@@ -573,36 +581,34 @@ export function initPanel() {
   hdrEl.insertAdjacentElement('afterend', playback);
   buildTabs(panel, body, N_GROUPS);
 
-  // ---- model selector: SAME tabs; picking the CPU turns the accent red and swaps the
-  // model-specific content (Tune sliders, Inside value map) to the CPU's. Only the
-  // [data-model] sections toggle - Challenge / World / Score / Replays stay put. ----
+  // ---- model selector: SAME tabs. Picking the CPU tints the accent + the learning sliders
+  // red (via --hue) and shows the CPU's values; the lock swings in and locks ONLY those red
+  // sliders. The black (shared) sliders stay open. No section swap / whole-tab fade. The
+  // per-model helpers (loadLearn / applyLock / rewriteModelLabel / reShowRelevant / lock UI)
+  // are defined further down once the sliders are wired; applyModel calls them at click time.
   panel.dataset.model = 'your';
   const msels = [...panel.querySelectorAll('.mselect .msel')];
-  // the Training tab's Exploration ε is per-model: show the selected side's value
   let lastEps = { blue: 1, red: 1 };
   const updateEps = () => {
     const el = panel.querySelector('#rl-eps');
     if (el) el.textContent = ((panel.dataset.model === 'cpu' ? lastEps.red : lastEps.blue) ?? 0).toFixed(2);
   };
+  let lastParams = {}, lastRedParams = {}, cpuLocked = true;
   const applyModel = (m) => {
-    panel.dataset.model = m;   // swaps the model-specific sections (Tune) + accent
+    panel.dataset.model = m;   // tints --hue (blue <-> red) + the tab accent
     updateEps();
+    loadLearn();               // learning sliders -> the selected model's values
+    applyLock();               // red learning sliders locked only on CPU + locked
+    rewriteModelLabel(m);      // legend "Your model" <-> "CPU model" (rewrite animation)
+    reShowRelevant();          // controls relevant to the selected model's algorithm
     window.dispatchEvent(new CustomEvent('rl-modelview', { detail: { model: m } }));
-    window.dispatchEvent(new Event('resize')); // re-fit any chart revealed by the swap
+    window.dispatchEvent(new Event('resize'));
   };
   const setModel = (m) => {
     if (panel.dataset.model === m) return;
     msels.forEach((b) => b.classList.toggle('active', b.dataset.view === m));
     lockBtn.classList.toggle('show', m === 'cpu'); // the lock swings in on the CPU model
-    // only fade if the CURRENT tab actually swaps content; otherwise nothing visibly
-    // changes and a fade would be pointless, so switch instantly
-    const active = panel.querySelector('.rl-group.active');
-    if (active && active.querySelector('[data-model]')) {
-      panel.classList.add('mswap');
-      setTimeout(() => { applyModel(m); panel.classList.remove('mswap'); }, 150);
-    } else {
-      applyModel(m);
-    }
+    applyModel(m);
   };
   msels.forEach((b) => b.addEventListener('click', () => setModel(b.dataset.view)));
 
@@ -711,7 +717,19 @@ export function initPanel() {
   let applyTimer = null;
   let pending = {};
   const flush = () => {
-    if (Object.keys(pending).length) window.RL.control({ cmd: 'setParams', params: pending });
+    const keys = Object.keys(pending);
+    if (keys.length) {
+      // learning-knob edits while viewing the CPU route to setRedParams; everything else
+      // (the shared globals, and all edits while on your model) routes to setParams.
+      const mine = {}, cpu = {};
+      for (const k of keys) {
+        const p = ALL_PARAMS.find((x) => x.key === k);
+        if (panel.dataset.model === 'cpu' && p && p.color === C_OURS) cpu[k] = pending[k];
+        else mine[k] = pending[k];
+      }
+      if (Object.keys(mine).length) window.RL.control({ cmd: 'setParams', params: mine });
+      if (Object.keys(cpu).length) window.RL.control({ cmd: 'setRedParams', params: cpu });
+    }
     pending = {};
   };
   const queue = (p) => {
@@ -733,7 +751,7 @@ export function initPanel() {
   };
 
   let paramsInit = false;   // pull the backend defaults onto the sliders just once
-  let lastAlgoBlue = null;  // to re-show only the relevant controls when the round changes
+  let lastAlgoBlue = null, lastAlgoRed = null;  // re-show relevant controls per model + round
   let lastRoundIndex = -1;  // r4/r5 hazard sliders are scoped by round, not just algo
 
   // show only the controls that matter for THIS round: hide α / ε on DP rounds
@@ -764,6 +782,48 @@ export function initPanel() {
       sec.hidden = ![...sec.querySelectorAll('.ctl[data-scope]')].some((el) => el.style.display !== 'none');
     });
   };
+
+  // ---- per-model helpers used by applyModel (defined here, once the sliders exist) ----
+  const loadLearn = () => {
+    const src = panel.dataset.model === 'cpu' ? lastRedParams : lastParams;
+    for (const p of PARAMS) if (p.color === C_OURS) setFromBackend(p, src[p.key]);
+  };
+  const applyLock = () => {
+    const disable = panel.dataset.model === 'cpu' && cpuLocked;
+    panel.querySelectorAll('#rl-sec-hyper .ctl.learn input[type=range]').forEach((el) => { el.disabled = disable; });
+  };
+  const reShowRelevant = () =>
+    showRelevant(panel.dataset.model === 'cpu' ? lastAlgoRed : lastAlgoBlue, lastRoundIndex);
+  // legend label rewrite: erase the current text, then type the target (a small typewriter)
+  let rewriteTimer = null;
+  const rewriteModelLabel = (m) => {
+    const el = panel.querySelector('#rl-ple-model');
+    if (!el) return;
+    const target = m === 'cpu' ? 'CPU model' : 'Your model';
+    clearInterval(rewriteTimer);
+    let cur = el.textContent;
+    rewriteTimer = setInterval(() => {
+      if (cur.length) { cur = cur.slice(0, -1); el.textContent = cur; }
+      else {
+        clearInterval(rewriteTimer);
+        let i = 0;
+        rewriteTimer = setInterval(() => {
+          if (i < target.length) el.textContent = target.slice(0, ++i);
+          else clearInterval(rewriteTimer);
+        }, 26);
+      }
+    }, 16);
+  };
+  // the CPU lock (top-right, swings in on the CPU model): locks only the red learning sliders
+  const LOCK_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
+  const LOCK_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 7.8-1.1"/></svg>';
+  const updateLockUI = () => {
+    lockBtn.innerHTML = cpuLocked ? LOCK_CLOSED : LOCK_OPEN;
+    lockBtn.classList.toggle('locked', cpuLocked);
+    lockBtn.title = cpuLocked ? "Unlock to edit the CPU's values" : "Lock the CPU's values";
+  };
+  updateLockUI();
+  lockBtn.addEventListener('click', () => { cpuLocked = !cpuLocked; updateLockUI(); applyLock(); });
 
   // ---- value-map mode ----
   // ONE value map, shared by both views: it targets whichever model is selected (Blue =
@@ -796,22 +856,30 @@ export function initPanel() {
   window.addEventListener('rl-snapshot', (e) => {
     const s = e.detail.stats;
     if (!s) return;
-    // seed every slider from the backend's current values, once
+    // cache both models' params; seed the sliders from the backend once
+    if (s.params) lastParams = s.params;
+    if (s.redParams) lastRedParams = s.redParams;
     if (!paramsInit && s.params) {
       for (const p of ALL_PARAMS) setFromBackend(p, s.params[p.key]);
       paramsInit = true;
     }
+    // while viewing the CPU LOCKED, mirror its (tier-set) learning values live
+    if (panel.dataset.model === 'cpu' && cpuLocked) loadLearn();
     $('#rl-mb').textContent = NAMES[s.algoBlue] || s.algoBlue || '-';
     const redNm = NAMES[s.algoRed] || s.algoRed || '';
     const tier = s.cpuTier ? `CPU - Tier ${s.cpuTier}` : '';
     $('#rl-vs').textContent = redNm
       ? `vs ${redNm}${tier ? ` - ${tier}` : ''}`
       : (tier ? `vs ${tier}` : '');
+    // the CPU card in the header selector
+    $('#rl-cp-algo').textContent = redNm || '-';
+    $('#rl-cp-tier').textContent = s.cpuTier
+      ? `Tier ${s.cpuTier}${TIER_LABELS[s.cpuTier] ? ` - ${TIER_LABELS[s.cpuTier]}` : ''}` : '';
     const r = s.round || {};
     const ri = r.index ?? 0;
-    if (s.algoBlue !== lastAlgoBlue || ri !== lastRoundIndex) {
-      lastAlgoBlue = s.algoBlue; lastRoundIndex = ri;
-      showRelevant(s.algoBlue, ri);
+    if (s.algoBlue !== lastAlgoBlue || s.algoRed !== lastAlgoRed || ri !== lastRoundIndex) {
+      lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
+      reShowRelevant();
     }
     $('#rl-round').textContent = `R${ri + 1} - ${r.total || 1}`;
     $('#rl-arena').textContent = r.title || '';

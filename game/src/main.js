@@ -771,7 +771,7 @@ window.RL.panels = {
   close() { document.getElementById("rl-panel")?.classList.remove("open"); },
 };
 
-initPanel(); // builds the panel and folds the CPU view in via initCpuPanel
+initPanel(); // builds the single control panel (the model selector handles the CPU view)
 
 // ------------------------------------------------------------------ post fx
 const fx = createPostFX(renderer, scene, camera);
