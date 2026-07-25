@@ -342,16 +342,16 @@ export function organizeGroups(body, groups) {
 const N_GROUPS = [
   ['challenge', "What's the challenge?", ['rl-brief'],
     'The task both AIs are racing to solve, and how their two methods differ.', 'Challenge'],
-  ['score', 'Scoreboard', ['rl-sec-contest', 'rl-compare', 'rl-outcomes'],
-    'Who is winning right now.', 'Score'],
-  ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
-    'Watch your AI (Blue) get better over time.', 'Progress'],
   ['tune', 'Tune your AI', ['rl-sec-hyper'],
     'Change how your AI learns. Effects show up live.', 'Tune'],
   ['advanced', 'World', ['rl-sec-algo', 'rl-sec-world'],
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
   ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
+  ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
+    'Watch your AI (Blue) get better over time.', 'Progress'],
+  ['score', 'Scoreboard', ['rl-sec-contest', 'rl-compare', 'rl-outcomes'],
+    'Who is winning right now.', 'Score'],
   ['replays', 'Replays', ['rl-replay', 'rl-traj'], '', 'Replays'],
 ];
 
