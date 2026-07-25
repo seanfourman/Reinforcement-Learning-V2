@@ -94,6 +94,7 @@ const STYLE = `
 #rl-final.red .f-title{color:#ff7468;}
 #rl-final.tie .f-title{color:#ffd43d;}
 #rl-final .f-sub{margin:0 0 18px;color:#575a62;font-size:15.5px;font-weight:800;}
+#rl-final .f-sub:empty{display:none;}
 #rl-final .f-stand{display:grid;gap:10px;margin-top:16px;}
 #rl-final .f-row{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
   padding:13px 15px;border:2.5px solid #111;border-radius:10px;background:#fff;box-shadow:0 3px 0 #000;
@@ -269,10 +270,7 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     const champ = blue > red ? "blue" : red > blue ? "red" : "tie";
     const title =
       champ === "tie" ? "FINAL DRAW!" : `${sideLabel(champ).toUpperCase()} WINS!`;
-    const sub =
-      champ === "tie"
-        ? "The tournament ends level on stage points."
-        : `${modelLabel(champ, award, stats)} is the tournament champion.`;
+    const sub = champ === "tie" ? "The tournament ends level on stage points." : "";
     finalEl.classList.remove("show", "blue", "red", "tie");
     finalEl.classList.add(champ);
     finalEl.querySelector(".f-title").textContent = title;
