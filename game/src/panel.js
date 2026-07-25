@@ -112,14 +112,11 @@ const STYLE = `
 /* sticky header with the live matchup */
 #rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 14px;background:#fff;
   border-bottom:1px solid #e6e8ec;}
-#rl-panel .hdr h1{margin:0;font-size:11px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;
-  display:flex;align-items:center;gap:8px;}
-#rl-panel .hdr h1::before{content:"";width:4px;height:12px;border-radius:2px;background:#1f5fd0;}
-/* round badge + arena name */
-#rl-panel .hdr .harena{display:flex;align-items:center;gap:9px;margin-top:9px;}
-#rl-panel .hdr .rbadge{flex:none;font-size:10px;font-weight:800;color:#fff;background:#1f5fd0;border-radius:6px;
-  padding:3px 8px;font-variant-numeric:tabular-nums;letter-spacing:.3px;}
-#rl-panel .hdr .harena b{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#1f1f21;}
+/* round badge + arena name - the header's title row */
+#rl-panel .hdr .harena{display:flex;align-items:center;gap:10px;margin-top:0;}
+#rl-panel .hdr .rbadge{flex:none;font-size:11px;font-weight:800;color:#fff;background:#1f1f21;border-radius:7px;
+  padding:4px 10px;font-variant-numeric:tabular-nums;letter-spacing:.3px;}
+#rl-panel .hdr .harena b{font-size:23px;font-weight:800;letter-spacing:-.5px;color:#1f1f21;line-height:1.1;}
 /* the model being trained + who it faces */
 #rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
@@ -305,8 +302,20 @@ const STYLE = `
 #rl-panel .brief-sub{font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;margin:15px 0 7px;}
 #rl-panel #rl-brief .stat b.rw-pos{color:#1f7a3d;}   /* positive rewards green */
 #rl-panel #rl-brief .stat b.rw-neg{color:#c0392b;}   /* penalties red */
-#rl-panel #rl-brief .note .opp-yes{color:#1f5fd0;font-weight:800;}
-#rl-panel #rl-brief .note .opp-no{color:#8a8d94;font-weight:800;}
+/* State & observation - the briefing's centrepiece card */
+#rl-panel #rl-brief .so-card{margin:9px 0 6px;padding:15px 15px 13px;border:1px solid #e4e7ec;border-radius:14px;
+  background:linear-gradient(180deg,#f8f9fc,#eef1f6);box-shadow:0 1px 3px rgba(20,22,28,.05);}
+#rl-panel #rl-brief .so-hero{display:flex;align-items:baseline;gap:9px;padding-bottom:11px;margin-bottom:3px;border-bottom:1px solid #e2e5ea;}
+#rl-panel #rl-brief .so-big{font-size:33px;font-weight:800;letter-spacing:-1.2px;color:#1f1f21;line-height:.9;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .so-unit{font-size:12px;font-weight:700;color:#9a9da4;letter-spacing:.2px;}
+#rl-panel #rl-brief .so-row{padding:9px 0 8px;border-bottom:1px solid #e7eaef;}
+#rl-panel #rl-brief .so-row:last-child{border-bottom:0;padding-bottom:1px;}
+#rl-panel #rl-brief .so-k{display:block;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;margin-bottom:4px;}
+#rl-panel #rl-brief .so-v{display:block;font-size:11.5px;color:#4b4d53;line-height:1.5;}
+#rl-panel #rl-brief .so-badge{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+  padding:2px 8px;border-radius:99px;margin-right:7px;vertical-align:1px;}
+#rl-panel #rl-brief .so-badge.yes{background:#e7f0ff;color:#1f5fd0;}
+#rl-panel #rl-brief .so-badge.no{background:#f3eaea;color:#b0555a;}
 #rl-panel .cmp-head{display:flex;align-items:center;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#a2a5ac;padding:0 0 6px;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-head span{flex:1;}
 #rl-panel .cmp-head .cr,#rl-panel .cmp-head .cb{flex:none;width:100px;text-align:center;white-space:nowrap;}
@@ -505,7 +514,6 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
-      <h1>Training Control</h1>
       <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
       <div class="mselect">
         <span class="msel-wash" aria-hidden="true"></span>
@@ -899,7 +907,7 @@ export function initPanel() {
       lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
       reShowRelevant();
     }
-    $('#rl-round').textContent = `R${ri + 1} - ${r.total || 1}`;
+    $('#rl-round').textContent = `Round ${ri + 1}/${r.total || 1}`;
     $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0

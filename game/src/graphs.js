@@ -919,18 +919,29 @@ export function initBriefing(parent) {
             `<div class="stat"><span>${k}</span><b class="${v > 0 ? "rw-pos" : v < 0 ? "rw-neg" : ""}">${v > 0 ? "+" : ""}${v}</b></div>`,
         )
         .join("");
-      const opp = s.seesOpponent
-        ? `<b class="opp-yes">Yes</b> - ${s.opponentInfo}`
-        : `<b class="opp-no">No</b> - ${s.opponentInfo}`;
+      let heroBig, heroUnit;
+      if (s.stateSize) {
+        heroBig = s.stateSize.toLocaleString();
+        heroUnit = "states in S";
+      } else {
+        const m = (s.stateDesc || "").match(/(\d+)-vector/);
+        heroBig = m ? m[1] + "-D" : "cont.";
+        heroUnit = "continuous state";
+      }
+      const oppBadge = s.seesOpponent
+        ? `<span class="so-badge yes">Sees rival</span>`
+        : `<span class="so-badge no">Rival hidden</span>`;
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
 
         `<h3 class="brief-sub">State &amp; observation</h3>` +
-        `<div class="stat"><span>State space</span><b>${s.stateSize ? s.stateSize.toLocaleString() + " states" : "continuous"}</b></div>` +
-        `<p class="note"><b>State (S):</b> ${s.stateDesc}</p>` +
-        `<p class="note"><b>Each model observes:</b> ${s.observation}</p>` +
-        `<p class="note"><b>Sees the opponent?</b> ${opp}</p>` +
+        `<div class="so-card">` +
+        `<div class="so-hero"><div class="so-big">${heroBig}</div><div class="so-unit">${heroUnit}</div></div>` +
+        `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>` +
+        `<div class="so-row"><span class="so-k">Each model observes</span><span class="so-v">${s.observation}</span></div>` +
+        `<div class="so-row"><span class="so-k">Sees the opponent?</span><span class="so-v">${oppBadge}${s.opponentInfo}</span></div>` +
+        `</div>` +
 
         `<h3 class="brief-sub">Actions</h3>` +
         `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
