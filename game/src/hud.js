@@ -104,6 +104,34 @@ const STYLE = `
 #rl-keys .kh.finish.armed .txt{color:#dfe7ff;}
 #rl-keys .kh.finish.done.blue .txt{color:#7fb4ff;}
 #rl-keys .kh.finish.done.red .txt{color:#ff8d80;}
+#rl-keys .kh.finish.done.draw .txt{color:#b79cff;}
+/* once a stage is resolved the T square itself takes the result colour (Player=blue,
+   CPU=red, draw=purple) so the badge matches the label next to it */
+#rl-keys .kh.finish.done .key{color:#fff;}
+#rl-keys .kh.finish.done.blue .key{background:#2f6bd6;box-shadow:0 1px 3px rgba(47,107,214,.55);}
+#rl-keys .kh.finish.done.red .key{background:#d8392c;box-shadow:0 1px 3px rgba(216,57,44,.55);}
+#rl-keys .kh.finish.done.draw .key{background:#8b5cf6;box-shadow:0 1px 3px rgba(139,92,246,.55);}
+/* "stage already decided" pop - same feel/animation as the start menu's "pick 5" warning */
+#rl-hud-warn{position:fixed;left:50%;bottom:12vh;z-index:9;display:flex;align-items:center;gap:9px;
+  transform:translateX(-50%) translateY(22px) scale(.85);transform-origin:bottom center;
+  background:linear-gradient(180deg,#ff5d4e 0%,#e22f22 100%);
+  border:2.5px solid #3a1410;border-radius:13px;padding:8px 16px;
+  box-shadow:0 3px 0 #3a1410,0 10px 20px rgba(0,0,0,.38);
+  font-family:"Segoe UI",system-ui,sans-serif;font-weight:800;color:#fff;
+  font-size:15px;line-height:1;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.35);
+  opacity:0;pointer-events:none;}
+#rl-hud-warn.show{opacity:1;animation:rl-hw-pop .45s cubic-bezier(.34,1.6,.5,1) both;}
+@keyframes rl-hw-pop{0%{transform:translateX(-50%) translateY(22px) scale(.72);opacity:0;}
+  55%{opacity:1;}100%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;}}
+#rl-hud-warn.hide{animation:rl-hw-out .42s linear both;}
+@keyframes rl-hw-out{0%{transform:translateX(-50%) translateY(0) scale(1);opacity:1;
+    animation-timing-function:cubic-bezier(.2,.8,.35,1);}
+  30%{transform:translateX(-50%) translateY(-7px) scale(1.05);opacity:1;
+    animation-timing-function:cubic-bezier(.45,0,.75,.5);}
+  100%{transform:translateX(-50%) translateY(26px) scale(.66);opacity:0;}}
+#rl-hud-warn .hw-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
+  background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
+  color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
 `;
 
 export function initHud() {
@@ -137,6 +165,47 @@ export function initHud() {
     `<div class="kh" data-act="reset"><span class="key">R</span><span class="txt">Reset</span></div>` +
     `<div class="kh finish" id="rl-finish-key" data-act="terminate"><span class="key">T</span><span class="txt" id="rl-finish-txt">Terminate</span></div>`;
   document.body.appendChild(keys);
+
+  // "stage already decided" pop - mirrors the start menu's "pick 5 algorithms"
+  // warning. A stage's point is only ever given by pressing T; once it's resolved
+  // (a winner OR a draw) T can't change it, so we say so instead of silently no-op.
+  const warn = document.createElement("div");
+  warn.id = "rl-hud-warn";
+  warn.innerHTML = `<span class="hw-ico">!</span><span class="hw-txt"></span>`;
+  document.body.appendChild(warn);
+  let warnTok = 0;
+  function warnResolved(result) {
+    warn.querySelector(".hw-txt").textContent =
+      result === "blue" ? "Player already won this stage!"
+      : result === "red" ? "CPU already won this stage!"
+      : "This stage already ended in a draw!";
+    warn.classList.remove("hide", "show");
+    void warn.offsetWidth; // restart the pop even if it's still on screen
+    warn.classList.add("show");
+    const tok = ++warnTok;
+    setTimeout(() => {
+      if (tok !== warnTok) return;
+      warn.classList.add("hide");
+      warn.classList.remove("show");
+      setTimeout(() => {
+        if (tok === warnTok) warn.classList.remove("hide");
+      }, 420); // matches rl-hw-out
+    }, 2600);
+  }
+
+  // the current round's result: 'blue' | 'red' | 'draw' | null (unresolved). Kept in
+  // sync from every snapshot so pressing T knows whether the stage is already decided.
+  let latestResult = null;
+  // Terminate the stage with T: award the point if it's still open, otherwise warn
+  // that it's already decided. Shared by the keyboard (main.js) and the click below.
+  function terminateStage() {
+    if (latestResult) {
+      warnResolved(latestResult);
+      return;
+    }
+    window.RL?.control?.({ cmd: "awardRound" });
+  }
+
   // the hints themselves are clickable (not only the keyboard keys) - same actions.
   keys.addEventListener("click", (e) => {
     const kh = e.target.closest(".kh");
@@ -144,7 +213,7 @@ export function initHud() {
     const act = kh.dataset.act;
     if (act === "controls") window.RL?.panels?.toggle?.();
     else if (act === "reset") window.RL?.control?.({ cmd: "reset" });
-    else if (act === "terminate") window.RL?.control?.({ cmd: "awardRound" });
+    else if (act === "terminate") terminateStage();
   });
 
   const $ = (id) => hud.querySelector(id);
@@ -284,16 +353,23 @@ export function initHud() {
     const finishKey = document.getElementById("rl-finish-key");
     const finishTxt = document.getElementById("rl-finish-txt");
     if (finishKey && finishTxt) {
-      const award = s.award && s.award.roundId === r.roundId ? s.award : null;
-      finishKey.classList.remove("armed", "done", "blue", "red");
-      if (s.roundAwarded && award?.winner) {
-        finishKey.classList.add("done", award.winner);
-        finishTxt.textContent = `${award.winner === "blue" ? "Player" : "CPU"} +1`;
+      // this round's result comes straight from roundResults (set only when T is
+      // pressed): 'blue' | 'red' | 'draw' | null. It drives the label + the T-square
+      // colour, and tells terminateStage the stage is already decided.
+      const result = s.roundResults?.[r.index ?? 0] || null;
+      latestResult = result;
+      finishKey.classList.remove("armed", "done", "blue", "red", "draw");
+      if (result === "blue" || result === "red") {
+        finishKey.classList.add("done", result);
+        finishTxt.textContent = result === "blue" ? "Player" : "CPU";
+      } else if (result === "draw") {
+        finishKey.classList.add("done", "draw");
+        finishTxt.textContent = "Draw";
       } else {
         finishTxt.textContent = "Terminate";
       }
     }
   });
 
-  return { el: hud };
+  return { el: hud, terminate: terminateStage };
 }

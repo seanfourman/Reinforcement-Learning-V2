@@ -162,7 +162,7 @@ let latestFrame = null;
 let lastWorldJson = null; // most recently (re)built world - for the entry name card
 let menu = null; // start menu (cabin background); gates the game boot
 
-initHud(); // Blue top-left / Red top-right score + round banner
+const hud = initHud(); // Blue top-left / Red top-right score + round banner
 const transition = createTransition(); // video-game curtain between arenas
 const awardCeremony = createAwardCeremony({
   camera,
@@ -605,7 +605,7 @@ window.addEventListener("keydown", (e) => {
     !/input|select|textarea/i.test(e.target.tagName) &&
     !(menu && menu.active)
   )
-    control({ cmd: "awardRound" });
+    hud.terminate(); // awards the stage, or warns if it's already decided
 });
 
 // click a tile while a heatmap is shown -> inspect that tile's per-action Q
