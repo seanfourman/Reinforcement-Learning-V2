@@ -711,10 +711,13 @@ class Match:
             self.set_round(order[(i - 1) % len(order)], keep_score=True)
 
     def next_round(self):
-        """Finalize the current round into the tournament score (leader of the
-        recent contest wins the round), then advance to the next round (wraps)."""
+        """Advance to the next round (wraps). Navigation only: it does NOT score.
+
+        A point is awarded ONLY when the stage is finished with T (award_round).
+        Moving between stages is free and leaves the tournament score untouched -
+        if the current round was resolved with T its point is already banked, and
+        if it wasn't, skipping past it gives nobody a point."""
         with self.lock:
-            self._award_current_round(source="auto")
             order = worlds.ROUNDS
             i = order.index(self.round_id) if self.round_id in order else 0
             self.set_round(order[(i + 1) % len(order)], keep_score=True)
