@@ -350,7 +350,7 @@ const N_GROUPS = [
     'Peek at what your AI has actually learned.', 'Inside'],
   ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
     'Watch your AI (Blue) get better over time.', 'Progress'],
-  ['score', 'Scoreboard', ['rl-sec-contest', 'rl-compare', 'rl-outcomes'],
+  ['score', 'Scoreboard', ['rl-compare', 'rl-outcomes'],
     'Who is winning right now.', 'Score'],
   ['replays', 'Replays', ['rl-replay', 'rl-traj'], '', 'Replays'],
 ];
@@ -498,13 +498,6 @@ export function initPanel() {
       <div class="stat fullonly"><span>Avg episode length</span><b id="rl-len">-</b></div>
       <div class="stat fullonly"><span>Last return (R / B)</span><b id="rl-ret">-</b></div>
       <div class="stat fullonly"><span>Learned states (R / B)</span><b id="rl-q">0 / 0</b></div>
-    </section>
-    <section id="rl-sec-contest" class="qk">
-      <h2>Contest - last 200</h2>
-      <div class="bar"><i class="r" id="rl-br"></i><i class="b" id="rl-bb"></i><i class="d" id="rl-bd"></i></div>
-      <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-wr">0</b></div>
-      <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-wb">0</b></div>
-      <div class="stat"><span><i class="dot" style="background:#f0b429"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
       <h2>Value map</h2>
@@ -748,17 +741,6 @@ export function initPanel() {
     const sign = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
     $('#rl-ret').textContent = `${sign(lr.red)} / ${sign(lr.blue)}`;
     $('#rl-q').textContent = `${s.qStates.red} / ${s.qStates.blue}`;
-    const rr = s.recentRate;
-    // "last 200" = match.py's rolling `recent` deque (maxlen 200). Show the recent
-    // WIN COUNTS out of that window so the numbers agree with the title + the bar
-    // (they used to be all-time totals, which contradicted the "recent" heading).
-    const recN = Math.min(s.episode || 0, 200);
-    $('#rl-wr').textContent = Math.round((rr.red || 0) * recN).toLocaleString();
-    $('#rl-wb').textContent = Math.round((rr.blue || 0) * recN).toLocaleString();
-    $('#rl-wd').textContent = Math.round((rr.draw || 0) * recN).toLocaleString();
-    $('#rl-br').style.width = `${rr.red * 100}%`;
-    $('#rl-bb').style.width = `${rr.blue * 100}%`;
-    $('#rl-bd').style.width = `${rr.draw * 100}%`;
   });
 
   // ---- Q inspector ----
