@@ -311,6 +311,7 @@ const STYLE = `
 #rl-panel .replist .empty{padding:15px 12px;color:#9a9da4;font-size:12px;text-align:center;}
 
 /* Q inspector */
+#rl-panel #rl-qinspect:empty{display:none;} /* no empty gap under the value map until a tile is clicked */
 #rl-panel .qrow{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;}
 #rl-panel .qrow .qbar{flex:1;margin:0 9px;height:8px;background:#eceef1;border-radius:4px;position:relative;}
 #rl-panel .qrow .qbar i{position:absolute;top:0;bottom:0;background:#8a8d94;border-radius:4px;}
@@ -375,7 +376,7 @@ const N_GROUPS = [
     'Change how your AI learns. Effects show up live.', 'Tune'],
   ['advanced', 'World', ['rl-sec-algo', 'rl-sec-world'],
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
-  ['inside', 'Inside the AI', ['rl-cp-stats', 'rl-sec-value', 'rl-cp-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
+  ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
   ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
     'Watch your AI (Blue) get better over time.', 'Progress'],
@@ -565,7 +566,6 @@ export function initPanel() {
   // the model-specific PLAYER sections (tuning sliders + value map) are swapped OUT for
   // the CPU's equivalents when the CPU model is selected; everything else is shared.
   body.querySelector('#rl-sec-hyper')?.setAttribute('data-model', 'your');
-  body.querySelector('#rl-sec-value')?.setAttribute('data-model', 'your');
 
   // Playback pinned at the top (not a tab); fold everything else into the tabbed groups.
   playback.remove();
@@ -578,16 +578,31 @@ export function initPanel() {
   // [data-model] sections toggle - Challenge / World / Score / Replays stay put. ----
   panel.dataset.model = 'your';
   const msels = [...panel.querySelectorAll('.mselect .msel')];
+  // the Training tab's Exploration ε is per-model: show the selected side's value
+  let lastEps = { blue: 1, red: 1 };
+  const updateEps = () => {
+    const el = panel.querySelector('#rl-eps');
+    if (el) el.textContent = ((panel.dataset.model === 'cpu' ? lastEps.red : lastEps.blue) ?? 0).toFixed(2);
+  };
+  const applyModel = (m) => {
+    panel.dataset.model = m;   // swaps the model-specific sections (Tune) + accent
+    updateEps();
+    window.dispatchEvent(new CustomEvent('rl-modelview', { detail: { model: m } }));
+    window.dispatchEvent(new Event('resize')); // re-fit any chart revealed by the swap
+  };
   const setModel = (m) => {
     if (panel.dataset.model === m) return;
     msels.forEach((b) => b.classList.toggle('active', b.dataset.view === m));
     lockBtn.classList.toggle('show', m === 'cpu'); // the lock swings in on the CPU model
-    panel.classList.add('mswap');                  // fade the tabs-down content out
-    setTimeout(() => {
-      panel.dataset.model = m;                      // swap the model-specific sections
-      panel.classList.remove('mswap');             // fade back in
-      window.dispatchEvent(new Event('resize'));    // re-fit any chart revealed by the swap
-    }, 150);
+    // only fade if the CURRENT tab actually swaps content; otherwise nothing visibly
+    // changes and a fade would be pointless, so switch instantly
+    const active = panel.querySelector('.rl-group.active');
+    if (active && active.querySelector('[data-model]')) {
+      panel.classList.add('mswap');
+      setTimeout(() => { applyModel(m); panel.classList.remove('mswap'); }, 150);
+    } else {
+      applyModel(m);
+    }
   };
   msels.forEach((b) => b.addEventListener('click', () => setModel(b.dataset.view)));
 
@@ -751,20 +766,27 @@ export function initPanel() {
   };
 
   // ---- value-map mode ----
-  // value map: this panel always shows OUR model (Blue), modes Off / Value / Visits
+  // ONE value map, shared by both views: it targets whichever model is selected (Blue =
+  // you, Red = CPU). Modes Off / Value / Policy / Visits.
   const hbtns = { off: $('#rl-h-off'), value: $('#rl-h-value'), policy: $('#rl-h-policy'), visits: $('#rl-h-visits') };
+  const heatAgent = () => (panel.dataset.model === 'cpu' ? 'red' : 'blue');
   const setMode = (m) => {
     for (const k in hbtns) hbtns[k].classList.toggle('active', k === m);
     if (m === 'off') { window.RL.setHeatmap(null); $('#rl-qinspect').innerHTML = ''; }
-    else window.RL.setHeatmap('blue', m);
+    else window.RL.setHeatmap(heatAgent(), m);
   };
   hbtns.off.addEventListener('click', () => setMode('off'));
   hbtns.value.addEventListener('click', () => setMode('value'));
   hbtns.policy.addEventListener('click', () => setMode('policy'));
   hbtns.visits.addEventListener('click', () => setMode('visits'));
-  // one shared overlay: if the CPU panel grabs it, fall back to Off here
+  // switching model re-points an active overlay at the newly-selected model
+  window.addEventListener('rl-modelview', () => {
+    const cur = Object.keys(hbtns).find((k) => hbtns[k].classList.contains('active'));
+    if (cur && cur !== 'off') setMode(cur);
+  });
+  // if some other source grabs the single overlay, fall back to Off here
   window.addEventListener('rl-heatmap', (e) => {
-    if ((e.detail || {}).agent !== 'blue') {
+    if ((e.detail || {}).agent !== heatAgent()) {
       for (const k in hbtns) hbtns[k].classList.toggle('active', k === 'off');
       $('#rl-qinspect').innerHTML = '';
     }
@@ -798,7 +820,8 @@ export function initPanel() {
       ? `${s.episode.toLocaleString()} / ${tgt.toLocaleString()}`
       : s.episode.toLocaleString();
     $('#rl-steps').textContent = s.totalSteps.toLocaleString();
-    $('#rl-eps').textContent = s.epsilon.toFixed(2);
+    lastEps = { blue: s.epsilon, red: s.redEpsilon ?? lastEps.red };
+    updateEps(); // Exploration ε follows the selected model (blue = you, red = CPU)
     $('#rl-len').textContent = s.avgEpisodeLen ? s.avgEpisodeLen.toFixed(0) : '-';
     const lr = s.lastReturn || { red: 0, blue: 0 };
     const sign = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);

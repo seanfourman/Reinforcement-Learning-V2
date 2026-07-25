@@ -53,19 +53,6 @@ export function initCpuPanel(root, body, lockBtn) {
     </div>`;
 
   body.insertAdjacentHTML('beforeend', `
-    <section id="rl-cp-stats" class="qk" data-model="cpu">
-      <h2>CPU stats</h2>
-      <div class="stat"><span>Exploration ε</span><b id="rl-cp-eps">-</b></div>
-      <div class="stat"><span>Learned states</span><b id="rl-cp-q">-</b></div>
-    </section>
-    <section id="rl-cp-value" class="qk" data-model="cpu">
-      <h2>Value map</h2>
-      <div class="seg">
-        <button id="rl-cp-h-off" class="active">Off</button>
-        <button id="rl-cp-h-value">Value</button>
-        <button id="rl-cp-h-visits">Visits</button>
-      </div>
-    </section>
     <section id="rl-cp-hyper" data-model="cpu">
       <h2>Hyperparameters</h2>
       <div class="plegend">
@@ -77,21 +64,6 @@ export function initCpuPanel(root, body, lockBtn) {
 
   const $ = (sel) => root.querySelector(sel);
 
-  // value map: shows the CPU model (Red), modes Off / Value / Visits
-  const hb = { off: $('#rl-cp-h-off'), value: $('#rl-cp-h-value'), visits: $('#rl-cp-h-visits') };
-  const setHeat = (m) => {
-    for (const k in hb) hb[k].classList.toggle('active', k === m);
-    window.RL.setHeatmap(m === 'off' ? null : 'red', m);
-  };
-  hb.off.addEventListener('click', () => setHeat('off'));
-  hb.value.addEventListener('click', () => setHeat('value'));
-  hb.visits.addEventListener('click', () => setHeat('visits'));
-  // one shared overlay: if the player's value map grabs it, fall back to Off here
-  window.addEventListener('rl-heatmap', (e) => {
-    if ((e.detail || {}).agent !== 'red') {
-      for (const k in hb) hb[k].classList.toggle('active', k === 'off');
-    }
-  });
   const paintRange = (el) => {
     const min = +el.min, max = +el.max, v = +el.value;
     const pct = max > min ? ((v - min) / (max - min)) * 100 : 0;
@@ -166,7 +138,5 @@ export function initCpuPanel(root, body, lockBtn) {
         if (el && s.redParams[p.key] != null) { el.value = s.redParams[p.key]; setLabel(p); }
       }
     }
-    if (s.redEpsilon != null) $('#rl-cp-eps').textContent = s.redEpsilon.toFixed(2);
-    if (s.qStates) $('#rl-cp-q').textContent = s.qStates.red.toLocaleString();
   });
 }
