@@ -153,14 +153,12 @@ export function initCpuPanel() {
       <div class="stat"><span>Learned states</span><b id="rl-cp-q">-</b></div>
     </section>
     <section id="rl-cp-value" class="qk">
-      <h2>Value map - CPU</h2>
+      <h2>Value map</h2>
       <div class="seg">
         <button id="rl-cp-h-off" class="active">Off</button>
         <button id="rl-cp-h-value">Value</button>
         <button id="rl-cp-h-visits">Visits</button>
       </div>
-      <p class="hint">Value: each tile shows the CPU's Q for N / S / W / E. Visits: where the CPU
-        travels (red = most, blue = least). Zoom in to read the numbers.</p>
     </section>
     <section id="rl-cp-hyper">
       <h2>Hyperparameters</h2>

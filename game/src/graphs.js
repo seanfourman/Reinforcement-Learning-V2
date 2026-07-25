@@ -1129,8 +1129,13 @@ export function initPolicyDiff(parent) {
     <section id="rl-polagree" hidden>
       <h2>Policy agreement</h2>
       <div class="stat"><span>Red &amp; Blue greedy match</span><b id="rl-pa-rate">-</b></div>
-      <div class="bar" style="margin-top:9px;"><i class="b" id="rl-pa-bar"></i></div>
-      <p class="hint">On the DP round, Value Iteration and Policy Iteration reach the SAME optimal policy - agreement heads to 100%. TD/MC learners can diverge.</p>
+      <!-- neutral (black) fill, not the Blue-model .b class: this bar is about BOTH agents agreeing -->
+      <div class="bar" style="margin-top:9px;"><i id="rl-pa-bar" style="background:#141518;"></i></div>
+      <p class="hint">A cell's greedy action is the move an agent currently rates best there. This is the
+        fraction of grid cells where Red's and Blue's greedy action is the same (matching cells / total).
+        On the DP round both planners, Value Iteration and Policy Iteration, converge to the same optimal
+        policy, so agreement approaches 100%; trial-and-error learners (TD / MC) can settle on different
+        but equally good actions, so it may sit lower.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-polagree");

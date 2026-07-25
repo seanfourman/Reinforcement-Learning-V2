@@ -310,8 +310,9 @@ export function organizeGroups(body, groups) {
     const g = document.createElement('div');
     g.className = 'rl-group';
     g.dataset.group = id;
+    // (subtitle intentionally not rendered - the user removed the per-tab explainer
+    // one-liner; the `sub` field in the group tuples is kept but ignored)
     g.innerHTML = `<h2 class="rl-group-h">${title}</h2>` +
-      (sub ? `<p class="rl-group-sub">${sub}</p>` : '') +
       '<div class="rl-group-cards"></div>';
     return g;
   };
@@ -506,16 +507,13 @@ export function initPanel() {
       <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
-      <h2>Value map - your model</h2>
+      <h2>Value map</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
         <button id="rl-h-value">Value</button>
         <button id="rl-h-policy">Policy</button>
         <button id="rl-h-visits">Visits</button>
       </div>
-      <p class="hint fullonly">Value: each tile shows its Q for N / S / W / E, greedy action in blue (a blue
-        number in the center means "Use / stay" is best). Visits: where it travels (red = most
-        stepped on, blue = least). Zoom in to read the numbers.</p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
     </section>
     </div>`;
