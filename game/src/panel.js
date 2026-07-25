@@ -123,22 +123,31 @@ const STYLE = `
 /* the model being trained + who it faces */
 #rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
-/* the model selector: the "square" split into two picker cards (Your model | CPU model).
-   The active one glows in its accent; picking one fades the tabs-and-below to that view. */
-#rl-panel .hdr .mselect{display:flex;gap:8px;margin-top:12px;}
-#rl-panel .hdr .msel{flex:1;min-width:0;text-align:left;border:1px solid #e0e2e6;border-radius:11px;background:#fff;
-  padding:8px 11px 9px;cursor:pointer;transition:border-color .16s,box-shadow .16s,background .16s;}
+/* the model selector: two plain text columns (Your model | CPU model), NO card boxes.
+   A solid colour block (blue for you, red for CPU) sits behind the ACTIVE column;
+   switching slides that block to the other side and recolours it (--hue). */
+#rl-panel .hdr .mselect{position:relative;display:flex;gap:0;margin-top:12px;margin-bottom:-14px;isolation:isolate;}
+/* the solid colour block: square, full-bleed. left:-16px cancels the .hdr side padding to
+   reach the panel edges; the mselect's -14px margin-bottom drops it to the header's bottom
+   line; width 50%+16px keeps each half bleeding to its OUTER edge, meeting flush at centre. */
+#rl-panel .hdr .msel-wash{position:absolute;z-index:0;top:0;bottom:0;left:-16px;width:calc(50% + 16px);pointer-events:none;
+  background:var(--hue);border-radius:0;opacity:.82;
+  transform:translateX(0);transition:transform .34s cubic-bezier(.4,.75,.2,1);}
+#rl-panel[data-model="cpu"] .hdr .msel-wash{transform:translateX(100%);}
+#rl-panel .hdr .msel{flex:1;min-width:0;text-align:left;border:0;border-radius:0;background:transparent;
+  position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:13px 14px;cursor:pointer;transition:opacity .2s;}
+#rl-panel .hdr .msel.active{background:transparent;color:inherit;border-color:transparent;} /* neutralise the global button.active dark fill/white text */
+#rl-panel .hdr .msel:not(.active){opacity:.45;}
+#rl-panel .hdr .msel:not(.active):hover{opacity:.75;}
 #rl-panel .hdr .msel .msel-k{display:block;font-size:8.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#a2a5ac;}
-#rl-panel .hdr .msel .msel-n{display:block;font-size:16px;font-weight:800;letter-spacing:-.3px;line-height:1.15;margin-top:3px;color:#9a9da4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .16s;}
-#rl-panel .hdr .msel .msel-s{display:block;font-style:normal;font-size:9.5px;color:#a8abb2;margin-top:4px;
+#rl-panel .hdr .msel .msel-n{display:block;font-size:16px;font-weight:800;letter-spacing:-.3px;line-height:1.15;margin-top:3px;color:#7c7f86;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s;}
+#rl-panel .hdr .msel .msel-s{display:block;font-style:normal;font-size:9.5px;font-weight:700;color:#a8abb2;margin-top:4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#rl-panel .hdr .msel:not(.active):hover{border-color:#c4c8ce;background:#fbfbfc;}
-/* reset the global #rl-panel button.active dark fill - the active card stays white + glows */
-#rl-panel .hdr .msel.your.active{background:#fff;border-color:#1f5fd0;box-shadow:0 0 0 1px #1f5fd0,0 2px 12px rgba(31,95,208,.16);}
-#rl-panel .hdr .msel.your.active .msel-n{color:#1f5fd0;}
-#rl-panel .hdr .msel.cpu.active{background:#fff;border-color:#d4141f;box-shadow:0 0 0 1px #d4141f,0 2px 12px rgba(212,20,31,.16);}
-#rl-panel .hdr .msel.cpu.active .msel-n{color:#d4141f;}
+#rl-panel .hdr .msel.active .msel-n{color:#fff;} /* name goes white on the coloured block (was the same hue as the bg) */
+/* on the active (coloured) band the label + subline go white; the model name keeps its accent */
+#rl-panel .hdr .msel.active .msel-k{color:#fff;}
+#rl-panel .hdr .msel.active .msel-s{color:rgba(255,255,255,.9);}
 /* the CPU model tints the learning sliders + the tab accent red (--hue transitions) */
 #rl-panel[data-model="cpu"]{--hue:#d4141f;}
 #rl-panel .plegend .ple-hue{background:var(--hue);}
@@ -491,6 +500,7 @@ export function initPanel() {
       <h1>Training Control</h1>
       <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
       <div class="mselect">
+        <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your">
           <span class="msel-k">Your model</span>
           <b class="msel-n" id="rl-mb">-</b>
