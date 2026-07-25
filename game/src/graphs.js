@@ -1112,13 +1112,14 @@ export function initReward(parent) {
     "beforeend",
     `
     <section id="rl-reward" hidden>
-      <h2>Reward decomposition</h2>
-      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective. Other = the per-step time cost and misc bonuses.</p>
+      <h2 style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">Reward decomposition<span id="rl-reward-avg" style="flex:none;font-weight:700;font-size:9.5px;letter-spacing:.2px;text-transform:none;color:#a2a5ac;"></span></h2>
       <div id="rl-reward-body"></div>
+      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective. Other = the per-step time cost and misc bonuses.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-reward");
   const body = parent.querySelector("#rl-reward-body");
+  const avgEl = parent.querySelector("#rl-reward-avg");
   const PARTS = [
     ["Terminal", "terminal", "#37b26a"],
     ["Shaping", "shape", "#7c4dd0"],
@@ -1149,8 +1150,9 @@ export function initReward(parent) {
         return;
       }
       sec.hidden = false;
+      avgEl.textContent = `${d.episodes}-ep avg`;
       body.innerHTML =
-        `<div class="brief-sub" style="color:#1f5fd0">Blue - ${d.episodes}-ep avg</div>` +
+        `<div class="brief-sub" style="color:#1f5fd0">Blue</div>` +
         rows(d.blue, "#1f5fd0") +
         `<div class="brief-sub" style="color:#e60012;margin-top:12px">Red</div>` +
         rows(d.red, "#e60012");

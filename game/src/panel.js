@@ -395,7 +395,7 @@ const N_GROUPS = [
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
   ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
-  ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
+  ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-probe', 'rl-curve-d-td', 'rl-reward', 'rl-explore'],
     'Watch your AI (Blue) get better over time.', 'Progress'],
   ['score', 'Scoreboard', ['rl-compare', 'rl-outcomes'],
     'Who is winning right now.', 'Score'],
