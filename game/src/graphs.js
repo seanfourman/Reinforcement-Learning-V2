@@ -936,11 +936,11 @@ export function initBriefing(parent) {
         `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
 
         `<h3 class="brief-sub">Transition dynamics</h3>` +
-        `<p class="note">${s.dynamics}</p>` +
         (s.slipProb
           ? `<div class="stat"><span>Slip probability</span><b>${s.slipProb}</b></div>`
           : "") +
         `<div class="stat"><span>Max steps / episode</span><b>${s.maxSteps}</b></div>` +
+        `<p class="note">${s.dynamics}</p>` +
 
         `<h3 class="brief-sub">Discount &amp; horizon</h3>` +
         `<div class="stat"><span>Discount γ - Blue / Red</span><b id="rl-brief-gamma">${(+s.gammaBlue).toFixed(2)}  /  ${(+s.gammaRed).toFixed(2)}</b></div>` +
