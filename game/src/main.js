@@ -575,7 +575,7 @@ async function poll() {
         ).json();
         if (holdUI || menuIdle) return; // don't surface an overlay into the menu
         if (v.grid) {
-          if (heatMode === "value") heatmap.setNumbers(v.grid);
+          if (heatMode === "value") heatmap.setNumbers(v.grid, v.best);
           else if (heatMode === "policy") heatmap.setPolicy(v.grid);
           else heatmap.setGrid(v.grid);
         }

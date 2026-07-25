@@ -287,6 +287,8 @@ const STYLE = `
 #rl-panel .qrow{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:3px 0;}
 #rl-panel .qrow .qbar{flex:1;margin:0 9px;height:8px;background:#eceef1;border-radius:4px;position:relative;}
 #rl-panel .qrow .qbar i{position:absolute;top:0;bottom:0;background:#8a8d94;border-radius:4px;}
+#rl-panel .qrow.blk{opacity:.42;} /* action blocked here (wall / no-op) - not chosen */
+#rl-panel .blktag{font-size:9px;color:#b23127;letter-spacing:.3px;text-transform:uppercase;}
 #rl-panel .hint{font-size:11px;color:#a2a5ac;margin-top:7px;line-height:1.45;}
 
 /* learning-curve charts (built by graphs.js into this panel) */
@@ -296,7 +298,7 @@ const STYLE = `
 #rl-panel .chart .ct h3{margin:0;font-size:11.5px;font-weight:700;color:#3a3b40;}
 #rl-panel .chart .ct .lg{font-size:9.5px;color:#9a9da4;display:flex;gap:10px;}
 #rl-panel .chart .ct .lg i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px;}
-#rl-panel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
+#rl-panel .chart canvas{width:100%;height:132px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 `;
 
 // Fold every card into big titled groups, in the given order. Each group renders
@@ -496,8 +498,8 @@ export function initPanel() {
       <div class="stat"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
       <div class="stat fullonly"><span>Total steps</span><b id="rl-steps">0</b></div>
       <div class="stat fullonly"><span>Avg episode length</span><b id="rl-len">-</b></div>
-      <div class="stat fullonly"><span>Last return (R / B)</span><b id="rl-ret">-</b></div>
-      <div class="stat fullonly"><span>Learned states (R / B)</span><b id="rl-q">0 / 0</b></div>
+      <div class="stat fullonly"><span>Last return (B / R)</span><b id="rl-ret">-</b></div>
+      <div class="stat fullonly"><span>Learned states (B / R)</span><b id="rl-q">0 / 0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
       <h2>Value map</h2>
@@ -739,8 +741,8 @@ export function initPanel() {
     $('#rl-len').textContent = s.avgEpisodeLen ? s.avgEpisodeLen.toFixed(0) : '-';
     const lr = s.lastReturn || { red: 0, blue: 0 };
     const sign = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
-    $('#rl-ret').textContent = `${sign(lr.red)} / ${sign(lr.blue)}`;
-    $('#rl-q').textContent = `${s.qStates.red} / ${s.qStates.blue}`;
+    $('#rl-ret').textContent = `${sign(lr.blue)} / ${sign(lr.red)}`;
+    $('#rl-q').textContent = `${s.qStates.blue} / ${s.qStates.red}`;
   });
 
   // ---- Q inspector ----
@@ -748,13 +750,18 @@ export function initPanel() {
     const d = e.detail;
     if (!d || !d.q) { $('#rl-qinspect').innerHTML = '<p class="hint">No data for that tile yet.</p>'; return; }
     const lo = Math.min(...d.q, 0), hi = Math.max(...d.q, 0), span = hi - lo || 1;
-    const best = d.q.indexOf(Math.max(...d.q));
+    // star the action the agent WOULD take (best among EFFECTIVE actions), not just the
+    // raw argmax - a higher-Q move that bumps a wall is blocked and shown dimmed
+    const best = (d.best != null) ? d.best : d.q.indexOf(Math.max(...d.q));
+    const mask = d.mask || null;
     $('#rl-qinspect').innerHTML =
       `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) - ${d.agent === 'red' ? 'Red' : 'Blue'}</div>` +
-      d.q.map((q, i) =>
-        `<div class="qrow"><span>${ACTION_NAMES[i]}${i === best ? ' ★' : ''}</span>
+      d.q.map((q, i) => {
+        const blk = mask && !mask[i];
+        return `<div class="qrow${blk ? ' blk' : ''}"><span>${ACTION_NAMES[i]}${i === best ? ' ★' : ''}${blk ? ' <span class="blktag">blocked</span>' : ''}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;
             width:${(Math.abs(q) / span) * 100}%"></i></span>
-          <span>${q.toFixed(2)}</span></div>`).join('');
+          <span>${q.toFixed(2)}</span></div>`;
+      }).join('');
   });
 }

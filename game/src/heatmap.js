@@ -157,7 +157,7 @@ export function createHeatmap(scene) {
     }
   }
 
-  function setNumbers(grid) {
+  function setNumbers(grid, bestGrid) {
     placePlane(); // scale + board slide so the numbers sit on the tiles
     cctx.clearRect(0, 0, CW, CH);
     const H = grid.length, W = grid[0] ? grid[0].length : 0;
@@ -175,7 +175,10 @@ export function createHeatmap(scene) {
         const q = grid[r] && grid[r][c];
         if (!q) continue;
         const cx = (c + 0.5) * tw, cy = (r + 0.5) * th;
-        const best = bestAction(q);           // 0..3 = a move, 4 = Use (no arrow)
+        // prefer the server's MASKED best (matches the policy arrows + the agent);
+        // fall back to a raw argmax only if it wasn't provided (older cache)
+        const brow = bestGrid && bestGrid[r];
+        const best = (brow && brow[c] != null) ? brow[c] : bestAction(q);
         for (let d = 0; d < 4; d++) {
           const x = cx + off[d][0], y = cy + off[d][1];
           cctx.font = `${d === best ? '800 ' : '600 '}${f}px system-ui,Arial,sans-serif`;

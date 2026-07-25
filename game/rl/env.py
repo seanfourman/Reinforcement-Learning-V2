@@ -368,6 +368,28 @@ class GridWorld(gym.Env):
                 best_d, best_a = d, a
         return best_a if best_a is not None else 0
 
+    def effective_actions(self, agent, pos=None):
+        """Boolean mask over the action space: which actions actually DO something
+        from ``pos`` (default: the agent's CURRENT cell). A move counts only if it does
+        NOT bump a wall (it lands on a different cell); USE counts only where it matters
+        (a lever). Action selection masks to these so a greedy policy can never
+        self-loop on a wall / no-op forever - the agent makes a real move every tick.
+        Never returns an all-False mask (a boxed-in agent, which shouldn't occur, falls
+        back to all). Uses the LIVE passability rule, so an owned key opening a door
+        makes that move effective. Also used by the policy overlay so its arrows match
+        the action the agent would actually take."""
+        if pos is None:
+            pos = self.red_pos if agent == "red" else self.blue_pos
+        mask = [False] * self.n_actions
+        for a in MOVE_ACTIONS:
+            if self._resolve(agent, pos, a) != pos:
+                mask[a] = True
+        if USE < self.n_actions and pos in self.lever_set:
+            mask[USE] = True
+        if not any(mask):
+            mask = [True] * self.n_actions
+        return mask
+
     def _cross_move(self, agent, pos, action):
         """Maze transition. On a normal cell the move is deterministic. On a
         SLIPPERY junction the agent loses control with probability ``slip_ctrl``

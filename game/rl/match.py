@@ -264,11 +264,18 @@ class Match:
         self.red.set_epsilon(self.red_eps_start + (self.red_eps_end - self.red_eps_start) * fr)
         self.red_epsilon = self.red.epsilon
 
+    def _amask(self, agent):
+        # per-cell mask of EFFECTIVE actions (grid envs only) so a greedy policy can't
+        # self-loop on a wall / no-op. Continuous arenas have no such method -> None
+        # (no masking, and their open action space has no wall-bumps anyway).
+        fn = getattr(self.env, "effective_actions", None)
+        return fn(agent) if fn else None
+
     def _new_episode(self):
         self._apply_epsilon()
         (self.s_red, self.s_blue), _ = self.env.reset()
-        self.a_red = self.red.policy_action(self.s_red)
-        self.a_blue = self.blue.policy_action(self.s_blue)
+        self.a_red = self.red.policy_action(self.s_red, self._amask("red"))
+        self.a_blue = self.blue.policy_action(self.s_blue, self._amask("blue"))
         self.ep_return = {"red": 0.0, "blue": 0.0}
         # frame 0 = the TRUE start (spawn positions, before any move). tick() records
         # snapshots AFTER stepping, so without this seed the replay began one move in
@@ -285,8 +292,8 @@ class Match:
                 return False
             obs, reward, done, truncated, info = self.env.step(self.a_red, self.a_blue)
             ns_red, ns_blue = obs
-            na_red = self.red.policy_action(ns_red) if not done else 0
-            na_blue = self.blue.policy_action(ns_blue) if not done else 0
+            na_red = self.red.policy_action(ns_red, self._amask("red")) if not done else 0
+            na_blue = self.blue.policy_action(ns_blue, self._amask("blue")) if not done else 0
 
             self.red.learn_step(self.s_red, self.a_red, reward["red"], ns_red, na_red, done)
             self.blue.learn_step(self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue, done)
@@ -1048,7 +1055,11 @@ class Match:
                 if a.state_value(state) is None:
                     continue
                 q = a.q_values(state)
-                grid[r][c] = q.index(max(q))
+                # mask to EFFECTIVE actions at this cell so the arrow matches what the
+                # agent would actually do (never an arrow pointing into a wall)
+                m = self.env.effective_actions(agent, (r, c))
+                valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
+                grid[r][c] = max(valid, key=lambda i: q[i])
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "policy"}
 
     def visit_stats(self, agent):
@@ -1226,12 +1237,21 @@ class Match:
             a = self._agent(agent)
             _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
+            best = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
                 state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
                 if a.state_value(state) is None:        # leave unlearned tiles blank
                     continue
-                grid[r][c] = [round(x, 2) for x in a.q_values(state)]
-            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "q"}
+                q = a.q_values(state)
+                grid[r][c] = [round(x, 2) for x in q]
+                # highlight the action the agent WOULD take (argmax over EFFECTIVE
+                # actions), not the raw argmax - so the value-numbers overlay agrees with
+                # the policy arrows + tile inspector + the agent's actual masked behavior
+                m = self.env.effective_actions(agent, (r, c))
+                valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
+                best[r][c] = max(valid, key=lambda i: q[i])
+            return {"agent": agent, "grid": grid, "best": best,
+                    "H": self.env.H, "W": self.env.W, "mode": "q"}
 
     def q_at(self, agent, r, c):
         """Per-action Q for one tile in the current context (the Q inspector)."""
@@ -1243,4 +1263,11 @@ class Match:
                 return None
             _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             state = (self.env.cell_index[(r, c)], own_key, gold_loc, opp_region, opp_adj, trap)
-            return {"agent": agent, "cell": [r, c], "q": a.q_values(state)}
+            q = a.q_values(state)
+            # `best` = the action the agent would ACTUALLY take here (argmax over the
+            # EFFECTIVE actions), and `mask` flags which are blocked - so the inspector
+            # can star the real choice, not a higher-Q move that walks into a wall.
+            m = self.env.effective_actions(agent, (r, c))
+            valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
+            best = max(valid, key=lambda i: q[i])
+            return {"agent": agent, "cell": [r, c], "q": q, "best": best, "mask": m}

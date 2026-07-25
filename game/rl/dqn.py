@@ -118,10 +118,12 @@ class DQNAgent:
             t = torch.as_tensor(np.asarray(state, dtype=np.float32), device=self.device)
             return self.q(t.unsqueeze(0))[0]
 
-    def greedy_action(self, state):
+    def greedy_action(self, state, mask=None):
+        # mask is accepted for a uniform agent API but ignored: the DQN arenas are
+        # OPEN (continuous, no grid walls), so there are no wall-bump actions to mask.
         return int(torch.argmax(self._q_row(state)).item())
 
-    def policy_action(self, state):
+    def policy_action(self, state, mask=None):
         if self.rng.random() < self.epsilon:
             return self.rng.randrange(self.n_actions)
         return self.greedy_action(state)

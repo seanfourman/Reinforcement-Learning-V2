@@ -95,7 +95,7 @@ const STYLE = `
 #rl-cpanel .chart .ct h3{margin:0;font-size:11.5px;font-weight:700;color:#3a3b40;}
 #rl-cpanel .chart .ct .lg{font-size:9.5px;color:#9a9da4;display:flex;gap:10px;}
 #rl-cpanel .chart .ct .lg i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px;}
-#rl-cpanel .chart canvas{width:100%;height:94px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
+#rl-cpanel .chart canvas{width:100%;height:132px;background:#fbfbfc;border:1px solid #eceef1;border-radius:9px;display:block;}
 
 /* ===== underline tab row (mirrors the player panel), red accent ===== */
 #rl-cpanel .hdr{z-index:4;}

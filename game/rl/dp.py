@@ -121,10 +121,18 @@ class _DPBase:
             return cell, 0
         return cell, _phase(state[1], state[2])
 
-    def policy_action(self, state):
+    def policy_action(self, state, mask=None):
         cell, ph = self._cell_phase(state)
         pol = self.policy[ph]
-        return pol.get(cell, MOVE_ACTIONS[0])
+        a = pol.get(cell, MOVE_ACTIONS[0])
+        # the model-optimal move is essentially never a wall-bump, but if this cell's
+        # planned action happens to be blocked here, fall back to any EFFECTIVE action
+        # so a DP agent can't self-loop on a wall either.
+        if mask is not None and not mask[a]:
+            valid = [i for i, m in enumerate(mask) if m]
+            if valid:
+                a = valid[0]
+        return a
 
     def value(self, state):
         cell, ph = self._cell_phase(state)

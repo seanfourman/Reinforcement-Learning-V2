@@ -21,6 +21,7 @@ function chartsFor(side) {
       title: "Episode return",
       legend: [[c, label]],
       series: [{ key: isRed ? "retRed" : "retBlue", color: c }],
+      showValues: true,
       fmt: (v) => v.toFixed(1),
     },
     {
@@ -30,7 +31,8 @@ function chartsFor(side) {
       series: [{ key: isRed ? "rateRed" : "rateBlue", color: c }],
       min: 0,
       max: 1,
-      fmt: (v) => v.toFixed(1),
+      showValues: true,
+      fmt: (v) => Math.round(v * 100) + "%",
     },
     {
       id: `eps-${side}`,
@@ -39,6 +41,7 @@ function chartsFor(side) {
       series: [{ key: isRed ? "redEps" : "eps", color: "#7c4dd0" }],
       min: 0,
       max: 1,
+      showValues: true,
       fmt: (v) => v.toFixed(2),
     },
     {
@@ -46,6 +49,7 @@ function chartsFor(side) {
       title: "Episode length",
       legend: [["#1f9d63", "steps"]],
       series: [{ key: "len", color: "#1f9d63" }],
+      showValues: true,
       fmt: (v) => v.toFixed(0),
     },
   ];
@@ -61,6 +65,7 @@ function chartBlock(c) {
     <div class="chart${c.fullonly ? " fullonly" : ""}">
       <div class="ct"><h3>${c.title}</h3><span class="lg">${lg}</span></div>
       <canvas id="rl-ch-${c.id}"></canvas>
+      ${c.note ? `<p class="hint">${c.note}</p>` : ""}
     </div>`;
 }
 
@@ -165,6 +170,53 @@ function makeChart(canvas, cfg) {
     ctx.fillText(cfg.fmt(hi), 5, 2);
     ctx.textBaseline = "bottom";
     ctx.fillText(cfg.fmt(lo), 5, H - 1);
+    // optionally show each series' CURRENT value near its line end. Placed in the
+    // emptier vertical direction (BELOW a high line, ABOVE a low one) over a soft
+    // white chip, so it never ends up sitting on top of the line - even at 0%/100%.
+    if (cfg.showValues && points && points.length) {
+      ctx.font = "700 10px system-ui,sans-serif";
+      const mid = (y0 + y1) / 2,
+        gap = 8,
+        bh = 13,
+        padX = 3;
+      const items = [];
+      for (const s of cfg.series) {
+        let lv = null;
+        for (let i = points.length - 1; i >= 0; i--) {
+          const v = points[i][s.key];
+          if (v != null && !Number.isNaN(v)) { lv = v; break; }
+        }
+        if (lv == null) continue;
+        const ey = yOf(lv);
+        let cy = ey <= mid ? ey + gap : ey - gap; // push into the emptier half
+        cy = Math.max(bh / 2 + 1, Math.min(H - bh / 2 - 1, cy));
+        items.push({ cy, text: cfg.fmt(lv), color: s.color });
+      }
+      items.sort((a, b) => a.cy - b.cy); // keep two chips from overlapping
+      for (let i = 1; i < items.length; i++)
+        if (items[i].cy - items[i - 1].cy < bh + 1) items[i].cy = items[i - 1].cy + bh + 1;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (const it of items) {
+        const tw = ctx.measureText(it.text).width;
+        const bw = tw + padX * 2,
+          bx = x1 - bw,
+          by = it.cy - bh / 2,
+          r = 3;
+        ctx.fillStyle = "rgba(255,255,255,0.82)";
+        ctx.beginPath();
+        ctx.moveTo(bx + r, by);
+        ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
+        ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
+        ctx.arcTo(bx, by + bh, bx, by, r);
+        ctx.arcTo(bx, by, bx + bw, by, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = it.color;
+        ctx.fillText(it.text, x1 - padX, it.cy);
+      }
+      ctx.textAlign = "left";
+    }
   }
   return { draw, resize };
 }
@@ -605,21 +657,22 @@ function dualCharts() {
       fullonly: true,
       title: "Episode return",
       legend: [
-        [RED, "Red"],
         [BLUE, "Blue"],
+        [RED, "Red"],
       ],
       series: [
         { key: "retRed", color: RED },
         { key: "retBlue", color: BLUE },
       ],
+      showValues: true,
       fmt: (v) => v.toFixed(1),
     },
     {
       id: "d-rate",
       title: "Win rate - recent",
       legend: [
-        [RED, "Red"],
         [BLUE, "Blue"],
+        [RED, "Red"],
       ],
       series: [
         { key: "rateRed", color: RED },
@@ -627,15 +680,16 @@ function dualCharts() {
       ],
       min: 0,
       max: 1,
-      fmt: (v) => v.toFixed(1),
+      showValues: true,
+      fmt: (v) => Math.round(v * 100) + "%",
     },
     {
       id: "d-eps",
       fullonly: true,
       title: "Exploration ε",
       legend: [
-        [RED, "Red"],
         [BLUE, "Blue"],
+        [RED, "Red"],
       ],
       series: [
         { key: "redEps", color: RED },
@@ -643,7 +697,9 @@ function dualCharts() {
       ],
       min: 0,
       max: 1,
+      showValues: true,
       fmt: (v) => v.toFixed(2),
+      note: "ε is the exploration rate: how often the agent makes a random move instead of its best one. It starts high (explore a lot) and decays toward 0 (mostly use what it learned). The value at each line's end is that side's current ε.",
     },
     {
       id: "d-len",
@@ -651,6 +707,7 @@ function dualCharts() {
       title: "Episode length",
       legend: [["#1f9d63", "steps"]],
       series: [{ key: "len", color: "#1f9d63" }],
+      showValues: true,
       fmt: (v) => v.toFixed(0),
     },
     {
@@ -658,14 +715,16 @@ function dualCharts() {
       fullonly: true,
       title: "Learning signal - |TD error| / DQN loss",
       legend: [
-        [RED, "Red"],
         [BLUE, "Blue"],
+        [RED, "Red"],
       ],
       series: [
         { key: "tdRed", color: RED },
         { key: "tdBlue", color: BLUE },
       ],
+      showValues: true,
       fmt: (v) => v.toFixed(3),
+      note: "How big the agent's learning updates are: the gap between what it expected and what actually happened (TD error for the table-based agents, network loss for DQN). Large early while it learns fast, shrinking toward 0 as its estimates settle.",
     },
   ];
 }
@@ -709,9 +768,9 @@ export function initDiag(parent) {
     `
     <section id="rl-outcomes">
       <h2>Outcome breakdown</h2>
-      <div class="bar" style="margin-bottom:11px;"><i class="r" id="rl-oc-r"></i><i class="b" id="rl-oc-b"></i><i class="d" id="rl-oc-d"></i><i class="t" id="rl-oc-t"></i></div>
-      <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-oc-rv">0</b></div>
+      <div class="bar" style="margin-bottom:11px;"><i class="b" id="rl-oc-b"></i><i class="r" id="rl-oc-r"></i><i class="d" id="rl-oc-d"></i><i class="t" id="rl-oc-t"></i></div>
       <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-oc-bv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-oc-rv">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#f0b429"></i>Draws</span><b id="rl-oc-dv">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#8a8d94"></i>Timeouts</span><b id="rl-oc-tv">0</b></div>
     </section>
@@ -726,8 +785,8 @@ export function initDiag(parent) {
       <div class="stat"><span>Train steps</span><b id="rl-dqn-ts">-</b></div>
       <div class="stat"><span>Target syncs</span><b id="rl-dqn-sync">-</b></div>
       <div class="stat"><span>Adam lr</span><b id="rl-dqn-lr">-</b></div>
-      <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Gradient norm (pre-clip)</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-gnorm"></canvas></div>
-      <div class="chart"><div class="ct"><h3>Predicted Q - overestimation</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-predq"></canvas></div>
+      <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Gradient norm (pre-clip)</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-gnorm"></canvas></div>
+      <div class="chart"><div class="ct"><h3>Predicted Q - overestimation</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-predq"></canvas></div>
     </section>`,
   );
   const q = (s) => parent.querySelector(s);
@@ -773,8 +832,8 @@ export function initDiag(parent) {
         .map(
           (lb, i) =>
             `<div class="actrow"><span class="al">${lb}</span>` +
-            `<span class="ab"><i class="r" style="width:${pct(ad.red[i] || 0)}"></i></span>` +
-            `<span class="ab"><i class="b" style="width:${pct(ad.blue[i] || 0)}"></i></span></div>`,
+            `<span class="ab"><i class="b" style="width:${pct(ad.blue[i] || 0)}"></i></span>` +
+            `<span class="ab"><i class="r" style="width:${pct(ad.red[i] || 0)}"></i></span></div>`,
         )
         .join("");
     }
@@ -838,7 +897,7 @@ export function initBriefing(parent) {
         `<div class="stat"><span>State space</span><b>${s.stateSize ? s.stateSize.toLocaleString() : "continuous"}</b></div>` +
         `<p class="note"><b>S:</b> ${s.stateDesc}</p>` +
         `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
-        `<div class="stat"><span>Discount γ - R / B</span><b>${s.gammaRed} / ${s.gammaBlue}</b></div>` +
+        `<div class="stat"><span>Discount γ - B / R</span><b>${s.gammaBlue} / ${s.gammaRed}</b></div>` +
         `<div class="stat"><span>Effective horizon</span><b>${s.horizon || "∞"} steps</b></div>` +
         (s.slipProb
           ? `<div class="stat"><span>Slip probability</span><b>${s.slipProb}</b></div>`
@@ -855,12 +914,13 @@ export function initBriefing(parent) {
 
 // small two-column (Red vs Blue) comparison table used by Head-to-head + Exploration
 function cmpHead(rLabel, bLabel) {
-  return `<div class="cmp-head"><span></span><span class="cr">${rLabel}</span><span class="cb">${bLabel}</span></div>`;
+  // Blue (the player's model) on the LEFT, Red on the right
+  return `<div class="cmp-head"><span></span><span class="cb">${bLabel}</span><span class="cr">${rLabel}</span></div>`;
 }
 function cmpRow(label, r, b, lead) {
   return (
     `<div class="cmp-row"><span class="cl">${label}</span>` +
-    `<b class="cr${lead === "r" ? " win" : ""}">${r}</b><b class="cb${lead === "b" ? " win" : ""}">${b}</b></div>`
+    `<b class="cb${lead === "b" ? " win" : ""}">${b}</b><b class="cr${lead === "r" ? " win" : ""}">${r}</b></div>`
   );
 }
 const lead = (r, b) => (r > b ? "r" : b > r ? "b" : "");
@@ -1034,7 +1094,7 @@ export function initReward(parent) {
     `
     <section id="rl-reward" hidden>
       <h2>Reward decomposition</h2>
-      <p class="hint">Average return per episode split into terminal (win/lose), potential shaping, and other (step cost + bonuses).</p>
+      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective. Other = the per-step time cost and misc bonuses.</p>
       <div id="rl-reward-body"></div>
     </section>`,
   );
@@ -1071,10 +1131,10 @@ export function initReward(parent) {
       }
       sec.hidden = false;
       body.innerHTML =
-        `<div class="brief-sub" style="color:#e60012">Red - ${d.episodes}-ep avg</div>` +
-        rows(d.red, "#e60012") +
-        `<div class="brief-sub" style="color:#1f5fd0;margin-top:12px">Blue</div>` +
-        rows(d.blue, "#1f5fd0");
+        `<div class="brief-sub" style="color:#1f5fd0">Blue - ${d.episodes}-ep avg</div>` +
+        rows(d.blue, "#1f5fd0") +
+        `<div class="brief-sub" style="color:#e60012;margin-top:12px">Red</div>` +
+        rows(d.red, "#e60012");
     } catch (e) {
       /* warming up */
     }
@@ -1090,7 +1150,8 @@ export function initProbe(parent) {
     `
     <section id="rl-probe" hidden>
       <h2>Start-state value</h2>
-      <div class="chart"><div class="ct"><h3>V(spawn) over episodes</h3><span class="lg"><i style="background:#e60012"></i>Red<i style="background:#1f5fd0"></i>Blue</span></div><canvas id="rl-ch-probe"></canvas></div>
+      <div class="chart"><div class="ct"><h3>V(spawn) over episodes</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-probe"></canvas></div>
+      <p class="hint">The agent's own estimate of how good the START tile is - the total future reward it expects from spawn. As it learns a reliable path to the goal, this climbs and then levels off.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-probe");
@@ -1099,6 +1160,7 @@ export function initProbe(parent) {
       { key: "redV", color: "#e60012" },
       { key: "blueV", color: "#1f5fd0" },
     ],
+    showValues: true,
     fmt: (v) => v.toFixed(2),
   });
   window.addEventListener("resize", () => ch.resize());
@@ -1128,7 +1190,7 @@ export function initPolicyDiff(parent) {
     `
     <section id="rl-polagree" hidden>
       <h2>Policy agreement</h2>
-      <div class="stat"><span>Red &amp; Blue greedy match</span><b id="rl-pa-rate">-</b></div>
+      <div class="stat"><span>Blue &amp; Red greedy match</span><b id="rl-pa-rate">-</b></div>
       <!-- neutral (black) fill, not the Blue-model .b class: this bar is about BOTH agents agreeing -->
       <div class="bar" style="margin-top:9px;"><i id="rl-pa-bar" style="background:#141518;"></i></div>
     </section>`,

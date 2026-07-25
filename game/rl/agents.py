@@ -43,20 +43,27 @@ class Tabular:
             self.Q[state] = r
         return r
 
-    def greedy_action(self, state):
+    def greedy_action(self, state, mask=None):
         # break ties RANDOMLY - otherwise an all-zero (unlearned) state always
         # returns action 0, so a barely-trained greedy policy walks into the same
         # wall forever. Random ties keep exploring blank states (vital for MC).
+        # `mask` (from the env) restricts the choice to actions that actually move /
+        # do something, so the greedy policy can NEVER self-loop on a wall or no-op.
         r = self.row(state)
-        best = max(r)
-        if r.count(best) == 1:
-            return r.index(best)
-        return self.rng.choice([a for a in range(self.n_actions) if r[a] == best])
+        valid = [a for a in range(self.n_actions) if mask is None or mask[a]]
+        if not valid:
+            valid = list(range(self.n_actions))
+        best = max(r[a] for a in valid)
+        ties = [a for a in valid if r[a] == best]
+        return ties[0] if len(ties) == 1 else self.rng.choice(ties)
 
-    def policy_action(self, state):
+    def policy_action(self, state, mask=None):
+        valid = [a for a in range(self.n_actions) if mask is None or mask[a]]
+        if not valid:
+            valid = list(range(self.n_actions))
         if self.rng.random() < self.epsilon:
-            return self.rng.randrange(self.n_actions)
-        return self.greedy_action(state)
+            return self.rng.choice(valid)       # explore among EFFECTIVE actions only
+        return self.greedy_action(state, mask)
 
     # ------------------------------------------------------------- inspection
     def value(self, state):
