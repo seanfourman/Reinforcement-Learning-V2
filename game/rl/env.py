@@ -31,9 +31,8 @@ from worldgen import (
     WALL, RED_DOOR, BLUE_DOOR, RED_KEY, BLUE_KEY,
 )
 
-# --- actions: N, S, W, E, USE (USE is a no-op until levers exist) -----------
-ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1), (0, 0)]
-USE = 4
+# --- actions: N, S, W, E ----------------------------------------------------
+ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 N_ACTIONS = len(ACTIONS)
 MOVE_ACTIONS = (0, 1, 2, 3)
 # on a slippery tile a move may slide to a PERPENDICULAR direction: N/S slip to
@@ -330,7 +329,7 @@ class GridWorld(gym.Env):
         """P(next cell | pos, action) - the KNOWN transition model. Deterministic
         everywhere except on a slippery tile, where the move slides to a
         perpendicular direction with probability ``slip_prob`` (split evenly).
-        Returns a list of (prob, cell). USE / non-moves stay put."""
+        Returns a list of (prob, cell). Non-move actions stay put."""
         if action not in MOVE_ACTIONS:
             return [(1.0, pos)]
         if pos not in self.slip_set or self.slip_prob <= 0.0:
@@ -371,21 +370,18 @@ class GridWorld(gym.Env):
     def effective_actions(self, agent, pos=None):
         """Boolean mask over the action space: which actions actually DO something
         from ``pos`` (default: the agent's CURRENT cell). A move counts only if it does
-        NOT bump a wall (it lands on a different cell); USE counts only where it matters
-        (a lever). Action selection masks to these so a greedy policy can never
-        self-loop on a wall / no-op forever - the agent makes a real move every tick.
-        Never returns an all-False mask (a boxed-in agent, which shouldn't occur, falls
-        back to all). Uses the LIVE passability rule, so an owned key opening a door
-        makes that move effective. Also used by the policy overlay so its arrows match
-        the action the agent would actually take."""
+        NOT bump a wall (it lands on a different cell). Action selection masks to these
+        so a greedy policy can never self-loop on a wall forever - the agent makes a real
+        move every tick. Never returns an all-False mask (a boxed-in agent, which
+        shouldn't occur, falls back to all). Uses the LIVE passability rule, so an owned
+        key opening a door makes that move effective. Also used by the policy overlay so
+        its arrows match the action the agent would actually take."""
         if pos is None:
             pos = self.red_pos if agent == "red" else self.blue_pos
         mask = [False] * self.n_actions
         for a in MOVE_ACTIONS:
             if self._resolve(agent, pos, a) != pos:
                 mask[a] = True
-        if USE < self.n_actions and pos in self.lever_set:
-            mask[USE] = True
         if not any(mask):
             mask = [True] * self.n_actions
         return mask
@@ -519,13 +515,7 @@ class GridWorld(gym.Env):
             self.gold_holder = None
             self.gold_pos = self.world.gold_home
 
-        # 4) levers: USE while standing on a lever toggles the snare trap (both
-        #    agents observe trap_armed, so this is a genuinely learned interaction)
-        for agent, act in (("red", a_red), ("blue", a_blue)):
-            if act == USE and self._pos(agent) in self.lever_set:
-                self.trap_armed = not self.trap_armed
-
-        # 5) trap: if armed, an agent on the trap cell is flung back to its spawn
+        # 4) trap: if armed, an agent on the trap cell is flung back to its spawn
         #    (a real setback, and it can snare YOU too). Resolved before escape so
         #    a trap can deny a gold-carrier right at the gate.
         if self.trap_armed:

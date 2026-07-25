@@ -17,7 +17,7 @@ export const NAMES = {
   monte_carlo: 'Monte-Carlo',
   dqn: 'DQN', double_dqn: 'Double-DQN', dueling_dqn: 'Dueling-DQN',
 };
-const ACTION_NAMES = ['North', 'South', 'West', 'East', 'Use'];
+const ACTION_NAMES = ['North', 'South', 'West', 'East'];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
 const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)

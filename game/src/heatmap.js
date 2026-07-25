@@ -133,7 +133,7 @@ export function createHeatmap(scene) {
     numPlane.position.set(GRID / 2 + ox, 0.2, GRID / 2 + oz);
   }
 
-  // the TRUE greedy action over ALL actions (may be 4 = Use, which is no move)
+  // the TRUE greedy action over the 4 move directions (N,S,W,E)
   function bestAction(q) {
     let bi = 0, bv = q[0];
     for (let i = 1; i < q.length; i++) if (q[i] > bv) { bv = q[i]; bi = i; }
@@ -187,21 +187,13 @@ export function createHeatmap(scene) {
           cctx.fillStyle = d === best ? '#123fb0' : '#2a2d34';
           putText(q[d].toFixed(1), x, y);
         }
-        // greedy action is Use/stay: show it in the centre (blue) so no arrow is wrongly blue
-        if (best === 4 && q.length > 4) {
-          cctx.font = `800 ${Math.round(f * 0.82)}px system-ui,Arial,sans-serif`;
-          cctx.lineWidth = Math.max(2, f * 0.2);
-          cctx.strokeStyle = 'rgba(12,14,18,0.55)';
-          cctx.fillStyle = '#123fb0';
-          putText(q[4].toFixed(1), cx, cy);
-        }
       }
     }
     tex.needsUpdate = true;
   }
 
   // ---- greedy-policy ARROWS (per-cell argmax action) on the same canvas plane ----
-  // grid[r][c] = 0=N,1=S,2=W,3=E,4=Use, or null. Fed by /api/values?mode=policy.
+  // grid[r][c] = 0=N,1=S,2=W,3=E, or null. Fed by /api/values?mode=policy.
   const PDIR = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // N,S,W,E in canvas (x right, y down)
   function setPolicy(grid) {
     placePlane(); // scale + board slide (arrows self-orient under the flip, so no glyph spin)
@@ -218,12 +210,6 @@ export function createHeatmap(scene) {
         const a = grid[r] && grid[r][c];
         if (a === null || a === undefined) continue;
         const cx = (c + 0.5) * tw, cy = (r + 0.5) * th;
-        if (a === 4) { // Use / stay: a dot
-          cctx.beginPath();
-          cctx.arc(cx, cy, Math.min(tw, th) * 0.12, 0, Math.PI * 2);
-          cctx.fill();
-          continue;
-        }
         const [dx, dy] = PDIR[a];
         const ex = cx + dx * L, ey = cy + dy * L;
         cctx.lineWidth = Math.max(4, L * 0.26);

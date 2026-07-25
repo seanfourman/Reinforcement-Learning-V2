@@ -20,7 +20,7 @@ the instant a new world is generated (both models "start untrained" again).
 
 import random
 
-N_ACTIONS = 5  # keep in sync with env.ACTIONS; imported lazily elsewhere
+N_ACTIONS = 4  # keep in sync with env.ACTIONS; imported lazily elsewhere
 
 
 class Tabular:

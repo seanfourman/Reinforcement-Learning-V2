@@ -837,7 +837,7 @@ class Match:
                 cross = env.objective == "cross"
                 state_desc = "cell x own-key(2) x gold-loc(5) x opp-region(3) x opp-adjacent(2) x trap(2)"
                 state_size = getattr(env, "state_space_size", None)
-                actions = ["North", "South", "West", "East", "Use"]
+                actions = ["North", "South", "West", "East"]
                 if cross:
                     rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
                                ["Fall in a manhole", -0.5], ["Shaping weight", 0.02]]
@@ -1030,7 +1030,7 @@ class Match:
         return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
 
     def _action_labels(self):
-        return ["N", "S", "W", "E", "Use"] if self.env.n_actions == 5 \
+        return ["N", "S", "W", "E"] if self.env.n_actions == 4 \
             else [str(i) for i in range(self.env.n_actions)]
 
     def action_dist(self):
@@ -1229,8 +1229,8 @@ class Match:
 
     def q_grid(self, agent):
         """Per-action Q for EVERY tile (the 'numbers on tiles' value overlay), in the
-        agent's current context: [qN, qS, qW, qE, qUse], or None on walls / unlearned
-        cells. Action order matches env.ACTIONS (North, South, West, East, Use)."""
+        agent's current context: [qN, qS, qW, qE], or None on walls / unlearned
+        cells. Action order matches env.ACTIONS (North, South, West, East)."""
         with self.lock:
             if self.env.objective == "arena":
                 return self._blank_grid(agent, mode="q")
