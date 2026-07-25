@@ -112,11 +112,15 @@ const STYLE = `
 /* sticky header with the live matchup */
 #rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 14px;background:#fff;
   border-bottom:1px solid #e6e8ec;}
-/* round badge + arena name - the header's title row */
-#rl-panel .hdr .harena{display:flex;align-items:center;gap:10px;margin-top:0;}
+/* arena name (left) + round tag pushed to the far right - the header's title row.
+   On the CPU model the lock swings in top-right, so reserve space then to avoid an overlap. */
+#rl-panel .hdr .harena{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;
+  padding-right:0;transition:padding-right .3s ease;}
+#rl-panel[data-model="cpu"] .hdr .harena{padding-right:42px;}
 #rl-panel .hdr .rbadge{flex:none;font-size:11px;font-weight:800;color:#fff;background:#1f1f21;border-radius:7px;
   padding:4px 10px;font-variant-numeric:tabular-nums;letter-spacing:.3px;}
-#rl-panel .hdr .harena b{font-size:23px;font-weight:800;letter-spacing:-.5px;color:#1f1f21;line-height:1.1;}
+#rl-panel .hdr .harena b{font-size:23px;font-weight:800;letter-spacing:-.5px;color:#1f1f21;line-height:1.1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* the model being trained + who it faces */
 #rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
@@ -286,7 +290,7 @@ const STYLE = `
 /* contest bar */
 #rl-panel .bar{height:10px;border-radius:0;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
 #rl-panel .bar i{display:block;height:100%;transition:width .3s;}
-#rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#f0b429;}
+#rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#8b5cf6;}
 #rl-panel .bar .t{background:#8a8d94;}
 #rl-panel .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 /* action-distribution rows: a label + a Red mini-bar over a Blue mini-bar */
@@ -522,7 +526,7 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
-      <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
+      <div class="harena"><b id="rl-arena">-</b><span class="rbadge" id="rl-round">-</span></div>
       <div class="mselect">
         <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your">
@@ -915,7 +919,7 @@ export function initPanel() {
       lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
       reShowRelevant();
     }
-    $('#rl-round').textContent = `Round ${ri + 1}/${r.total || 1}`;
+    $('#rl-round').textContent = `R ${ri + 1}/${r.total || 1}`;
     $('#rl-arena').textContent = r.title || '';
     const tgt = s.targetEpisodes || 0;
     $('#rl-ep').textContent = tgt > 0
