@@ -40,7 +40,7 @@ const SVG = {
 
 // slider fill colours: blue = tunes OUR model (Blue); gray = global / both models
 const C_OURS = '#1f5fd0';
-const C_GLOBAL = '#8a8d94';
+const C_GLOBAL = '#141518'; // black fill for the global / structural sliders (was gray)
 
 // tunable training hyperparameters - the panel writes these to the trainer live.
 // PARAMS = the per-side LEARNING knobs (both the N and the mirrored M panel use
@@ -237,7 +237,7 @@ const STYLE = `
 #rl-panel .bar{height:10px;border-radius:0;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
 #rl-panel .bar i{display:block;height:100%;transition:width .3s;}
 #rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#c6c9cf;}
-#rl-panel .bar .t{background:#8a8d94;}
+#rl-panel .bar .t{background:#141518;}
 #rl-panel .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 /* action-distribution rows: a label + a Red mini-bar over a Blue mini-bar */
 #rl-panel .actlist{display:flex;flex-direction:column;gap:8px;}
