@@ -9,8 +9,11 @@ const FINAL_POSE_DURATION = 10 * 60 * 1000;
 
 const STYLE = `
 @font-face{font-family:"SuperMario256";src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
-#rl-award{position:fixed;inset:0;z-index:24;pointer-events:none;display:grid;place-items:center;
-  opacity:0;transition:opacity .18s ease;font-family:"Segoe UI",system-ui,sans-serif;}
+/* z 61 = ABOVE the round-transition iris (z 60) so the text stays visible OVER the
+   closing black circle; main.js hides it (awardCeremony.stop) at full black. The dim
+   backdrop fades in with the element's opacity. */
+#rl-award{position:fixed;inset:0;z-index:61;pointer-events:none;display:grid;place-items:center;
+  background:rgba(0,0,0,.42);opacity:0;transition:opacity .35s ease;font-family:"Segoe UI",system-ui,sans-serif;}
 #rl-award.show{opacity:1;}
 #rl-award .burst{position:absolute;inset:0;overflow:hidden;}
 #rl-award .spark{position:absolute;left:50%;top:48%;width:14px;height:14px;border:3px solid #000;
@@ -23,19 +26,16 @@ const STYLE = `
   16%{opacity:1;}
   100%{transform:translate(calc(-50% + var(--x)),calc(-50% + var(--y))) scale(.9);opacity:0;}
 }
-#rl-award .banner{align-self:center;margin-top:0;text-align:center;transform:translateY(-24px) scale(.9);opacity:0;}
-#rl-award.show .banner{animation:rl-award-pop .52s cubic-bezier(.16,1.35,.25,1) .18s both;}
-@keyframes rl-award-pop{to{transform:translateY(0) scale(1);opacity:1;}}
+#rl-award .banner{align-self:center;margin-top:0;text-align:center;transform:translateY(-120px);opacity:0;}
+#rl-award.show .banner{animation:rl-award-drop .6s cubic-bezier(.2,1.12,.32,1) .05s both;}
+@keyframes rl-award-drop{0%{opacity:0;transform:translateY(-120px);}55%{opacity:1;}100%{opacity:1;transform:translateY(0);}}
 #rl-award .winner{font-family:"SuperMario256","Arial Black",sans-serif;font-size:clamp(46px,7vw,96px);
   line-height:.92;letter-spacing:1px;color:#ffd43d;-webkit-text-stroke:7px #000;paint-order:stroke fill;
   text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000,5px 5px 0 #000,6px 6px 0 #000,7px 7px 0 #000,8px 8px 0 #000;}
 #rl-award.blue .winner{color:#67a9ff;}
 #rl-award.red .winner{color:#ff7468;}
 #rl-award.draw .winner{color:#b79cff;}
-/* draw = plain dim, no stage ring/spotlight, banner centred on screen */
-#rl-award.draw{background:rgba(0,0,0,.4);}
-#rl-award.draw .banner{align-self:center;margin-top:0;}
-#rl-award.draw .point{display:none;}
+/* draw uses the same dim backdrop + centred banner as a winner now (base rules) */
 #rl-award .sub{display:block;margin-top:12px;position:relative;left:20px;color:#fff;font-family:"SuperMario256","Arial Black",sans-serif;
   font-size:20px;letter-spacing:.5px;-webkit-text-stroke:4px #000;paint-order:stroke fill;
   text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000;}
@@ -221,9 +221,16 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     void el.offsetWidth;
     el.classList.add("show");
     drawTimer = setTimeout(() => {
-      el.classList.remove("show", cls);
-      if (finalRound) showFinal(award, stats);
-      else onDone?.({ award, stats });
+      if (finalRound) {
+        el.classList.remove("show", cls);
+        showFinal(award, stats);
+      } else {
+        // keep the banner SHOWN and start the advance: the round transition's onCovered
+        // calls awardCeremony.stop() at FULL BLACK, hiding it exactly when the iris has
+        // taken the whole screen. Fallback clears it if that somehow never fires.
+        onDone?.({ award, stats });
+        drawTimer = setTimeout(() => el.classList.remove("show", cls), 6000);
+      }
     }, 4800);
   }
 
