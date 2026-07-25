@@ -386,6 +386,7 @@ function maybeStartFinishCeremony(stats) {
   closeTrainingPanels();
   if (finish.winner) awardCeremony.start(finish, stats);
   else if (finalRound) awardCeremony.showFinal(finish, stats);
+  else awardCeremony.showDraw(finish, stats);
 }
 
 // absorb whatever award/finish event the server is still broadcasting the FIRST
@@ -592,7 +593,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "KeyR" && !/input|select|textarea/i.test(e.target.tagName))
     control({ cmd: "reset" });
   if (
-    e.code === "KeyO" &&
+    e.code === "KeyT" &&
     !/input|select|textarea/i.test(e.target.tagName) &&
     !(menu && menu.active)
   )
@@ -781,6 +782,9 @@ const fx = createPostFX(renderer, scene, camera);
 function startFromMenu() {
   return new Promise((resolve) => {
     menuIdle = false; // leaving the menu: polling may build the world again
+    // a fresh game = a fresh tournament. The server persists the round + score across
+    // page loads, so without this a previous session's round 5 / stray point leaks in.
+    control({ cmd: "resetTournament" });
     control({ cmd: "cpuTier", value: getCpuTier() }); // Red's strength = chosen CPU character's tier
     // starting from the menu = always resume training. The server keeps _paused across
     // page reloads, so a stale pause from a previous session could leave the board frozen

@@ -32,6 +32,11 @@ const STYLE = `
   text-shadow:0 5px 0 rgba(0,0,0,.55);}
 #rl-award.blue .winner{color:#67a9ff;}
 #rl-award.red .winner{color:#ff7468;}
+#rl-award.draw .winner{color:#b79cff;}
+/* draw = plain dim, no stage ring/spotlight, banner centred on screen */
+#rl-award.draw{background:rgba(0,0,0,.4);}
+#rl-award.draw .banner{align-self:center;margin-top:0;}
+#rl-award.draw .point{display:none;}
 #rl-award .sub{display:inline-block;margin-top:10px;padding:7px 18px;border:3px solid #000;border-radius:999px;
   background:#fff;color:#1f1f21;font-size:16px;font-weight:900;box-shadow:0 4px 0 #000;}
 #rl-award .point{position:absolute;left:50%;bottom:13vh;transform:translateX(-50%);
@@ -200,10 +205,29 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   const tmpPos = new THREE.Vector3();
   const tmpScreen = new THREE.Vector3();
   let state = null;
+  let drawTimer = null;
 
   function hide() {
-    el.classList.remove("show", "blue", "red", "stage", "close");
+    clearTimeout(drawTimer);
+    el.classList.remove("show", "blue", "red", "stage", "close", "draw");
     state = null;
+  }
+
+  function showDraw(award, stats) {
+    // a genuine tie: no zoom, no celebrate, NO stage ring/spotlight - just a centred
+    // DRAW card over a plain dim, then advance.
+    clearTimeout(drawTimer);
+    el.classList.remove("show", "blue", "red", "stage", "close");
+    el.classList.add("draw");
+    el.querySelector(".winner").textContent = "DRAW";
+    el.querySelector(".sub").textContent = "No clear winner this round";
+    el.querySelector(".point").textContent = "";
+    void el.offsetWidth;
+    el.classList.add("show");
+    drawTimer = setTimeout(() => {
+      el.classList.remove("show", "draw");
+      onDone?.({ draw: true, award, stats });
+    }, 2600);
   }
 
   function setStageSpot(side) {
@@ -340,6 +364,7 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   return {
     start,
     showFinal,
+    showDraw,
     update,
     stop: () => {
       hide();

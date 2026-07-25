@@ -718,47 +718,40 @@ class Match:
             self.set_round(order[(i + 1) % len(order)], keep_score=True)
 
     def award_round(self):
-        """Arm the current stage so the next live finish decides the point.
+        """Finish the current stage INSTANTLY (no waiting for the next live finish).
 
-        This is idempotent for each round id so a later Next click cannot
-        double-score. The frontend gets a pending event immediately, then a
-        finish event with the exact finish frame when an episode completes.
+        The point goes to whichever model has more RECENT wins; a tie is a genuine
+        draw - no point, no winner, and the ceremony won't zoom on a character. The
+        round is marked resolved either way so a following Next can never re-score it.
         """
         with self.lock:
-            meta = self._matchup()
-            already = self.round_id in self.awarded_rounds
-            if already:
-                if self.last_award and self.last_award.get("roundId") == self.round_id:
-                    return dict(self.last_award)
-                return self._award_current_round(source="official")
-            if self.finish_waiting and self.last_award:
+            # already resolved this round? re-show the same result, never double-score.
+            if self.round_id in self.awarded_rounds and self.last_award \
+                    and self.last_award.get("roundId") == self.round_id:
                 return dict(self.last_award)
-
-            recent = list(self.recent)
-            self.award_serial += 1
-            self.finish_waiting = True
-            self.finish_event = None
-            self.last_award = {
-                "serial": self.award_serial,
-                "source": "official",
+            award = self._award_current_round(source="official")   # winner=recent leader, None on a tie
+            self.awarded_rounds.add(self.round_id)                  # resolved (a draw counts as resolved too)
+            focus = award.get("winner")
+            frame = self._ceremony_frame(focus)                    # focus=None (draw) -> no character moved
+            self.finish_serial += 1
+            self.finish_event = {
+                "serial": self.finish_serial,
+                "awardSerial": award.get("serial"),
                 "roundId": self.round_id,
-                "roundIndex": meta.get("index", 0),
-                "roundTotal": meta.get("total", len(worlds.ROUNDS)),
-                "title": meta.get("title", ""),
-                "winner": None,
-                "awarded": False,
-                "already": already,
-                "pending": True,
-                "recent": {
-                    "red": recent.count("red"),
-                    "blue": recent.count("blue"),
-                    "draw": recent.count("draw"),
-                },
+                "roundIndex": award.get("roundIndex", 0),
+                "roundTotal": award.get("roundTotal", len(worlds.ROUNDS)),
+                "title": award.get("title", ""),
+                "winner": focus if focus in ("red", "blue") else None,
+                "episodeWinner": None,
+                "awarded": award.get("awarded", False),
                 "score": dict(self.score),
-                "labelRed": meta.get("labelRed", self.algo_red),
-                "labelBlue": meta.get("labelBlue", self.algo_blue),
+                "award": dict(award),
+                "frame": frame,
+                "labelRed": award.get("labelRed", self.algo_red),
+                "labelBlue": award.get("labelBlue", self.algo_blue),
             }
-            return dict(self.last_award)
+            self.finish_waiting = False
+            return dict(award)
 
     def _award_current_round(self, source="auto", winner_override=None):
         recent = list(self.recent)

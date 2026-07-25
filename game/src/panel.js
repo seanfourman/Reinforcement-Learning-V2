@@ -664,7 +664,7 @@ export function initPanel() {
   // ---- open / close the control menu (N key) ----
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyN' || /input|select|textarea/i.test(e.target.tagName)) return;
+    if (e.code !== 'KeyC' || /input|select|textarea/i.test(e.target.tagName)) return;
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
     window.RL?.panels?.toggle?.();
   });

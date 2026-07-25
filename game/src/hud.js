@@ -134,9 +134,8 @@ export function initHud() {
   keys.id = "rl-keys";
   keys.innerHTML =
     `<div class="kh"><span class="key">R</span><span class="txt">Reset</span></div>` +
-    `<div class="kh"><span class="key">N</span><span class="txt">Controls</span></div>` +
-    `<div class="kh"><span class="key">M</span><span class="txt">CPU</span></div>` +
-    `<div class="kh finish" id="rl-finish-key"><span class="key">O</span><span class="txt" id="rl-finish-txt">Finish stage</span></div>`;
+    `<div class="kh"><span class="key">C</span><span class="txt">Controls</span></div>` +
+    `<div class="kh finish" id="rl-finish-key"><span class="key">T</span><span class="txt" id="rl-finish-txt">Finish stage</span></div>`;
   document.body.appendChild(keys);
 
   const $ = (id) => hud.querySelector(id);

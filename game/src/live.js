@@ -234,7 +234,6 @@ export function createLiveActors(scene, walkers) {
 
   function updateVictoryPose(walker, c) {
     const age = (performance.now() - c.start) / 1000;
-    const wave = Math.sin(age * 9.5) * 0.22;
     const hop = Math.pow(Math.max(0, Math.sin(age * Math.PI * 2.1)), 1.7) * 0.55;
     walker.moveAmt = 0;
     walker.group.position.copy(c.position);
@@ -255,15 +254,16 @@ export function createLiveActors(scene, walkers) {
     if (walker.bones) {
       const hy = walker.group.rotation.y;
       poseAxis.set(Math.cos(hy), 0, -Math.sin(hy));
-      swingBone(walker.parts.shR, walker.rest.shR, poseAxis, -1.85 + wave);
-      swingBone(walker.parts.shL, walker.rest.shL, poseAxis, 0.5 - wave * 0.35);
+      // arms stay at rest (no raised-arm "thumbs up") - just the celebratory hop
+      swingBone(walker.parts.shR, walker.rest.shR, poseAxis, 0);
+      swingBone(walker.parts.shL, walker.rest.shL, poseAxis, 0);
       swingBone(walker.parts.hipL, walker.rest.hipL, poseAxis, 0.18);
       swingBone(walker.parts.hipR, walker.rest.hipR, poseAxis, -0.18);
       return;
     }
 
-    walker.parts.shR.rotation.x = -2.25 + wave;
-    walker.parts.shL.rotation.x = 0.42 - wave * 0.35;
+    walker.parts.shR.rotation.x = 0;
+    walker.parts.shL.rotation.x = 0;
     walker.parts.hipL.rotation.x = 0.16;
     walker.parts.hipR.rotation.x = -0.16;
   }
