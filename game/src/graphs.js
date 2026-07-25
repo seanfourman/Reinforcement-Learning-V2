@@ -73,17 +73,29 @@ function chartBlock(c) {
 function makeChart(canvas, cfg) {
   const ctx = canvas.getContext("2d");
   let W = 0,
-    H = 0;
-  function resize() {
+    H = 0,
+    lastPoints = null;
+  // size the drawing BUFFER to the on-screen box x DPR so lines stay crisp
+  function fit() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = canvas.clientWidth || 332;
-    H = canvas.clientHeight || 94;
+    H = canvas.clientHeight || 132;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+  // re-fit (which clears the canvas) then redraw the last data - used on window resize
+  // and when the chart finally gets its real size after being drawn while hidden
+  function resize() {
+    fit();
+    if (lastPoints) draw(lastPoints);
+  }
   function draw(points) {
-    if (!W) resize();
+    lastPoints = points;
+    // (re)fit if the buffer isn't matched to the CURRENT on-screen width. A chart first
+    // drawn while its tab was hidden gets a 0/fallback width; shown wider, that small
+    // bitmap is scaled up and the lines look blurry - refitting renders them sharp.
+    if (!W || (canvas.clientWidth && canvas.clientWidth !== W)) fit();
     ctx.clearRect(0, 0, W, H);
     const padT = 9,
       padB = 9,
@@ -217,6 +229,14 @@ function makeChart(canvas, cfg) {
       }
       ctx.textAlign = "left";
     }
+  }
+  // sharpen the moment the canvas gets a real size (e.g. its tab is opened), without
+  // waiting for the next 1s data refresh
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      if (canvas.clientWidth && canvas.clientWidth !== W) resize();
+    });
+    ro.observe(canvas);
   }
   return { draw, resize };
 }
