@@ -118,9 +118,9 @@ const STYLE = `
   padding-right:0;transition:padding-right .3s ease;}
 #rl-panel[data-model="cpu"] .hdr .harena{padding-right:42px;}
 /* circular close button at the top-left of the header - closes (slides out) the panel */
-#rl-panel .hdr .closebtn{flex:none;width:30px;height:30px;padding:0;border-radius:50%;border:0;
+#rl-panel .hdr .closebtn{flex:none;width:24px;height:24px;padding:0;border-radius:50%;border:0;
   background:#1f1f21;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-#rl-panel .hdr .closebtn svg{width:15px;height:15px;display:block;}
+#rl-panel .hdr .closebtn svg{width:12px;height:12px;display:block;}
 /* 5 round-result dots (pushed to the right of the arena name): who won each round */
 #rl-panel .hdr .rdots{flex:none;margin-left:auto;display:flex;gap:6px;align-items:center;}
 #rl-panel .hdr .rdot{width:12px;height:12px;border-radius:50%;background:#d7dade;}   /* not played yet = grey */
