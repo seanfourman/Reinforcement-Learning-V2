@@ -168,7 +168,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif cmd == "play":
             _paused = False
         elif cmd == "speed":
-            _speed = max(2.0, min(15000.0, float(body.get("value", 60))))
+            _speed = max(1.0, min(15000.0, float(body.get("value", 60))))
         elif cmd == "sideAlgo":
             match.set_side_algo(body.get("side", "red"), body.get("value", "qlearning"))
         elif cmd == "setParams":

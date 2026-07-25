@@ -20,7 +20,7 @@ export const NAMES = {
 const ACTION_NAMES = ['North', 'South', 'West', 'East', 'Use'];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
-const sliderToSpeed = (v) => Math.round(2 * Math.pow(7500, v / 100));
+const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)
 
 // per-level control scoping. DP planners (Value / Policy Iteration) plan with just
 // the discount γ, so the learning controls (α, ε) hide on those rounds. Neural-net
@@ -569,7 +569,7 @@ export function initPanel() {
     paintRange(speed);
   };
   // a loaded replay plays at the CURRENT speed setting (mapped to a watchable fps)
-  const replayFps = () => Math.max(2, Math.min(60, sliderToSpeed(+speed.value)));
+  const replayFps = () => Math.max(1, Math.min(60, sliderToSpeed(+speed.value)));
   speed.addEventListener('input', () => {
     showSpeed();
     window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) });
