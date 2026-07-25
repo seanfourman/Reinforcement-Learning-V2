@@ -236,8 +236,8 @@ const STYLE = `
 /* contest bar */
 #rl-panel .bar{height:10px;border-radius:0;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
 #rl-panel .bar i{display:block;height:100%;transition:width .3s;}
-#rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#c6c9cf;}
-#rl-panel .bar .t{background:#141518;}
+#rl-panel .bar .r{background:#e60012;} #rl-panel .bar .b{background:#1f5fd0;} #rl-panel .bar .d{background:#f0b429;}
+#rl-panel .bar .t{background:#8a8d94;}
 #rl-panel .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
 /* action-distribution rows: a label + a Red mini-bar over a Blue mini-bar */
 #rl-panel .actlist{display:flex;flex-direction:column;gap:8px;}
@@ -257,9 +257,9 @@ const STYLE = `
 #rl-panel .cmp-row{display:flex;align-items:center;font-size:12.5px;padding:8px 0;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-row:last-child{border-bottom:0;}
 #rl-panel .cmp-row .cl{flex:1;color:#54565c;}
-#rl-panel .cmp-row .cr,#rl-panel .cmp-row .cb{flex:none;width:100px;display:flex;align-items:center;justify-content:center;gap:5px;font-variant-numeric:tabular-nums;font-weight:700;}
+#rl-panel .cmp-row .cr,#rl-panel .cmp-row .cb{flex:none;width:100px;text-align:center;font-variant-numeric:tabular-nums;font-weight:700;}
 #rl-panel .cmp-row .cr{color:#e60012;} #rl-panel .cmp-row .cb{color:#1f5fd0;}
-#rl-panel .cmp-row .win::after{content:"";flex:none;width:5px;height:5px;border-radius:50%;background:currentColor;}
+/* win-lead dot removed (pointless per user); the .win class now has no visual effect */
 
 /* descriptive note under the Algorithm-internals / World settings cards */
 #rl-panel .cfgnote{font-size:10.5px;color:#a2a5ac;margin:12px 0 0;line-height:1.45;}
@@ -500,11 +500,11 @@ export function initPanel() {
       <div class="stat fullonly"><span>Learned states (R / B)</span><b id="rl-q">0 / 0</b></div>
     </section>
     <section id="rl-sec-contest" class="qk">
-      <h2>Contest - recent</h2>
+      <h2>Contest - last 200</h2>
       <div class="bar"><i class="r" id="rl-br"></i><i class="b" id="rl-bb"></i><i class="d" id="rl-bd"></i></div>
       <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-wr">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-wb">0</b></div>
-      <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-wd">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#f0b429"></i>Draws</span><b id="rl-wd">0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
       <h2>Value map</h2>
@@ -748,10 +748,14 @@ export function initPanel() {
     const sign = (v) => (v >= 0 ? '+' : '') + v.toFixed(2);
     $('#rl-ret').textContent = `${sign(lr.red)} / ${sign(lr.blue)}`;
     $('#rl-q').textContent = `${s.qStates.red} / ${s.qStates.blue}`;
-    $('#rl-wr').textContent = s.wins.red.toLocaleString();
-    $('#rl-wb').textContent = s.wins.blue.toLocaleString();
-    $('#rl-wd').textContent = s.wins.draw.toLocaleString();
     const rr = s.recentRate;
+    // "last 200" = match.py's rolling `recent` deque (maxlen 200). Show the recent
+    // WIN COUNTS out of that window so the numbers agree with the title + the bar
+    // (they used to be all-time totals, which contradicted the "recent" heading).
+    const recN = Math.min(s.episode || 0, 200);
+    $('#rl-wr').textContent = Math.round((rr.red || 0) * recN).toLocaleString();
+    $('#rl-wb').textContent = Math.round((rr.blue || 0) * recN).toLocaleString();
+    $('#rl-wd').textContent = Math.round((rr.draw || 0) * recN).toLocaleString();
     $('#rl-br').style.width = `${rr.red * 100}%`;
     $('#rl-bb').style.width = `${rr.blue * 100}%`;
     $('#rl-bd').style.width = `${rr.draw * 100}%`;

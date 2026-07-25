@@ -712,8 +712,8 @@ export function initDiag(parent) {
       <div class="bar" style="margin-bottom:11px;"><i class="r" id="rl-oc-r"></i><i class="b" id="rl-oc-b"></i><i class="d" id="rl-oc-d"></i><i class="t" id="rl-oc-t"></i></div>
       <div class="stat"><span><i class="dot" style="background:#e60012"></i>Red wins</span><b id="rl-oc-rv">0</b></div>
       <div class="stat"><span><i class="dot" style="background:#1f5fd0"></i>Blue wins</span><b id="rl-oc-bv">0</b></div>
-      <div class="stat"><span><i class="dot" style="background:#c6c9cf"></i>Draws</span><b id="rl-oc-dv">0</b></div>
-      <div class="stat"><span><i class="dot" style="background:#141518"></i>Timeouts</span><b id="rl-oc-tv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#f0b429"></i>Draws</span><b id="rl-oc-dv">0</b></div>
+      <div class="stat"><span><i class="dot" style="background:#8a8d94"></i>Timeouts</span><b id="rl-oc-tv">0</b></div>
     </section>
     <section id="rl-actdist">
       <h2>Action distribution</h2>
