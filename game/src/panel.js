@@ -114,11 +114,15 @@ const STYLE = `
   border-bottom:1px solid #e6e8ec;}
 /* arena name (left) + round tag pushed to the far right - the header's title row.
    On the CPU model the lock swings in top-right, so reserve space then to avoid an overlap. */
-#rl-panel .hdr .harena{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:0;
+#rl-panel .hdr .harena{display:flex;align-items:center;gap:10px;margin-top:0;
   padding-right:0;transition:padding-right .3s ease;}
 #rl-panel[data-model="cpu"] .hdr .harena{padding-right:42px;}
-/* 5 round-result dots (right of the arena name): the colour of who won each round */
-#rl-panel .hdr .rdots{flex:none;display:flex;gap:6px;align-items:center;}
+/* circular close button at the top-left of the header - closes (slides out) the panel */
+#rl-panel .hdr .closebtn{flex:none;width:30px;height:30px;padding:0;border-radius:50%;border:0;
+  background:#1f1f21;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+#rl-panel .hdr .closebtn svg{width:15px;height:15px;display:block;}
+/* 5 round-result dots (pushed to the right of the arena name): who won each round */
+#rl-panel .hdr .rdots{flex:none;margin-left:auto;display:flex;gap:6px;align-items:center;}
 #rl-panel .hdr .rdot{width:12px;height:12px;border-radius:50%;background:#d7dade;}   /* not played yet = grey */
 #rl-panel .hdr .rdot.b{background:#1f5fd0;} #rl-panel .hdr .rdot.r{background:#e60012;} #rl-panel .hdr .rdot.d{background:#8b5cf6;}
 #rl-panel .hdr .rdot.cur{box-shadow:0 0 0 2px #fff,0 0 0 3.5px #c4c8ce;}   /* the round in progress */
@@ -529,7 +533,7 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
-      <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
+      <div class="harena"><button class="closebtn" type="button" aria-label="Close controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg></button><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
       <div class="mselect">
         <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your">
@@ -613,6 +617,8 @@ export function initPanel() {
   const body = panel.querySelector('.rl-body');
   const playback = body.querySelector('#rl-sec-playback');
   const lockBtn = body.querySelector('.lockbtn');
+  const closeBtn = body.querySelector('.closebtn');
+  closeBtn?.addEventListener('click', () => panel.classList.remove('open'));
   const hdrEl = body.querySelector('.hdr');
   initGraphs(body); // the player's graph sections
 

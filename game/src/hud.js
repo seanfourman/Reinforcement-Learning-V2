@@ -96,8 +96,6 @@ const STYLE = `
 #rl-keys{position:fixed;left:0.8vw;bottom:1.5vh;z-index:7;display:flex;flex-direction:row;align-items:center;
   gap:22px;color:#fff;pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;}
 #rl-keys .kh{display:flex;align-items:center;gap:9px;pointer-events:auto;cursor:pointer;}
-#rl-keys .kh:hover .key{background:#eef1f6;}
-#rl-keys .kh:active{transform:translateY(1px);}
 #rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
   font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
