@@ -3220,25 +3220,44 @@ export function createStartMenu({
   // (a big box-shadow). Shrinking the circle to 0 = fades to black; growing it back
   // = reveals the scene. Starts fully open (no black).
   const iris = document.createElement("div");
-  const diag = Math.ceil(
-    Math.hypot(window.innerWidth, window.innerHeight) * 1.3,
-  );
+  // "fully open" hole diameter: big enough that the black ring sits off-screen. Read
+  // from the CURRENT viewport each time (not frozen at boot) so growing the window
+  // can't let the black creep back into the corners while the menu is idle.
+  const fullDiag = () =>
+    Math.ceil(Math.hypot(window.innerWidth, window.innerHeight) * 1.3);
   const setIris = (dpx) => {
     iris.style.width = iris.style.height = dpx + "px";
     iris.style.margin = `${-dpx / 2}px 0 0 ${-dpx / 2}px`;
   };
+  const openIris = () => {
+    const d = fullDiag();
+    iris.style.boxShadow = `0 0 0 ${d}px #000`;
+    setIris(d);
+  };
+  let irisIdle = true; // true while the hole sits fully open (menu shown, pre-Start)
   iris.style.cssText =
     "position:fixed;top:50%;left:50%;border-radius:50%;pointer-events:none;z-index:100;" +
-    `width:${diag}px;height:${diag}px;margin:${-diag / 2}px 0 0 ${-diag / 2}px;` +
-    `box-shadow:0 0 0 ${diag}px #000;` +
     "transition:width 1s cubic-bezier(.66,0,.34,1),height 1s cubic-bezier(.66,0,.34,1),margin 1s cubic-bezier(.66,0,.34,1);";
+  openIris(); // start fully open (no black)
   document.body.appendChild(iris);
+  // re-fit the reveal if the window is resized while the menu sits idle-open, so it
+  // always clears the corners (instant, no animation - a resize drag fires many events).
+  const onIrisResize = () => {
+    if (!irisIdle) return;
+    const prev = iris.style.transition;
+    iris.style.transition = "none";
+    openIris();
+    void iris.offsetWidth;
+    iris.style.transition = prev;
+  };
+  window.addEventListener("resize", onIrisResize);
 
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   let starting = false;
   async function runStart() {
     if (starting) return;
     starting = true;
+    irisIdle = false; // we're about to close to black - stop the resize re-fit
     el.classList.remove("show");
     el.classList.add("out"); // fade the title card
     selectEl.classList.remove("open"); // close the selector if it's open
@@ -3264,9 +3283,11 @@ export function createStartMenu({
     // 3) boot the match and WAIT until the scene is fully loaded (no pop-in)
     await onStart?.();
 
-    // 4) iris-open onto the finished game
-    setIris(diag);
+    // 4) iris-open onto the finished game (recompute for the CURRENT window size in
+    // case it was resized during the black)
+    openIris();
     await wait(1020);
+    window.removeEventListener("resize", onIrisResize);
     iris.remove();
   }
   // hovering an item slides the white pill onto it; clicking "Start" launches
@@ -3434,6 +3455,7 @@ export function createStartMenu({
 
   function dispose() {
     teardown();
+    window.removeEventListener("resize", onIrisResize);
     iris.remove();
   }
 

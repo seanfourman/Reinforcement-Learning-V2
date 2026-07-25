@@ -67,6 +67,24 @@ export function createTransition() {
   let busy = false;
   let nameTimer = null; // fire-and-forget timer for the level-name hold + fade-out
 
+  // The iris is left fully open between transitions (its black ring parked off-screen).
+  // If the window is enlarged while it sits open, that ring creeps back into the corners
+  // - so re-fit it to the CURRENT viewport on resize. Skip while busy (a live transition
+  // animates its own size) and before it has ever opened (no box-shadow yet = invisible).
+  const refitIris = () => {
+    if (busy || !iris.style.boxShadow) return;
+    const diag = Math.ceil(
+      Math.hypot(window.innerWidth, window.innerHeight) * 1.35,
+    );
+    const prev = iris.style.transition;
+    iris.style.transition = "none";
+    iris.style.boxShadow = `0 0 0 ${diag}px #000`;
+    setIris(diag);
+    void iris.offsetWidth; // reflow so the resize is instant, not animated
+    iris.style.transition = prev;
+  };
+  window.addEventListener("resize", refitIris);
+
   // populate the level card TEXT (arena name + a short thematic subtitle). Does NOT
   // touch visibility - callers control when the card shows/hides so the text is only
   // ever changed while the card is hidden (never a visible swap over the old arena).
