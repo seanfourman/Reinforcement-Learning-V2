@@ -5,7 +5,6 @@ import { makeKing, makePrincess } from "./characters.js";
 import { createLiveActors } from "./live.js";
 import { createHeatmap } from "./heatmap.js";
 import { initPanel } from "./panel.js";
-import { initCpuPanel } from "./cpupanel.js";
 import { createCameraRig } from "./camera.js";
 import { createPostFX } from "./postfx.js";
 import { getTheme } from "./themes/index.js";
@@ -368,8 +367,7 @@ let menuIdle = true;
 let seenAwardSerial = 0;
 let seenFinishSerial = 0;
 function closeTrainingPanels() {
-  document.getElementById("rl-panel")?.classList.remove("open", "full");
-  document.getElementById("rl-cpanel")?.classList.remove("open", "full");
+  document.getElementById("rl-panel")?.classList.remove("open");
 }
 
 function maybeHandleAwardEvent(stats) {
@@ -766,8 +764,14 @@ window.RL = {
     replayActive = !!on;
   },
 };
-initPanel();
-initCpuPanel();
+// ---- the single docked control menu (#rl-panel). N toggles it; the header's model
+// selector switches the your-model / CPU views WITHIN it (handled in panel.js). ----
+window.RL.panels = {
+  toggle() { document.getElementById("rl-panel")?.classList.toggle("open"); },
+  close() { document.getElementById("rl-panel")?.classList.remove("open"); },
+};
+
+initPanel(); // builds the panel and folds the CPU view in via initCpuPanel
 
 // ------------------------------------------------------------------ post fx
 const fx = createPostFX(renderer, scene, camera);

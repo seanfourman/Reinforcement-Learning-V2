@@ -9,6 +9,7 @@
 // and listens for 'rl-snapshot' (live stats) and 'rl-qinspect' (clicked tile Q).
 
 import { initGraphs } from './graphs.js';
+import { initCpuPanel } from './cpupanel.js';
 
 // read-only display names for whichever algorithms the current round pits together
 export const NAMES = {
@@ -121,6 +122,32 @@ const STYLE = `
 /* the model being trained + who it faces */
 #rl-panel .hdr .myalgo{margin-top:12px;padding-top:11px;border-top:1px solid #f0f1f3;}
 #rl-panel .hdr .myalgo .mlabel{display:block;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#a2a5ac;}
+/* the model selector: the "square" split into two picker cards (Your model | CPU model).
+   The active one glows in its accent; picking one fades the tabs-and-below to that view. */
+#rl-panel .hdr .mselect{display:flex;gap:8px;margin-top:12px;}
+#rl-panel .hdr .msel{flex:1;min-width:0;text-align:left;border:1px solid #e0e2e6;border-radius:11px;background:#fff;
+  padding:8px 11px 9px;cursor:pointer;transition:border-color .16s,box-shadow .16s,background .16s;}
+#rl-panel .hdr .msel .msel-k{display:block;font-size:8.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#a2a5ac;}
+#rl-panel .hdr .msel .msel-n{display:block;font-size:16px;font-weight:800;letter-spacing:-.3px;line-height:1.15;margin-top:3px;color:#9a9da4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .16s;}
+#rl-panel .hdr .msel .msel-s{display:block;font-style:normal;font-size:9.5px;color:#a8abb2;margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#rl-panel .hdr .msel:not(.active):hover{border-color:#c4c8ce;background:#fbfbfc;}
+/* reset the global #rl-panel button.active dark fill - the active card stays white + glows */
+#rl-panel .hdr .msel.your.active{background:#fff;border-color:#1f5fd0;box-shadow:0 0 0 1px #1f5fd0,0 2px 12px rgba(31,95,208,.16);}
+#rl-panel .hdr .msel.your.active .msel-n{color:#1f5fd0;}
+#rl-panel .hdr .msel.cpu.active{background:#fff;border-color:#d4141f;box-shadow:0 0 0 1px #d4141f,0 2px 12px rgba(212,20,31,.16);}
+#rl-panel .hdr .msel.cpu.active .msel-n{color:#d4141f;}
+/* model-specific sections swap with the selector; nothing else moves */
+#rl-panel[data-model="your"] [data-model="cpu"]{display:none;}
+#rl-panel[data-model="cpu"] [data-model="your"]{display:none;}
+/* quick fade of the tabs-down content while the model swaps (the tab bar stays) */
+#rl-panel .rl-group-cards{transition:opacity .16s ease;}
+#rl-panel.mswap .rl-group-cards{opacity:0;}
+/* on the CPU model the tab underline + gradient go red */
+#rl-panel[data-model="cpu"] .rl-tab.active{color:#d4141f;}
+#rl-panel[data-model="cpu"] .rl-tab-hl::before{background:radial-gradient(72% 118% at 50% 100%,rgba(212,20,31,.13),rgba(212,20,31,0) 70%);}
+#rl-panel[data-model="cpu"] .rl-tab-hl::after{background:#d4141f;}
 #rl-panel .hdr .myalgo b{display:block;font-size:20px;font-weight:800;color:#1f5fd0;letter-spacing:-.3px;line-height:1.15;margin-top:3px;}
 #rl-panel .hdr .myalgo em{display:block;font-style:normal;font-size:10.5px;color:#9a9da4;margin-top:5px;}
 /* ===== Playback sits at the top ALWAYS (not a tab); an underline tab row below
@@ -344,11 +371,11 @@ export function organizeGroups(body, groups) {
 const N_GROUPS = [
   ['challenge', "What's the challenge?", ['rl-brief'],
     'The task both AIs are racing to solve, and how their two methods differ.', 'Challenge'],
-  ['tune', 'Tune your AI', ['rl-sec-hyper'],
+  ['tune', 'Tune your AI', ['rl-sec-hyper', 'rl-cp-hyper'],
     'Change how your AI learns. Effects show up live.', 'Tune'],
   ['advanced', 'World', ['rl-sec-algo', 'rl-sec-world'],
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
-  ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
+  ['inside', 'Inside the AI', ['rl-cp-stats', 'rl-sec-value', 'rl-cp-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
   ['progress', 'Training progress', ['rl-sec-training', 'rl-curve-d-rate', 'rl-curve-d-return', 'rl-curve-d-eps', 'rl-curve-d-len', 'rl-curve-d-td', 'rl-probe', 'rl-reward', 'rl-explore'],
     'Watch your AI (Blue) get better over time.', 'Progress'],
@@ -361,7 +388,9 @@ const N_GROUPS = [
 // tab bar pins right under the sticky header; clicking a tab shows only that
 // group and scrolls the panel back to the top. Shared by the N and M panels.
 export function buildTabs(panel, body, groups) {
-  const hdr = body.querySelector('.hdr');
+  // the header may live OUTSIDE `body` (the merged panel shares one header across two
+  // view containers) - fall back to the panel's header for the sticky offset
+  const hdr = body.querySelector('.hdr') || panel.querySelector('.hdr');
   const bar = document.createElement('div');
   bar.className = 'rl-tabs';
   const tabs = [...body.querySelectorAll('.rl-group')].map((g) => {
@@ -436,12 +465,20 @@ export function initPanel() {
   panel.innerHTML = `
     <div class="rl-body">
     <div class="hdr">
+      <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
       <h1>Training Control</h1>
       <div class="harena"><span class="rbadge" id="rl-round">-</span><b id="rl-arena">-</b></div>
-      <div class="myalgo">
-        <span class="mlabel">Your model</span>
-        <b id="rl-mb">-</b>
-        <em id="rl-vs"></em>
+      <div class="mselect">
+        <button type="button" class="msel your active" data-view="your">
+          <span class="msel-k">Your model</span>
+          <b class="msel-n" id="rl-mb">-</b>
+          <em class="msel-s" id="rl-vs"></em>
+        </button>
+        <button type="button" class="msel cpu" data-view="cpu">
+          <span class="msel-k">CPU model</span>
+          <b class="msel-n" id="rl-cp-algo">-</b>
+          <em class="msel-s" id="rl-cp-tier"></em>
+        </button>
       </div>
     </div>
     <section id="rl-sec-playback" class="qk">
@@ -519,15 +556,40 @@ export function initPanel() {
   // the big titled groups. Any section not named still shows (catch-all group) so
   // nothing is ever silently dropped.
   const body = panel.querySelector('.rl-body');
-  initGraphs(body);
-  // Playback is pinned at the top always - pull it out so organizeGroups doesn't
-  // fold it into a tab, then drop it back right under the header.
-  const hdrEl = body.querySelector('.hdr');
   const playback = body.querySelector('#rl-sec-playback');
+  const lockBtn = body.querySelector('.lockbtn');
+  const hdrEl = body.querySelector('.hdr');
+  initGraphs(body);                    // the player's graph sections
+  initCpuPanel(panel, body, lockBtn);  // the CPU's sections, tagged data-model="cpu"
+
+  // the model-specific PLAYER sections (tuning sliders + value map) are swapped OUT for
+  // the CPU's equivalents when the CPU model is selected; everything else is shared.
+  body.querySelector('#rl-sec-hyper')?.setAttribute('data-model', 'your');
+  body.querySelector('#rl-sec-value')?.setAttribute('data-model', 'your');
+
+  // Playback pinned at the top (not a tab); fold everything else into the tabbed groups.
   playback.remove();
   organizeGroups(body, N_GROUPS);
   hdrEl.insertAdjacentElement('afterend', playback);
-  buildTabs(panel, body, N_GROUPS);   // inserts the tab bar right below Playback
+  buildTabs(panel, body, N_GROUPS);
+
+  // ---- model selector: SAME tabs; picking the CPU turns the accent red and swaps the
+  // model-specific content (Tune sliders, Inside value map) to the CPU's. Only the
+  // [data-model] sections toggle - Challenge / World / Score / Replays stay put. ----
+  panel.dataset.model = 'your';
+  const msels = [...panel.querySelectorAll('.mselect .msel')];
+  const setModel = (m) => {
+    if (panel.dataset.model === m) return;
+    msels.forEach((b) => b.classList.toggle('active', b.dataset.view === m));
+    lockBtn.classList.toggle('show', m === 'cpu'); // the lock swings in on the CPU model
+    panel.classList.add('mswap');                  // fade the tabs-down content out
+    setTimeout(() => {
+      panel.dataset.model = m;                      // swap the model-specific sections
+      panel.classList.remove('mswap');             // fade back in
+      window.dispatchEvent(new Event('resize'));    // re-fit any chart revealed by the swap
+    }, 150);
+  };
+  msels.forEach((b) => b.addEventListener('click', () => setModel(b.dataset.view)));
 
   const $ = (id) => panel.querySelector(id);
 
@@ -540,13 +602,12 @@ export function initPanel() {
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
 
-  // ---- toggle (N key only) ----
-  const toggle = () => panel.classList.toggle('open');
+  // ---- open / close the control menu (N key) ----
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyN' || /input|select|textarea/i.test(e.target.tagName)) return;
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
-    toggle();
+    window.RL?.panels?.toggle?.();
   });
 
   // ---- playback ----
