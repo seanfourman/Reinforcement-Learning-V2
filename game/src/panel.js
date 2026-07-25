@@ -308,6 +308,10 @@ const STYLE = `
 #rl-panel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
 #rl-panel .seg button{flex:1;border:0;border-right:1px solid #d7dade;border-radius:0;background:#fff;}
 #rl-panel .seg button:last-child{border-right:0;}
+/* round the END buttons themselves (not just the container) so an active button promoted
+   to its own compositing layer during its transition can't pop square corners */
+#rl-panel .seg button:first-child{border-top-left-radius:8px;border-bottom-left-radius:8px;}
+#rl-panel .seg button:last-child{border-top-right-radius:8px;border-bottom-right-radius:8px;}
 #rl-panel .seg button.active{background:#1f1f21;color:#fff;}
 
 /* top-30 replay browser (per model) */
