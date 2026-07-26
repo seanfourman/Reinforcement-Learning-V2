@@ -825,19 +825,19 @@ class Match:
             arena = env.objective == "arena"
             meta = self._matchup()
             if not arena:
-                # every grid round is a navigate-to-goal ("cross") gridworld
+                # every grid round is a navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
                 state_desc = "your tile only: the (row, column) cell index"
                 state_size = getattr(env, "n_cells", None)
                 observation = ("Each model sees ONLY its own tile. It learns as a single-agent "
-                               "navigator: the map is shared, but neither model perceives the other.")
+                               "navigator: the maze is shared, but neither model perceives the other.")
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
                             "invisible to the agent.")
                 dynamics = ("Moves are deterministic. Walls and the map edge block movement "
                             "(you stay put).")
-                rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0]]
-                win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
+                rewards = [["Step", -0.01], ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
+                win = "First to reach the Power Moon wins; a simultaneous arrival is a draw."
             else:
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None

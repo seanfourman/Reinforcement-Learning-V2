@@ -23,11 +23,15 @@ ORTHO = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
 
 class World:
-    """One round's static layout (SKELETON: grid + spawns + goal only, no hazards).
-    Positions are (row, col) tuples."""
+    """One round's static layout. Positions are (row, col) tuples.
+
+    ``objective`` picks the game: ``"cross"`` (reach the goal tile, skeleton) or
+    ``"coinrush"`` (collect the most value in a time limit). Coin-rush rounds carry
+    ``coins`` and ``shine`` (the Power Moon) cells instead of an ``escape`` goal."""
 
     def __init__(self, grid, *, theme="peach", round_id=1, title="",
-                 red_spawn, blue_spawn, escape, objective="cross"):
+                 red_spawn, blue_spawn, escape, objective="cross",
+                 coins=None, shine=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -36,6 +40,8 @@ class World:
         self.objective = objective
         self.red_spawn, self.blue_spawn = tuple(red_spawn), tuple(blue_spawn)
         self.escape = [tuple(e) for e in escape]
+        self.coins = [tuple(c) for c in (coins or [])]
+        self.shine = [tuple(s) for s in (shine or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -48,6 +54,8 @@ class World:
             "objective": self.objective,
             "rows": self.rows(),
             "escape": [list(e) for e in self.escape],
+            "coins": [list(c) for c in self.coins],
+            "shine": [list(s) for s in self.shine],
             "slipCells": [],
         }
 

@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>peach preview</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
+    <style>
+      html, body { margin: 0; height: 100%; background: #dcc8ea; overflow: hidden; }
+      #err { position: fixed; left: 8px; top: 8px; color: #900; font: 14px monospace;
+             white-space: pre-wrap; z-index: 9; }
+    </style>
+  </head>
+  <body>
+    <div id="err"></div>
+    <script type="module">
+      import * as THREE from "three";
+      import { setCell, setOffset } from "./src/layout.js";
+      import { peach } from "./src/themes/peach.js";
+
+      const errEl = document.getElementById("err");
+      const say = (m) => { errEl.textContent += m + "\n"; };
+      window.addEventListener("error", (e) => say("ERR: " + e.message));
+
+      // ---- layout for Round 1 (peach) ----
+      setCell(peach.cell);
+      setOffset(peach.offset[0], peach.offset[1]);
+
+      // ---- renderer (match main.js) ----
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = peach.exposure;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(peach.fog);
+
+      // ---- lights (peach theme values) ----
+      const hemi = new THREE.HemisphereLight(peach.hemi[0], peach.hemi[1], peach.hemi[2]);
+      scene.add(hemi);
+      const sun = new THREE.DirectionalLight(peach.sun, peach.sunIntensity);
+      sun.position.set(10 - 9, 21, 10 - 5); // GRID/2-9, 21, GRID/2-5  => (1,21,5)
+      sun.target.position.set(10, 0, 10);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      Object.assign(sun.shadow.camera, { left: -19, right: 19, top: 19, bottom: -19, near: 4, far: 60 });
+      sun.shadow.bias = -0.0004;
+      sun.shadow.normalBias = 0.008;
+      scene.add(sun, sun.target);
+      const fill = new THREE.DirectionalLight(peach.fill, peach.fillIntensity);
+      fill.position.set(20, 12, 19);
+      scene.add(fill);
+
+      // ---- camera (peach view: dist 36, target [10,0,10.7], angled down) ----
+      const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 200);
+      // aim straight at the maze board (foyer floor, ~centre 10.6,13) at ~50deg
+      const target = new THREE.Vector3(10.6, 0, 13);
+      camera.position.set(10.6, 19, 27);
+      camera.lookAt(target);
+
+      async function main() {
+        // fetch the live Round-1 world from the running server
+        let world;
+        try {
+          const r = await fetch("/api/world", { cache: "no-store" });
+          world = (await r.json()).world;
+          say(`world: ${world.theme} ${world.objective} rows=${world.rows?.length} coins=${world.coins?.length}`);
+        } catch (e) { say("world fetch failed: " + e.message); return; }
+
+        try {
+          peach.buildScene(scene, world, { renderer });
+          say("buildScene ok");
+        } catch (e) { say("buildScene ERR: " + e.message + "\n" + e.stack); }
+
+        renderer.setAnimationLoop((t) => renderer.render(scene, camera));
+      }
+      main();
+    </script>
+  </body>
+</html>

@@ -27,7 +27,7 @@ ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 N_ACTIONS = len(ACTIONS)
 MOVE_ACTIONS = (0, 1, 2, 3)
 
-# --- rewards (skeleton: step cost + terminal only, no shaping) ---------------
+# --- rewards ("cross": step cost + win/lose terminal, no shaping) -------------
 STEP_COST = 0.01
 WIN = 1.0
 LOSE = -1.0
@@ -197,7 +197,8 @@ class GridWorld(gym.Env):
     # --------------------------------------------------------------- snapshot
     def snapshot(self):
         """Live render state for the viewer: the two agents' cells, the step count,
-        and the winner (None until someone reaches the goal)."""
+        and the winner (None until someone reaches the goal). The static maze / coin /
+        Shine layout rides on /api/world, so it does not need to ship each frame."""
         return {
             "red": list(self.red_pos), "blue": list(self.blue_pos),
             "steps": self.steps, "winner": self.winner,

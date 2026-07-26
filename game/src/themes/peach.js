@@ -330,10 +330,70 @@ export const peach = {
       metalness: 0.25,
       side: THREE.DoubleSide,
     });
-    // NOTE: wall ('#') cells are intentionally NOT rendered as anything - the
-    // 16x16 play area is framed by a walled-off margin (see peach.py) that must
-    // read as plain foyer floor, so no columns/geometry go on wall cells.
+    // ---- the maze WALLS: white-marble blocks with a gold top rail ------------
+    // '#' cells INSIDE the play area (Round 1's procedural maze) are drawn as
+    // instanced white-marble boxes capped with a slim gold rail. The OUTER frame
+    // (the walled margin around the board) stays unrendered - plain foyer floor.
     void onBorder;
+    {
+      // board interior bounds (from the walkable cells), so the outer frame is skipped
+      let rMin = H, rMax = -1, cMin = W, cMax = -1;
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++)
+          if (rows[r][c] !== "#") {
+            if (r < rMin) rMin = r;
+            if (r > rMax) rMax = r;
+            if (c < cMin) cMin = c;
+            if (c > cMax) cMax = c;
+          }
+      const wallCells = [];
+      for (let r = rMin; r <= rMax; r++)
+        for (let c = cMin; c <= cMax; c++)
+          if (rows[r][c] === "#") wallCells.push([r, c]);
+
+      if (wallCells.length) {
+        const WALL_H = 0.9;
+        const CAP_H = 0.12;
+        const TOP = 0.05; // sit on the board (tiles top ~0.045)
+        const marbleMat = new THREE.MeshStandardMaterial({
+          map: tex("MarbleWhite00_alb.png", 1, 1),
+          normalMap: tex("MarbleWhite00_nrm.png", 1, 1, false),
+          roughnessMap: tex("MarbleWhite00_rgh.png", 1, 1, false),
+          roughness: 0.7,
+          metalness: 0.0,
+        });
+        const goldMat = new THREE.MeshStandardMaterial({
+          color: 0xd9a94a,
+          metalness: 0.75,
+          roughness: 0.3,
+        });
+        const bodies = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(cell, WALL_H, cell),
+          marbleMat,
+          wallCells.length,
+        );
+        const caps = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(cell, CAP_H, cell),
+          goldMat,
+          wallCells.length,
+        );
+        bodies.castShadow = true;
+        bodies.receiveShadow = true;
+        caps.castShadow = true;
+        const o = new THREE.Object3D();
+        wallCells.forEach(([r, c], i) => {
+          const p = cw(r, c);
+          o.position.set(p.x, TOP + WALL_H / 2, p.z);
+          o.updateMatrix();
+          bodies.setMatrixAt(i, o.matrix);
+          o.position.set(p.x, TOP + WALL_H + CAP_H / 2, p.z);
+          o.updateMatrix();
+          caps.setMatrixAt(i, o.matrix);
+        });
+        group.add(bodies);
+        group.add(caps);
+      }
+    }
 
     // ---- goal: a hair-thin gold inlay + a soft light pool -------------------
     // The goal is marked only by a flush gold inlay hugging the exact goal
