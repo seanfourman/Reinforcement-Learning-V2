@@ -4,11 +4,10 @@ Because the transition model P(s'|s,a) is *known* (see ``env.move_dist``), we
 don't need to learn from experience: we **plan** the optimal policy with Dynamic
 Programming, exactly as in Benny's DP lecture.
 
-The shipped DP round (Round 1, Peach's Castle) is a single-goal gridworld:
-**navigate from the spawn to the goal tile**. We solve that one known
-stochastic-shortest-path MDP over the grid (the same slip model the live env
-runs - see ``env.move_dist`` / ``env._cross_move``, both driven by ``slip_ctrl``),
-using either:
+The DP round (Peach's Castle) is a single-goal gridworld: navigate from the spawn
+to the goal tile. We solve that one known stochastic-shortest-path MDP over the
+grid (the same slip model the live env runs - see ``env.move_dist`` /
+``env._cross_move``, both driven by ``slip_ctrl``), using either:
 
   * ``ValueIteration``  - Bellman-optimality sweeps until V converges, then read
     off the greedy policy (Red).
@@ -16,34 +15,21 @@ using either:
     *improvement* until the policy stops changing (Blue).
 
 Both converge to the SAME optimal policy (the contrast Benny teaches is *how* and
-*how many iterations*); on a slippery round the shared slip model makes the live
-race stochastic, so who wins is not a foregone conclusion. The planners conform to
-the agent interface (``policy_action`` / ``learn_step`` / ``value`` / ``q_values``
-/ ``set_epsilon`` / ``reset_learning``) so ``match.py`` and the heatmap reuse them
-unchanged. ``learn_step``/``end_episode`` are no-ops - a planner already knows.
-
-(A legacy three-phase "reach key -> reach gold -> reach escape" race mode is still
-supported below for the ``race`` objective, but no shipped round uses it.)
+*how many iterations*); on a slippery round the slip model makes the live race
+stochastic, so who wins is not a foregone conclusion. The planners conform to the
+agent interface (``policy_action`` / ``learn_step`` / ``value`` / ``q_values`` /
+``set_epsilon`` / ``reset_learning``) so ``match.py`` and the heatmap reuse them
+unchanged. ``learn_step`` / ``end_episode`` are no-ops - a planner already knows.
 """
 
-from env import MOVE_ACTIONS, N_ACTIONS, GOLD_ME
+from env import MOVE_ACTIONS, N_ACTIONS
 
-GOAL_REWARD = 1.0      # reward for transitioning INTO the phase goal (then terminal)
-N_PHASES = 3
-
-
-def _phase(has_key, gold_loc):
-    """0 = need my key, 1 = have key & need gold, 2 = have gold & need escape."""
-    if not has_key:
-        return 0
-    if gold_loc != GOLD_ME:
-        return 1
-    return 2
+GOAL_REWARD = 1.0      # reward for transitioning INTO the goal (then terminal)
 
 
 class _DPBase:
-    """Shared machinery: build the per-phase known MDP from the env and solve it.
-    Subclasses implement ``_solve_phase`` (value- vs policy-iteration)."""
+    """Shared machinery: build the known single-goal MDP from the env and solve it.
+    Subclasses implement ``_solve`` (value- vs policy-iteration)."""
 
     mode = "dp"
 
@@ -54,31 +40,19 @@ class _DPBase:
         self.theta = theta
         self.max_sweeps = max_sweeps
         self.epsilon = 0.0
-        self.sweeps = [0, 0, 0]         # per-phase iteration counts (for the panel)
+        self.sweeps = [0]               # iteration count (a list, for the panel's sum())
         self.sweep_log = []             # per-sweep {delta, meanV} for the convergence charts
         self.backups = 0                # total Bellman backups (sweeps x states) - fair compute
         self.policy_changes = []        # PI only: states whose greedy action changed, per iteration
         self.v_frames = []              # per-sweep V snapshots for the propagation animation
-        # a "cross" world (no keys/gold) is a single-goal gridworld: plan ONE phase
-        # (reach an escape tile) instead of the key->gold->escape race.
-        self.cross = getattr(env, "objective", "race") == "cross"
         self.plan()
 
-    # ---- the known model: cells, goals, transitions -----------------------
-    def _goals(self, phase):
-        w = self.env.world
-        if self.cross:                  # single-goal gridworld: just reach an escape tile
-            return {tuple(e) for e in w.escape}
-        if phase == 0:
-            return {tuple(w.red_key if self.agent == "red" else w.blue_key)}
-        if phase == 1:
-            return {tuple(w.gold_home)}
-        return {tuple(e) for e in w.escape}
+    # ---- the known model: cells, goal, transitions ------------------------
+    def _goals(self):
+        return {tuple(e) for e in self.env.world.escape}
 
     def _passable(self, agent, r, c):
-        # door treated as open (the agent holds the key by the time it matters);
-        # safe for phase 0 too, since routing through the door never reaches the
-        # key faster than going inward.
+        # door treated as open / manholes routed around - matches the shaping map
         return self.env._static_passable(agent, r, c)
 
     def _dist(self, cell, action):
@@ -100,13 +74,9 @@ class _DPBase:
         self.policy_changes = []
         self.v_frames = []
         self.cells = list(self.env.floor_cells)
-        self.V = [None] * N_PHASES
-        self.policy = [None] * N_PHASES
-        nphases = 1 if self.cross else N_PHASES
-        for ph in range(nphases):
-            goals = self._goals(ph)
-            V, pol, n = self._solve_phase(goals)
-            self.V[ph], self.policy[ph], self.sweeps[ph] = V, pol, n
+        goals = self._goals()
+        self.V, self.policy, n = self._solve(goals)
+        self.sweeps = [n]
 
     def _greedy(self, cell, V, goals):
         best_a, best_q = MOVE_ACTIONS[0], float("-inf")
@@ -116,52 +86,45 @@ class _DPBase:
                 best_q, best_a = q, a
         return best_a, best_q
 
-    def _solve_phase(self, goals):
+    def _solve(self, goals):
         raise NotImplementedError
 
     # ---- agent interface ---------------------------------------------------
-    def _cell_phase(self, state):
-        cell = self.env.floor_cells[state[0]]
-        if self.cross:
-            return cell, 0
-        return cell, _phase(state[1], state[2])
+    def _cell(self, state):
+        return self.env.floor_cells[state[0]]
 
     def policy_action(self, state, mask=None):
-        cell, ph = self._cell_phase(state)
-        pol = self.policy[ph]
-        a = pol.get(cell, MOVE_ACTIONS[0])
+        cell = self._cell(state)
+        a = self.policy.get(cell, MOVE_ACTIONS[0])
         # the model-optimal move is essentially never a wall-bump, but if this cell's
-        # planned action happens to be blocked here, fall back to any EFFECTIVE action
+        # planned action happens to be blocked here, fall back to the best-Q valid one
         # so a DP agent can't self-loop on a wall either.
         if mask is not None and not mask[a]:
             valid = [i for i, m in enumerate(mask) if m]
             if valid:
-                # fall back to the best-Q valid action, not just the first one
-                a = max(valid, key=lambda i: self._q_of(cell, i, V, goals))
+                a = max(valid, key=lambda i: self._q_of(cell, i, self.V, self._goals()))
         return a
 
     def value(self, state):
-        cell, ph = self._cell_phase(state)
-        return self.V[ph].get(cell, 0.0)
+        return self.V.get(self._cell(state), 0.0)
 
     def state_value(self, state):
-        cell, ph = self._cell_phase(state)
-        v = self.V[ph].get(cell)
+        v = self.V.get(self._cell(state))
         return v if (v is None or abs(v) > 1e-6) else None
 
     def q_values(self, state):
-        cell, ph = self._cell_phase(state)
-        V, goals = self.V[ph], self._goals(ph)
+        cell = self._cell(state)
+        goals = self._goals()
         q = [0.0] * N_ACTIONS
         for a in MOVE_ACTIONS:
-            q[a] = self._q_of(cell, a, V, goals)
+            q[a] = self._q_of(cell, a, self.V, goals)
         return q
 
     def learned_count(self):
-        return sum(len(v) for v in self.V if v)
+        return len(self.V)
 
-    # planners don't learn - these are deliberate no-ops (``next_mask`` accepted to
-    # match the learner interface match.py drives)
+    # planners don't learn - deliberate no-ops (``next_mask`` accepted for parity
+    # with the learner interface match.py drives)
     def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         pass
 
@@ -179,7 +142,7 @@ class ValueIteration(_DPBase):
     name = "Value Iteration"
     mode = "value_iteration"
 
-    def _solve_phase(self, goals):
+    def _solve(self, goals):
         V = {c: 0.0 for c in self.cells}
         nb = sum(1 for c in self.cells if c not in goals)   # states backed up per sweep
         sweeps = 0
@@ -224,8 +187,8 @@ class PolicyIteration(_DPBase):
                 break
         return V
 
-    def _solve_phase(self, goals):
-        # init an arbitrary policy (head toward the goal-ish: action 0) + zero V
+    def _solve(self, goals):
+        # init an arbitrary policy (action 0) + zero V
         policy = {c: MOVE_ACTIONS[0] for c in self.cells if c not in goals}
         V = {c: 0.0 for c in self.cells}
         improvements = 0
