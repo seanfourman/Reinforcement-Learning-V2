@@ -54,7 +54,7 @@ MAZE = [
 
 
 def _build():
-    grid, slip, goals = [], [], []
+    grid, goals = [], []
     red = blue = None
     for r, line in enumerate(MAZE):
         row = []
@@ -62,8 +62,7 @@ def _build():
             if ch == "#":
                 row.append(WALL)
             elif ch == "S":
-                row.append(FLOOR)
-                slip.append((r, c))
+                row.append(FLOOR)   # (was a slip junction; the skeleton has no slip)
             elif ch == "A":
                 row.append(RED_SPAWN)
                 red = (r, c)
@@ -80,9 +79,6 @@ def _build():
     return World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=red, blue_spawn=blue, escape=goals,
-        # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
-        # driven), shared by env.move_dist + _cross_move.
-        slip_cells=slip,
     )
 
 
@@ -94,7 +90,7 @@ def generate(seed=None):
 
 if __name__ == "__main__":
     w = generate()
-    print(f"hedge maze: {w.H}x{w.W}, {len(w.slip_cells)} slippery junctions, "
+    print(f"hedge maze: {w.H}x{w.W}, "
           f"goals {w.escape}, spawns {w.red_spawn}/{w.blue_spawn}")
     for row in w.rows():
         print(row)

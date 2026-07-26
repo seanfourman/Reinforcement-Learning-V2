@@ -1,16 +1,19 @@
-"""Round 4 - Ruined Kingdom CONTINUOUS arena (DQN vs Double-DQN).
+"""Continuous arena - the live env for the deep rounds (4 and 5).
 
-Two agents race across a continuous 2D arena to a goal. Unlike the grid rounds
-there are no cells: the state is continuous ``(x, z, Vx, Vz)`` and the value
-function must be a function approximator (a neural net), which is the whole point
-of this round. Actions are discrete thrusts (8 compass directions + coast)
-applied as acceleration; velocity carries momentum with drag and a speed cap and
-is integrated at ``DT``. First agent into the goal radius wins; static ruin
-obstacles block the way.
+SKELETON round (no real game yet): two agents fly across a continuous 2D arena to
+a goal. Unlike the grid rounds there are no cells: the state is continuous
+``(x, z, Vx, Vz)`` and the value function must be a function approximator (a neural
+net), which is the whole point of the deep rounds. Actions are discrete thrusts
+(8 compass directions + coast) applied as acceleration; velocity carries momentum
+with drag and a speed cap and is integrated at ``DT``. First agent into the goal
+radius wins. No obstacles, hazards, or reward shaping - a bare fly-to-goal shell
+that each round's real game will be built on top of.
+
+``theme`` picks which 3D scene the browser draws (ruined / tostarena / ...), so one
+arena class backs several rounds.
 
 Coords match the JS world: x = column, z = row, with the goal NORTH (small z) and
-spawns SOUTH (large z), same as the 'cross' grid rounds, so the Ruined Kingdom
-diorama drops on top later without remapping.
+spawns SOUTH (large z), same as the grid rounds, so the diorama drops on top.
 
 Interface mirrors env.GridWorld so the match loop can drive it:
     (obs_red, obs_blue), info = reset()
@@ -43,32 +46,22 @@ DIRS = [
 N_ACTIONS = len(DIRS)   # 9
 OBS_DIM = 6
 
-# static ruin obstacles (x, z, radius), symmetric L<->R so the race is fair
-OBSTACLES = [
-    (ARENA / 2, 9.0, 1.8),     # central pillar between spawns and goal
-    (6.0, 13.5, 1.5),          # left rubble
-    (14.0, 13.5, 1.5),         # right rubble (mirror)
-    (6.0, 5.5, 1.3),           # left upper
-    (14.0, 5.5, 1.3),          # right upper (mirror)
-]
-
 STEP_COST = 0.006
-SHAPE_W = 0.05        # stronger pull toward the goal (still difference-form, unfarmable)
-HIT_PENALTY = 0.02
 WIN, LOSE = 1.0, -1.0
 
 
 class ContinuousArena:
-    """Two-agent continuous race. Drop-in-ish for the GridWorld match interface."""
+    """Two-agent continuous race to a goal. Drop-in for the GridWorld match interface."""
 
     objective = "arena"
 
-    def __init__(self, seed=None, round_id=4, thrust=THRUST, damp=DAMP,
-                 vmax=VMAX, obstacle_count=None):
+    def __init__(self, seed=None, round_id=4, theme="ruined",
+                 thrust=THRUST, damp=DAMP, vmax=VMAX):
         self.round_id = round_id
+        self.theme = theme
         self.rng = random.Random(seed)
         self.max_steps = MAX_STEPS
-        # tunable dynamics (panel-driven; module constants are the defaults)
+        # movement physics (module constants are the defaults)
         self.thrust = float(thrust)
         self.damp = float(damp)
         self.vmax = float(vmax)
@@ -76,34 +69,12 @@ class ContinuousArena:
         self.obs_dim = OBS_DIM
         self.H = self.W = int(ARENA)        # coarse grid the value field samples on
         self.goal = np.array(GOAL, dtype=np.float32)
-        self.obstacles = self._gen_obstacles(obstacle_count)
         self.red_spawn = (ARENA - 3.0, ARENA - 2.5)   # red on the viewer's RIGHT
         self.blue_spawn = (3.0, ARENA - 2.5)           # blue on the viewer's LEFT (matches the HUD)
         self.steps = 0
         self.done = False
         self.winner = None
         self.reset()
-
-    def _gen_obstacles(self, count):
-        """Obstacle ruins. None -> the hand-tuned default 5; otherwise generate
-        `count` mirror-symmetric ruins (central pillar for odd counts) so the
-        race stays fair whatever the panel sets."""
-        if count is None:
-            base = OBSTACLES
-        else:
-            count = max(0, min(12, int(count)))
-            cx = ARENA / 2
-            base, rem = [], count
-            if rem % 2 == 1:
-                base.append((cx, 9.0, 1.8))
-                rem -= 1
-            zs = [13.5, 5.5, 11.0, 7.5, 15.5, 3.5]
-            dxs = [4.0, 4.0, 6.5, 6.5, 3.0, 3.0]
-            for p in range(rem // 2):
-                z, dx = zs[p % len(zs)], dxs[p % len(dxs)]
-                base.append((cx - dx, z, 1.5))
-                base.append((cx + dx, z, 1.5))
-        return [(np.array([x, z], dtype=np.float32), r) for (x, z, r) in base]
 
     # --------------------------------------------------------------- helpers
     def _spawn_pos(self, which):
@@ -112,11 +83,6 @@ class ContinuousArena:
 
     def _dist_goal(self, pos):
         return float(np.linalg.norm(pos - self.goal))
-
-    def _potential(self, pos):
-        # Φ = -W * distance-to-goal; F = Φ' - Φ rewards closing the gap (dense,
-        # un-farmable - same shaping idea as the grid env).
-        return -SHAPE_W * self._dist_goal(pos)
 
     def _observe(self, pos, vel):
         gx, gz = self.goal
@@ -150,8 +116,8 @@ class ContinuousArena:
 
     # ------------------------------------------------------------- dynamics
     def _integrate(self, pos, vel, action):
-        """Apply one thrust action: accelerate, drag, cap speed, move, collide.
-        Returns (new_pos, new_vel, hit) - hit True if it bumped an obstacle/wall."""
+        """Apply one thrust action: accelerate, drag, cap speed, move, clamp to the
+        arena walls. Returns (new_pos, new_vel)."""
         dx, dz = DIRS[action]
         vel = vel + np.array([dx, dz], dtype=np.float32) * self.thrust * DT
         vel = vel * self.damp
@@ -159,34 +125,15 @@ class ContinuousArena:
         if sp > self.vmax:
             vel = vel * (self.vmax / sp)
         npos = pos + vel * DT
-        hit = False
         # arena walls: clamp and kill the offending velocity component
         for i in (0, 1):
             if npos[i] < AGENT_R:
                 npos[i] = AGENT_R
                 vel[i] = 0.0
-                hit = True
             elif npos[i] > ARENA - AGENT_R:
                 npos[i] = ARENA - AGENT_R
                 vel[i] = 0.0
-                hit = True
-        # circular obstacles: push out along the normal, remove inward velocity
-        for c, r in self.obstacles:
-            d = npos - c
-            dist = float(np.linalg.norm(d))
-            mind = r + AGENT_R
-            if dist < mind:
-                n = d / dist if dist > 1e-6 else np.array([1.0, 0.0], dtype=np.float32)
-                npos = c + n * mind
-                vn = float(np.dot(vel, n))
-                if vn < 0:
-                    vel = vel - n * vn      # cancel the into-the-wall component
-                hit = True
-        # obstacle push-out can shove the agent back past a wall that was clamped
-        # earlier this step (a corner squeeze), so re-clamp to the arena bounds
-        for i in (0, 1):
-            npos[i] = min(max(npos[i], AGENT_R), ARENA - AGENT_R)
-        return npos.astype(np.float32), vel.astype(np.float32), hit
+        return npos.astype(np.float32), vel.astype(np.float32)
 
     # ------------------------------------------------------------------ step
     def step(self, a_red, a_blue):
@@ -194,14 +141,9 @@ class ContinuousArena:
             raise RuntimeError("step() on a finished episode")
         self.steps += 1
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
-        phi0 = {"red": self._potential(self.red_pos), "blue": self._potential(self.blue_pos)}
 
-        self.red_pos, self.red_vel, hit_r = self._integrate(self.red_pos, self.red_vel, a_red)
-        self.blue_pos, self.blue_vel, hit_b = self._integrate(self.blue_pos, self.blue_vel, a_blue)
-        if hit_r:
-            reward["red"] -= HIT_PENALTY
-        if hit_b:
-            reward["blue"] -= HIT_PENALTY
+        self.red_pos, self.red_vel = self._integrate(self.red_pos, self.red_vel, a_red)
+        self.blue_pos, self.blue_vel = self._integrate(self.blue_pos, self.blue_vel, a_blue)
 
         # reach the goal -> win; both entering on the SAME step is a genuine DRAW
         r_in = self._dist_goal(self.red_pos) <= GOAL_R
@@ -218,10 +160,6 @@ class ContinuousArena:
                 reward[self.winner] += WIN
                 reward[loser] += LOSE
 
-        # difference-of-potentials progress shaping
-        reward["red"] += self._potential(self.red_pos) - phi0["red"]
-        reward["blue"] += self._potential(self.blue_pos) - phi0["blue"]
-
         truncated = False
         if not self.done and self.steps >= self.max_steps:
             self.done = True
@@ -236,7 +174,7 @@ class ContinuousArena:
         """Arena descriptor for the viewer (/api/world). theme picks the JS scene;
         objective 'arena' tells the frontend this is a continuous round."""
         return {
-            "theme": "ruined",
+            "theme": self.theme,
             "objective": "arena",
             "roundId": self.round_id,
             "H": self.H, "W": self.W,
@@ -244,7 +182,8 @@ class ContinuousArena:
             "goal": [float(self.goal[0]), float(self.goal[1])],
             "goalR": float(GOAL_R),
             "spawns": {"red": list(self.red_spawn), "blue": list(self.blue_spawn)},
-            "obstacles": [[float(c[0]), float(c[1]), float(r)] for c, r in self.obstacles],
+            # no hazards on the skeleton; kept for arena-generic frontend code
+            "obstacles": [],
             # empty grid fields so any grid-expecting frontend code stays happy
             "rows": [], "escape": [], "slipCells": [],
         }
@@ -257,8 +196,7 @@ class ContinuousArena:
             "red": rd(self.red_pos), "blue": rd(self.blue_pos),
             "redVel": rd(self.red_vel), "blueVel": rd(self.blue_vel),
             "goal": rd(self.goal),
-            "obstacles": [[round(float(c[0]), 2), round(float(c[1]), 2), float(r)]
-                          for c, r in self.obstacles],
+            "obstacles": [],
             "steps": self.steps, "winner": self.winner,
         }
 
@@ -279,8 +217,7 @@ def _greedy_to_goal(env, pos, vel):
 
 if __name__ == "__main__":
     env = ContinuousArena(seed=0)
-    print(f"Arena {ARENA}x{ARENA}, {N_ACTIONS} actions, obs dim {OBS_DIM}, "
-          f"{len(OBSTACLES)} obstacles, goal {GOAL}")
+    print(f"Arena {ARENA}x{ARENA}, {N_ACTIONS} actions, obs dim {OBS_DIM}, goal {GOAL}")
 
     # 1) random policy: episodes should terminate (win or timeout), rewards finite
     wins, lens = {"red": 0, "blue": 0, None: 0}, []
@@ -296,10 +233,9 @@ if __name__ == "__main__":
     print(f"random: wins {wins}, avg len {sum(lens) / len(lens):.0f}")
 
     # 2) greedy-to-goal: red should reliably reach the goal (physics are solvable)
-    reached = 0
-    glens = []
+    reached, glens = 0, []
     for ep in range(50):
-        (or_, _), _ = env.reset(seed=1000 + ep)
+        env.reset(seed=1000 + ep)
         done = False
         while not done:
             ar = _greedy_to_goal(env, env.red_pos, env.red_vel)

@@ -21,4 +21,4 @@ def generate(seed=None, round_id=1):
 
 if __name__ == "__main__":
     w = generate()
-    print(f"round {w.round_id} ({w.theme}): {w.H}x{w.W}, {len(w.slip_cells)} slip cells")
+    print(f"round {w.round_id} ({w.theme}): {w.H}x{w.W}, goal {w.escape}")

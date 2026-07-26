@@ -58,7 +58,7 @@ def _build():
     return World(
         g, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS,
-        escape=ESCAPE_POS, slip_cells=[],
+        escape=ESCAPE_POS,
     )
 
 

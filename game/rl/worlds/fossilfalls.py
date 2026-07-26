@@ -52,7 +52,7 @@ MAZE = [
 
 
 def _build():
-    grid, slip, goals = [], [], []
+    grid, goals = [], []
     red = blue = None
     for r, line in enumerate(MAZE):
         row = []
@@ -60,8 +60,7 @@ def _build():
             if ch == "#":
                 row.append(WALL)
             elif ch == "S":
-                row.append(FLOOR)
-                slip.append((r, c))
+                row.append(FLOOR)   # (was a slip cell; the skeleton has no slip)
             elif ch == "A":
                 row.append(RED_SPAWN)
                 red = (r, c)
@@ -78,13 +77,6 @@ def _build():
     return World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=red, blue_spawn=blue, escape=goals,
-        # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
-        # driven), shared by env.move_dist + _cross_move.
-        slip_cells=slip,
-        # SPARSE rewards on the Dyna round: no shaping, so the reward exists only at
-        # the goal. That is what makes model-based planning (Dyna) visibly outrun
-        # plain Q-learning - dense shaping would hand the value gradient over for free.
-        shape_w=0.0,
     )
 
 
@@ -96,7 +88,7 @@ def generate(seed=None):
 
 if __name__ == "__main__":
     w = generate()
-    print(f"fossil falls: {w.H}x{w.W}, {len(w.slip_cells)} slippery wet rocks, "
+    print(f"fossil falls: {w.H}x{w.W}, "
           f"goals {w.escape}, spawns {w.red_spawn}/{w.blue_spawn}")
     for row in w.rows():
         print(row)

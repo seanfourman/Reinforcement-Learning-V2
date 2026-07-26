@@ -1,10 +1,11 @@
-"""Round 5 - Tostarena (Sand Kingdom): the SEQUENTIAL continuous arena.
+"""Round 5 - Tostarena (Sand Kingdom): a CONTINUOUS arena (SKELETON).
 
-Metadata + env factory. Like Round 4 there is no tabular ``World`` - the
-environment is ``rl/sequential.SequentialArena`` (a continuous checkpoint RALLY:
-oasis -> far-side ruin gate -> the Inverted Pyramid, with roaming dust tornados
-and quicksand), which ``match.py`` builds via ``make_env()``. ``generate()`` is
-never used for this round.
+Metadata only. Like Round 4 there is no tabular ``World`` - the environment is
+``rl/continuous.ContinuousArena`` (continuous state, NN value function), which
+``match.py`` instantiates directly for any round flagged ``CONTINUOUS``, passing
+this module's ``THEME`` so the browser draws the Tostarena scene. ``generate()`` is
+never used for this round. (The real Round 5 game is TBD; this is a bare fly-to-goal
+shell.)
 """
 
 THEME = "tostarena"
@@ -13,15 +14,8 @@ TITLE = "Dry Dry Desert"
 CONTINUOUS = True
 
 
-def make_env(seed=None, **kwargs):
-    # kwargs (thrust/damp/vmax/sand_damp/tornado_count/quicksand_count) are the
-    # panel-tunable dynamics + hazard counts threaded through by match.py.
-    from sequential import SequentialArena
-    return SequentialArena(seed, round_id=ROUND_ID, **kwargs)
-
-
 def generate(seed=None):
     raise NotImplementedError(
-        "Round 5 is continuous; its env is rl/sequential.SequentialArena, "
+        "Round 5 is continuous; its env is rl/continuous.ContinuousArena, "
         "not a grid World built via generate()."
     )

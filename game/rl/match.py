@@ -109,15 +109,6 @@ class Match:
         self.dqn_warmup = 1_000                 # steps before learning starts
         self.dqn_target_sync = 500              # target-net copy interval
         self.dqn_hidden = 128                   # hidden width     (rebuild on change)
-        # world dynamics + hazards (continuous arenas + slippery grids)
-        self.env_thrust = 16.0                  # acceleration per thrust action
-        self.env_damp = 0.90                    # velocity retained per step (drag)
-        self.env_vmax = 7.0                     # speed cap
-        self.env_sand_damp = 0.72               # heavier drag in quicksand (R5)
-        self.env_slip_ctrl = 0.25               # lose-control chance on ice/wet junctions
-        self.obstacle_count = None              # R4 ruins  (None -> hand-placed default)
-        self.tornado_count = 2                  # R5 dust tornados
-        self.quicksand_count = None             # R5 pools  (None -> hand-placed default)
         # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
         self._apply_env_config()
@@ -151,39 +142,25 @@ class Match:
 
     # ------------------------------------------------------------------ setup
     def _make_env(self, round_id):
-        """Pick the env for a round, threading the current world config: the
-        module's own make_env() when it ships one (Round 5's sequential rally),
-        the shared continuous arena for any other CONTINUOUS round (Round 4), the
-        tabular grid world otherwise. Continuous rounds get the shared dynamics
-        (thrust/drag/speed cap) + their hazard counts; grids get the slip model."""
+        """Pick the env for a round: the shared continuous arena for a CONTINUOUS
+        round (its module THEME picks the 3D scene), else the tabular grid world.
+        SKELETON: both are bare navigate/fly-to-goal shells (no hazards)."""
         mod = worlds.ROUND_MODULES.get(round_id)
         seed = self.train_seed
         if getattr(mod, "CONTINUOUS", False):
-            dyn = dict(thrust=self.env_thrust, damp=self.env_damp, vmax=self.env_vmax)
-            if hasattr(mod, "make_env"):        # R5 sequential rally (its own hazards)
-                return mod.make_env(seed, sand_damp=self.env_sand_damp,
-                                    tornado_count=self.tornado_count,
-                                    quicksand_count=self.quicksand_count, **dyn)
             return ContinuousArena(seed, round_id=round_id,
-                                   obstacle_count=self.obstacle_count, **dyn)
-        return GridWorld(seed, round_id=round_id, slip_ctrl=self.env_slip_ctrl)
+                                   theme=getattr(mod, "THEME", "ruined"))
+        return GridWorld(seed, round_id=round_id)
 
     def _apply_env_config(self):
-        """Push the live dynamics knobs (which arenas read off instance attrs each
-        step) + the step-cap override onto the current env, after any (re)build."""
-        e = self.env
-        for attr, val in (("thrust", self.env_thrust), ("damp", self.env_damp),
-                          ("vmax", self.env_vmax), ("sand_damp", self.env_sand_damp),
-                          ("slip_ctrl", self.env_slip_ctrl)):
-            if hasattr(e, attr):
-                setattr(e, attr, float(val))
+        """Apply the step-cap override onto the current env, after any (re)build."""
         if self.max_steps_override is not None:
-            e.max_steps = self.max_steps_override
+            self.env.max_steps = self.max_steps_override
 
     def _rebuild_world(self):
-        """Rebuild the live env from the current world config (hazard counts / seed)
-        and the agents on top of it, then restart the contest. For a STRUCTURAL
-        change where the scene layout itself moves, so the client re-fetches it."""
+        """Rebuild the live env from the current world config (train seed) and the
+        agents on top of it, then restart the contest. For a STRUCTURAL change where
+        the scene layout itself moves, so the client re-fetches it."""
         self.env = self._make_env(self.round_id)
         self.world_version += 1
         self._apply_env_config()
@@ -516,28 +493,7 @@ class Match:
                 self.dqn_hidden = max(16, min(1024, int(p["dqnHidden"])))
                 need_agent_rebuild = True
 
-            # ---- GLOBAL: world dynamics (live) ----
-            if "thrust" in p:
-                self.env_thrust = max(0.0, min(80.0, float(p["thrust"])))
-            if "drag" in p:
-                self.env_damp = max(0.0, min(1.0, float(p["drag"])))
-            if "speedCap" in p:
-                self.env_vmax = max(0.5, min(30.0, float(p["speedCap"])))
-            if "sandDamp" in p:
-                self.env_sand_damp = max(0.0, min(1.0, float(p["sandDamp"])))
-            if "slip" in p:
-                self.env_slip_ctrl = max(0.0, min(0.9, float(p["slip"])))
-
             # ---- GLOBAL: structural world (rebuild the scene) ----
-            if "obstacleCount" in p:
-                self.obstacle_count = _int_or_none(p["obstacleCount"], lo=0, hi=12)
-                need_env_rebuild = True
-            if "tornadoCount" in p:
-                self.tornado_count = max(0, min(8, int(p["tornadoCount"])))
-                need_env_rebuild = True
-            if "quicksandCount" in p:
-                self.quicksand_count = _int_or_none(p["quicksandCount"], lo=0, hi=10)
-                need_env_rebuild = True
             if "trainSeed" in p:
                 self.train_seed = _int_or_none(p["trainSeed"], lo=0, hi=10_000_000)
                 need_env_rebuild = True
@@ -598,15 +554,7 @@ class Match:
             "dqnWarmup": self.dqn_warmup,
             "dqnTargetSync": self.dqn_target_sync,
             "dqnHidden": self.dqn_hidden,
-            # world dynamics + hazards
-            "thrust": round(self.env_thrust, 3),
-            "drag": round(self.env_damp, 3),
-            "speedCap": round(self.env_vmax, 3),
-            "sandDamp": round(self.env_sand_damp, 3),
-            "slip": round(self.env_slip_ctrl, 3),
-            "obstacleCount": self.obstacle_count if self.obstacle_count is not None else -1,
-            "tornadoCount": self.tornado_count,
-            "quicksandCount": self.quicksand_count if self.quicksand_count is not None else -1,
+            # reproducibility
             "trainSeed": self.train_seed if self.train_seed is not None else -1,
         }
 
@@ -870,17 +818,12 @@ class Match:
 
     def mdp_spec(self):
         """The round's MDP tuple (S, A, R, gamma) + win condition, for the BRIEFING
-        card. Reward constants mirror env.py / continuous.py / sequential.py."""
+        card. SKELETON: bare navigate/fly-to-goal, no hazards or shaping. Reward
+        constants mirror env.py / continuous.py."""
         with self.lock:
             env = self.env
             arena = env.objective == "arena"
             meta = self._matchup()
-            # the ACTUAL slip model the cross env runs: some cells slip, with the
-            # per-slip probability = the env's slip_ctrl (panel-driven), perpendicular
-            # split evenly (see env.move_dist / _cross_move). Reading the live env
-            # (slip_ctrl), not a static per-world value, keeps the briefing honest.
-            has_slip = bool(getattr(env, "slip_set", None)) and getattr(env, "slip_ctrl", 0.0) > 0.0
-            slip_p = float(getattr(env, "slip_ctrl", 0.0))
             if not arena:
                 # every grid round is a navigate-to-goal ("cross") gridworld
                 actions = ["North", "South", "West", "East"]
@@ -891,44 +834,23 @@ class Match:
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
                             "invisible to the agent.")
-                dynamics = (("Moves are deterministic on normal tiles; on a slippery junction the "
-                             "intended move slips to a perpendicular direction with probability "
-                             "%g (%g to each side). " % (slip_p, slip_p / 2.0)
-                             if has_slip else "Moves are deterministic. ") +
-                            "Walls and the map edge block movement (you stay put).")
-                sw = round(float(getattr(env, "shape_w", 0.02)), 3)
-                rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
-                           ["Shaping weight (0 = sparse)", sw]]
+                dynamics = ("Moves are deterministic. Walls and the map edge block movement "
+                            "(you stay put).")
+                rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0]]
                 win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
             else:
-                seq = type(env).__name__ == "SequentialArena"
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None
                 sees_opp = False
-                if seq:
-                    state_desc = ("continuous 9-vector: position, velocity, current-checkpoint offset, "
-                                  "leg progress, nearest-tornado offset")
-                    observation = ("Its own position and velocity, the vector to its CURRENT checkpoint, "
-                                   "how far along the rally it is, and the vector to the nearest tornado "
-                                   "- all normalized to the arena.")
-                    opp_info = "Nothing. It perceives the hazards (tornados) but not the rival."
-                    dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
-                                "bounce it, tornados shove it, quicksand slows it.")
-                    rewards = [["Step", -0.006], ["Wall hit", -0.02], ["Tornado hit", -0.06],
-                               ["Quicksand step", -0.01], ["Checkpoint", 0.40],
-                               ["Win (reach goal)", 1.0], ["Lose", -1.0], ["Shaping weight", 0.05]]
-                    win = "Clear every checkpoint in order; first to finish the rally wins."
-                else:
-                    state_desc = "continuous 6-vector: position, velocity, goal offset (all normalized)"
-                    observation = ("Its own position and velocity, and the vector to the goal - all "
-                                   "normalized to the arena size.")
-                    opp_info = ("Nothing. Each model flies its own copy of the physics; the opponent "
-                                "is not part of the observation.")
-                    dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
-                                "bounce it back.")
-                    rewards = [["Step", -0.006], ["Wall hit", -0.02], ["Win (reach goal)", 1.0],
-                               ["Lose", -1.0], ["Shaping weight", 0.05]]
-                    win = "First to reach the goal region wins; a tie is a draw."
+                state_desc = "continuous 6-vector: position, velocity, goal offset (all normalized)"
+                observation = ("Its own position and velocity, and the vector to the goal - all "
+                               "normalized to the arena size.")
+                opp_info = ("Nothing. Each model flies its own copy of the physics; the opponent "
+                            "is not part of the observation.")
+                dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
+                            "clamp it back.")
+                rewards = [["Step", -0.006], ["Win (reach goal)", 1.0], ["Lose", -1.0]]
+                win = "First to reach the goal region wins; a tie is a draw."
             g, gr = self.gamma, self.red_gamma
             horizon = lambda x: (round(1.0 / (1.0 - x), 1) if x < 1 else None)
             return {
@@ -942,7 +864,7 @@ class Match:
                 "dynamics": dynamics,
                 "actions": actions, "nActions": env.n_actions,
                 "maxSteps": env.max_steps,
-                "slipProb": round(slip_p, 3) if (not arena and has_slip) else 0.0,
+                "slipProb": 0.0,
                 "gammaRed": round(gr, 3), "gammaBlue": round(g, 3),
                 "horizonBlue": horizon(g), "horizonRed": horizon(gr),
                 "horizon": horizon(g),

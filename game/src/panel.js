@@ -66,14 +66,12 @@ export const PARAMS = [
 const fLoc = (v) => (+v).toLocaleString();
 const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = built-in
 
-// GLOBAL structural settings (N panel only). Three families, scoped per round by
-// showRelevant():
+// GLOBAL settings (N panel only), scoped per round by showRelevant():
 //   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap
-//   'dqn'  -> neural rounds: replay / batch / target-net / width
-//   'cont' -> continuous-arena dynamics (rounds 4-5)
-//   'slip' -> slippery grid rounds (2-3)
-//   'r4'/'r5' -> that round's hazard counts
+//   'dyna' -> the Dyna round: planning steps
+//   'dqn'  -> neural value rounds: replay / batch / target-net / width
 //   'always' -> every round (the reproducibility seed)
+// (The game-mechanic scopes 'cont'/'slip'/'r4'/'r5' are gone with the hazards.)
 // `sect` places the slider in the Algorithm-internals ('algo') or World ('world')
 // card. `def` is the backend default (for Reset). `enc`/`dec` map slider-space
 // <-> backend-space where they differ (dpTheta rides a log/exponent slider).
@@ -89,15 +87,9 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, fmt: fLoc },
   { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, fmt: fLoc },
-  // --- world dynamics + hazards ---
-  { key: 'slip', label: 'Slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'slip', def: 0.25, fmt: (v) => (+v).toFixed(2) },
-  { key: 'thrust', label: 'Thrust', min: 2, max: 40, step: 1, sect: 'world', scope: 'cont', def: 16, fmt: (v) => (+v).toFixed(0) },
-  { key: 'drag', label: 'Momentum kept', min: 0.5, max: 0.99, step: 0.01, sect: 'world', scope: 'cont', def: 0.9, fmt: (v) => (+v).toFixed(2) },
-  { key: 'speedCap', label: 'Speed cap', min: 2, max: 20, step: 0.5, sect: 'world', scope: 'cont', def: 7, fmt: (v) => (+v).toFixed(1) },
-  { key: 'sandDamp', label: 'Quicksand drag', min: 0.4, max: 0.95, step: 0.01, sect: 'world', scope: 'r5', def: 0.72, fmt: (v) => (+v).toFixed(2) },
-  { key: 'obstacleCount', label: 'Ruins', min: -1, max: 12, step: 1, sect: 'world', scope: 'r4', def: -1, fmt: fCount },
-  { key: 'tornadoCount', label: 'Tornados', min: 0, max: 8, step: 1, sect: 'world', scope: 'r5', def: 2, fmt: (v) => String(Math.round(v)) },
-  { key: 'quicksandCount', label: 'Quicksand pools', min: -1, max: 10, step: 1, sect: 'world', scope: 'r5', def: -1, fmt: fCount },
+  // --- reproducibility ---
+  // (world dynamics + hazard knobs removed: the levels are bare reach-the-goal
+  // skeletons - no slip / thrust / drag / obstacles / tornados / quicksand yet)
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
 
@@ -814,7 +806,6 @@ export function initPanel() {
     const isDqn = DQN_ALGOS.has(algoBlue);
     const isDyna = DYNA_ALGOS.has(algoBlue);
     const isPg = PG_ALGOS.has(algoBlue);
-    const isArena = isDqn || isPg;               // both continuous-arena families (R4 DQN, R5 PG)
     const vis = (sc) => {
       switch (sc) {
         case 'learn': return !isDP;               // learning rate α: every learner (not DP)
@@ -822,10 +813,6 @@ export function initPanel() {
         case 'dp': return isDP;                   // convergence + sweeps: DP rounds
         case 'dyna': return isDyna;               // planning steps: the Dyna round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
-        case 'cont': return isArena;              // arena dynamics: continuous rounds (DQN + PG)
-        case 'slip': return !isDP && !isArena;    // slippery junctions: grid rounds (MC / TD / Dyna)
-        case 'r4': return roundIndex === 3;       // ruins count: Round 4 only
-        case 'r5': return roundIndex === 4;       // tornados / quicksand: Round 5 only
         default: return true;                     // 'always'
       }
     };

@@ -23,16 +23,11 @@ ORTHO = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
 
 class World:
-    """One round's static layout. Positions are (row, col) tuples.
-
-    ``slip_cells`` are the icy/windy tiles where a move may slip perpendicularly
-    (the slip PROBABILITY is the env-level ``slip_ctrl``, panel-driven, not
-    per-world).
-    """
+    """One round's static layout (SKELETON: grid + spawns + goal only, no hazards).
+    Positions are (row, col) tuples."""
 
     def __init__(self, grid, *, theme="peach", round_id=1, title="",
-                 red_spawn, blue_spawn, escape,
-                 slip_cells=None, objective="cross", shape_w=None):
+                 red_spawn, blue_spawn, escape, objective="cross"):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -41,24 +36,19 @@ class World:
         self.objective = objective
         self.red_spawn, self.blue_spawn = tuple(red_spawn), tuple(blue_spawn)
         self.escape = [tuple(e) for e in escape]
-        self.slip_cells = [tuple(c) for c in (slip_cells or [])]
-        # per-round reward-shaping weight. None -> the env default (SHAPE_W). Set to
-        # 0 for a SPARSE round (reward only at the goal) - e.g. the Dyna round, where
-        # sparse rewards are what make model-based PLANNING visibly outrun plain
-        # learning (dense shaping would already do the value-propagation for free).
-        self.shape_w = shape_w
 
     def rows(self):
         return ["".join(r) for r in self.grid]
 
     def to_json(self):
-        # only the fields the browser's themed scenes actually read
+        # only the fields the browser's themed scenes actually read. slipCells stays
+        # as a constant empty list for arena-generic frontend code (no slip mechanic).
         return {
             "theme": self.theme, "roundId": self.round_id, "title": self.title,
             "objective": self.objective,
             "rows": self.rows(),
             "escape": [list(e) for e in self.escape],
-            "slipCells": [list(c) for c in self.slip_cells],
+            "slipCells": [],
         }
 
 
