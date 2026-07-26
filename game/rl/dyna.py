@@ -78,10 +78,15 @@ class DynaQPlus(_DynaBase):
     name = "Dyna-Q+"
 
     def __init__(self, n_actions=N_ACTIONS, alpha=0.2, gamma=0.98, seed=0,
-                 planning=10, kappa=1e-3):
+                 planning=10, kappa=1e-4):
         super().__init__(n_actions=n_actions, alpha=alpha, gamma=gamma, seed=seed,
                          planning=planning)
-        self.kappa = kappa      # exploration-bonus weight
+        # exploration-bonus weight. Dyna-Q+ adds kappa*sqrt(staleness) to planning
+        # rewards to lure re-exploration - its point in NON-stationary worlds. Kept
+        # SMALL (1e-4) so on a STATIC task the bonus never overtakes the real goal
+        # value: at 1e-3 the greedy policy chases stale off-path actions forever and
+        # never settles on the optimal path (verified by the sanity check).
+        self.kappa = kappa
         self.t = 0              # real-step clock
         self.last = {}          # (s,a) -> the time it was last really tried
 

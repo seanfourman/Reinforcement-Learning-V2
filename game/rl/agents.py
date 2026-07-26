@@ -168,23 +168,34 @@ class ExpectedSarsa(Tabular):
 class MonteCarlo(Tabular):
     name = "Every-visit MC"
 
+    # MC learns from full-episode RETURNS, which are far higher-variance than a
+    # one-step TD target, so a full-size step makes Q wobble and the greedy policy
+    # drift off the optimal path. Applying the learning rate GENTLY (x0.25) fixes it:
+    # at the panel default (alpha 0.2 -> step 0.05) MC converges AND stays at optimal,
+    # and actually FASTER than the raw 0.2 (verified by the sanity check on R1-R3;
+    # raw 0.2 drifts/fails on the longer maps). Constant-scaled step, not 1/N: a
+    # sample-average anchors on early exploratory garbage and fails to control.
+    STEP_SCALE = 0.25
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._episode = []          # (s, a, r) trajectory
+
+    def _mc_step(self):
+        return self.alpha * self.STEP_SCALE
 
     def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         self._episode.append((s, a, r))
 
     def end_episode(self):
-        # every-visit MC control with CONSTANT alpha (sample-average 1/c decays
-        # too fast for non-stationary self-play, where the rival keeps changing).
-        # Updates Q(s,a) on EVERY occurrence of (s,a) in the episode.
+        # every-visit MC control: update Q(s,a) on EVERY occurrence of (s,a).
+        step = self._mc_step()
         G = 0.0
         for s, a, r in reversed(self._episode):
             G = r + self.gamma * G
             row = self.row(s)
             td = G - row[a]
-            row[a] += self.alpha * td
+            row[a] += step * td
             self._record_td(td)
         self._episode = []
 
@@ -199,6 +210,7 @@ class FirstVisitMonteCarlo(MonteCarlo):
     def end_episode(self):
         # first-visit MC control: update Q(s,a) only on the FIRST time (s,a) appears
         # in the episode (the classic contrast with every-visit MC).
+        step = self._mc_step()
         ep = self._episode
         first = {}
         for i, (s, a, _r) in enumerate(ep):
@@ -210,7 +222,7 @@ class FirstVisitMonteCarlo(MonteCarlo):
             if first.get((s, a)) == i:         # apply only at the first visit
                 row = self.row(s)
                 td = G - row[a]
-                row[a] += self.alpha * td
+                row[a] += step * td
                 self._record_td(td)
         self._episode = []
 
