@@ -77,15 +77,10 @@ def _build():
 
     return World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
-        red_spawn=red, blue_spawn=blue,
-        # no keys / doors / gold in a cross world — point them at the spawns so the
-        # World container stays happy; the env ignores them in "cross" mode.
-        red_key=red, blue_key=blue, red_door=red, blue_door=blue,
-        gold_home=red, escape=goals,
-        furniture=[], room_doors=[], drop_traps=[],
+        red_spawn=red, blue_spawn=blue, escape=goals,
         # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
-        # driven), shared by env.move_dist + _cross_move. world.slip_prob is unused.
-        slip_cells=slip, seed=3,
+        # driven), shared by env.move_dist + _cross_move.
+        slip_cells=slip,
     )
 
 

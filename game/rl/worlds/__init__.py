@@ -7,8 +7,7 @@ running order; the tournament manager walks it. All five rounds are registered.
 
 from .grid import (  # re-exported for convenience / back-compat
     World, validate, SIZE, ORTHO,
-    WALL, FLOOR, ESCAPE, RED_KEY, BLUE_KEY, RED_DOOR, BLUE_DOOR,
-    GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
+    WALL, FLOOR, ESCAPE, RED_SPAWN, BLUE_SPAWN,
 )
 from . import peach
 from . import city

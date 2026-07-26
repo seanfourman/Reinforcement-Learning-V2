@@ -382,9 +382,6 @@ class SequentialArena:
             "goal": [float(FINISH[0]), float(FINISH[1])],
             "tornados": [rd(c) + [float(TORNADO_R)] for c in self._tornado_pos()],
             "obstacles": [],
-            # parity flags so the existing viewer hides grid-round props
-            "redKey": True, "blueKey": True,
-            "gold": {"holder": None, "pos": None}, "trapArmed": False,
             "steps": self.steps, "winner": self.winner,
         }
 

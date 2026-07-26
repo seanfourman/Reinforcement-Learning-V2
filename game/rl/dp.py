@@ -52,7 +52,6 @@ class _DPBase:
         return {tuple(e) for e in self.env.world.escape}
 
     def _passable(self, agent, r, c):
-        # door treated as open / manholes routed around - matches the shaping map
         return self.env._static_passable(agent, r, c)
 
     def _dist(self, cell, action):

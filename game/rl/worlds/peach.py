@@ -58,13 +58,7 @@ def _build():
     return World(
         g, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS,
-        # cross world: no keys / doors / gold - point them at the spawns so the
-        # World container stays happy; the env + DP planner ignore them.
-        red_key=RED_SPAWN_POS, blue_key=BLUE_SPAWN_POS,
-        red_door=RED_SPAWN_POS, blue_door=BLUE_SPAWN_POS,
-        gold_home=RED_SPAWN_POS, escape=ESCAPE_POS,
-        furniture=[], room_doors=[], drop_traps=[],
-        slip_cells=[], slip_prob=0.0, seed=1,
+        escape=ESCAPE_POS, slip_cells=[],
     )
 
 

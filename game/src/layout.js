@@ -1,5 +1,5 @@
-// Parses the fixed RL world (an array of 20 row-strings, shipped inside
-// trajectory.json) into structured positions the viewer can render.
+// Parses the RL world (an array of 20 row-strings from /api/world) into the
+// structured positions the viewer can render.
 //
 // Coordinate bridge: the Python sim uses (row, col) with row 0 at the NORTH.
 // three.js uses (x, z). We map col -> x, row -> z, so a cell's centre is at
@@ -27,10 +27,7 @@ export function getOffset() { return [_offX, _offZ]; }
 
 export const TILE = {
   WALL: '#', FLOOR: '.', ESCAPE: 'E',
-  RED_KEY: 'r', BLUE_KEY: 'b', GOLD: 'G',
-  PAD1: '1', PAD2: '2', ALT_A: 'a', ALT_C: 'c',
-  RED_DOOR: 'D', BLUE_DOOR: 'd', RED_SPAWN: 'R', BLUE_SPAWN: 'B',
-  GOLD_TRAP: 'X',
+  RED_SPAWN: 'R', BLUE_SPAWN: 'B',
 };
 
 export function parseLayout(rows) {
@@ -47,15 +44,6 @@ export function parseLayout(rows) {
   };
   return {
     rows, H, W,
-    redKey: find(TILE.RED_KEY),
-    blueKey: find(TILE.BLUE_KEY),
-    gold: find(TILE.GOLD),
-    pad1: find(TILE.PAD1),
-    pad2: find(TILE.PAD2),
-    altA: find(TILE.ALT_A),
-    altC: find(TILE.ALT_C),
-    redDoor: find(TILE.RED_DOOR),
-    blueDoor: find(TILE.BLUE_DOOR),
     redSpawn: find(TILE.RED_SPAWN),
     blueSpawn: find(TILE.BLUE_SPAWN),
     escape: findAll(TILE.ESCAPE),

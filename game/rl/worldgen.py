@@ -9,8 +9,7 @@ builds a round's world, so existing ``import worldgen`` /
 
 from worlds.grid import (  # noqa: F401  (re-exported)
     World, validate, SIZE, ORTHO,
-    WALL, FLOOR, ESCAPE, RED_KEY, BLUE_KEY, RED_DOOR, BLUE_DOOR,
-    GOLD_HOME, RED_SPAWN, BLUE_SPAWN, GOLD_TRAP,
+    WALL, FLOOR, ESCAPE, RED_SPAWN, BLUE_SPAWN,
 )
 from worlds import make_world, round_meta, ROUNDS  # noqa: F401
 

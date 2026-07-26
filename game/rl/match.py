@@ -404,8 +404,6 @@ class Match:
             goal = list(exits[0])
         if goal is not None:
             frame[side] = goal
-            if isinstance(frame.get("gold"), dict):
-                frame["gold"] = {"holder": side, "pos": None}
         return frame
 
     # --------------------------------------------------------------- controls
@@ -793,7 +791,7 @@ class Match:
             # the ACTUAL slip model the cross env runs: some cells slip, with the
             # per-slip probability = the env's slip_ctrl (panel-driven), perpendicular
             # split evenly (see env.move_dist / _cross_move). Reading the live env
-            # (not world.slip_prob) keeps the briefing honest.
+            # (slip_ctrl), not a static per-world value, keeps the briefing honest.
             has_slip = bool(getattr(env, "slip_set", None)) and getattr(env, "slip_ctrl", 0.0) > 0.0
             slip_p = float(getattr(env, "slip_ctrl", 0.0))
             if not arena:
@@ -813,8 +811,6 @@ class Match:
                             "Walls and the map edge block movement (you stay put).")
                 rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
                            ["Shaping weight", 0.02]]
-                if getattr(env, "drop_set", None):   # only if the world has real manholes
-                    rewards.insert(3, ["Fall in a manhole", -0.5])
                 win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
             else:
                 seq = type(env).__name__ == "SequentialArena"
@@ -1038,10 +1034,9 @@ class Match:
             if self.env.objective == "arena":
                 return self._blank_grid(agent, mode="policy")
             a = self._agent(agent)
-            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
+                state = (idx,)
                 if a.state_value(state) is None:
                     continue
                 q = a.q_values(state)
@@ -1085,10 +1080,9 @@ class Match:
             if self.env.objective == "arena":
                 return self._blank_grid(agent)
             a = self._agent(agent)
-            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
+                state = (idx,)
                 v = a.state_value(state)
                 grid[r][c] = round(v, 4) if v is not None else None
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
@@ -1174,8 +1168,7 @@ class Match:
         pt = {"ep": self.episode}
         for side in ("red", "blue"):
             a = self._agent(side)
-            _, ok, gl, orr, oa, tr = self.env.observe(side)
-            v = a.state_value((idx, ok, gl, orr, oa, tr))
+            v = a.state_value((idx,))
             pt[side + "V"] = round(v, 4) if v is not None else 0.0
         self.q_probe.append(pt)
 
@@ -1225,11 +1218,10 @@ class Match:
             if self.env.objective == "arena":
                 return self._blank_grid(agent, mode="q")
             a = self._agent(agent)
-            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             best = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx, own_key, gold_loc, opp_region, opp_adj, trap)
+                state = (idx,)
                 if a.state_value(state) is None:        # leave unlearned tiles blank
                     continue
                 q = a.q_values(state)
@@ -1251,8 +1243,7 @@ class Match:
             a = self._agent(agent)
             if (r, c) not in self.env.cell_index:
                 return None
-            _, own_key, gold_loc, opp_region, opp_adj, trap = self.env.observe(agent)
-            state = (self.env.cell_index[(r, c)], own_key, gold_loc, opp_region, opp_adj, trap)
+            state = (self.env.cell_index[(r, c)],)
             q = a.q_values(state)
             # `best` = the action the agent would ACTUALLY take here (argmax over the
             # EFFECTIVE actions), and `mask` flags which are blocked - so the inspector

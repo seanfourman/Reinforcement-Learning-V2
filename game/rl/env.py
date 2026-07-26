@@ -1,10 +1,8 @@
 """Two-agent competitive grid world - the live RL environment (Gymnasium API).
 
-A navigate-to-goal gridworld (the "cross" / Cliff-Walking objective): each agent
-heads from its spawn to the goal tile; first one there WINS, a simultaneous
-arrival is a DRAW. Slippery junctions add a stochastic transition model, and a
-world may place open "manholes" (drop-traps) that fling a careless agent back to
-its spawn - the classic Cliff-Walking hazard.
+A navigate-to-goal gridworld: each agent heads from its spawn to the goal tile;
+first one there WINS, a simultaneous arrival is a DRAW. Slippery junctions add a
+stochastic transition model.
 
 This subclasses ``gymnasium.Env`` to "capture" the Gymnasium concept, but it is a
 two-agent env (PettingZoo-style): ``step`` takes a pair of actions and returns
@@ -32,20 +30,11 @@ MOVE_ACTIONS = (0, 1, 2, 3)
 # part of the otherwise-known transition model that Dynamic Programming solves.
 PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
 
-# The per-agent observation is a fixed 6-tuple: the cell index plus five slots kept
-# at these neutral constants. The cross task only needs the cell, but the tuple
-# shape is the Q-table key + the frontend's obs contract, so it's kept stable.
-GOLD_GROUND = 0
-N_GOLD_LOC = 5
-REGION_ARENA = 2
-N_REGIONS = 3
-
 # --- reward shaping ---------------------------------------------------------
 STEP_COST = 0.01
 WIN = 1.0
 LOSE = -1.0
 MAX_STEPS = 400
-CLIFF_PENALTY = -0.5   # fall into an open manhole, then respawn
 
 # Difference-of-potentials shaping: F = Φ(s') − Φ(s), with Φ = −W·(remaining path
 # length to the goal). Progress earns +W, standing still 0, backtracking −W - a
@@ -90,11 +79,8 @@ class GridWorld(gym.Env):
                             if g[r][c] != WALL]
         self.cell_index = {cell: i for i, cell in enumerate(self.floor_cells)}
         self.n_cells = len(self.floor_cells)
-        # obs: (cell index, + five reserved slots kept at neutral constants)
-        self.observation_space = spaces.MultiDiscrete(
-            [self.n_cells, 2, N_GOLD_LOC, N_REGIONS, 2, 2])
-        # open manholes (the Cliff-Walking hazard): stepping on one respawns you.
-        self.drop_set = {tuple(c) for c in world.drop_traps}
+        # the observation is simply the agent's cell index (a single-agent navigator)
+        self.observation_space = spaces.MultiDiscrete([self.n_cells])
         # slippery tiles (WHICH cells slip). The slip PROBABILITY is the env-level
         # slip_ctrl (panel-driven), shared by move_dist + _cross_move so the DP
         # model and the live dynamics stay identical.
@@ -103,17 +89,10 @@ class GridWorld(gym.Env):
 
     # ----------------------------------------------------- shaping distances
     def _static_passable(self, agent, r, c):
-        """Passability for the STATIC shaping / DP distance model: in-bounds, not a
-        wall, and routed AROUND any manholes (so the cautious detour reads as
-        progress). ``agent`` is accepted for interface symmetry with the live rule
-        (the DP planner passes this as its transition model)."""
-        if not (0 <= r < self.H and 0 <= c < self.W):
-            return False
-        if self.world.grid[r][c] == WALL:
-            return False
-        if (r, c) in self.drop_set:
-            return False
-        return True
+        """Passability for the STATIC shaping / DP distance model: in-bounds and not
+        a wall. ``agent`` is accepted for interface symmetry with the live rule (the
+        DP planner passes this as its transition model)."""
+        return 0 <= r < self.H and 0 <= c < self.W and self.world.grid[r][c] != WALL
 
     def _bfs_from(self, sources):
         from collections import deque
@@ -130,13 +109,12 @@ class GridWorld(gym.Env):
         return dist
 
     def _build_distance_maps(self):
-        # shortest-path distance from every cell to the nearest goal tile (routed
-        # around manholes); drives the shaping potential. Both agents share it -
-        # there are no per-agent doors in a cross world.
+        # shortest-path distance from every cell to the nearest goal tile; drives the
+        # shaping potential. Both agents share it (no per-agent passability).
         self.dist_escape = self._bfs_from(list(self.world.escape))
 
     def _potential(self, agent):
-        """Φ(s) = −W · remaining path length to the goal (routed around manholes)."""
+        """Φ(s) = −W · remaining path length to the goal."""
         pos = self.red_pos if agent == "red" else self.blue_pos
         return -SHAPE_W * self.dist_escape.get(pos, _UNREACH)
 
@@ -159,10 +137,6 @@ class GridWorld(gym.Env):
         self.steps = 0
         self.done = False
         self.winner = None
-        # latched fall events (count + where) so the 30Hz viewer never misses a
-        # manhole drop even when the sim steps faster than it polls
-        self.fall_n = {"red": 0, "blue": 0}
-        self.fall_cell = {"red": None, "blue": None}
         # per-episode reward decomposition (terminal / shaping / other) per agent
         self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
                          "blue": {"terminal": 0.0, "shape": 0.0, "other": 0.0}}
@@ -182,9 +156,9 @@ class GridWorld(gym.Env):
     # ------------------------------------------------------------ observation
     def observe(self, agent):
         # each agent is an independent single-agent navigator; its state is simply
-        # its cell. The reserved tuple slots stay at neutral constants.
+        # its cell index (a 1-tuple, so it stays a stable Q-table key).
         pos = self.red_pos if agent == "red" else self.blue_pos
-        return (self.cell_index[pos], 0, GOLD_GROUND, REGION_ARENA, 0, 0)
+        return (self.cell_index[pos],)
 
     # ------------------------------------------------------------------- step
     def _pos(self, agent):
@@ -260,8 +234,7 @@ class GridWorld(gym.Env):
         return self._resolve(agent, pos, d)      # _resolve stays put if blocked
 
     def step(self, a_red, a_blue):
-        """Cliff-Walking step: both move; stepping onto an open manhole drops you
-        (penalty + back to spawn); first onto a goal cell wins, a simultaneous
+        """One step: both agents move; first onto a goal cell wins, a simultaneous
         arrival is a draw."""
         if self.done:
             raise RuntimeError("step() on a finished episode")
@@ -271,17 +244,6 @@ class GridWorld(gym.Env):
 
         self.red_pos = self._cross_move("red", self.red_pos, a_red)
         self.blue_pos = self._cross_move("blue", self.blue_pos, a_blue)
-
-        # fall into an open manhole -> penalty, then flung back to spawn
-        for agent in ("red", "blue"):
-            if self._pos(agent) in self.drop_set:
-                reward[agent] += CLIFF_PENALTY
-                self.fall_n[agent] += 1                       # latch for the viewer
-                self.fall_cell[agent] = list(self._pos(agent))
-                if agent == "red":
-                    self.red_pos = self.world.red_spawn
-                else:
-                    self.blue_pos = self.world.blue_spawn
 
         # reach the goal -> win; both crossing on the SAME step is a genuine DRAW
         # (equidistant spawns make a symmetric deterministic race tie every time).
@@ -322,18 +284,10 @@ class GridWorld(gym.Env):
 
     # --------------------------------------------------------------- snapshot
     def snapshot(self):
-        """Live render state for the viewer (positions + fall latches). The
-        key/gold/trap fields are constant (a cross world has none) but kept so the
-        viewer's snapshot contract stays stable."""
+        """Live render state for the viewer: the two agents' cells, the step count,
+        and the winner (None until someone reaches the goal)."""
         return {
             "red": list(self.red_pos), "blue": list(self.blue_pos),
-            "redKey": True, "blueKey": True,
-            "gold": {"holder": None, "pos": None},
-            "trapArmed": False,
-            "fell": {
-                "red": {"n": self.fall_n["red"], "cell": self.fall_cell["red"]},
-                "blue": {"n": self.fall_n["blue"], "cell": self.fall_cell["blue"]},
-            },
             "steps": self.steps, "winner": self.winner,
         }
 

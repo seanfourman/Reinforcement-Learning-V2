@@ -259,9 +259,6 @@ class ContinuousArena:
             "goal": rd(self.goal),
             "obstacles": [[round(float(c[0]), 2), round(float(c[1]), 2), float(r)]
                           for c, r in self.obstacles],
-            # parity flags so the existing viewer hides race props
-            "redKey": True, "blueKey": True,
-            "gold": {"holder": None, "pos": None}, "trapArmed": False,
             "steps": self.steps, "winner": self.winner,
         }
 
