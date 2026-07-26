@@ -523,8 +523,8 @@ export function initDP(parent) {
         <button data-a="blue">Policy Iteration</button>
       </div>
       <div class="ctl" style="margin-top:12px;">
-        <div class="row"><span>Convergence θ</span><b id="rl-dp-theta-v">1e-5</b></div>
-        <input type="range" id="rl-dp-theta" min="-6" max="0" step="0.5" value="-5" style="--fill:#7c4dd0">
+        <div class="row"><span>Convergence θ</span><b id="rl-dp-theta-v">0.00001</b></div>
+        <input type="range" id="rl-dp-theta" min="-6" max="0" step="0.5" value="-5" style="--fill:#1a1a1a">
       </div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
@@ -540,11 +540,20 @@ export function initDP(parent) {
   const q = (s) => parent.querySelector(s);
   const sec = q("#rl-dp");
   let dpAgent = "red";
+  // plain decimal string, NEVER scientific notation (e.g. 0.00001, not 1e-5),
+  // trimmed of trailing zeros. Keeps ~3 significant figures.
+  const plainDec = (x) => {
+    if (!isFinite(x)) return String(x);
+    let s = Number(x).toPrecision(3);
+    if (/e/i.test(s)) s = Number(s).toFixed(20);      // expand any scientific form
+    if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+    return s;
+  };
   const chDelta = makeChart(q("#rl-ch-dp-delta"), {
     series: [{ key: "logDelta", color: "#e11f2b" }],
     fmt: (v) => {
       const d = Math.pow(10, v);
-      return d >= 1 ? d.toFixed(1) : d.toExponential(0);
+      return d >= 1 ? d.toFixed(1) : plainDec(d);
     },
   });
   const chMeanV = makeChart(q("#rl-ch-dp-meanv"), {
@@ -578,12 +587,12 @@ export function initDP(parent) {
   const paintTheta = () => {
     const p =
       ((+theta.value - +theta.min) / (+theta.max - +theta.min || 1)) * 100;
-    theta.style.background = `linear-gradient(to right,#7c4dd0 ${p}%,#e1e3e8 ${p}%)`;
+    theta.style.background = `linear-gradient(to right,#1a1a1a ${p}%,#e1e3e8 ${p}%)`;
   };
   let thTimer = null;
   theta.addEventListener("input", () => {
     const th = Math.pow(10, +theta.value);
-    thetaV.textContent = th.toExponential(0);
+    thetaV.textContent = plainDec(th);
     paintTheta();
     clearTimeout(thTimer);
     thTimer = setTimeout(() => {
