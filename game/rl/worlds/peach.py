@@ -1,13 +1,14 @@
 """Round 1 - Peach's Castle: a plain navigate-to-goal gridworld (VI vs PI).
 
 The assignment's "level 1" feel: a simple deterministic gridworld on the castle
-floor. Both agents start at the bottom and head to the GOAL (the throne) at the
-top, around a few pillar obstacles. NO keys, gold, doors or slippery tiles - just
-reach the goal. With a known deterministic model, Value Iteration and Policy
-Iteration both plan the shortest path; the contrast Benny teaches is HOW each
-converges.
+floor. Both agents start near one side and head to the GOAL (the throne). The hall
+is open - NO interior obstacles, keys, gold, doors or slippery tiles - just reach
+the goal. With a known deterministic model, Value Iteration and Policy Iteration
+both plan the shortest path; the contrast Benny teaches is HOW each converges.
 
-Coordinates are (row, col), row 0 = NORTH (throne), row 19 = SOUTH (spawns).
+Coordinates are (row, col). The theme camera flips the foyer 180, so on screen the
+goal reads top-centre and the spawns bottom-left/right (in grid coords the goal is
+at the high-row edge and the spawns at the low-row edge - see the flip note below).
 """
 
 from .grid import (
@@ -20,8 +21,8 @@ ROUND_ID = 1
 TITLE = "Peach's Castle"
 
 # The RL grid stays SIZE x SIZE (=20; the viewer's heatmap/camera assume that),
-# but the PLAYABLE area is a central BOARD x BOARD: the frame around it is walled
-# off. Those frame cells render as plain foyer floor (peach.js draws no wall
+# but the PLAYABLE area is a central BOARD x BOARD (=15x15): the frame around it is
+# walled off. Those frame cells render as plain foyer floor (peach.js draws no wall
 # geometry), so there's no visible ring - the board just reads as BOARD x BOARD.
 BOARD = 15
 LO = (SIZE - BOARD) // 2                # first play row/col (top/left margin)
@@ -40,7 +41,7 @@ PILLARS = []
 def _build():
     g = [[FLOOR] * SIZE for _ in range(SIZE)]
 
-    # wall off everything outside the central 16x16 so the play area is 16x16
+    # wall off everything outside the central BOARD x BOARD (15x15) play area
     for r in range(SIZE):
         for c in range(SIZE):
             if r < LO or r > HI or c < LO or c > HI:

@@ -8,13 +8,12 @@ concurrently, so every state mutation and read is guarded by one lock. Controls
 serialized through it too.
 
 Each round is a head-to-head between two (possibly different) algorithms - e.g.
-Round 1 is Value-Iteration (Red) vs Policy-Iteration (Blue). Pressing the
-official finish button arms the live match; the next completed episode resolves
-the round point and the frontend receives a finish-line frame for the ceremony.
-If that episode ends in a timeout/draw, the point falls back to the current
-contest leader instead of hanging forever. The old Next button still awards from
-recent wins as a fallback, but never double-counts; round wins accumulate into
-the tournament ``score`` shown in the HUD.
+Round 1 is Value-Iteration (Red) vs Policy-Iteration (Blue). A round's point is
+awarded ONLY by pressing T (``award_round``): it goes to whichever model leads
+the recent contest (a tie is a genuine draw, no point), and the frontend gets a
+finish-line frame for the ceremony. Navigating between rounds is free - it never
+scores and can never double-count. Round wins accumulate into the tournament
+``score`` shown in the HUD.
 """
 
 import copy
@@ -113,8 +112,7 @@ class Match:
         self.awarded_rounds = set()            # round ids already scored this tournament
         self.round_results = {}                # round INDEX -> "red"/"blue"/"draw" (header dots)
         self.award_serial = 0                  # increments when the frontend should react
-        self.last_award = None                 # latest official/auto award event
-        self.finish_waiting = False            # official finish pressed; wait for next winner
+        self.last_award = None                 # latest award event (from pressing T)
         self.finish_serial = 0                 # increments when a finish ceremony is ready
         self.finish_event = None               # latest ceremony event with finish-line frame
         # tunable hyperparameters for OUR model, Blue (driven from the M panel).
@@ -170,7 +168,6 @@ class Match:
         self.world_version += 1
         self._apply_env_config()
         self._build_agents()
-        self.finish_waiting = False
         self.finish_event = None
         self._reset_stats()
         self._new_episode()
@@ -181,6 +178,14 @@ class Match:
         start menu and make every transition instant."""
         with self.lock:
             return self._make_env(round_id).to_json()
+
+    def world_json(self):
+        """The live world + its version, read ATOMICALLY under the lock (for
+        /api/world). Without the lock a concurrent round switch (which swaps
+        self.env then bumps world_version) could be read half-applied, so the
+        client could pair an old version with a new world (or vice versa)."""
+        with self.lock:
+            return {"worldVersion": self.world_version, "world": self.env.to_json()}
 
     def all_worlds(self):
         """Every round's world in tournament order (for the client prewarm)."""
@@ -293,11 +298,21 @@ class Match:
                 return False
             obs, reward, done, truncated, info = self.env.step(self.a_red, self.a_blue)
             ns_red, ns_blue = obs
-            na_red = self.red.policy_action(ns_red, self._amask("red")) if not done else 0
-            na_blue = self.blue.policy_action(ns_blue, self._amask("blue")) if not done else 0
+            # the effective-action mask AT THE NEXT STATE (env positions are already
+            # post-step here): used both to pick the next action AND to bootstrap the
+            # TD target over valid actions only (never over a never-updated wall-bump).
+            nmask_red, nmask_blue = self._amask("red"), self._amask("blue")
+            na_red = self.red.policy_action(ns_red, nmask_red) if not done else 0
+            na_blue = self.blue.policy_action(ns_blue, nmask_blue) if not done else 0
 
-            self.red.learn_step(self.s_red, self.a_red, reward["red"], ns_red, na_red, done)
-            self.blue.learn_step(self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue, done)
+            # a max-steps TIMEOUT is truncation, not a true terminal: the next state is
+            # not absorbing, so the value backup must still bootstrap through it. Only a
+            # real win/lose/draw (done and not truncated) cuts the bootstrap.
+            terminated = done and not truncated
+            self.red.learn_step(self.s_red, self.a_red, reward["red"], ns_red, na_red,
+                                terminated, nmask_red)
+            self.blue.learn_step(self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue,
+                                 terminated, nmask_blue)
 
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
@@ -373,47 +388,6 @@ class Match:
             "predQRed": round(self._dqn_field("red", "predQ"), 3),
             "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
         })
-        if self.finish_waiting:
-            self._complete_official_finish(winner)
-
-    def _complete_official_finish(self, episode_winner):
-        """Score an armed official finish and expose a stable finish-line frame."""
-        preferred = self._official_finish_winner(episode_winner)
-        award = self._award_current_round(source="official", winner_override=preferred)
-        focus = award.get("winner")
-        frame = self._ceremony_frame(focus)
-        self.finish_serial += 1
-        self.finish_event = {
-            "serial": self.finish_serial,
-            "awardSerial": award.get("serial"),
-            "roundId": self.round_id,
-            "roundIndex": award.get("roundIndex", 0),
-            "roundTotal": award.get("roundTotal", len(worlds.ROUNDS)),
-            "title": award.get("title", ""),
-            "winner": focus if focus in ("red", "blue") else None,
-            "episodeWinner": episode_winner if episode_winner in ("red", "blue") else None,
-            "awarded": award.get("awarded", False),
-            "score": dict(self.score),
-            "award": dict(award),
-            "frame": frame,
-            "labelRed": award.get("labelRed", self.algo_red),
-            "labelBlue": award.get("labelBlue", self.algo_blue),
-        }
-        self.finish_waiting = False
-
-    def _official_finish_winner(self, episode_winner):
-        if episode_winner in ("red", "blue"):
-            return episode_winner
-        recent = list(self.recent)
-        red_wins = recent.count("red")
-        blue_wins = recent.count("blue")
-        if red_wins != blue_wins:
-            return "red" if red_wins > blue_wins else "blue"
-        red_return = self.last_return.get("red", 0.0)
-        blue_return = self.last_return.get("blue", 0.0)
-        if abs(red_return - blue_return) > 1e-9:
-            return "red" if red_return > blue_return else "blue"
-        return "blue"
 
     def _ceremony_frame(self, side):
         frame = copy.deepcopy(self._frames[-1]) if self._frames else self.env.snapshot()
@@ -441,9 +415,6 @@ class Match:
             self.env.reset(seed=seed, regenerate=True)
             self.world_version += 1
             self._build_agents()
-            if self.finish_waiting and self.last_award and self.last_award.get("pending"):
-                self.last_award = None
-            self.finish_waiting = False
             self.finish_event = None
             self._reset_stats()
             self._new_episode()
@@ -452,9 +423,6 @@ class Match:
         """Wipe learning, KEEP the current world."""
         with self.lock:
             self._build_agents()
-            if self.finish_waiting and self.last_award and self.last_award.get("pending"):
-                self.last_award = None
-            self.finish_waiting = False
             self.finish_event = None
             self._reset_stats()
             self._new_episode()
@@ -659,9 +627,6 @@ class Match:
             self.red_tier = t
             self._red_from_tier()              # a new opponent resets any manual override
             self._build_agents()
-            if self.finish_waiting and self.last_award and self.last_award.get("pending"):
-                self.last_award = None
-            self.finish_waiting = False
             self.finish_event = None
             self._reset_stats()
             self._new_episode()
@@ -676,9 +641,6 @@ class Match:
             elif side == "blue":
                 self.algo_blue = algo
             self._build_agents()
-            if self.finish_waiting and self.last_award and self.last_award.get("pending"):
-                self.last_award = None
-            self.finish_waiting = False
             self.finish_event = None
             self._reset_stats()
             self._new_episode()
@@ -697,7 +659,6 @@ class Match:
                 self.awarded_rounds.clear()
                 self.round_results = {}
                 self.last_award = None
-            self.finish_waiting = False
             self.finish_event = None
             self._build_agents()
             self._reset_stats()
@@ -734,7 +695,12 @@ class Match:
             if self.round_id in self.awarded_rounds and self.last_award \
                     and self.last_award.get("roundId") == self.round_id:
                 return dict(self.last_award)
-            award = self._award_current_round(source="official")   # winner=recent leader, None on a tie
+            # nothing has been contested yet (no episode finished) -> don't lock the
+            # round as a no-op draw; let the user press T again once there's a result.
+            if not self.recent and self.round_id not in self.awarded_rounds:
+                return {"winner": None, "awarded": False, "pending": True,
+                        "roundId": self.round_id, "score": dict(self.score)}
+            award = self._award_current_round()   # winner=recent leader (or the banked one), None on a tie
             self.awarded_rounds.add(self.round_id)                  # resolved (a draw counts as resolved too)
             focus = award.get("winner")
             frame = self._ceremony_frame(focus)                    # focus=None (draw) -> no character moved
@@ -755,49 +721,40 @@ class Match:
                 "labelRed": award.get("labelRed", self.algo_red),
                 "labelBlue": award.get("labelBlue", self.algo_blue),
             }
-            self.finish_waiting = False
             return dict(award)
 
-    def _award_current_round(self, source="auto", winner_override=None):
+    def _award_current_round(self):
         recent = list(self.recent)
         red_wins = recent.count("red")
         blue_wins = recent.count("blue")
         draw_wins = recent.count("draw")
-        winner = (
-            winner_override
-            if winner_override in ("red", "blue")
-            else "red" if red_wins > blue_wins
-            else "blue" if blue_wins > red_wins
-            else None
-        )
         meta = self._matchup()
+        idx = meta.get("index", 0)
         already = self.round_id in self.awarded_rounds
 
-        if winner and not already:
-            self.score[winner] += 1
-            self.awarded_rounds.add(self.round_id)
-        if not already:  # record who took THIS round (draw included) for the header dots
-            self.round_results[meta.get("index", 0)] = winner if winner in ("red", "blue") else "draw"
-
-        # Auto-award is a compatibility fallback for the Next button. If the
-        # round was already officially awarded, keep the previous event intact so
-        # the frontend does not announce a duplicate no-op.
-        if source == "auto" and already:
-            return {
-                "winner": winner,
-                "awarded": False,
-                "already": True,
-                "pending": False,
-                "recent": {"red": red_wins, "blue": blue_wins, "draw": draw_wins},
-                "score": dict(self.score),
-            }
+        if already:
+            # the round is banked - re-show the STORED winner (from round_results),
+            # never recompute from the since-reset recent window and never re-score.
+            # This is what stops a re-award (after navigating away and back) from
+            # announcing a different winner than the one actually banked.
+            banked = self.round_results.get(idx)
+            winner = banked if banked in ("red", "blue") else None
+        else:
+            winner = ("red" if red_wins > blue_wins
+                      else "blue" if blue_wins > red_wins
+                      else None)
+            if winner:
+                self.score[winner] += 1
+                self.awarded_rounds.add(self.round_id)
+            # record who took THIS round (draw included) for the header dots
+            self.round_results[idx] = winner if winner in ("red", "blue") else "draw"
 
         self.award_serial += 1
         self.last_award = {
             "serial": self.award_serial,
-            "source": source,
+            "source": "official",
             "roundId": self.round_id,
-            "roundIndex": meta.get("index", 0),
+            "roundIndex": idx,
             "roundTotal": meta.get("total", len(worlds.ROUNDS)),
             "title": meta.get("title", ""),
             "winner": winner,
@@ -833,7 +790,12 @@ class Match:
             env = self.env
             arena = env.objective == "arena"
             meta = self._matchup()
-            slip = float(getattr(getattr(env, "world", None), "slip_prob", 0.0) or 0.0)
+            # the ACTUAL slip model the cross env runs: some cells slip, with the
+            # per-slip probability = the env's slip_ctrl (panel-driven), perpendicular
+            # split evenly (see env.move_dist / _cross_move). Reading the live env
+            # (not world.slip_prob) keeps the briefing honest.
+            has_slip = bool(getattr(env, "slip_set", None)) and getattr(env, "slip_ctrl", 0.0) > 0.0
+            slip_p = float(getattr(env, "slip_ctrl", 0.0))
             if not arena:
                 cross = env.objective == "cross"
                 actions = ["North", "South", "West", "East"]
@@ -845,12 +807,15 @@ class Match:
                     sees_opp = False
                     opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
                                 "invisible to the agent.")
-                    dynamics = (("Moves are deterministic. " if slip <= 0 else
-                                 "Moves are deterministic on normal tiles; on a slippery tile a move "
-                                 "slips to a perpendicular direction with probability %s. " % slip) +
+                    dynamics = (("Moves are deterministic on normal tiles; on a slippery junction the "
+                                 "intended move slips to a perpendicular direction with probability "
+                                 "%g (%g to each side). " % (slip_p, slip_p / 2.0)
+                                 if has_slip else "Moves are deterministic. ") +
                                 "Walls and the map edge block movement (you stay put).")
                     rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
-                               ["Fall in a manhole", -0.5], ["Shaping weight", 0.02]]
+                               ["Shaping weight", 0.02]]
+                    if getattr(env, "drop_set", None):   # only if the world has real manholes
+                        rewards.insert(3, ["Fall in a manhole", -0.5])
                     win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
                 else:
                     state_desc = ("cell x hold-key(2) x gold-location(5) x opponent-region(3) "
@@ -913,7 +878,7 @@ class Match:
                 "dynamics": dynamics,
                 "actions": actions, "nActions": env.n_actions,
                 "maxSteps": env.max_steps,
-                "slipProb": slip if not arena else 0.0,
+                "slipProb": round(slip_p, 3) if (not arena and has_slip) else 0.0,
                 "gammaRed": round(gr, 3), "gammaBlue": round(g, 3),
                 "horizonBlue": horizon(g), "horizonRed": horizon(gr),
                 "horizon": horizon(g),
@@ -937,7 +902,6 @@ class Match:
                 "roundResults": [self.round_results.get(i) for i in range(len(worlds.ROUNDS))],
                 "roundAwarded": self.round_id in self.awarded_rounds,
                 "award": dict(self.last_award) if self.last_award else None,
-                "finishPending": bool(self.finish_waiting),
                 "finishEvent": copy.deepcopy(self.finish_event) if self.finish_event else None,
                 "algoRed": self.algo_red, "algoBlue": self.algo_blue,
                 "episode": self.episode,

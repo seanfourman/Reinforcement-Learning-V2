@@ -1,11 +1,14 @@
 """Offline smoke-tester for the live RL stack (no longer the app's data source).
 
-Proves the env + agents actually LEARN: across episodes the games become decisive
-and shorter (random play times out; learned play escapes quickly). Run for each
-algorithm so a regression in any update rule shows up.
+Proves the env + agents actually LEARN on Round 1 (Peach's Castle): across
+episodes learned play reaches the goal in fewer steps than early near-random play.
+Runs each TABULAR algorithm (Q-learning / SARSA / Expected-SARSA / Monte-Carlo) so
+a regression in any update rule shows up. NOTE: it exercises Round 1 only, and DP /
+DQN are not covered here. On Round 1 the two equidistant spawns tie under optimal
+play, so the reliable signal is the EPISODE-LENGTH drop, not the decisive%.
 
-Run:  python3 train.py            (all algorithms, a few worlds each)
-      python3 train.py --quick    (one algorithm, one world)
+Run:  python3 train.py            (all tabular algorithms, Round 1)
+      python3 train.py --quick    (q-learning only, Round 1)
 """
 
 import sys

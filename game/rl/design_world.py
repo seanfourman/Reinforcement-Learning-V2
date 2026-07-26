@@ -1,5 +1,10 @@
 """One-time authoring tool: writes the PERMANENT fixed world.txt.
 
+LEGACY / not used by the current runtime: the shipped rounds build their worlds in
+code (see rl/worlds/*.py), and nothing reads world.txt at play time. Kept as the
+authoring tool for the original hand-designed race map. Run it manually to
+regenerate world.txt.
+
 NOT runtime randomness - fixed seeds produce one frozen map that is committed
 and never regenerated at play time.
 
@@ -102,6 +107,9 @@ def pick_equal_difficulty():
     red = {s: room_solve(s, 0, 8, RED_SPAWN, RED_KEY, RED_ENTRY) for s in range(400)}
     blue = {s: room_solve(s, 10, 18, BLUE_SPAWN, BLUE_KEY, BLUE_ENTRY) for s in range(400)}
     common = {L for L in red.values() if L} & {L for L in blue.values() if L}
+    if not common:
+        raise RuntimeError("no bedroom seed pair with equal solve length was found "
+                           "in range(400) - widen the search")
     target = max(common)
     sr = next(s for s, L in red.items() if L == target)
     sb = next(s for s, L in blue.items() if L == target)
@@ -109,7 +117,12 @@ def pick_equal_difficulty():
 
 
 def open_neighbors(g, r, c):
-    return [(r + dr, c + dc) for dr, dc in ORTHO if g[r + dr][c + dc] != '#']
+    out = []
+    for dr, dc in ORTHO:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < SIZE and 0 <= nc < SIZE and g[nr][nc] != '#':
+            out.append((nr, nc))
+    return out
 
 
 def build(seed_red, seed_blue):
@@ -153,6 +166,8 @@ def build(seed_red, seed_blue):
                         -((rc[0] - GOLD[0]) ** 2 + (rc[1] - GOLD[1]) ** 2))
     left = sorted((rc for rc in cands if rc[1] <= 7), key=score)
     right = sorted((rc for rc in cands if rc[1] >= 11), key=score)
+    if not left or not right:
+        raise RuntimeError("no teleporter-pad candidate on one side of the arena")
     g[left[0][0]][left[0][1]] = '1'
     g[right[0][0]][right[0][1]] = '2'
     return g

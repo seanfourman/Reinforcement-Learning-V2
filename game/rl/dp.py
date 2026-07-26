@@ -1,12 +1,14 @@
 """Dynamic-Programming planners for Round 1 - the MODEL-KNOWN room.
 
-Because the slippery transition model P(s'|s,a) is *known* (see
-``env.move_dist``), we don't need to learn from experience: we **plan** the
-optimal policy with Dynamic Programming, exactly as in Benny's DP lecture.
+Because the transition model P(s'|s,a) is *known* (see ``env.move_dist``), we
+don't need to learn from experience: we **plan** the optimal policy with Dynamic
+Programming, exactly as in Benny's DP lecture.
 
-Each agent's quest is three sequential sub-MDPs (a known stochastic shortest
-path each): **reach my key -> reach the gold -> reach an escape tile**. We solve
-each phase over the 20x20 grid with the slip model baked in, using either:
+The shipped DP round (Round 1, Peach's Castle) is a single-goal gridworld:
+**navigate from the spawn to the goal tile**. We solve that one known
+stochastic-shortest-path MDP over the grid (the same slip model the live env
+runs - see ``env.move_dist`` / ``env._cross_move``, both driven by ``slip_ctrl``),
+using either:
 
   * ``ValueIteration``  - Bellman-optimality sweeps until V converges, then read
     off the greedy policy (Red).
@@ -14,11 +16,14 @@ each phase over the 20x20 grid with the slip model baked in, using either:
     *improvement* until the policy stops changing (Blue).
 
 Both converge to the SAME optimal policy (the contrast Benny teaches is *how* and
-*how many iterations*); the slippery tiles then make the live race stochastic, so
-who wins is not a foregone conclusion. The planners conform to the agent
-interface (``policy_action`` / ``learn_step`` / ``value`` / ``q_values`` /
-``set_epsilon`` / ``reset_learning``) so ``match.py`` and the heatmap reuse them
+*how many iterations*); on a slippery round the shared slip model makes the live
+race stochastic, so who wins is not a foregone conclusion. The planners conform to
+the agent interface (``policy_action`` / ``learn_step`` / ``value`` / ``q_values``
+/ ``set_epsilon`` / ``reset_learning``) so ``match.py`` and the heatmap reuse them
 unchanged. ``learn_step``/``end_episode`` are no-ops - a planner already knows.
+
+(A legacy three-phase "reach key -> reach gold -> reach escape" race mode is still
+supported below for the ``race`` objective, but no shipped round uses it.)
 """
 
 from env import MOVE_ACTIONS, N_ACTIONS, GOLD_ME
@@ -131,7 +136,8 @@ class _DPBase:
         if mask is not None and not mask[a]:
             valid = [i for i, m in enumerate(mask) if m]
             if valid:
-                a = valid[0]
+                # fall back to the best-Q valid action, not just the first one
+                a = max(valid, key=lambda i: self._q_of(cell, i, V, goals))
         return a
 
     def value(self, state):
@@ -154,8 +160,9 @@ class _DPBase:
     def learned_count(self):
         return sum(len(v) for v in self.V if v)
 
-    # planners don't learn - these are deliberate no-ops
-    def learn_step(self, s, a, r, ns, na, done):
+    # planners don't learn - these are deliberate no-ops (``next_mask`` accepted to
+    # match the learner interface match.py drives)
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         pass
 
     def end_episode(self):
@@ -187,7 +194,7 @@ class ValueIteration(_DPBase):
             sweeps += 1
             self.backups += nb
             self.sweep_log.append({"delta": round(delta, 6),
-                                   "meanV": round(sum(V.values()) / len(V), 4)})
+                                   "meanV": round(sum(V.values()) / (len(V) or 1), 4)})
             if len(self.v_frames) < 80:        # per-sweep V snapshot for the animation
                 self.v_frames.append(dict(V))
             if delta < self.theta:
@@ -212,7 +219,7 @@ class PolicyIteration(_DPBase):
                 V[c] = v
             self.backups += nb
             self.sweep_log.append({"delta": round(delta, 6),
-                                   "meanV": round(sum(V.values()) / len(V), 4)})
+                                   "meanV": round(sum(V.values()) / (len(V) or 1), 4)})
             if delta < self.theta:
                 break
         return V

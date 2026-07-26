@@ -6,11 +6,12 @@ cells at the top centre. The maze gives each side lots of twisting local choices
 early on, but the corridors gradually pull both toward the middle, so it's a real
 race rather than two mirrored tunnels.
 
-Scattered through it are SLIPPERY junction cells ('S'). On one, the agent loses
-control: 75% it's shoved the optimal way toward the goal (the env's privileged
-knowledge), 10% left, 10% right, 5% backward — and if that hits a bush it stays
-put (see ``env._cross_move``). That stochastic junction is the professor's
-slippery-cell requirement and the on/off-policy engine.
+Scattered through it are SLIPPERY junction cells ('S'). On one, the agent's chosen
+move slips to a perpendicular direction: with the env's slip probability (slip_ctrl,
+0.25 by default) it slides sideways (split evenly left/right), and if the slide hits
+a bush it stays put (see ``env._cross_move`` / ``env.move_dist`` - one shared model).
+That stochastic junction is the professor's slippery-cell requirement and the
+on/off-policy engine.
 
 Legend:  # bush/wall   . path   S slippery junction   A/B spawns   G goal
 Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns).
@@ -25,7 +26,9 @@ THEME = "city"
 ROUND_ID = 2
 TITLE = "New Donk City"
 
-# the maze, drawn by hand (20x20). Mirror-symmetric, corners open for the spawns.
+# the maze, drawn by hand (20x20), TRUE mirror-symmetric about the centre column
+# (each side crosses the same walls + slip cells, so neither model is handed an
+# easier or slipperier route), corners open for the spawns. Both spawns solve in 32.
 MAZE = [
     "#########GG#########",
     "#...S....SS....S...#",
@@ -44,8 +47,8 @@ MAZE = [
     "#...###..##..###...#",
     "#.....S.####.S.....#",
     "#...##........##...#",
-    "#...#...SS...#...#.#",
-    "#.#...###..#...#.#.#",
+    "#...#...SSSS...#...#",
+    "#.#...###..###...#.#",
     "B....###....###....A",
 ]
 
@@ -82,9 +85,9 @@ def _build():
         red_key=red, blue_key=blue, red_door=red, blue_door=blue,
         gold_home=red, escape=goals,
         furniture=[], room_doors=[], drop_traps=[],
-        # cross uses the fixed 75/10/10/5 control-loss model in env._cross_move;
-        # slip_prob is unused there but kept non-zero for clarity.
-        slip_cells=slip, slip_prob=1.0, seed=2,
+        # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
+        # driven), shared by env.move_dist + _cross_move. world.slip_prob is unused.
+        slip_cells=slip, seed=2,
     )
 
 

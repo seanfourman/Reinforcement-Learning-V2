@@ -182,6 +182,10 @@ class ContinuousArena:
                 if vn < 0:
                     vel = vel - n * vn      # cancel the into-the-wall component
                 hit = True
+        # obstacle push-out can shove the agent back past a wall that was clamped
+        # earlier this step (a corner squeeze), so re-clamp to the arena bounds
+        for i in (0, 1):
+            npos[i] = min(max(npos[i], AGENT_R), ARENA - AGENT_R)
         return npos.astype(np.float32), vel.astype(np.float32), hit
 
     # ------------------------------------------------------------------ step

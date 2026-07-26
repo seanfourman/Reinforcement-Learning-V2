@@ -12,8 +12,9 @@ background thread, streaming the match to the browser over a tiny JSON API:
     GET  /api/values?agent=red&cell=r,c -> per-action Q for one tile
     POST /api/control           -> {cmd: regenerate|reset|resetTournament|pause|play|speed|algo|awardRound, ...}
 
-Only third-party dep is gymnasium (+ numpy, already present). The browser is a
-pure viewer: it polls the snapshot and renders the 3D scene.
+Third-party deps: numpy + gymnasium (always), plus PyTorch (imported lazily, only
+for the DQN rounds 4-5). The browser is a pure viewer: it polls the snapshot and
+renders the 3D scene.
 """
 import http.server
 import json
@@ -22,6 +23,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 from urllib.parse import urlparse, parse_qs
 
@@ -35,6 +37,11 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 
 # ---------------------------------------------------------------- training loop
+# These module globals are written by HTTP handler threads and read by the trainer
+# thread. Each is a single scalar assigned/read atomically (no read-modify-write),
+# so a missing lock only means staleness of at most one loop iteration - harmless.
+# Match's OWN state is the shared data that matters, and every access to it goes
+# through match.lock.
 match = Match(seed=None, round_id=1)
 _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
@@ -46,20 +53,29 @@ SYNC_HOLD_FALLBACK = 30.0
 def trainer():
     """Drive the match at the requested speed. Slow = watch the walk; fast = many
     episodes fly by and the heatmap fills in. Batches at high speed so the HTTP
-    handler thread stays responsive."""
+    handler thread stays responsive.
+
+    A transient error in one tick (a rare env/agent edge state) must NOT kill this
+    daemon thread - that would silently freeze the sim forever while the server
+    keeps serving a stale frame. So the loop body is guarded: log once and keep
+    going (with a short backoff so a hard-looping error can't spin the CPU)."""
     while _alive:
-        if _paused or time.monotonic() < _sync_hold_until:
-            time.sleep(0.03)
-            continue
-        sp = _speed
-        if sp <= 120:
-            match.tick()
-            time.sleep(1.0 / sp)
-        else:
-            batch = min(2000, int(sp / 60))
-            for _ in range(batch):
+        try:
+            if _paused or time.monotonic() < _sync_hold_until:
+                time.sleep(0.03)
+                continue
+            sp = _speed
+            if sp <= 120:
                 match.tick()
-            time.sleep(1.0 / 60)
+                time.sleep(1.0 / sp)
+            else:
+                batch = min(2000, int(sp / 60))
+                for _ in range(batch):
+                    match.tick()
+                time.sleep(1.0 / 60)
+        except Exception:
+            traceback.print_exc()
+            time.sleep(0.1)
 
 
 # ------------------------------------------------------------------- HTTP layer
@@ -91,8 +107,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/snapshot":
             return self._json(match.snapshot())
         if route == "/api/world":
-            return self._json({"worldVersion": match.world_version,
-                               "world": match.env.to_json()})
+            # locked accessor: version + world read atomically (never torn apart by
+            # a concurrent round switch)
+            return self._json(match.world_json())
         if route == "/api/worlds":
             # every round's world, so the client can prebuild + cache all arena
             # scenes during the start menu (instant transitions)
@@ -100,7 +117,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/values":
             agent = q.get("agent", ["red"])[0]
             if "cell" in q:
-                r, c = (int(x) for x in q["cell"][0].split(","))
+                try:
+                    r, c = (int(x) for x in q["cell"][0].split(","))
+                except (ValueError, IndexError):
+                    return self._json({"error": "bad cell"}, 400)
                 return self._json(match.q_at(agent, r, c) or {})
             mode = q.get("mode", [""])[0]
             if mode == "visits":
@@ -131,7 +151,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/replay":
             which = q.get("which", ["last"])[0]
             agent = q.get("agent", [None])[0]
-            rank = int(q.get("rank", ["0"])[0])
+            try:
+                rank = int(q.get("rank", ["0"])[0])
+            except ValueError:
+                rank = 0
             return self._json(match.replay(which, agent, rank))
         if route == "/api/replays":
             return self._json(match.replays_index(q.get("agent", ["red"])[0]))
@@ -140,15 +163,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json({"error": "unknown route"}, 404)
 
     # -------------------------------------------------------------------- POST
+    MAX_BODY = 1 << 20   # 1 MB cap on a control payload
+
     def do_POST(self):
         if urlparse(self.path).path != "/api/control":
             return self._json({"error": "unknown route"}, 404)
-        n = int(self.headers.get("Content-Length", 0))
+        # a malformed / negative Content-Length must not crash the handler or make
+        # rfile.read(-1) block until the client hangs up
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            return self._json({"error": "bad content-length"}, 400)
+        n = max(0, min(n, self.MAX_BODY))
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
         except json.JSONDecodeError:
             return self._json({"error": "bad json"}, 400)
-        return self._json(self._control(body))
+        # a bad numeric value in the body (e.g. speed="fast") must return 400, not
+        # 500 the handler with no response
+        try:
+            return self._json(self._control(body))
+        except (TypeError, ValueError) as e:
+            return self._json({"error": f"bad control value: {e}"}, 400)
 
     def _control(self, body):
         global _speed, _paused, _sync_hold_until

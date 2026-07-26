@@ -99,8 +99,20 @@ class Tabular:
         self.epsilon = 1.0
         self.td_ema = 0.0
 
+    def _valid(self, mask):
+        """The action indices the (masked) policy may actually take at a state.
+        Falls back to all actions when there is no mask (open action space)."""
+        if mask is None:
+            return range(self.n_actions)
+        v = [a for a in range(self.n_actions) if mask[a]]
+        return v if v else range(self.n_actions)
+
     # ------------------------------------------------------------------ hooks
-    def learn_step(self, s, a, r, ns, na, done):
+    # ``next_mask`` is the effective-action mask AT THE NEXT STATE. Bootstrapping
+    # methods restrict the target to those actions so a never-taken (masked-out)
+    # wall-bump action, whose Q sits forever at the 0.0 init, can't pollute the
+    # max/expectation on the net-negative cross maps.
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         raise NotImplementedError
 
     def end_episode(self):
@@ -110,9 +122,10 @@ class Tabular:
 class QLearning(Tabular):
     name = "Q-learning"
 
-    def learn_step(self, s, a, r, ns, na, done):
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         row = self.row(s)
-        target = r if done else r + self.gamma * max(self.row(ns))
+        nrow = self.row(ns)
+        target = r if done else r + self.gamma * max(nrow[i] for i in self._valid(next_mask))
         td = target - row[a]
         row[a] += self.alpha * td
         self._record_td(td)
@@ -121,7 +134,9 @@ class QLearning(Tabular):
 class Sarsa(Tabular):
     name = "SARSA"
 
-    def learn_step(self, s, a, r, ns, na, done):
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
+        # on-policy: bootstrap on the action actually taken next (na is already drawn
+        # from the masked policy), so SARSA needs no extra next_mask.
         row = self.row(s)
         target = r if done else r + self.gamma * self.row(ns)[na]
         td = target - row[a]
@@ -132,18 +147,19 @@ class Sarsa(Tabular):
 class ExpectedSarsa(Tabular):
     name = "Expected-SARSA"
 
-    def _expected(self, state):
+    def _expected(self, state, mask=None):
         row = self.row(state)
-        best = max(row)
-        n = self.n_actions
-        # epsilon-greedy policy: eps/n to each action, +(1-eps) to the greedy one
-        exp = sum(row) * (self.epsilon / n)
+        valid = list(self._valid(mask))
+        m = len(valid)
+        best = max(row[i] for i in valid)
+        # epsilon-greedy over the VALID actions: eps/m to each, +(1-eps) to the greedy
+        exp = sum(row[i] for i in valid) * (self.epsilon / m)
         exp += (1 - self.epsilon) * best
         return exp
 
-    def learn_step(self, s, a, r, ns, na, done):
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         row = self.row(s)
-        target = r if done else r + self.gamma * self._expected(ns)
+        target = r if done else r + self.gamma * self._expected(ns, next_mask)
         td = target - row[a]
         row[a] += self.alpha * td
         self._record_td(td)
@@ -156,7 +172,7 @@ class MonteCarlo(Tabular):
         super().__init__(*args, **kwargs)
         self._episode = []          # (s, a, r) trajectory
 
-    def learn_step(self, s, a, r, ns, na, done):
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
         self._episode.append((s, a, r))
 
     def end_episode(self):

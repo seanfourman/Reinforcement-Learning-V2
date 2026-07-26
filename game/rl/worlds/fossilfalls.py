@@ -7,10 +7,11 @@ falls. A central rock spine splits the two sides early and the corridors funnel
 both back toward the middle, so it stays a real race up the canyon.
 
 Scattered through it are SLIPPERY wet-rock cells ('S') by the water: on one the
-agent loses control (75% shoved the optimal way, 10% left, 10% right, 5% back; a
-move into rock stays put — see ``env._cross_move``). That stochastic junction is
-the professor's slippery-cell requirement, and the contrast it draws here is
-TD bootstrapping (Q-Learning) vs full-episode returns (Monte-Carlo).
+agent's chosen move slips to a perpendicular direction with the env's slip
+probability (slip_ctrl, 0.25 by default), split evenly left/right; a slip into rock
+stays put (see ``env._cross_move`` / ``env.move_dist`` - one shared model). That
+stochastic junction is the professor's slippery-cell requirement, and the contrast
+it draws here is TD bootstrapping (Q-Learning) vs full-episode returns (Monte-Carlo).
 
 Legend:  # rock/wall   . path   S slippery wet rock   A/B spawns   G goal (moon)
 Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns).
@@ -82,9 +83,9 @@ def _build():
         red_key=red, blue_key=blue, red_door=red, blue_door=blue,
         gold_home=red, escape=goals,
         furniture=[], room_doors=[], drop_traps=[],
-        # cross uses the fixed 75/10/10/5 control-loss model in env._cross_move;
-        # slip_prob is unused there but kept non-zero for clarity.
-        slip_cells=slip, slip_prob=1.0, seed=3,
+        # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
+        # driven), shared by env.move_dist + _cross_move. world.slip_prob is unused.
+        slip_cells=slip, seed=3,
     )
 
 

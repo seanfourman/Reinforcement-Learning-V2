@@ -34,8 +34,10 @@ class World:
 
     The mechanics lists (``mirrors``/``levers``/``traps``/``ladders``) default to
     empty and are filled in by the per-round builder if that round uses them.
-    ``slip_cells`` are the icy/windy tiles where a move may slip orthogonally;
-    ``slip_prob`` is the per-slip-cell slip chance the env applies.
+    ``slip_cells`` are the icy/windy tiles where a move may slip orthogonally; the
+    slip PROBABILITY is the env-level ``slip_ctrl`` (panel-driven), not per-world.
+    ``slip_prob`` is retained only for the JSON descriptor / back-compat and is not
+    read by the live env.
     """
 
     def __init__(self, grid, *, theme="peach", round_id=1, title="",
@@ -49,8 +51,9 @@ class World:
         self.round_id = round_id
         self.title = title
         self.seed = seed
-        # "race" = the key->gold->escape contest; "cross" = a Cliff-Walking
-        # traverse (start -> goal across a manhole cliff), used by Round 2.
+        # "cross" = a navigate-to-goal traverse (start -> goal), used by the grid
+        # rounds (1-3); "race" = the legacy key->gold->escape contest (no shipped
+        # round uses it).
         self.objective = objective
         self.red_spawn, self.blue_spawn = tuple(red_spawn), tuple(blue_spawn)
         self.red_key, self.blue_key = tuple(red_key), tuple(blue_key)

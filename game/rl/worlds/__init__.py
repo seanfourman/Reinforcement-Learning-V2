@@ -33,7 +33,7 @@ ROUNDS = [1, 2, 3, 4, 5]
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
     1: ("value_iteration", "policy_iteration"),
-    2: ("sarsa", "qlearning"),         # the cliff: on-policy vs off-policy
+    2: ("sarsa", "qlearning"),         # the hedge maze: on-policy vs off-policy
     3: ("qlearning", "monte_carlo"),   # falls: TD bootstrapping vs episodic returns
     4: ("dqn", "double_dqn"),          # ruins: function approximation, off-policy NN
     5: ("dqn", "dueling_dqn"),         # desert rally: the value/advantage head split

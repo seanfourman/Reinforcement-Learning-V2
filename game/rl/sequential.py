@@ -94,6 +94,10 @@ class SequentialArena:
     def __init__(self, seed=None, round_id=5, thrust=THRUST, damp=DAMP, vmax=VMAX,
                  sand_damp=SAND_DAMP, tornado_count=2, quicksand_count=None):
         self.round_id = round_id
+        # kept for interface parity, but this env is fully DETERMINISTIC (tornado
+        # orbits, quicksand, spawns and integration are all fixed), so self.rng is
+        # never consulted - the seed does not change env behaviour here. Run-to-run
+        # variety comes entirely from the agents' epsilon exploration.
         self.rng = random.Random(seed)
         self.max_steps = MAX_STEPS
         # tunable dynamics + hazard counts (panel-driven; constants are defaults)
@@ -219,6 +223,8 @@ class SequentialArena:
                 self._observe("blue", self.blue_pos, self.blue_vel, self.blue_cp)), {}
 
     def set_round(self, round_id):
+        # unused: match.py rebuilds the env object on a round change rather than
+        # calling this. Kept for parity with the other env classes' interface.
         self.round_id = round_id
         self.reset(regenerate=True)
 

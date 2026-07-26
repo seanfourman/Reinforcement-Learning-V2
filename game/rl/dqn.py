@@ -77,6 +77,11 @@ class DQNAgent:
         self.gamma = gamma
         self.epsilon = 1.0
         self.rng = random.Random(seed)
+        # NOTE: weight init uses the GLOBAL torch RNG, so building two agents (or a
+        # reset) reseeds shared state - "seeded" runs are reproducible per-process
+        # but not bit-identical across construction orders. Buffer sampling +
+        # epsilon-greedy use the instance-local self.rng, which IS isolated. The nets
+        # have no stochastic layers after init, so this only affects initial weights.
         torch.manual_seed(seed)
         self.device = torch.device("cpu")
         self.q = self.net_cls(obs_dim, n_actions, hidden).to(self.device)
@@ -147,6 +152,7 @@ class DQNAgent:
         self.q = self.net_cls(self.obs_dim, self.n_actions, self.hidden).to(self.device)
         self.target = self.net_cls(self.obs_dim, self.n_actions, self.hidden).to(self.device)
         self.target.load_state_dict(self.q.state_dict())
+        self.target.eval()   # keep the target net in eval mode (matches __init__)
         self.opt = torch.optim.Adam(self.q.parameters(), lr=self._lr(self._alpha))
         self.buf.clear()
         self.train_steps = 0
@@ -157,12 +163,18 @@ class DQNAgent:
         self.sync_count = 0
 
     # ------------------------------------------------------------- learning
-    def learn_step(self, s, a, r, ns, na, done):
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
+        # next_mask is unused (the continuous arenas have an open action space with
+        # no wall-bumps to exclude); accepted to match the learner interface.
         self.buf.append((np.asarray(s, dtype=np.float32), int(a), float(r),
                          np.asarray(ns, dtype=np.float32), bool(done)))
         if len(self.buf) < max(self.batch, self.warmup):
             return
-        batch = self.rng.sample(self.buf, self.batch)
+        # sample from a list snapshot: random.sample indexes its population, and a
+        # deque indexes in O(n), so sampling the deque directly is O(batch x buffer).
+        # A one-shot list() copy (cheap - it only copies tuple references) makes each
+        # draw O(1), so the minibatch build is O(buffer) instead.
+        batch = self.rng.sample(list(self.buf), self.batch)
         s_b = torch.as_tensor(np.stack([b[0] for b in batch]), device=self.device)
         a_b = torch.as_tensor([b[1] for b in batch], device=self.device).long().unsqueeze(1)
         r_b = torch.as_tensor([b[2] for b in batch], device=self.device).float().unsqueeze(1)
@@ -184,12 +196,14 @@ class DQNAgent:
         self.opt.step()
 
         self.train_steps += 1
-        # smooth the loss, grad norm, and predicted max-Q (the quantity the max
-        # operator over-estimates - the DQN vs Double-DQN contrast).
+        # smooth the loss, grad norm, and the bootstrap next-state value (next_q).
+        # THIS is the quantity the max operator over-estimates: vanilla DQN uses
+        # target.max (optimistic), Double-DQN decouples select/evaluate (corrected),
+        # so tracking next_q surfaces the DQN vs Double-DQN overestimation contrast.
+        # (The earlier q_sa.mean() measured the Q of buffer actions - not the max.)
         self.loss_ema = 0.99 * self.loss_ema + 0.01 * float(loss.item())
         self.grad_ema = 0.9 * self.grad_ema + 0.1 * float(gnorm)
-        with torch.no_grad():
-            self.q_pred_ema = 0.99 * self.q_pred_ema + 0.01 * float(q_sa.mean().item())
+        self.q_pred_ema = 0.99 * self.q_pred_ema + 0.01 * float(next_q.mean().item())
         if self.train_steps % self.target_sync == 0:
             self.target.load_state_dict(self.q.state_dict())
             self.sync_count += 1
