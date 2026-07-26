@@ -28,11 +28,11 @@ export const CHARACTERS = [
 
 // CPU opponent data: Player 2 is the COMPUTER, playing the RED side. The algorithm
 // per level is fixed by the ROUND (Red's half of each matchup, see rl/worlds:
-// R1 Value Iteration, R2 SARSA, R3 Q-Learning, R4 DQN, R5 DQN), so every opponent
-// lists the same five - what differs is the STRENGTH (1-5 pips) each character
-// brings to each level. Mario is the easiest, Parabones the hardest. (These models
-// are STATIC baselines shown for selection - they do NOT train live.)
-const CPU_ALGOS = ["Value Iteration", "SARSA", "Q-Learning", "DQN", "DQN"];
+// R1 Every-visit MC, R2 SARSA, R3 Prioritized Sweeping, R4 DQN, R5 DQN), so every
+// opponent lists the same five - what differs is the STRENGTH (1-5 pips) each
+// character brings to each level. Mario is the easiest, Parabones the hardest.
+// (These models are STATIC baselines shown for selection - they do NOT train live.)
+const CPU_ALGOS = ["Every-visit MC", "SARSA", "Prioritized Sweeping", "DQN", "DQN"];
 const opp = (tier, label, strengths) => ({
   tier, label, picks: CPU_ALGOS.map((a, i) => [a, strengths[i]]),
 });
@@ -2078,6 +2078,21 @@ export function createStartMenu({
       padding:9px;color:#5e564a;
       background:repeating-linear-gradient(45deg,var(--c) 0 14px,#fbf8f0 14px 28px);}
     .acard.pc-back{transform:rotateY(180deg);}
+    /* retired family (DP: No.00): view-only + GREYED OUT (disabled look) but fully
+       OPAQUE, not transparent. The red RETIRED stamp keeps its colour so it pops on
+       the grey card. Its algorithm bands cannot be selected (blocked in the handler). */
+    .acard-slot.disabled .pc-algo{cursor:default;}
+    .acard-slot.disabled .pc-front > .pc-paper,
+    .acard-slot.disabled .pc-front > .pc-postmark,
+    .acard-slot.disabled .pc-front > .pc-stamp,
+    .acard-slot.disabled .pc-back{filter:grayscale(1);}
+    .pc-retired{position:absolute;top:53%;left:50%;z-index:7;pointer-events:none;
+      transform:translate(-50%,-50%) rotate(-15deg);
+      font-family:Georgia,"Times New Roman",serif;font-weight:900;font-size:33px;
+      letter-spacing:5px;text-transform:uppercase;color:#b23528;
+      padding:5px 16px 7px;border:3.5px solid #b23528;border-radius:9px;
+      box-shadow:0 0 0 2px #b23528 inset;opacity:.66;mix-blend-mode:multiply;
+      text-shadow:0 1px 0 rgba(255,255,255,.22);}
     #rl-algos .acard-slot.lift .acard-flip{animation:rl-card-pull .4s ease-in-out forwards;}
     #rl-algos .acard-slot.lower .acard-flip{animation:rl-card-return .4s ease-in-out forwards;}
     #rl-algos .acard-slot:first-child.lift .acard-flip{animation:rl-card-rise .35s ease-in-out forwards;}
@@ -2332,6 +2347,8 @@ export function createStartMenu({
     {
       key: "dp",
       badge: "DP",
+      series: "00",
+      disabled: true,   // retired from play: view-only reference, not selectable
       name: "Dynamic Programming",
       type: "Model-based / Planning",
       color: "#f59e0b",
@@ -2351,6 +2368,7 @@ export function createStartMenu({
     {
       key: "mc",
       badge: "MC",
+      series: "01",
       name: "Monte Carlo",
       type: "Model-free / Episodic",
       color: "#a855f7",
@@ -2358,18 +2376,19 @@ export function createStartMenu({
       desc: "Plays whole episodes out to the end, then learns from the real final score - no model, no mid-game guessing.",
       algos: [
         {
-          name: "MC Prediction",
-          blurb: "Averages the real returns seen after each state.",
+          name: "Every-visit MC",
+          blurb: "Averages returns from EVERY visit to a state-action.",
         },
         {
-          name: "MC Control",
-          blurb: "e-greedy improvement from sampled episode returns.",
+          name: "First-visit MC",
+          blurb: "Uses only the FIRST visit to each state per episode.",
         },
       ],
     },
     {
       key: "td",
       badge: "TD",
+      series: "02",
       name: "Temporal Difference",
       type: "Model-free / Bootstrapping",
       color: "#22c55e",
@@ -2391,8 +2410,33 @@ export function createStartMenu({
       ],
     },
     {
+      key: "dyna",
+      badge: "MB",
+      series: "03",
+      name: "Model-Based",
+      type: "Learns a model / Planning",
+      color: "#14b8a6",
+      tag: '"Learns the map, then plans"',
+      desc: "Builds a model of the world from its own experience, then runs extra planning updates on that model - so it needs far fewer real steps.",
+      algos: [
+        {
+          name: "Dyna-Q",
+          blurb: "n random planning updates from the learned model each step.",
+        },
+        {
+          name: "Prioritized Sweeping",
+          blurb: "Plans where it matters first, via a priority queue.",
+        },
+        {
+          name: "Dyna-Q+",
+          blurb: "Dyna-Q plus an exploration bonus for stale actions.",
+        },
+      ],
+    },
+    {
       key: "deep",
       badge: "DRL",
+      series: "04",
       name: "Deep Value Based",
       type: "Function Approximation",
       color: "#ef4444",
@@ -2404,14 +2448,19 @@ export function createStartMenu({
           blurb: "Neural Q with experience replay + a target network.",
         },
         {
-          name: "DQN from Frames",
-          blurb: "Learns Q straight from raw pixels with a CNN (Atari-style).",
+          name: "Double-DQN",
+          blurb: "Decouples the action pick from its value - less overestimation.",
+        },
+        {
+          name: "Dueling-DQN",
+          blurb: "Splits the head into state-value + advantage streams.",
         },
       ],
     },
     {
       key: "pg",
       badge: "PG",
+      series: "05",
       name: "Policy Gradient",
       type: "Policy-based",
       color: "#3b82f6",
@@ -2437,6 +2486,7 @@ export function createStartMenu({
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><g fill="currentColor" stroke="none"><circle cx="8" cy="8" r="1.4"/><circle cx="16" cy="8" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="8" cy="16" r="1.4"/><circle cx="16" cy="16" r="1.4"/></g></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.4 2.2"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8.3 10a3.6 3.6 0 0 1 6.4-1.4"/><path d="M15.7 14a3.6 3.6 0 0 1-6.4 1.4"/><path d="M14.9 6.2l-.2 2.2 2.2-.2M9.1 17.8l.2-2.2-2.2.2"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="12.5" y2="12"/><line x1="6" y1="18" x2="12.5" y2="12"/><line x1="12.5" y1="12" x2="19" y2="12"/><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="12.5" cy="12" r="2.3"/><circle cx="19" cy="12" r="2.3"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5l5.5-5.5 3.5 3.5 8.5-8.5"/><path d="M20.5 6v5M20.5 6h-5"/></svg>',
   ];
@@ -2446,13 +2496,14 @@ export function createStartMenu({
     `<div class="arow">` +
     TYPES.map(
       (t, i) =>
-        `<div class="acard-slot" style="--c:${t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8][i] ?? 0}deg">` +
+        `<div class="acard-slot${t.disabled ? ' disabled' : ''}" style="--c:${t.disabled ? "#9a958c" : t.color};--i:${i};--rot:${[-3, 2, -2.5, 2.5, -2, 3][i] ?? 0}deg;--pmx:${[0, -7, 6, -5, 9, -4][i] ?? 0}px;--pmy:${[0, 6, 4, 9, 3, 7][i] ?? 0}px;--pmr:${[0, 10, -12, 6, -8, 11][i] ?? 0}deg">` +
         `<div class="acard-flip">` +
         `<div class="acard pc-front">` +
         `<span class="pc-postmark">${PMICONS[i] ?? ""}</span>` +
         `<div class="pc-stamp">${t.badge}</div>` +
+        (t.disabled ? `<div class="pc-retired">Retired</div>` : "") +
         `<div class="pc-paper">` +
-        `<div class="pc-head"><span class="pc-series">No.${String(i + 1).padStart(2, "0")}</span></div>` +
+        `<div class="pc-head"><span class="pc-series">No.${t.series}</span></div>` +
         `<div class="pc-name">${t.name}</div>` +
         `<div class="pc-type">${t.type}</div>` +
         `<div class="pc-tag">${t.tag}</div>` +
@@ -2993,6 +3044,7 @@ export function createStartMenu({
   algosEl.querySelectorAll(".pc-algo").forEach((b) => {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (b.closest(".acard-slot")?.classList.contains("disabled")) return; // view-only
       if (flipped && !busy) ripSelect(b);
     });
   });
@@ -3328,7 +3380,8 @@ export function createStartMenu({
   // can't start until an algorithm is chosen on every family card (one per level)
   function selectionReady() {
     const ch = readAlgoChoices();
-    return TYPES.every((t) => ch[t.key]);
+    // disabled families (DP) are view-only and never required to start
+    return TYPES.filter((t) => !t.disabled).every((t) => ch[t.key]);
   }
   const gateMsg = document.createElement("div");
   gateMsg.id = "rl-gate";

@@ -32,7 +32,7 @@ class World:
 
     def __init__(self, grid, *, theme="peach", round_id=1, title="",
                  red_spawn, blue_spawn, escape,
-                 slip_cells=None, objective="cross"):
+                 slip_cells=None, objective="cross", shape_w=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -42,6 +42,11 @@ class World:
         self.red_spawn, self.blue_spawn = tuple(red_spawn), tuple(blue_spawn)
         self.escape = [tuple(e) for e in escape]
         self.slip_cells = [tuple(c) for c in (slip_cells or [])]
+        # per-round reward-shaping weight. None -> the env default (SHAPE_W). Set to
+        # 0 for a SPARSE round (reward only at the goal) - e.g. the Dyna round, where
+        # sparse rewards are what make model-based PLANNING visibly outrun plain
+        # learning (dense shaping would already do the value-propagation for free).
+        self.shape_w = shape_w
 
     def rows(self):
         return ["".join(r) for r in self.grid]

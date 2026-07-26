@@ -85,6 +85,9 @@ class GridWorld(gym.Env):
         # slip_ctrl (panel-driven), shared by move_dist + _cross_move so the DP
         # model and the live dynamics stay identical.
         self.slip_set = {tuple(c) for c in world.slip_cells}
+        # reward-shaping weight for THIS round (a world may set 0 for sparse rewards)
+        ws = getattr(world, "shape_w", None)
+        self.shape_w = SHAPE_W if ws is None else float(ws)
         self._build_distance_maps()
 
     # ----------------------------------------------------- shaping distances
@@ -114,9 +117,9 @@ class GridWorld(gym.Env):
         self.dist_escape = self._bfs_from(list(self.world.escape))
 
     def _potential(self, agent):
-        """Φ(s) = −W · remaining path length to the goal."""
+        """Φ(s) = −W · remaining path length to the goal (W=0 on a sparse round)."""
         pos = self.red_pos if agent == "red" else self.blue_pos
-        return -SHAPE_W * self.dist_escape.get(pos, _UNREACH)
+        return -self.shape_w * self.dist_escape.get(pos, _UNREACH)
 
     # ------------------------------------------------------------------ tiles
     def passable(self, agent, r, c):

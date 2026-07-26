@@ -25,6 +25,7 @@ from env import GridWorld, N_ACTIONS
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
+from dyna import is_dyna, make_dyna
 import worlds
 
 # The DQN agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
@@ -89,6 +90,8 @@ class Match:
         # DP planners (rounds with Value/Policy Iteration)
         self.dp_theta = 1e-5                    # convergence threshold
         self.dp_max_sweeps = 2000               # hard iteration cap per phase
+        # Dyna model-based learners (Round 3): planning updates per real step
+        self.dyna_planning = 10
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -203,6 +206,9 @@ class Match:
                             buffer=self.dqn_buffer, batch=self.dqn_batch,
                             warmup=self.dqn_warmup, target_sync=self.dqn_target_sync,
                             hidden=self.dqn_hidden)
+        if is_dyna(algo):
+            return make_dyna(algo, n_actions=self.env.n_actions, seed=seed,
+                             alpha=alpha, gamma=gamma, planning=self.dyna_planning)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
@@ -471,6 +477,10 @@ class Match:
                 self.dp_max_sweeps = max(1, min(100_000, int(p["dpMaxIters"])))
                 replan = True
 
+            # ---- GLOBAL: Dyna internals (planning steps per real step, live) ----
+            if "dynaPlanning" in p:
+                self.dyna_planning = max(0, min(200, int(p["dynaPlanning"])))
+
             # ---- GLOBAL: DQN internals ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
@@ -524,6 +534,8 @@ class Match:
                     ag.warmup = self.dqn_warmup
                 if hasattr(ag, "target_sync"):
                     ag.target_sync = self.dqn_target_sync
+                if hasattr(ag, "planning"):          # Dyna planning steps (live)
+                    ag.planning = self.dyna_planning
 
             if need_env_rebuild:
                 self._rebuild_world()
@@ -559,6 +571,7 @@ class Match:
             # global algorithm internals
             "dpTheta": self.dp_theta,
             "dpMaxIters": self.dp_max_sweeps,
+            "dynaPlanning": self.dyna_planning,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -631,7 +644,7 @@ class Match:
 
     def set_side_algo(self, side, algo):
         with self.lock:
-            valid = algo in ALGORITHMS or is_dp(algo) or is_dqn(algo)
+            valid = algo in ALGORITHMS or is_dp(algo) or is_dqn(algo) or is_dyna(algo)
             if not valid:
                 return
             if side == "red":
@@ -777,7 +790,9 @@ class Match:
             return "Dynamic Programming"
         if is_dqn(a):
             return "Deep RL (function approximation)"
-        if a == "monte_carlo":
+        if is_dyna(a):
+            return "Model-Based (Dyna)"
+        if a in ("monte_carlo", "first_visit_mc"):
             return "Monte-Carlo"
         return "Temporal-Difference"
 
@@ -809,8 +824,9 @@ class Match:
                              "%g (%g to each side). " % (slip_p, slip_p / 2.0)
                              if has_slip else "Moves are deterministic. ") +
                             "Walls and the map edge block movement (you stay put).")
+                sw = round(float(getattr(env, "shape_w", 0.02)), 3)
                 rewards = [["Step", -0.01], ["Win (reach goal)", 1.0], ["Lose", -1.0],
-                           ["Shaping weight", 0.02]]
+                           ["Shaping weight (0 = sparse)", sw]]
                 win = "First to step onto the goal tile wins; a simultaneous arrival is a draw."
             else:
                 seq = type(env).__name__ == "SequentialArena"

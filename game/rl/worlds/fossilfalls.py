@@ -81,6 +81,10 @@ def _build():
         # WHICH cells slip; the per-slip PROBABILITY is the env's slip_ctrl (panel-
         # driven), shared by env.move_dist + _cross_move.
         slip_cells=slip,
+        # SPARSE rewards on the Dyna round: no shaping, so the reward exists only at
+        # the goal. That is what makes model-based planning (Dyna) visibly outrun
+        # plain Q-learning - dense shaping would hand the value gradient over for free.
+        shape_w=0.0,
     )
 
 

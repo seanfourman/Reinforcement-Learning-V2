@@ -31,9 +31,9 @@ ROUNDS = [1, 2, 3, 4, 5]
 
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
-    1: ("value_iteration", "policy_iteration"),
+    1: ("monte_carlo", "first_visit_mc"),   # castle: every-visit vs first-visit MC
     2: ("sarsa", "qlearning"),         # the hedge maze: on-policy vs off-policy
-    3: ("qlearning", "monte_carlo"),   # falls: TD bootstrapping vs episodic returns
+    3: ("prioritized_sweeping", "dyna_q"),  # falls: model-based planning (Dyna family)
     4: ("dqn", "double_dqn"),          # ruins: function approximation, off-policy NN
     5: ("dqn", "dueling_dqn"),         # desert rally: the value/advantage head split
 }
@@ -45,7 +45,11 @@ ALGO_LABELS = {
     "qlearning": "Q-Learning",
     "sarsa": "SARSA",
     "expected_sarsa": "Expected-SARSA",
-    "monte_carlo": "Monte-Carlo",
+    "monte_carlo": "Every-visit MC",
+    "first_visit_mc": "First-visit MC",
+    "dyna_q": "Dyna-Q",
+    "prioritized_sweeping": "Prioritized Sweeping",
+    "dyna_q_plus": "Dyna-Q+",
     "dqn": "DQN",
     "double_dqn": "Double-DQN",
     "dueling_dqn": "Dueling-DQN",

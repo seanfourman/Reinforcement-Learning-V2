@@ -27,6 +27,7 @@ const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) 
 // (DQN) controls only ever show on a DQN round (none exist yet).
 export const DP_ALGOS = new Set(['value_iteration', 'policy_iteration']);
 export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
+export const DYNA_ALGOS = new Set(['dyna_q', 'prioritized_sweeping', 'dyna_q_plus']);
 
 // transport icons: centred SVGs that take the button's colour via currentColor
 const SVG = {
@@ -79,6 +80,7 @@ export const GLOBAL_PARAMS = [
     enc: (e) => Math.pow(10, -Math.round(e)), dec: (t) => Math.max(1, Math.min(9, Math.round(-Math.log10(t || 1e-5)))),
     fmt: (e) => (10 ** -Math.round(e)).toFixed(Math.round(e)) },
   { key: 'dpMaxIters', label: 'Max sweeps / phase', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000, fmt: fLoc },
+  { key: 'dynaPlanning', label: 'Planning steps', min: 0, max: 100, step: 5, sect: 'algo', scope: 'dyna', def: 10, fmt: fLoc },
   { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
@@ -807,13 +809,15 @@ export function initPanel() {
   const showRelevant = (algoBlue, roundIndex) => {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
+    const isDyna = DYNA_ALGOS.has(algoBlue);
     const vis = (sc) => {
       switch (sc) {
         case 'learn': return !isDP;               // learning rate + exploration: not for DP
         case 'dp': return isDP;                   // convergence + sweeps: DP rounds
+        case 'dyna': return isDyna;               // planning steps: the Dyna round
         case 'dqn': return isDqn;                 // replay / batch / target-net: neural rounds
         case 'cont': return isDqn;                // arena dynamics: continuous rounds
-        case 'slip': return !isDP && !isDqn;      // slippery junctions: model-free grids (R2/R3)
+        case 'slip': return !isDP && !isDqn;      // slippery junctions: grid rounds (TD + Dyna)
         case 'r4': return roundIndex === 3;       // ruins count: Round 4 only
         case 'r5': return roundIndex === 4;       // tornados / quicksand: Round 5 only
         default: return true;                     // 'always'

@@ -166,7 +166,7 @@ class ExpectedSarsa(Tabular):
 
 
 class MonteCarlo(Tabular):
-    name = "Monte-Carlo"
+    name = "Every-visit MC"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -178,6 +178,7 @@ class MonteCarlo(Tabular):
     def end_episode(self):
         # every-visit MC control with CONSTANT alpha (sample-average 1/c decays
         # too fast for non-stationary self-play, where the rival keeps changing).
+        # Updates Q(s,a) on EVERY occurrence of (s,a) in the episode.
         G = 0.0
         for s, a, r in reversed(self._episode):
             G = r + self.gamma * G
@@ -192,11 +193,34 @@ class MonteCarlo(Tabular):
         self._episode = []
 
 
+class FirstVisitMonteCarlo(MonteCarlo):
+    name = "First-visit MC"
+
+    def end_episode(self):
+        # first-visit MC control: update Q(s,a) only on the FIRST time (s,a) appears
+        # in the episode (the classic contrast with every-visit MC).
+        ep = self._episode
+        first = {}
+        for i, (s, a, _r) in enumerate(ep):
+            first.setdefault((s, a), i)        # earliest index of each (s,a)
+        G = 0.0
+        for i in range(len(ep) - 1, -1, -1):   # returns computed backward
+            s, a, r = ep[i]
+            G = r + self.gamma * G
+            if first.get((s, a)) == i:         # apply only at the first visit
+                row = self.row(s)
+                td = G - row[a]
+                row[a] += self.alpha * td
+                self._record_td(td)
+        self._episode = []
+
+
 ALGORITHMS = {
     "qlearning": QLearning,
     "sarsa": Sarsa,
     "expected_sarsa": ExpectedSarsa,
     "monte_carlo": MonteCarlo,
+    "first_visit_mc": FirstVisitMonteCarlo,
 }
 
 
