@@ -352,7 +352,7 @@ export const peach = {
           if (rows[r][c] === "#") wallCells.push([r, c]);
 
       if (wallCells.length) {
-        const WALL_H = 0.9;
+        const WALL_H = 0.7; // a bit shorter
         const CAP_H = 0.12;
         const TOP = 0.05; // sit on the board (tiles top ~0.045)
         const marbleMat = new THREE.MeshStandardMaterial({
@@ -362,10 +362,15 @@ export const peach = {
           roughness: 0.7,
           metalness: 0.0,
         });
+        // golden MARBLE for the cap: the marble texture (veining) tinted gold. Keep
+        // metalness MODEST - with no env-map, high metalness reflects the dark scene
+        // and reads brown; a lower metalness lets the gold base colour show.
         const goldMat = new THREE.MeshStandardMaterial({
-          color: 0xd9a94a,
-          metalness: 0.75,
-          roughness: 0.3,
+          map: tex("MarbleWhite00_alb.png", 1, 1),
+          normalMap: tex("MarbleWhite00_nrm.png", 1, 1, false),
+          color: 0xd2a53a,
+          metalness: 0.35,
+          roughness: 0.35,
         });
         const bodies = new THREE.InstancedMesh(
           new THREE.BoxGeometry(cell, WALL_H, cell),
@@ -392,6 +397,44 @@ export const peach = {
         });
         group.add(bodies);
         group.add(caps);
+
+        // ---- 7 boss paintings on the CAMERA-FACING (+z) faces of chosen walls ----
+        // A wall's +z face (higher row = toward the camera) shows if the cell on that
+        // side is open. Spread the 7 paintings across those exposed faces.
+        const PAINTINGS = ["forest", "knuckle", "magma", "raid", "koopa1", "koopa2", "koopahack"];
+        const faced = wallCells.filter(
+          ([r, c]) => r + 1 <= rMax && rows[r + 1] && rows[r + 1][c] !== "#",
+        );
+        if (faced.length) {
+          const ploader = new THREE.TextureLoader();
+          const side = Math.min(cell * 0.82, WALL_H * 0.86);
+          const yMid = TOP + WALL_H * 0.52;
+          const frameMat = new THREE.MeshStandardMaterial({
+            color: 0xcaa23a, metalness: 0.35, roughness: 0.4,
+          });
+          for (let i = 0; i < PAINTINGS.length; i++) {
+            const [r, c] = faced[Math.floor((i + 0.5) * faced.length / PAINTINGS.length)];
+            const p = cw(r, c);
+            const zf = p.z + cell / 2; // the +z face plane
+            const t = ploader.load("./assets/paintings/" + PAINTINGS[i] + ".png");
+            t.colorSpace = THREE.SRGBColorSpace;
+            t.anisotropy = maxAniso;
+            const frame = new THREE.Mesh(
+              new THREE.PlaneGeometry(side + 0.09, side + 0.09), frameMat,
+            );
+            frame.position.set(p.x, yMid, zf + 0.015);
+            const pic = new THREE.Mesh(
+              new THREE.PlaneGeometry(side, side),
+              new THREE.MeshStandardMaterial({
+                map: t, roughness: 0.55, metalness: 0.0,
+                emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.28,
+              }),
+            );
+            pic.position.set(p.x, yMid, zf + 0.03);
+            group.add(frame);
+            group.add(pic);
+          }
+        }
       }
     }
 
