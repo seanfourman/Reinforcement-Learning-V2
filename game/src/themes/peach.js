@@ -397,44 +397,6 @@ export const peach = {
         });
         group.add(bodies);
         group.add(caps);
-
-        // ---- 7 boss paintings on the CAMERA-FACING (+z) faces of chosen walls ----
-        // A wall's +z face (higher row = toward the camera) shows if the cell on that
-        // side is open. Spread the 7 paintings across those exposed faces.
-        const PAINTINGS = ["forest", "knuckle", "magma", "raid", "koopa1", "koopa2", "koopahack"];
-        const faced = wallCells.filter(
-          ([r, c]) => r + 1 <= rMax && rows[r + 1] && rows[r + 1][c] !== "#",
-        );
-        if (faced.length) {
-          const ploader = new THREE.TextureLoader();
-          const side = Math.min(cell * 0.82, WALL_H * 0.86);
-          const yMid = TOP + WALL_H * 0.52;
-          const frameMat = new THREE.MeshStandardMaterial({
-            color: 0xcaa23a, metalness: 0.35, roughness: 0.4,
-          });
-          for (let i = 0; i < PAINTINGS.length; i++) {
-            const [r, c] = faced[Math.floor((i + 0.5) * faced.length / PAINTINGS.length)];
-            const p = cw(r, c);
-            const zf = p.z + cell / 2; // the +z face plane
-            const t = ploader.load("./assets/paintings/" + PAINTINGS[i] + ".png");
-            t.colorSpace = THREE.SRGBColorSpace;
-            t.anisotropy = maxAniso;
-            const frame = new THREE.Mesh(
-              new THREE.PlaneGeometry(side + 0.09, side + 0.09), frameMat,
-            );
-            frame.position.set(p.x, yMid, zf + 0.015);
-            const pic = new THREE.Mesh(
-              new THREE.PlaneGeometry(side, side),
-              new THREE.MeshStandardMaterial({
-                map: t, roughness: 0.55, metalness: 0.0,
-                emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.28,
-              }),
-            );
-            pic.position.set(p.x, yMid, zf + 0.03);
-            group.add(frame);
-            group.add(pic);
-          }
-        }
       }
     }
 
