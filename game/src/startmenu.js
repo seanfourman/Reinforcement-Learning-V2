@@ -35,20 +35,20 @@ export const CHARACTERS = [
 const opp = (tier, label, algos, strengths) => ({
   tier, label, picks: algos.map((a, i) => [a, strengths[i]]),
 });
-// per level: [MC, TD, Dyna, DQN(L4), PG(L5)] - each from that level's family, varied
-// across characters so no two opponents feel the same. L5 is policy-gradient:
-// REINFORCE (basic) for the early roster, Actor-Critic mid, PPO for the toughest.
+// per level: [DP, MC, TD, DQN(L4), PG(L5)] - each from that level's family, varied
+// across characters so no two opponents feel the same. DP alternates VI/PI, MC
+// every/first-visit, TD SARSA/Q/Expected, DQN/PG scale up with difficulty.
 const OPPONENTS = [
-  opp(1, "Rookie",   ["Every-visit MC", "SARSA",          "Dyna-Q",               "DQN",         "REINFORCE"],    [2, 1, 2, 1, 2]), // Mario
-  opp(1, "Rookie",   ["First-visit MC", "Q-Learning",     "Dyna-Q",               "DQN",         "REINFORCE"],    [2, 2, 2, 2, 2]), // Luigi
-  opp(2, "Amateur",  ["Every-visit MC", "Expected-SARSA", "Prioritized Sweeping", "Double-DQN",  "REINFORCE"],    [3, 2, 3, 2, 2]), // Yoshi
-  opp(2, "Amateur",  ["First-visit MC", "SARSA",          "Dyna-Q+",              "DQN",         "Actor-Critic"], [3, 3, 3, 2, 3]), // Toadette
-  opp(3, "Skilled",  ["Every-visit MC", "Q-Learning",     "Prioritized Sweeping", "Dueling-DQN", "Actor-Critic"], [3, 3, 4, 3, 3]), // Pauline
-  opp(3, "Skilled",  ["First-visit MC", "Expected-SARSA", "Dyna-Q",               "Double-DQN",  "Actor-Critic"], [4, 3, 4, 3, 3]), // Koopa
-  opp(4, "Veteran",  ["Every-visit MC", "SARSA",          "Dyna-Q+",              "Dueling-DQN", "Actor-Critic"], [4, 4, 4, 4, 4]), // Bowser
-  opp(4, "Veteran",  ["First-visit MC", "Q-Learning",     "Prioritized Sweeping", "DQN",         "PPO"],          [4, 4, 5, 4, 4]), // Peach
-  opp(5, "Master",   ["Every-visit MC", "Expected-SARSA", "Dyna-Q+",              "Double-DQN",  "PPO"],          [5, 4, 5, 5, 4]), // Toad
-  opp(5, "Champion", ["First-visit MC", "Q-Learning",     "Prioritized Sweeping", "Dueling-DQN", "PPO"],          [5, 5, 5, 5, 5]), // Parabones
+  opp(1, "Rookie",   ["Value Iteration",  "Every-visit MC", "SARSA",          "DQN",         "REINFORCE"],    [1, 2, 1, 1, 2]), // Mario
+  opp(1, "Rookie",   ["Policy Iteration", "First-visit MC", "Q-Learning",     "DQN",         "REINFORCE"],    [2, 2, 2, 2, 2]), // Luigi
+  opp(2, "Amateur",  ["Value Iteration",  "Every-visit MC", "Expected-SARSA", "Double-DQN",  "REINFORCE"],    [2, 3, 2, 2, 2]), // Yoshi
+  opp(2, "Amateur",  ["Policy Iteration", "First-visit MC", "SARSA",          "DQN",         "Actor-Critic"], [3, 3, 3, 2, 3]), // Toadette
+  opp(3, "Skilled",  ["Value Iteration",  "Every-visit MC", "Q-Learning",     "Dueling-DQN", "Actor-Critic"], [3, 3, 3, 3, 3]), // Pauline
+  opp(3, "Skilled",  ["Policy Iteration", "First-visit MC", "Expected-SARSA", "Double-DQN",  "Actor-Critic"], [4, 3, 4, 3, 3]), // Koopa
+  opp(4, "Veteran",  ["Value Iteration",  "Every-visit MC", "SARSA",          "Dueling-DQN", "Actor-Critic"], [4, 4, 4, 4, 4]), // Bowser
+  opp(4, "Veteran",  ["Policy Iteration", "First-visit MC", "Q-Learning",     "DQN",         "PPO"],          [4, 4, 4, 4, 4]), // Peach
+  opp(5, "Master",   ["Value Iteration",  "Every-visit MC", "Expected-SARSA", "Double-DQN",  "PPO"],          [5, 4, 5, 5, 4]), // Toad
+  opp(5, "Champion", ["Policy Iteration", "First-visit MC", "Q-Learning",     "Dueling-DQN", "PPO"],          [5, 5, 5, 5, 5]), // Parabones
 ];
 
 // the CPU's difficulty tier (1=easiest .. 5=hardest) from whichever character sits
@@ -80,13 +80,12 @@ export const ALGO_NAME_TO_KEY = {
   "Value Iteration": "value_iteration", "Policy Iteration": "policy_iteration",
   "Every-visit MC": "monte_carlo", "First-visit MC": "first_visit_mc",
   "SARSA": "sarsa", "Q-Learning": "qlearning", "Expected-SARSA": "expected_sarsa",
-  "Dyna-Q": "dyna_q", "Prioritized Sweeping": "prioritized_sweeping", "Dyna-Q+": "dyna_q_plus",
   "DQN": "dqn", "Double-DQN": "double_dqn", "Dueling-DQN": "dueling_dqn",
   "REINFORCE": "reinforce", "Actor-Critic": "actor_critic", "PPO": "ppo",
 };
-// which family card each round draws its algorithm from (rounds 1..5): R4 is deep
-// VALUE (DQN card), R5 is deep POLICY (the Policy Gradient card).
-const ROUND_FAMILY = ["mc", "td", "dyna", "deep", "pg"];
+// which family card each round draws its algorithm from (rounds 1..5): R1 is DP
+// (Value/Policy Iteration), R4 deep VALUE (DQN), R5 deep POLICY (Policy Gradient).
+const ROUND_FAMILY = ["dp", "mc", "td", "deep", "pg"];
 
 // the chosen CPU character's algorithm KEY per round (Red side), for the backend.
 export function getCpuAlgos() {
@@ -2382,13 +2381,12 @@ export function createStartMenu({
     {
       key: "dp",
       badge: "DP",
-      series: "00",
-      disabled: true,   // retired from play: view-only reference, not selectable
+      series: "01",
       name: "Dynamic Programming",
-      type: "Model-based / Planning",
+      type: "Model-known / Planning",
       color: "#f59e0b",
       tag: '"The all-knowing planner"',
-      desc: "Hand it the full rulebook - every outcome and reward - and it computes the perfect strategy before taking a single step.",
+      desc: "Given the full map, it plans the optimal route by iterating - the faster it converges, the sooner it beelines to the goal.",
       algos: [
         {
           name: "Value Iteration",
@@ -2403,7 +2401,7 @@ export function createStartMenu({
     {
       key: "mc",
       badge: "MC",
-      series: "01",
+      series: "02",
       name: "Monte Carlo",
       type: "Model-free / Episodic",
       color: "#a855f7",
@@ -2423,7 +2421,7 @@ export function createStartMenu({
     {
       key: "td",
       badge: "TD",
-      series: "02",
+      series: "03",
       name: "Temporal Difference",
       type: "Model-free / Bootstrapping",
       color: "#22c55e",
@@ -2441,30 +2439,6 @@ export function createStartMenu({
         {
           name: "Expected-SARSA",
           blurb: "Averages over next actions - same idea, lower variance.",
-        },
-      ],
-    },
-    {
-      key: "dyna",
-      badge: "MB",
-      series: "03",
-      name: "Model-Based",
-      type: "Learns a model / Planning",
-      color: "#14b8a6",
-      tag: '"Learns the map, then plans"',
-      desc: "Builds a model of the world from its own experience, then runs extra planning updates on that model - so it needs far fewer real steps.",
-      algos: [
-        {
-          name: "Dyna-Q",
-          blurb: "n random planning updates from the learned model each step.",
-        },
-        {
-          name: "Prioritized Sweeping",
-          blurb: "Plans where it matters first, via a priority queue.",
-        },
-        {
-          name: "Dyna-Q+",
-          blurb: "Dyna-Q plus an exploration bonus for stale actions.",
         },
       ],
     },
@@ -2521,7 +2495,6 @@ export function createStartMenu({
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5"/><path d="M9.2 3.5v17M14.8 3.5v17M3.5 9.2h17M3.5 14.8h17"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><g fill="currentColor" stroke="none"><circle cx="8" cy="8" r="1.4"/><circle cx="16" cy="8" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="8" cy="16" r="1.4"/><circle cx="16" cy="16" r="1.4"/></g></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.4 2.2"/></svg>',
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8.3 10a3.6 3.6 0 0 1 6.4-1.4"/><path d="M15.7 14a3.6 3.6 0 0 1-6.4 1.4"/><path d="M14.9 6.2l-.2 2.2 2.2-.2M9.1 17.8l.2-2.2-2.2.2"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="6" y1="6" x2="12.5" y2="12"/><line x1="6" y1="18" x2="12.5" y2="12"/><line x1="12.5" y1="12" x2="19" y2="12"/><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="12.5" cy="12" r="2.3"/><circle cx="19" cy="12" r="2.3"/></svg>',
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5l5.5-5.5 3.5 3.5 8.5-8.5"/><path d="M20.5 6v5M20.5 6h-5"/></svg>',
   ];

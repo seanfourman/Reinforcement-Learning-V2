@@ -15,7 +15,6 @@ export const NAMES = {
   value_iteration: 'Value Iteration', policy_iteration: 'Policy Iteration',
   qlearning: 'Q-Learning', sarsa: 'SARSA', expected_sarsa: 'Expected-SARSA',
   monte_carlo: 'Every-visit MC', first_visit_mc: 'First-visit MC',
-  dyna_q: 'Dyna-Q', prioritized_sweeping: 'Prioritized Sweeping', dyna_q_plus: 'Dyna-Q+',
   dqn: 'DQN', double_dqn: 'Double-DQN', dueling_dqn: 'Dueling-DQN',
   reinforce: 'REINFORCE', actor_critic: 'Actor-Critic', ppo: 'PPO',
 };
@@ -24,12 +23,11 @@ const ACTION_NAMES = ['North', 'South', 'West', 'East'];
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
 const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)
 
-// per-level control scoping. DP planners (Value / Policy Iteration) plan with just
-// the discount γ, so the learning controls (α, ε) hide on those rounds. Neural-net
-// (DQN) controls only ever show on a DQN round (none exist yet).
+// per-level control scoping. DP planners (Value / Policy Iteration) plan with the
+// discount γ + a planning-speed knob, so the learning controls (α, ε) hide there.
+// Neural-net (DQN) controls only ever show on a DQN round.
 export const DP_ALGOS = new Set(['value_iteration', 'policy_iteration']);
 export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
-export const DYNA_ALGOS = new Set(['dyna_q', 'prioritized_sweeping', 'dyna_q_plus']);
 export const PG_ALGOS = new Set(['reinforce', 'actor_critic', 'ppo']);
 
 // transport icons: centred SVGs that take the button's colour via currentColor
@@ -67,8 +65,7 @@ const fLoc = (v) => (+v).toLocaleString();
 const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = built-in
 
 // GLOBAL settings (N panel only), scoped per round by showRelevant():
-//   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap
-//   'dyna' -> the Dyna round: planning steps
+//   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap + speed
 //   'dqn'  -> neural value rounds: replay / batch / target-net / width
 //   'always' -> every round (the reproducibility seed)
 // (The game-mechanic scopes 'cont'/'slip'/'r4'/'r5' are gone with the hazards.)
@@ -81,7 +78,7 @@ export const GLOBAL_PARAMS = [
     enc: (e) => Math.pow(10, -Math.round(e)), dec: (t) => Math.max(1, Math.min(9, Math.round(-Math.log10(t || 1e-5)))),
     fmt: (e) => (10 ** -Math.round(e)).toFixed(Math.round(e)) },
   { key: 'dpMaxIters', label: 'Max sweeps / phase', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000, fmt: fLoc },
-  { key: 'dynaPlanning', label: 'Planning steps', min: 0, max: 100, step: 5, sect: 'algo', scope: 'dyna', def: 10, fmt: fLoc },
+  { key: 'dpPlanning', label: 'Planning speed (sweeps/tick)', min: 0.1, max: 5, step: 0.1, sect: 'algo', scope: 'dp', def: 0.6, fmt: (v) => (+v).toFixed(1) },
   { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
@@ -804,14 +801,12 @@ export function initPanel() {
   const showRelevant = (algoBlue, roundIndex) => {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
-    const isDyna = DYNA_ALGOS.has(algoBlue);
     const isPg = PG_ALGOS.has(algoBlue);
     const vis = (sc) => {
       switch (sc) {
         case 'learn': return !isDP;               // learning rate α: every learner (not DP)
         case 'eps': return !isDP && !isPg;        // ε-greedy schedule: not DP, not PG (PG samples its policy)
-        case 'dp': return isDP;                   // convergence + sweeps: DP rounds
-        case 'dyna': return isDyna;               // planning steps: the Dyna round
+        case 'dp': return isDP;                   // convergence + sweeps + speed: DP round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
         default: return true;                     // 'always'
       }

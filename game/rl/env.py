@@ -26,12 +26,21 @@ from worldgen import WALL
 ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 N_ACTIONS = len(ACTIONS)
 MOVE_ACTIONS = (0, 1, 2, 3)
+# the two PERPENDICULAR actions an intended move can slip to on ice (N/S slip
+# sideways to W/E, W/E slip to N/S) - used to build the stochastic ice transition.
+PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
 
-# --- rewards ("cross": step cost + win/lose terminal, no shaping) -------------
+# --- rewards ("cross": step cost + win/lose terminal) -------------------------
 STEP_COST = 0.01
 WIN = 1.0
 LOSE = -1.0
 MAX_STEPS = 400
+
+# --- Round-1 game mechanics (active only where the world carries them) --------
+COIN_REWARD = 0.2      # value of an optional coin (a detour trade-off vs step cost)
+GHOST_LEN = 4          # steps of wall-phasing granted by a "?" ghost roll
+FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
+SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
 
 
 class GridWorld(gym.Env):
@@ -63,6 +72,26 @@ class GridWorld(gym.Env):
         # the observation is simply the agent's cell index (a single-agent navigator)
         self.observation_space = spaces.MultiDiscrete([self.n_cells])
 
+        # ---- Round-1 rich game layout (empty on every other round) -------------
+        # PER-AGENT scoring coins + "?" power-up blocks (Red's and Blue's, mirror
+        # pairs) and a SHARED set of icy/slippery cells. When all are empty, self.rich
+        # is False and the env is a plain deterministic navigate-to-goal (rounds 2-3).
+        self.coin_cells = {"red": list(getattr(world, "red_coins", [])),
+                           "blue": list(getattr(world, "blue_coins", []))}
+        self.block_cells = {"red": list(getattr(world, "red_blocks", [])),
+                            "blue": list(getattr(world, "blue_blocks", []))}
+        self.slip_cells = {tuple(s) for s in getattr(world, "slip", [])}
+        self.rich = bool(self.coin_cells["red"] or self.coin_cells["blue"]
+                         or self.block_cells["red"] or self.block_cells["blue"]
+                         or self.slip_cells)
+        # collect-mask bit layout per agent: coins take the low bits, blocks the next.
+        self._n_coins = {a: len(self.coin_cells[a]) for a in ("red", "blue")}
+        self._coin_bit = {a: {cell: i for i, cell in enumerate(self.coin_cells[a])}
+                          for a in ("red", "blue")}
+        self._block_bit = {a: {cell: self._n_coins[a] + k
+                               for k, cell in enumerate(self.block_cells[a])}
+                           for a in ("red", "blue")}
+
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
         """Passability for a STATIC model (a planner's transition model): in-bounds
@@ -74,6 +103,20 @@ class GridWorld(gym.Env):
         # live passability: in-bounds and not a wall. ``agent`` is accepted for
         # interface symmetry with _static_passable.
         return 0 <= r < self.H and 0 <= c < self.W and self.world.grid[r][c] != WALL
+
+    def _ghost_resolve(self, agent, pos, direction):
+        """A GHOSTING move (a "?" power-up): phase THROUGH walls, landing on the next
+        FLOOR cell in ``direction`` (skipping any contiguous walls). An immediate floor
+        neighbour is a normal 1-step move; a solid run to the map edge stays put. Every
+        landing is a real floor cell, so the position index stays valid."""
+        dr, dc = ACTIONS[direction]
+        nr, nc = pos[0] + dr, pos[1] + dc
+        while 0 <= nr < self.H and 0 <= nc < self.W:
+            if self.world.grid[nr][nc] != WALL:
+                return (nr, nc)
+            nr += dr
+            nc += dc
+        return pos
 
     # ------------------------------------------------------------------ reset
     def reset(self, *, seed=None, options=None, regenerate=False):
@@ -87,28 +130,48 @@ class GridWorld(gym.Env):
         self.steps = 0
         self.done = False
         self.winner = None
+        # per-agent Round-1 context: which of its own coins/blocks it has claimed
+        # (a bitmask) and its power-up/frozen status (0 normal, +k ghosting, -k frozen).
+        # Stays 0 on the skeleton rounds (self.rich False), so the state is just (cell,).
+        self.collect = {"red": 0, "blue": 0}
+        self.status = {"red": 0, "blue": 0}
         # per-episode reward decomposition (terminal / shaping / other) per agent.
-        # shaping is 0 on the skeleton, kept so the diagnostic breakdown still renders.
+        # "shape" now carries collected-coin reward (0 on the skeleton rounds).
         self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
                          "blue": {"terminal": 0.0, "shape": 0.0, "other": 0.0}}
         obs = (self.observe("red"), self.observe("blue"))
         return obs, {}
 
-    def _accum_parts(self, reward, terminal):
+    def _accum_parts(self, reward, terminal, shape=None):
         """Fold this step's reward into the per-episode decomposition: terminal
-        (win/lose) and other (step cost). No shaping on the skeleton."""
+        (win/lose), shape (collected coins), and other (step cost)."""
+        shape = shape or {"red": 0.0, "blue": 0.0}
         for a in ("red", "blue"):
             p = self.ep_parts[a]
             t = terminal.get(a, 0.0)
+            s = shape.get(a, 0.0)
             p["terminal"] += t
-            p["other"] += reward[a] - t
+            p["shape"] += s
+            p["other"] += reward[a] - t - s
 
     # ------------------------------------------------------------ observation
     def observe(self, agent):
-        # each agent is an independent single-agent navigator; its state is simply
-        # its cell index (a 1-tuple, so it stays a stable Q-table key).
+        # each agent is an independent single-agent navigator. On the skeleton rounds
+        # its state is just its cell index; on Round 1 it also carries its collected
+        # mask + power-up status (see full_state) so the MDP stays Markov.
         pos = self.red_pos if agent == "red" else self.blue_pos
-        return (self.cell_index[pos],)
+        return self.full_state(agent, pos)
+
+    def full_state(self, agent, cell):
+        """The agent's observation tuple AT ``cell`` in its CURRENT context. Plain
+        ``(cell,)`` on the skeleton rounds; on Round 1 also ``(cell, collected_mask,
+        status)``. The SAME tuple keys the Q-table, the DP value field, and every
+        heatmap projection - visualizations call this with a probe cell to read V/policy
+        at that tile given the agent's live coins/power-up."""
+        idx = self.cell_index[cell]
+        if not self.rich:
+            return (idx,)
+        return (idx, self.collect[agent], self.status[agent])
 
     # ------------------------------------------------------------------- step
     def _pos(self, agent):
@@ -137,9 +200,13 @@ class GridWorld(gym.Env):
         these so a greedy policy can't self-loop on a wall. Never all-False."""
         if pos is None:
             pos = self.red_pos if agent == "red" else self.blue_pos
+        status = self.status.get(agent, 0) if (self.rich and hasattr(self, "status")) else 0
+        if status < 0:                      # frozen: the move is ignored anyway
+            return [True] * self.n_actions
         mask = [False] * self.n_actions
         for a in MOVE_ACTIONS:
-            if self._resolve(agent, pos, a) != pos:
+            land = self._ghost_resolve(agent, pos, a) if status > 0 else self._resolve(agent, pos, a)
+            if land != pos:
                 mask[a] = True
         if not any(mask):
             mask = [True] * self.n_actions
@@ -151,19 +218,116 @@ class GridWorld(gym.Env):
             return pos
         return self._resolve(agent, pos, action)
 
+    def _set_pos(self, agent, pos):
+        if agent == "red":
+            self.red_pos = pos
+        else:
+            self.blue_pos = pos
+
+    # ------------------------------------------------- the shared KNOWN model
+    def state_transition(self, agent, state, action):
+        """P(next_state, reward | state, action) for Round 1 - the model shared by the
+        live env (sampled in step) and the DP planners (summed as an expectation), so a
+        planner's value field is EXACTLY this env's dynamics. Returns a list of
+        ``(prob, next_state, reward, done)``; ``done`` marks arrival on a goal cell
+        (absorbing). Non-rich rounds degrade to one deterministic move.
+
+        ``reward`` is the step cost plus any coin picked up this step; the win/lose
+        RACE outcome is added by ``step`` (it depends on the OTHER agent, so it is not
+        part of either agent's own MDP), and the planner credits the goal itself."""
+        idx = state[0]
+        cell = self.floor_cells[idx]
+        if not self.rich:
+            nxt = self._resolve(agent, cell, action) if action in MOVE_ACTIONS else cell
+            return [(1.0, (self.cell_index[nxt],), -STEP_COST, nxt in self.goal_set)]
+
+        mask, status = state[1], state[2]
+        # FROZEN: the agent cannot act; it waits out the timer (still paying the step
+        # cost - the lost tempo IS the penalty) as the counter ticks back toward 0.
+        if status < 0:
+            return [(1.0, (idx, mask, status + 1), -STEP_COST, False)]
+
+        ghost = status > 0
+        # on ICE a normal move slips sideways (forces expected-value reasoning); a
+        # ghosting move is precise (the power-up overrides the slip) and phases walls.
+        if action in MOVE_ACTIONS and not ghost and cell in self.slip_cells:
+            p1, p2 = PERP[action]
+            moves = [(1.0 - SLIP_PROB, action), (SLIP_PROB / 2, p1), (SLIP_PROB / 2, p2)]
+        else:
+            moves = [(1.0, action)]
+
+        out = []
+        for prob, mv in moves:
+            if mv not in MOVE_ACTIONS:
+                land = cell
+            elif ghost:
+                land = self._ghost_resolve(agent, cell, mv)
+            else:
+                land = self._resolve(agent, cell, mv)
+            out.extend(self._land(agent, prob, land, mask, status, ghost))
+        return out
+
+    def _land(self, agent, prob, land, mask, status, ghost):
+        """Resolve the successor(s) of LANDING on ``land``: goal (terminal), coin
+        pickup (+reward, set bit), a "?" block (one-time 50/50 ghost vs freeze), else a
+        plain step (ghost counter decrements)."""
+        lidx = self.cell_index[land]
+        if land in self.goal_set:
+            return [(prob, (lidx, mask, 0), -STEP_COST, True)]
+        reward = -STEP_COST
+        nmask = mask
+        cbit = self._coin_bit[agent].get(land)
+        if cbit is not None and not (mask >> cbit) & 1:
+            nmask |= (1 << cbit)
+            reward += COIN_REWARD
+        nstatus = status - 1 if ghost else 0        # ghost ticks down; normal stays 0
+        bbit = self._block_bit[agent].get(land)
+        if bbit is not None and not (mask >> bbit) & 1:
+            nmask |= (1 << bbit)                      # block consumed (one-time)
+            return [(prob * 0.5, (lidx, nmask, GHOST_LEN), reward, False),
+                    (prob * 0.5, (lidx, nmask, -FREEZE_LEN), reward, False)]
+        return [(prob, (lidx, nmask, nstatus), reward, False)]
+
+    def _apply_rich(self, agent, action):
+        """Sample ONE transition from the shared model and apply it (position /
+        collected mask / status). Returns the coin bonus earned this step (step cost +
+        win/lose are added by ``step``)."""
+        outs = self.state_transition(agent, self.observe(agent), action)
+        r, acc, chosen = self.rng.random(), 0.0, outs[-1]
+        for cand in outs:
+            acc += cand[0]
+            if r <= acc:
+                chosen = cand
+                break
+        _, ns, rew, _done = chosen
+        self._set_pos(agent, self.floor_cells[ns[0]])
+        self.collect[agent] = ns[1]
+        self.status[agent] = ns[2]
+        return rew + STEP_COST                        # strip base step cost -> coin bonus
+
+    def _status_name(self, agent):
+        s = self.status.get(agent, 0)
+        return "ghost" if s > 0 else "frozen" if s < 0 else "normal"
+
     def step(self, a_red, a_blue):
         """One step: both agents move; first onto a goal cell wins, a simultaneous
-        arrival is a draw."""
+        arrival is a draw. On Round 1 each move is sampled from the shared model
+        (ice slip, coin pickup, "?" block), so movement is stochastic."""
         if self.done:
             raise RuntimeError("step() on a finished episode")
         self.steps += 1
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
+        shape = {"red": 0.0, "blue": 0.0}      # coin reward, tracked for the decomposition
 
-        self.red_pos = self._move("red", self.red_pos, a_red)
-        self.blue_pos = self._move("blue", self.blue_pos, a_blue)
+        for agent, act in (("red", a_red), ("blue", a_blue)):
+            if self.rich:
+                bonus = self._apply_rich(agent, act)   # updates pos / collect / status
+                reward[agent] += bonus
+                shape[agent] = bonus
+            else:
+                self._set_pos(agent, self._move(agent, self._pos(agent), act))
 
-        # reach the goal -> win; both crossing on the SAME step is a genuine DRAW
-        # (equidistant spawns make a symmetric deterministic race tie every time).
+        # reach the goal -> win; both crossing on the SAME step is a genuine DRAW.
         terminal = {"red": 0.0, "blue": 0.0}
         reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
         if reached:
@@ -179,7 +343,7 @@ class GridWorld(gym.Env):
             reward["red"] += terminal["red"]
             reward["blue"] += terminal["blue"]
 
-        self._accum_parts(reward, terminal)
+        self._accum_parts(reward, terminal, shape)
 
         truncated = False
         if not self.done and self.steps >= self.max_steps:
@@ -198,11 +362,20 @@ class GridWorld(gym.Env):
     def snapshot(self):
         """Live render state for the viewer: the two agents' cells, the step count,
         and the winner (None until someone reaches the goal). The static maze / coin /
-        Shine layout rides on /api/world, so it does not need to ship each frame."""
-        return {
+        Shine layout rides on /api/world; on Round 1 the per-agent collected bitmasks
+        (which coins/blocks to hide) and power-up status ride each frame."""
+        snap = {
             "red": list(self.red_pos), "blue": list(self.blue_pos),
             "steps": self.steps, "winner": self.winner,
         }
+        if self.rich:
+            for agent, ck, bk, sk in (("red", "redCoins", "redBlocks", "redStatus"),
+                                      ("blue", "blueCoins", "blueBlocks", "blueStatus")):
+                n, m = self._n_coins[agent], self.collect[agent]
+                snap[ck] = m & ((1 << n) - 1)      # coin bits: hide collected coins
+                snap[bk] = m >> n                   # block bits: empty used "?" blocks
+                snap[sk] = self._status_name(agent)  # "normal" | "ghost" | "frozen"
+        return snap
 
 
 if __name__ == "__main__":

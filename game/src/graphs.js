@@ -940,7 +940,9 @@ export function initBriefing(parent) {
       const seq = (s.stateDesc || "").includes("9-vector");
       const obsTuple =
         s.objective === "cross"
-          ? "(cell)"
+          ? s.slipProb
+            ? "(cell, coins, power)" // Round 1's rich MDP: tile + collected + power-up
+            : "(cell)"
           : s.objective === "race"
             ? "(cell, key, gold, opp-region, adjacent, trap)"
             : seq

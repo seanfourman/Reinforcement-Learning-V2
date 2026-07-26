@@ -31,9 +31,9 @@ ROUNDS = [1, 2, 3, 4, 5]
 
 # default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
 ROUND_ALGOS = {
-    1: ("monte_carlo", "first_visit_mc"),   # castle: every-visit vs first-visit MC
-    2: ("sarsa", "qlearning"),         # the hedge maze: on-policy vs off-policy
-    3: ("prioritized_sweeping", "dyna_q"),  # falls: model-based planning (Dyna family)
+    1: ("value_iteration", "policy_iteration"),  # castle: DP - the model-known maze race
+    2: ("monte_carlo", "first_visit_mc"),   # city: every-visit vs first-visit MC
+    3: ("sarsa", "qlearning"),         # falls: on-policy vs off-policy TD
     4: ("dqn", "double_dqn"),          # ruins: deep VALUE - function approximation
     5: ("actor_critic", "ppo"),        # desert rally: deep POLICY - policy gradient
 }
@@ -47,9 +47,6 @@ ALGO_LABELS = {
     "expected_sarsa": "Expected-SARSA",
     "monte_carlo": "Every-visit MC",
     "first_visit_mc": "First-visit MC",
-    "dyna_q": "Dyna-Q",
-    "prioritized_sweeping": "Prioritized Sweeping",
-    "dyna_q_plus": "Dyna-Q+",
     "dqn": "DQN",
     "double_dqn": "Double-DQN",
     "dueling_dqn": "Dueling-DQN",

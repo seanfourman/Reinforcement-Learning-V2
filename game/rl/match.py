@@ -21,11 +21,11 @@ import math
 import threading
 from collections import deque
 
-from env import GridWorld, N_ACTIONS
+from env import (GridWorld, N_ACTIONS,
+                 COIN_REWARD, GHOST_LEN, FREEZE_LEN, SLIP_PROB)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
-from dyna import is_dyna, make_dyna
 import worlds
 
 # The deep agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
@@ -76,7 +76,7 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
 
 
 def red_params(tier):
-    """Map a CPU tier (1..5) to Red's learning-rate + epsilon schedule."""
+    """Map a CPU tier (1..5) to Red's learning-rate + epsilon schedule (+ DP plan speed)."""
     t = max(1, min(5, int(tier)))
     f = (t - 1) / 4.0                          # 0 .. 1
     lerp = lambda a, b: a + (b - a) * f        # noqa: E731
@@ -85,6 +85,7 @@ def red_params(tier):
         "eps_start": round(lerp(1.00, 0.70), 3),
         "eps_end": round(lerp(0.30, 0.02), 3), # higher tier -> ends much greedier (stronger)
         "eps_episodes": int(lerp(6000, 800)),  # higher tier -> decays sooner
+        "plan_speed": round(lerp(0.25, 1.6), 3),  # DP (R1): higher tier converges faster
     }
 
 
@@ -98,11 +99,10 @@ class Match:
         # as opposed to the per-side learning knobs (alpha/gamma/epsilon) below.
         self.train_seed = seed                 # reproducibility: seeds env rng + agents
         self.max_steps_override = None          # None -> each env's own default cap
-        # DP planners (rounds with Value/Policy Iteration)
+        # DP planners (Round 1: Value/Policy Iteration)
         self.dp_theta = 1e-5                    # convergence threshold
         self.dp_max_sweeps = 2000               # hard iteration cap per phase
-        # Dyna model-based learners (Round 3): planning updates per real step
-        self.dyna_planning = 10
+        self.dp_plan_speed = 0.6               # Blue's Bellman sweeps per tick (race knob)
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -191,8 +191,10 @@ class Match:
 
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
+            speed = self.red_plan_speed if color == "red" else self.dp_plan_speed
             return make_dp(algo, self.env, color, gamma=gamma,
-                           theta=self.dp_theta, max_sweeps=self.dp_max_sweeps)
+                           theta=self.dp_theta, max_sweeps=self.dp_max_sweeps,
+                           plan_speed=speed)
         if is_dqn(algo):
             from dqn import make_dqn   # lazy: only the deep rounds need PyTorch
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
@@ -204,9 +206,6 @@ class Match:
             from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
             return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
                            seed=seed, alpha=alpha, gamma=gamma, hidden=self.dqn_hidden)
-        if is_dyna(algo):
-            return make_dyna(algo, n_actions=self.env.n_actions, seed=seed,
-                             alpha=alpha, gamma=gamma, planning=self.dyna_planning)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
@@ -219,6 +218,7 @@ class Match:
         self.red_eps_end = rp["eps_end"]
         self.red_eps_episodes = rp["eps_episodes"]
         self.red_epsilon = rp["eps_start"]
+        self.red_plan_speed = rp["plan_speed"]    # DP (R1): Red's sweeps per tick
 
     def _build_agents(self):
         # Red = CPU (params from its tier, or a manual override); Blue = ours, panel-tunable.
@@ -475,9 +475,10 @@ class Match:
                 self.dp_max_sweeps = max(1, min(100_000, int(p["dpMaxIters"])))
                 replan = True
 
-            # ---- GLOBAL: Dyna internals (planning steps per real step, live) ----
-            if "dynaPlanning" in p:
-                self.dyna_planning = max(0, min(200, int(p["dynaPlanning"])))
+            # ---- GLOBAL: DP planning speed (Bellman sweeps per tick, the race knob) ----
+            if "dpPlanning" in p:
+                self.dp_plan_speed = max(0.0, min(10.0, float(p["dpPlanning"])))
+                replan = True
 
             # ---- GLOBAL: DQN internals ----
             if "dqnBatch" in p:
@@ -503,6 +504,8 @@ class Match:
                 self.blue.alpha = self.alpha
             if hasattr(self.blue, "gamma"):
                 self.blue.gamma = self.gamma
+            if hasattr(self.blue, "plan_speed"):          # DP sweeps/tick (Blue), live
+                self.blue.plan_speed = self.dp_plan_speed
             # live-settable DQN attrs on BOTH agents (buffer/width handled by rebuild)
             for ag in (self.red, self.blue):
                 if hasattr(ag, "batch"):
@@ -511,8 +514,6 @@ class Match:
                     ag.warmup = self.dqn_warmup
                 if hasattr(ag, "target_sync"):
                     ag.target_sync = self.dqn_target_sync
-                if hasattr(ag, "planning"):          # Dyna planning steps (live)
-                    ag.planning = self.dyna_planning
 
             if need_env_rebuild:
                 self._rebuild_world()
@@ -523,16 +524,14 @@ class Match:
                 self._new_episode()
             else:
                 self._apply_env_config()
-                if replan:
+                # DP internals / discount changed -> RESTART the incremental plan so the
+                # convergence race replays from scratch with the new settings
+                if replan or (self.gamma != old_gamma and is_dp(self.algo_blue)):
                     for ag in (self.red, self.blue):
-                        if hasattr(ag, "theta") and hasattr(ag, "plan"):
+                        if hasattr(ag, "plan_speed"):     # a DP planner
                             ag.theta = self.dp_theta
-                            if hasattr(ag, "max_sweeps"):
-                                ag.max_sweeps = self.dp_max_sweeps
-                            ag.plan()
-                # a DP planner must RE-SOLVE its plan to reflect a new discount
-                if self.gamma != old_gamma and is_dp(self.algo_blue) and hasattr(self.blue, "plan"):
-                    self.blue.plan()
+                            ag.max_sweeps = self.dp_max_sweeps
+                            ag.reset_learning()
                 self._apply_epsilon()
             return self.params()
 
@@ -548,7 +547,7 @@ class Match:
             # global algorithm internals
             "dpTheta": self.dp_theta,
             "dpMaxIters": self.dp_max_sweeps,
-            "dynaPlanning": self.dyna_planning,
+            "dpPlanning": self.dp_plan_speed,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -578,8 +577,8 @@ class Match:
                 self.red.alpha = self.red_alpha
             if hasattr(self.red, "gamma"):
                 self.red.gamma = self.red_gamma
-            if self.red_gamma != old_gamma and is_dp(self.algo_red) and hasattr(self.red, "plan"):
-                self.red.plan()
+            if self.red_gamma != old_gamma and is_dp(self.algo_red) and hasattr(self.red, "reset_learning"):
+                self.red.reset_learning()   # restart Red's incremental plan on a new discount
             self._apply_epsilon()
             return self.red_view()
 
@@ -613,7 +612,7 @@ class Match:
 
     def set_side_algo(self, side, algo):
         with self.lock:
-            valid = algo in ALGORITHMS or is_dp(algo) or is_deep(algo) or is_dyna(algo)
+            valid = algo in ALGORITHMS or is_dp(algo) or is_deep(algo)
             if not valid:
                 return
             if side == "red":
@@ -627,13 +626,13 @@ class Match:
 
     def _algo_for_env(self, algo, default):
         """Accept a per-round override only if it exists AND fits this round's env
-        kind (DQN on the continuous arenas; tabular / DP / Dyna on the grids). Else
+        kind (deep on the continuous arenas; tabular / DP on the grids). Else
         fall back to the round default, so a mismatched pick can never build the
         wrong agent for the env."""
         if not algo:
             return default
         arena = getattr(self.env, "objective", "") == "arena"
-        ok = is_deep(algo) if arena else (algo in ALGORITHMS or is_dp(algo) or is_dyna(algo))
+        ok = is_deep(algo) if arena else (algo in ALGORITHMS or is_dp(algo))
         return algo if ok else default
 
     def _round_matchup(self, round_id):
@@ -810,8 +809,6 @@ class Match:
             return "Policy Gradient (policy-based)"
         if is_dqn(a):
             return "Deep RL (function approximation)"
-        if is_dyna(a):
-            return "Model-Based (Dyna)"
         if a in ("monte_carlo", "first_visit_mc"):
             return "Monte-Carlo"
         return "Temporal-Difference"
@@ -824,8 +821,30 @@ class Match:
             env = self.env
             arena = env.objective == "arena"
             meta = self._matchup()
-            if not arena:
-                # every grid round is a navigate-to-goal ("cross") race
+            slip_prob = 0.0
+            if not arena and getattr(env, "rich", False):
+                # Round 1's real game: a stochastic maze with optional coins + "?" blocks
+                actions = ["North", "South", "West", "East"]
+                nbits = env._n_coins["blue"] + len(env.block_cells["blue"])
+                state_size = env.n_cells * (1 << nbits) * (GHOST_LEN + FREEZE_LEN + 1)
+                state_desc = ("your tile, which of your own coins/blocks you have claimed, "
+                              "and your power-up / frozen countdown")
+                observation = ("Each model sees its own tile, its collected coins/blocks, and "
+                               "any active ghost or freeze timer - the rival stays invisible, so "
+                               "it still plans as a single agent.")
+                sees_opp = False
+                opp_info = ("Nothing. There is no opponent term in the state; each model owns a "
+                            "mirror-image set of coins/blocks, so the race is fair but solo.")
+                dynamics = ("Deterministic on dry tiles. On ICE a move slips sideways (70% "
+                            "intended, 15% each perpendicular). A '?' block is a one-time 50/50 "
+                            "gamble: Ghost (phase through walls for 4 steps) or Freeze (stuck for 3).")
+                rewards = [["Step", -0.01], ["Coin", round(COIN_REWARD, 2)],
+                           ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
+                win = ("First to the Power Moon wins; coins are optional value on the way. A "
+                       "simultaneous arrival is a draw.")
+                slip_prob = SLIP_PROB
+            elif not arena:
+                # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
                 state_desc = "your tile only: the (row, column) cell index"
                 state_size = getattr(env, "n_cells", None)
@@ -864,7 +883,7 @@ class Match:
                 "dynamics": dynamics,
                 "actions": actions, "nActions": env.n_actions,
                 "maxSteps": env.max_steps,
-                "slipProb": 0.0,
+                "slipProb": slip_prob,
                 "gammaRed": round(gr, 3), "gammaBlue": round(g, 3),
                 "horizonBlue": horizon(g), "horizonRed": horizon(gr),
                 "horizon": horizon(g),
@@ -1046,7 +1065,7 @@ class Match:
             a = self._agent(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx,)
+                state = self.env.full_state(agent, (r, c))
                 if a.state_value(state) is None:
                     continue
                 q = a.q_values(state)
@@ -1092,7 +1111,7 @@ class Match:
             a = self._agent(agent)
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx,)
+                state = self.env.full_state(agent, (r, c))
                 v = a.state_value(state)
                 grid[r][c] = round(v, 4) if v is not None else None
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
@@ -1175,10 +1194,13 @@ class Match:
         if ci is None or sp is None or tuple(sp) not in ci:
             return
         idx = ci[tuple(sp)]
+        # probe the spawn value in the CANONICAL slice (no coins, normal status) so the
+        # "start-state value climbs as it learns a path" curve stays a clean scalar.
+        state = (idx, 0, 0) if getattr(self.env, "rich", False) else (idx,)
         pt = {"ep": self.episode}
         for side in ("red", "blue"):
             a = self._agent(side)
-            v = a.state_value((idx,))
+            v = a.state_value(state)
             pt[side + "V"] = round(v, 4) if v is not None else 0.0
         self.q_probe.append(pt)
 
@@ -1231,7 +1253,7 @@ class Match:
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             best = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx,)
+                state = self.env.full_state(agent, (r, c))
                 if a.state_value(state) is None:        # leave unlearned tiles blank
                     continue
                 q = a.q_values(state)
@@ -1253,7 +1275,7 @@ class Match:
             a = self._agent(agent)
             if (r, c) not in self.env.cell_index:
                 return None
-            state = (self.env.cell_index[(r, c)],)
+            state = self.env.full_state(agent, (r, c))
             q = a.q_values(state)
             # `best` = the action the agent would ACTUALLY take here (argmax over the
             # EFFECTIVE actions), and `mask` flags which are blocked - so the inspector

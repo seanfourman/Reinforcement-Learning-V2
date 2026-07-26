@@ -30,6 +30,7 @@ export function createLiveActors(scene, walkers) {
       w.group.rotation.y = heading[side];
       group.add(w.group);
       if (side === 'red') king = w; else princess = w;
+      appliedStatus[side] = null; // re-apply any active power-up tint to the new mesh
     }
   }
 
@@ -40,6 +41,11 @@ export function createLiveActors(scene, walkers) {
   const spawnFacing = { red: Math.PI, blue: Math.PI }; // restored on episode reset
   const rendered = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   const target = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
+  // Round-1 "?" power-up state per side: 'ghost' (phasing walls -> translucent) or
+  // 'frozen' (stuck -> icy tint). Applied on change only (see applyWalkerStatus).
+  const status = { red: 'normal', blue: 'normal' };
+  const appliedStatus = { red: null, blue: null };
+  const FROZEN_TINT = new THREE.Color(0x8fd0ff);
   let frame = null;
   let layout = null;
   let isCross = false;   // cross rounds (the hedge maze) have NO keys / gold
@@ -66,6 +72,49 @@ export function createLiveActors(scene, walkers) {
   }
 
   const sideWalker = (side) => side === 'red' ? king : princess;
+
+  // capture each material's original look once, so a power-up tint can be reverted
+  function captureOrig(walker) {
+    walker.group.traverse((o) => {
+      if (!o.isMesh) return;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) {
+        if (!m || (m.userData && m.userData._origCaptured)) continue;
+        m.userData = m.userData || {};
+        m.userData._origCaptured = true;
+        m.userData._origOpacity = m.opacity;
+        m.userData._origTransparent = m.transparent;
+        m.userData._origColor = m.color ? m.color.getHex() : null;
+      }
+    });
+  }
+
+  // ghost = translucent (phasing walls); frozen = icy-tinted; normal = restore
+  function applyWalkerStatus(walker, st) {
+    if (!walker || !walker.group) return;
+    captureOrig(walker);
+    walker.group.traverse((o) => {
+      if (!o.isMesh) return;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) {
+        if (!m) continue;
+        const u = m.userData || {};
+        if (st === 'ghost') {
+          m.transparent = true;
+          m.opacity = 0.4;
+          if (m.color && u._origColor != null) m.color.setHex(u._origColor);
+        } else if (st === 'frozen') {
+          m.transparent = u._origTransparent;
+          m.opacity = u._origOpacity == null ? 1 : u._origOpacity;
+          if (m.color && u._origColor != null) m.color.setHex(u._origColor).lerp(FROZEN_TINT, 0.55);
+        } else {
+          m.transparent = u._origTransparent;
+          m.opacity = u._origOpacity == null ? 1 : u._origOpacity;
+          if (m.color && u._origColor != null) m.color.setHex(u._origColor);
+        }
+      }
+    });
+  }
 
   function clearCelebration() {
     if (!celebration) return;
@@ -134,6 +183,8 @@ export function createLiveActors(scene, walkers) {
 
   function onFrame(f) {
     frame = f;
+    status.red = f.redStatus || 'normal';   // 'ghost' | 'frozen' | 'normal' (Round 1)
+    status.blue = f.blueStatus || 'normal';
     if (arena) {
       target.red = { x: f.red[0], z: f.red[1] };
       target.blue = { x: f.blue[0], z: f.blue[1] };
@@ -209,6 +260,10 @@ export function createLiveActors(scene, walkers) {
 
     const k = 1 - Math.exp(-dt * 12); // smoothing toward the latest target
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
+      if (appliedStatus[key] !== status[key]) {
+        applyWalkerStatus(walker, status[key]);   // ghost/frozen power-up tint on change
+        appliedStatus[key] = status[key];
+      }
       if (celebration && celebration.side === key) {
         updateVictoryPose(walker, celebration);
         continue;

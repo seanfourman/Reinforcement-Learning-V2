@@ -132,6 +132,9 @@ export const peach = {
     const redSpawn = at("R")[0];
     const blueSpawn = at("B")[0];
     const onBorder = (r, c) => r === 0 || c === 0 || r === H - 1 || c === W - 1;
+    // Round-1 game layout (empty on skeleton rounds): per-agent coins/blocks + ice
+    const slipCells = world.slipCells || [];
+    const slipSet = new Set(slipCells.map(([r, c]) => `${r},${c}`));
 
     // ---- textures (the castle's own PBR set) --------------------------------
     const loader = new THREE.TextureLoader();
@@ -261,19 +264,41 @@ export const peach = {
       const LIGHT = 0xf7efe0;
       const DARK = 0x847a6c;
       const GOALC = 0xf0cf82;
+      const ICEC = 0xbfe8ff; // slippery tiles read as pale blue ice
       walk.forEach(([r, c], i) => {
         const p = cw(r, c);
         bd.position.set(p.x, 0.035, p.z); // top ~0.045
         bd.updateMatrix();
         tiles.setMatrixAt(i, bd.matrix);
         const goalCell = rows[r][c] === "E";
+        const iceCell = slipSet.has(`${r},${c}`);
         tiles.setColorAt(
           i,
-          bcol.set(goalCell ? GOALC : (r + c) % 2 === 0 ? LIGHT : DARK),
+          bcol.set(goalCell ? GOALC : iceCell ? ICEC : (r + c) % 2 === 0 ? LIGHT : DARK),
         );
       });
       if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
       group.add(tiles);
+
+      // a thin glossy sheen over the ice tiles so they read as slick (not just blue)
+      if (slipCells.length) {
+        const iceMat = new THREE.MeshStandardMaterial({
+          color: 0xdff3ff, roughness: 0.1, metalness: 0.15,
+          transparent: true, opacity: 0.5,
+        });
+        const ice = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(0.92 * cell, 0.014, 0.92 * cell), iceMat, slipCells.length,
+        );
+        const io = new THREE.Object3D();
+        slipCells.forEach(([r, c], i) => {
+          const p = cw(r, c);
+          io.position.set(p.x, 0.052, p.z); // just above the board tiles
+          io.updateMatrix();
+          ice.setMatrixAt(i, io.matrix);
+        });
+        ice.receiveShadow = true;
+        group.add(ice);
+      }
 
       // slim gold frame standing a touch proud around the board perimeter
       const frameMat = new THREE.MeshStandardMaterial({
@@ -502,6 +527,155 @@ export const peach = {
       group.add(disc, ring, emblem);
     };
     // spawn medallions removed (no start-position icons on the board)
+
+    // ---- Round-1 game objects: coins, Shine, "?" power-up blocks -------------
+    // Each agent owns a MIRROR set of coins + one "?" block (Red tinted warm, Blue
+    // cool); the Shine hovers over the Power Moon goal. The live frame's collected
+    // bitmasks hide coins/blocks as each agent claims them (see update()).
+    const objLoader = new ColladaLoader();
+    const collect = { redCoins: [], blueCoins: [], redBlocks: [], blueBlocks: [], shine: null };
+    const spin = []; // {obj, baseY, spin} - animated in update()
+
+    const fitObject = (obj, size) => {
+      // ColladaLoader already orients Z-up assets to Y-up; centre + scale to `size`
+      const box = new THREE.Box3().setFromObject(obj);
+      const dim = new THREE.Vector3();
+      box.getSize(dim);
+      const ctr = new THREE.Vector3();
+      box.getCenter(ctr);
+      obj.position.set(-ctr.x, -ctr.y, -ctr.z);
+      const wrap = new THREE.Group();
+      wrap.add(obj);
+      wrap.scale.setScalar(size / (Math.max(dim.x, dim.y, dim.z) || 1));
+      return wrap;
+    };
+    // this asset pack's DAEs use samplers three's ColladaLoader can't bind (it warns
+    // "Undefined sampler" and ships blank textures), so we take only the GEOMETRY from
+    // the DAE and give each object a fresh material with textures loaded by hand.
+    const objTex = (path, srgb = true) => {
+      const t = loader.load(path);
+      t.anisotropy = maxAniso;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    const setMat = (obj, mat) => {
+      obj.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = mat;
+        o.castShadow = true;
+      });
+    };
+    // this asset pack flags static meshes as SkinnedMesh with a broken skeleton (same
+    // as the castle export), which breaks Box3.setFromObject + the skinning shader ->
+    // the object mis-scales and never renders. Convert each to a plain rest-pose Mesh.
+    const deskin = (root) => {
+      const skinned = [];
+      root.traverse((o) => o.isSkinnedMesh && skinned.push(o));
+      for (const sm of skinned) {
+        const m = new THREE.Mesh(sm.geometry, sm.material);
+        m.name = sm.name;
+        m.position.copy(sm.position);
+        m.quaternion.copy(sm.quaternion);
+        m.scale.copy(sm.scale);
+        if (sm.parent) {
+          sm.parent.add(m);
+          sm.parent.remove(sm);
+        }
+      }
+      return root;
+    };
+    const place = (obj, r, c, y, doSpin) => {
+      const p = cw(r, c);
+      obj.position.set(p.x, y, p.z);
+      obj.userData.baseY = y;
+      group.add(obj);
+      spin.push({ obj, baseY: y, spin: doSpin });
+      return obj;
+    };
+
+    // COINS: recolored per side (the gold albedo is dropped - a clean team-metal coin)
+    objLoader
+      .loadAsync("./assets/objects/Coin/Coin.dae")
+      .then((asset) => {
+        if (disposed) return;
+        deskin(asset.scene);
+        const mk = (cells, color, emissive, arr) => {
+          if (!(cells && cells.length)) return;
+          const mat = new THREE.MeshStandardMaterial({
+            color, emissive, emissiveIntensity: 0.35, metalness: 0.9, roughness: 0.26,
+          });
+          for (const [r, c] of cells) {
+            const coin = fitObject(asset.scene.clone(true), 0.5 * cell);
+            setMat(coin, mat);
+            // hover ABOVE the 0.7-tall maze walls so the coin reads from the game camera
+            arr.push(place(coin, r, c, 0.95, true));
+          }
+        };
+        mk(world.redCoins, 0xff5a44, 0x5e1005, collect.redCoins);
+        mk(world.blueCoins, 0x5a8dff, 0x0a1a5e, collect.blueCoins);
+      })
+      .catch((e) => console.warn("Coin model failed to load", e));
+
+    // SHINE: the Power Moon over the goal, its own gold albedo + emissive glow
+    objLoader
+      .loadAsync("./assets/objects/Shine/Shine.dae")
+      .then((asset) => {
+        if (disposed || !goals.length) return;
+        deskin(asset.scene);
+        let gx = 0, gz = 0;
+        for (const [r, c] of goals) {
+          const p = cw(r, c);
+          gx += p.x;
+          gz += p.z;
+        }
+        gx /= goals.length;
+        gz /= goals.length;
+        const shine = fitObject(asset.scene, 1.15 * cell);
+        setMat(shine, new THREE.MeshStandardMaterial({
+          map: objTex("./assets/objects/Shine/Textures/ShineBody_alb.png"),
+          normalMap: objTex("./assets/objects/Shine/Textures/ShineBody_nrm.png", false),
+          emissive: 0xffd24a,
+          emissiveMap: objTex("./assets/objects/Shine/Textures/ShineBody_emm.png", false),
+          emissiveIntensity: 1.0, metalness: 0.5, roughness: 0.35,
+        }));
+        shine.position.set(gx, 1.15, gz);
+        shine.userData.baseY = 1.15;
+        group.add(shine);
+        collect.shine = shine;
+        spin.push({ obj: shine, baseY: 1.15, spin: true });
+        const glow = new THREE.PointLight(0xffe08a, 1.2, 7, 2);
+        glow.position.set(gx, 1.4, gz);
+        group.add(glow);
+      })
+      .catch((e) => console.warn("Shine model failed to load", e));
+
+    // "?" BLOCKS: keep the iconic yellow "?" albedo, add a per-side rim glow
+    objLoader
+      .loadAsync("./assets/objects/Question%20Block/BlockQuestion.dae")
+      .then((asset) => {
+        if (disposed) return;
+        deskin(asset.scene);
+        const dir = "./assets/objects/Question%20Block/";
+        const alb = objTex(dir + "BlockQuestionBody_alb.png");
+        const nrm = objTex(dir + "BlockQuestionBody_nrm.png", false);
+        const rgh = objTex(dir + "BlockQuestionBody_rgh.png", false);
+        const mk = (cells, emissive, arr) => {
+          if (!(cells && cells.length)) return;
+          const mat = new THREE.MeshStandardMaterial({
+            map: alb, normalMap: nrm, roughnessMap: rgh,
+            emissive, emissiveIntensity: 0.4, metalness: 0.2, roughness: 1,
+          });
+          for (const [r, c] of cells) {
+            const blk = fitObject(asset.scene.clone(true), 0.82 * cell);
+            setMat(blk, mat);
+            arr.push(place(blk, r, c, 0.55 * cell, false));
+          }
+        };
+        mk(world.redBlocks, 0x5e1005, collect.redBlocks);
+        mk(world.blueBlocks, 0x0a1a5e, collect.blueBlocks);
+      })
+      .catch((e) => console.warn("Question Block model failed to load", e));
 
     // ---- the chase: Bowser hunts Peach around the grand staircase ----------
     // A decorative lap between the two SIDE staircases, whose feet sit right
@@ -734,10 +908,26 @@ export const peach = {
     return {
       group,
       ready,
-      update(t, dt) {
+      update(t, dt, frame) {
         // subtle animation: the goal inlay breathes
         if (animated.inlay)
           animated.inlay.emissiveIntensity = 0.25 + 0.15 * Math.sin(1.6 * t);
+        // spin the coins + Shine, gently bob every collectible
+        for (const s of spin) {
+          if (s.spin) s.obj.rotation.y = t * 1.7;
+          s.obj.position.y = s.baseY + Math.sin(t * 2 + s.obj.position.x) * 0.08;
+        }
+        // hide each coin/block the live frame reports collected/used (bit i per index)
+        if (frame) {
+          const hide = (arr, mask) => {
+            const m = mask | 0;
+            for (let i = 0; i < arr.length; i++) arr[i].visible = !((m >> i) & 1);
+          };
+          hide(collect.redCoins, frame.redCoins);
+          hide(collect.blueCoins, frame.blueCoins);
+          hide(collect.redBlocks, frame.redBlocks);
+          hide(collect.blueBlocks, frame.blueBlocks);
+        }
         // the Bowser-chases-Peach loop around the grand staircase
         updateChase(Math.min(dt || 0.016, 0.05));
       },
