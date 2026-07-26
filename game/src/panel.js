@@ -14,8 +14,10 @@ import { initGraphs } from './graphs.js';
 export const NAMES = {
   value_iteration: 'Value Iteration', policy_iteration: 'Policy Iteration',
   qlearning: 'Q-Learning', sarsa: 'SARSA', expected_sarsa: 'Expected-SARSA',
-  monte_carlo: 'Monte-Carlo',
+  monte_carlo: 'Every-visit MC', first_visit_mc: 'First-visit MC',
+  dyna_q: 'Dyna-Q', prioritized_sweeping: 'Prioritized Sweeping', dyna_q_plus: 'Dyna-Q+',
   dqn: 'DQN', double_dqn: 'Double-DQN', dueling_dqn: 'Dueling-DQN',
+  reinforce: 'REINFORCE', actor_critic: 'Actor-Critic', ppo: 'PPO',
 };
 const ACTION_NAMES = ['North', 'South', 'West', 'East'];
 
@@ -28,6 +30,7 @@ const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) 
 export const DP_ALGOS = new Set(['value_iteration', 'policy_iteration']);
 export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
 export const DYNA_ALGOS = new Set(['dyna_q', 'prioritized_sweeping', 'dyna_q_plus']);
+export const PG_ALGOS = new Set(['reinforce', 'actor_critic', 'ppo']);
 
 // transport icons: centred SVGs that take the button's colour via currentColor
 const SVG = {
@@ -54,9 +57,9 @@ export const PARAMS = [
   { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 1000, step: 10, color: C_GLOBAL, scope: 'always', fmt: (v) => (+v).toLocaleString() },
   { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toFixed(2) },
   { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toLocaleString() },
+  { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toFixed(2) },
+  { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toFixed(2) },
+  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toLocaleString() },
 ];
 
 // shared display + reset helpers
@@ -810,14 +813,17 @@ export function initPanel() {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
     const isDyna = DYNA_ALGOS.has(algoBlue);
+    const isPg = PG_ALGOS.has(algoBlue);
+    const isArena = isDqn || isPg;               // both continuous-arena families (R4 DQN, R5 PG)
     const vis = (sc) => {
       switch (sc) {
-        case 'learn': return !isDP;               // learning rate + exploration: not for DP
+        case 'learn': return !isDP;               // learning rate α: every learner (not DP)
+        case 'eps': return !isDP && !isPg;        // ε-greedy schedule: not DP, not PG (PG samples its policy)
         case 'dp': return isDP;                   // convergence + sweeps: DP rounds
         case 'dyna': return isDyna;               // planning steps: the Dyna round
-        case 'dqn': return isDqn;                 // replay / batch / target-net: neural rounds
-        case 'cont': return isDqn;                // arena dynamics: continuous rounds
-        case 'slip': return !isDP && !isDqn;      // slippery junctions: grid rounds (TD + Dyna)
+        case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
+        case 'cont': return isArena;              // arena dynamics: continuous rounds (DQN + PG)
+        case 'slip': return !isDP && !isArena;    // slippery junctions: grid rounds (MC / TD / Dyna)
         case 'r4': return roundIndex === 3;       // ruins count: Round 4 only
         case 'r5': return roundIndex === 4;       // tornados / quicksand: Round 5 only
         default: return true;                     // 'always'

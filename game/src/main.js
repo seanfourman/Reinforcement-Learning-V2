@@ -11,7 +11,7 @@ import { getTheme } from "./themes/index.js";
 import { initHud } from "./hud.js";
 import { createAwardCeremony } from "./award.js";
 import { createTransition } from "./transition.js";
-import { createStartMenu, getCpuTier } from "./startmenu.js";
+import { createStartMenu, getCpuTier, getCpuAlgos, getPlayerAlgos } from "./startmenu.js";
 import { createLoadScreen } from "./loadscreen.js";
 import { loadBoardWalkers } from "./boardchars.js";
 import { initDevBar } from "./devbar.js";
@@ -790,6 +790,9 @@ const fx = createPostFX(renderer, scene, camera);
 function startFromMenu() {
   return new Promise((resolve) => {
     menuIdle = false; // leaving the menu: polling may build the world again
+    // install the matchup FIRST (before resetTournament builds round 1): Red = the
+    // chosen CPU character's algorithm per round, Blue = the player's card picks.
+    control({ cmd: "loadouts", cpu: getCpuAlgos(), player: getPlayerAlgos() });
     // a fresh game = a fresh tournament. The server persists the round + score across
     // page loads, so without this a previous session's round 5 / stray point leaks in.
     control({ cmd: "resetTournament" });

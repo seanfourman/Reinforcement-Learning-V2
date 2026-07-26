@@ -26,27 +26,29 @@ export const CHARACTERS = [
   { name: "Parabones", file: "parabones/parabones.dae" },
 ];
 
-// CPU opponent data: Player 2 is the COMPUTER, playing the RED side. The algorithm
-// per level is fixed by the ROUND (Red's half of each matchup, see rl/worlds:
-// R1 Every-visit MC, R2 SARSA, R3 Prioritized Sweeping, R4 DQN, R5 DQN), so every
-// opponent lists the same five - what differs is the STRENGTH (1-5 pips) each
-// character brings to each level. Mario is the easiest, Parabones the hardest.
-// (These models are STATIC baselines shown for selection - they do NOT train live.)
-const CPU_ALGOS = ["Every-visit MC", "SARSA", "Prioritized Sweeping", "DQN", "DQN"];
-const opp = (tier, label, strengths) => ({
-  tier, label, picks: CPU_ALGOS.map((a, i) => [a, strengths[i]]),
+// CPU opponent data: Player 2 is the COMPUTER, playing the RED side. Each character
+// brings its OWN algorithm per level (drawn from that level's family) plus a STRENGTH
+// (1-5 pips) per level; the tier is the overall difficulty. The player picks their
+// own algorithm from the cards, so the live matchup is the player's pick (Blue) vs
+// THIS character's algorithm (Red). Mario is the easiest, Parabones the hardest.
+// (Strength = hyperparameter quality; per-character tuning lands with the real envs.)
+const opp = (tier, label, algos, strengths) => ({
+  tier, label, picks: algos.map((a, i) => [a, strengths[i]]),
 });
+// per level: [MC, TD, Dyna, DQN(L4), PG(L5)] - each from that level's family, varied
+// across characters so no two opponents feel the same. L5 is policy-gradient:
+// REINFORCE (basic) for the early roster, Actor-Critic mid, PPO for the toughest.
 const OPPONENTS = [
-  opp(1, "Rookie", [2, 1, 2, 1, 2]),   // Mario
-  opp(1, "Rookie", [2, 2, 2, 2, 2]),   // Luigi
-  opp(2, "Amateur", [3, 2, 3, 2, 2]),  // Yoshi
-  opp(2, "Amateur", [3, 3, 3, 2, 3]),  // Toadette
-  opp(3, "Skilled", [3, 3, 4, 3, 3]),  // Pauline
-  opp(3, "Skilled", [4, 3, 4, 3, 3]),  // Koopa
-  opp(4, "Veteran", [4, 4, 4, 4, 4]),  // Bowser
-  opp(4, "Veteran", [4, 4, 5, 4, 4]),  // Peach
-  opp(5, "Master", [5, 4, 5, 5, 4]),   // Toad
-  opp(5, "Champion", [5, 5, 5, 5, 5]), // Parabones
+  opp(1, "Rookie",   ["Every-visit MC", "SARSA",          "Dyna-Q",               "DQN",         "REINFORCE"],    [2, 1, 2, 1, 2]), // Mario
+  opp(1, "Rookie",   ["First-visit MC", "Q-Learning",     "Dyna-Q",               "DQN",         "REINFORCE"],    [2, 2, 2, 2, 2]), // Luigi
+  opp(2, "Amateur",  ["Every-visit MC", "Expected-SARSA", "Prioritized Sweeping", "Double-DQN",  "REINFORCE"],    [3, 2, 3, 2, 2]), // Yoshi
+  opp(2, "Amateur",  ["First-visit MC", "SARSA",          "Dyna-Q+",              "DQN",         "Actor-Critic"], [3, 3, 3, 2, 3]), // Toadette
+  opp(3, "Skilled",  ["Every-visit MC", "Q-Learning",     "Prioritized Sweeping", "Dueling-DQN", "Actor-Critic"], [3, 3, 4, 3, 3]), // Pauline
+  opp(3, "Skilled",  ["First-visit MC", "Expected-SARSA", "Dyna-Q",               "Double-DQN",  "Actor-Critic"], [4, 3, 4, 3, 3]), // Koopa
+  opp(4, "Veteran",  ["Every-visit MC", "SARSA",          "Dyna-Q+",              "Dueling-DQN", "Actor-Critic"], [4, 4, 4, 4, 4]), // Bowser
+  opp(4, "Veteran",  ["First-visit MC", "Q-Learning",     "Prioritized Sweeping", "DQN",         "PPO"],          [4, 4, 5, 4, 4]), // Peach
+  opp(5, "Master",   ["Every-visit MC", "Expected-SARSA", "Dyna-Q+",              "Double-DQN",  "PPO"],          [5, 4, 5, 5, 4]), // Toad
+  opp(5, "Champion", ["First-visit MC", "Q-Learning",     "Prioritized Sweeping", "Dueling-DQN", "PPO"],          [5, 5, 5, 5, 5]), // Parabones
 ];
 
 // the CPU's difficulty tier (1=easiest .. 5=hardest) from whichever character sits
@@ -70,6 +72,39 @@ export function getCpuName() {
     return c ? c.name : "";
   } catch (e) {
     return "";
+  }
+}
+
+// display name (as shown on the cards / opponent legend) -> backend algorithm key
+export const ALGO_NAME_TO_KEY = {
+  "Value Iteration": "value_iteration", "Policy Iteration": "policy_iteration",
+  "Every-visit MC": "monte_carlo", "First-visit MC": "first_visit_mc",
+  "SARSA": "sarsa", "Q-Learning": "qlearning", "Expected-SARSA": "expected_sarsa",
+  "Dyna-Q": "dyna_q", "Prioritized Sweeping": "prioritized_sweeping", "Dyna-Q+": "dyna_q_plus",
+  "DQN": "dqn", "Double-DQN": "double_dqn", "Dueling-DQN": "dueling_dqn",
+  "REINFORCE": "reinforce", "Actor-Critic": "actor_critic", "PPO": "ppo",
+};
+// which family card each round draws its algorithm from (rounds 1..5): R4 is deep
+// VALUE (DQN card), R5 is deep POLICY (the Policy Gradient card).
+const ROUND_FAMILY = ["mc", "td", "dyna", "deep", "pg"];
+
+// the chosen CPU character's algorithm KEY per round (Red side), for the backend.
+export function getCpuAlgos() {
+  try {
+    const o = OPPONENTS[JSON.parse(localStorage.getItem("rl-chars") || "{}")["1"]];
+    return o ? o.picks.map(([name]) => ALGO_NAME_TO_KEY[name] || null) : null;
+  } catch (e) {
+    return null;
+  }
+}
+// the player's card pick KEY per round (Blue side). null where a family was not
+// picked, so the backend keeps that round's default there.
+export function getPlayerAlgos() {
+  try {
+    const ch = JSON.parse(localStorage.getItem("rl-algos") || "{}");
+    return ROUND_FAMILY.map((fam) => ALGO_NAME_TO_KEY[ch[fam]] || null);
+  } catch (e) {
+    return null;
   }
 }
 

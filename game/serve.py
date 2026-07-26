@@ -213,6 +213,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             match.set_red_params(body.get("params", {}))
         elif cmd == "cpuTier":
             match.set_cpu_tier(body.get("value", 1))
+        elif cmd == "loadouts":
+            match.set_loadouts(body.get("cpu"), body.get("player"))
+            _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "awardRound":
             extra["award"] = match.award_round()
         elif cmd == "prevRound":

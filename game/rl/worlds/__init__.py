@@ -34,8 +34,8 @@ ROUND_ALGOS = {
     1: ("monte_carlo", "first_visit_mc"),   # castle: every-visit vs first-visit MC
     2: ("sarsa", "qlearning"),         # the hedge maze: on-policy vs off-policy
     3: ("prioritized_sweeping", "dyna_q"),  # falls: model-based planning (Dyna family)
-    4: ("dqn", "double_dqn"),          # ruins: function approximation, off-policy NN
-    5: ("dqn", "dueling_dqn"),         # desert rally: the value/advantage head split
+    4: ("dqn", "double_dqn"),          # ruins: deep VALUE - function approximation
+    5: ("actor_critic", "ppo"),        # desert rally: deep POLICY - policy gradient
 }
 
 # human-readable algorithm names (for the HUD matchup label)
@@ -53,6 +53,9 @@ ALGO_LABELS = {
     "dqn": "DQN",
     "double_dqn": "Double-DQN",
     "dueling_dqn": "Dueling-DQN",
+    "reinforce": "REINFORCE",
+    "actor_critic": "Actor-Critic",
+    "ppo": "PPO",
 }
 
 

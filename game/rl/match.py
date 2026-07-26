@@ -28,14 +28,25 @@ from dp import is_dp, make_dp
 from dyna import is_dyna, make_dyna
 import worlds
 
-# The DQN agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
+# The deep agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
 # so the server still boots and runs the tabular / DP rounds in a Python that
-# doesn't have torch installed - only building a DQN agent requires it.
+# doesn't have torch installed - only building a deep agent requires it. Keep the
+# name lists + predicates here (a plain membership test, no torch) so validation /
+# family labels work without importing the torch modules.
 DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
+PG_ALGOS = ("reinforce", "actor_critic", "ppo")
 
 
 def is_dqn(algo):
     return algo in DQN_ALGOS
+
+
+def is_pg(algo):
+    return algo in PG_ALGOS
+
+
+def is_deep(algo):
+    return is_dqn(algo) or is_pg(algo)
 
 FRAME_CAP = 801            # max frames recorded for one replayable episode
                            # (800 steps + the seeded frame-0 spawn snapshot)
@@ -127,7 +138,13 @@ class Match:
         self.target_episodes = None            # auto-pause after N episodes (None = run forever)
         self.red_tier = 1                      # CPU difficulty, set from the chosen character
         self._red_from_tier()                  # derive Red's params from the tier
-        self.algo_red, self.algo_blue = worlds.round_algos(round_id)
+        # per-round algorithm overrides from the menu selection (empty = the
+        # ROUND_ALGOS defaults). cpu_algos = the chosen CPU character's algorithm per
+        # round (Red); player_algos = the player's card pick per round (Blue). Applied
+        # in set_round, and only if the algorithm fits the round's env kind.
+        self.cpu_algos = {}
+        self.player_algos = {}
+        self.algo_red, self.algo_blue = self._round_matchup(round_id)
         self._build_agents()
         self._reset_stats()
         self._new_episode()
@@ -200,12 +217,16 @@ class Match:
             return make_dp(algo, self.env, color, gamma=gamma,
                            theta=self.dp_theta, max_sweeps=self.dp_max_sweeps)
         if is_dqn(algo):
-            from dqn import make_dqn   # lazy: only Round 4 needs PyTorch
+            from dqn import make_dqn   # lazy: only the deep rounds need PyTorch
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
                             seed=seed, alpha=alpha, gamma=gamma,
                             buffer=self.dqn_buffer, batch=self.dqn_batch,
                             warmup=self.dqn_warmup, target_sync=self.dqn_target_sync,
                             hidden=self.dqn_hidden)
+        if is_pg(algo):
+            from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
+            return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
+                           seed=seed, alpha=alpha, gamma=gamma, hidden=self.dqn_hidden)
         if is_dyna(algo):
             return make_dyna(algo, n_actions=self.env.n_actions, seed=seed,
                              alpha=alpha, gamma=gamma, planning=self.dyna_planning)
@@ -644,7 +665,7 @@ class Match:
 
     def set_side_algo(self, side, algo):
         with self.lock:
-            valid = algo in ALGORITHMS or is_dp(algo) or is_dqn(algo) or is_dyna(algo)
+            valid = algo in ALGORITHMS or is_dp(algo) or is_deep(algo) or is_dyna(algo)
             if not valid:
                 return
             if side == "red":
@@ -656,15 +677,55 @@ class Match:
             self._reset_stats()
             self._new_episode()
 
+    def _algo_for_env(self, algo, default):
+        """Accept a per-round override only if it exists AND fits this round's env
+        kind (DQN on the continuous arenas; tabular / DP / Dyna on the grids). Else
+        fall back to the round default, so a mismatched pick can never build the
+        wrong agent for the env."""
+        if not algo:
+            return default
+        arena = getattr(self.env, "objective", "") == "arena"
+        ok = is_deep(algo) if arena else (algo in ALGORITHMS or is_dp(algo) or is_dyna(algo))
+        return algo if ok else default
+
+    def _round_matchup(self, round_id):
+        """(red, blue) for a round: the menu loadouts if set + compatible, else the
+        ROUND_ALGOS defaults. Red = CPU character's algo, Blue = player's card pick."""
+        dr, db = worlds.round_algos(round_id)
+        return (self._algo_for_env(self.cpu_algos.get(round_id), dr),
+                self._algo_for_env(self.player_algos.get(round_id), db))
+
+    def set_loadouts(self, cpu=None, player=None):
+        """Install the menu's per-round algorithm picks (lists in round order, index
+        0 = first round): cpu = the chosen CPU character's algo per round (Red),
+        player = the card picks per round (Blue). Re-applies to the current round."""
+        with self.lock:
+            order = worlds.ROUNDS
+
+            def build(lst):
+                d = {}
+                if isinstance(lst, (list, tuple)):
+                    for i, key in enumerate(lst):
+                        if i < len(order) and key:
+                            d[order[i]] = key
+                return d
+
+            self.cpu_algos = build(cpu)
+            self.player_algos = build(player)
+            self.algo_red, self.algo_blue = self._round_matchup(self.round_id)
+            self._build_agents()
+            self._reset_stats()
+            self._new_episode()
+
     def set_round(self, round_id, keep_score=True):
-        """Switch to a round: install its world + its default matchup + reset
-        learning. Tournament score is preserved unless told otherwise."""
+        """Switch to a round: install its world + its matchup + reset learning.
+        Tournament score is preserved unless told otherwise."""
         with self.lock:
             self.round_id = round_id
             self.env = self._make_env(round_id)   # rebuild: round may switch env class
             self._apply_env_config()              # carry dynamics/slip/step-cap across
             self.world_version += 1
-            self.algo_red, self.algo_blue = worlds.round_algos(round_id)
+            self.algo_red, self.algo_blue = self._round_matchup(round_id)
             if not keep_score:
                 self.score = {"red": 0, "blue": 0}
                 self.awarded_rounds.clear()
@@ -781,13 +842,24 @@ class Match:
 
     # ------------------------------------------------------------- inspection
     def _matchup(self):
-        m = worlds.round_meta(self.round_id)
+        # round_meta carries the ROUND_ALGOS DEFAULTS; overwrite the algo labels with
+        # the LIVE agents so the briefing / HUD / award reflect the actual matchup
+        # (the chosen character's algo for Red, the player's card pick for Blue), not
+        # the round default. World identity (theme / title / index) stays from meta.
+        m = dict(worlds.round_meta(self.round_id))
+        lr = worlds.ALGO_LABELS.get(self.algo_red, self.algo_red)
+        lb = worlds.ALGO_LABELS.get(self.algo_blue, self.algo_blue)
+        m["algoRed"], m["algoBlue"] = self.algo_red, self.algo_blue
+        m["labelRed"], m["labelBlue"] = lr, lb
+        m["matchup"] = f"{lr} vs {lb}"
         return m
 
     def _family(self):
         a = self.algo_blue
         if is_dp(a):
             return "Dynamic Programming"
+        if is_pg(a):
+            return "Policy Gradient (policy-based)"
         if is_dqn(a):
             return "Deep RL (function approximation)"
         if is_dyna(a):
