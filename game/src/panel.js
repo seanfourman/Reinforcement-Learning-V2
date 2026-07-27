@@ -128,14 +128,14 @@ const STYLE = `
   box-shadow:0 -7px 22px rgba(16,70,34,.2);
   animation:convergedPinIn .3s cubic-bezier(.2,.9,.25,1);}
 #rl-panel .converged-pin[hidden]{display:none;}
-#rl-panel .converged-pin-icon{flex:none;width:38px;height:38px;
+#rl-panel .converged-pin-icon{flex:none;width:42px;height:42px;
   display:grid;place-items:center;color:#fff;}
-#rl-panel .converged-pin-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;
-  stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}
+#rl-panel .converged-pin-icon svg{width:29px;height:29px;fill:none;stroke:currentColor;
+  stroke-width:2.8;stroke-linecap:round;stroke-linejoin:round;}
 #rl-panel .converged-pin-copy{min-width:0;display:flex;flex-direction:column;gap:3px;}
-#rl-panel .converged-pin-copy b{font-size:11px;line-height:1.2;letter-spacing:.65px;
+#rl-panel .converged-pin-copy b{font-size:13px;line-height:1.2;letter-spacing:.65px;
   text-transform:uppercase;color:#fff;}
-#rl-panel .converged-pin-copy span{font-size:11px;line-height:1.38;color:rgba(255,255,255,.88);}
+#rl-panel .converged-pin-copy span{font-size:11.5px;line-height:1.38;color:rgba(255,255,255,.9);}
 @keyframes convergedPinIn{from{opacity:0;transform:translateY(14px) scale(.98)}
   to{opacity:1;transform:translateY(0) scale(1)}}
 

@@ -653,13 +653,18 @@ export function initDP(parent) {
     if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
     return s;
   };
-  const chDelta = makeChart(q("#rl-ch-dp-delta"), {
-    series: [{ key: "logDelta", color: "#e11f2b" }],
+  // the DP section shows ONE selected planner (dpAgent); colour its residual chart and
+  // the propagation scrubber by that side (red = Value Iteration, blue = Policy Iteration)
+  // rather than a fixed red, so viewing Blue no longer draws Blue's convergence in red.
+  const dpColor = () => (dpAgent === "red" ? "#e11f2b" : "#1f5fd0");
+  const dpDeltaCfg = {
+    series: [{ key: "logDelta", color: dpColor() }],
     fmt: (v) => {
       const d = Math.pow(10, v);
       return d >= 1 ? d.toFixed(1) : plainDec(d);
     },
-  });
+  };
+  const chDelta = makeChart(q("#rl-ch-dp-delta"), dpDeltaCfg);
   const chMeanV = makeChart(q("#rl-ch-dp-meanv"), {
     series: [{ key: "meanV", color: "#1f9d63" }],
     fmt: (v) => v.toFixed(2),
@@ -692,7 +697,9 @@ export function initDP(parent) {
   let vframes = [];
   const paintVseek = () => {
     const p = +vseek.max > 0 ? (+vseek.value / +vseek.max) * 100 : 0;
-    vseek.style.background = `linear-gradient(to right,#e11f2b ${p}%,#e1e3e8 ${p}%)`;
+    const c = dpColor();
+    vseek.style.setProperty("--fill", c);
+    vseek.style.background = `linear-gradient(to right,${c} ${p}%,#e1e3e8 ${p}%)`;
   };
   const renderV = () => {
     if (!vframes.length) return;
@@ -809,6 +816,7 @@ export function initDP(parent) {
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),
         meanV: s.meanV,
       }));
+      dpDeltaCfg.series[0].color = dpColor();
       chDelta.draw(pts);
       chMeanV.draw(pts);
       const pol = d.policyChanges || [];
@@ -1289,7 +1297,7 @@ export function initExplore(parent) {
   refresh();
 }
 
-// ---- DUELING value/advantage split (Round 5's Dueling-DQN) ----
+// ---- DUELING value/advantage split (the Dueling-DQN alternate pick) ----
 export function initDueling(parent) {
   parent.insertAdjacentHTML(
     "beforeend",

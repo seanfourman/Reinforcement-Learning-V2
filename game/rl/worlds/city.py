@@ -1,4 +1,4 @@
-"""Round 2 — New Donk City hedge maze (SARSA vs Q-Learning).
+"""Round 2 - New Donk City hedge maze (Every-visit MC vs First-visit MC).
 
 A hand-designed, left-right symmetric hedge maze on a grass field. Agent A starts
 in the bottom-left corner, agent B in the bottom-right, and they race to the goal
@@ -6,14 +6,12 @@ cells at the top centre. The maze gives each side lots of twisting local choices
 early on, but the corridors gradually pull both toward the middle, so it's a real
 race rather than two mirrored tunnels.
 
-Scattered through it are SLIPPERY junction cells ('S'). On one, the agent's chosen
-move slips to a perpendicular direction: with the env's slip probability (slip_ctrl,
-0.25 by default) it slides sideways (split evenly left/right), and if the slide hits
-a bush it stays put (see ``env._cross_move`` / ``env.move_dist`` - one shared model).
-That stochastic junction is the professor's slippery-cell requirement and the
-on/off-policy engine.
+This round is a bare navigate-to-goal SKELETON today: moves are deterministic
+(walls block, you stay put), with no coins, hazards, or slip. The old 'S' junction
+cells are kept in the layout for shape only and now behave as plain FLOOR (the
+skeleton has no slip mechanic). The real New Donk City game is still to be built.
 
-Legend:  # bush/wall   . path   S slippery junction   A/B spawns   G goal
+Legend:  # bush/wall   . path   S (legacy junction, now plain floor)   A/B spawns   G goal
 Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns).
 """
 
@@ -27,8 +25,8 @@ ROUND_ID = 2
 TITLE = "New Donk City"
 
 # the maze, drawn by hand (20x20), TRUE mirror-symmetric about the centre column
-# (each side crosses the same walls + slip cells, so neither model is handed an
-# easier or slipperier route), corners open for the spawns. Both spawns solve in 32.
+# (each side crosses the same walls, so neither model is handed an easier route),
+# corners open for the spawns. Both spawns solve in 32.
 MAZE = [
     "#########GG#########",
     "#...S....SS....S...#",

@@ -1,5 +1,6 @@
-"""DQN + Double-DQN + Dueling-DQN for the continuous arenas (Rounds 4-5) - the
-function-approximation rounds of the syllabus. Same agent interface as the
+"""DQN + Double-DQN + Dueling-DQN for the Ruined Kingdom continuous arena (Round 4) -
+the value-based deep round of the syllabus (Round 5, the policy round, is Actor-Critic
+vs PPO in pg.py). Same agent interface as the
 tabular learners in agents.py (policy_action / learn_step / end_episode /
 q_values / state_value / set_epsilon / learned_count, with alpha/gamma/epsilon),
 so match.py drives them unchanged - but the action-value function is a small MLP
@@ -12,14 +13,12 @@ which over-estimates; Double-DQN decouples action SELECTION (online net) from it
 EVALUATION (target net):
     Q_target(s', argmax_a' Q_online(s', a'))
 
-Dueling-DQN (Round 5's contrast) differs in the NETWORK HEAD only: instead of
-one linear layer emitting Q(s,a) directly, a shared trunk splits into a state
-VALUE head V(s) and an ADVANTAGE head A(s,a), recombined as
+Dueling-DQN (an alternate pick, not a round default) differs in the NETWORK HEAD
+only: instead of one linear layer emitting Q(s,a) directly, a shared trunk splits
+into a state VALUE head V(s) and an ADVANTAGE head A(s,a), recombined as
     Q(s,a) = V(s) + A(s,a) - mean_a A(s,a)
-so the net can learn how good a STATE is without needing to nail every action -
-exactly what the rally wants, where most states' worth is "how far along the
-tour am I" regardless of the thrust picked this tick. Target rule stays the
-vanilla max, so the ONLY experimental variable vs DQN is the head.
+so the net can learn how good a STATE is without needing to nail every action.
+Target rule stays the vanilla max, so the ONLY experimental variable vs DQN is the head.
 """
 
 import random

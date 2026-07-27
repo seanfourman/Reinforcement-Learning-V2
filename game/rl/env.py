@@ -343,7 +343,10 @@ class GridWorld(gym.Env):
         r, acc, chosen = self.rng.random(), 0.0, outs[-1]
         for cand in outs:
             acc += cand[0]
-            if r <= acc:
+            # strict '<' (not '<=') so a leading ZERO-probability outcome is never chosen
+            # when rng() returns exactly 0.0 (reachable only at block_ghost_prob=0.0, where
+            # the ghost branch carries prob 0 - it must resolve to the certain Freeze).
+            if r < acc:
                 chosen = cand
                 break
         _, ns, rew, _done = chosen

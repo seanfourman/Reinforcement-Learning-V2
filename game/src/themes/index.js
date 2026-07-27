@@ -13,7 +13,7 @@ const THEMES = {
   city,
   fossilfalls,
   ruined,        // Round 4: continuous DQN arena
-  tostarena,     // Round 5: sequential checkpoint rally (DQN vs Dueling-DQN)
+  tostarena,     // Round 5: continuous Policy Gradient arena (Actor-Critic vs PPO)
 };
 
 export function getTheme(name) {

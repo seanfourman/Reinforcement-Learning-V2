@@ -2125,9 +2125,10 @@ export function createStartMenu({
       padding:9px;color:#5e564a;
       background:repeating-linear-gradient(45deg,var(--c) 0 14px,#fbf8f0 14px 28px);}
     .acard.pc-back{transform:rotateY(180deg);}
-    /* retired family (DP: No.00): view-only + GREYED OUT (disabled look) but fully
-       OPAQUE, not transparent. The red RETIRED stamp keeps its colour so it pops on
-       the grey card. Its algorithm bands cannot be selected (blocked in the handler). */
+    /* view-only family-card styling: GREYED OUT (disabled look) but fully OPAQUE, not
+       transparent, the red stamp keeping its colour so it pops on the grey card, and its
+       algorithm bands unselectable (blocked in the handler). Optional infrastructure: no
+       family is disabled today (all five, DP included, are LIVE), so this path is unused. */
     .acard-slot.disabled .pc-algo{cursor:default;}
     .acard-slot.disabled .pc-front > .pc-paper,
     .acard-slot.disabled .pc-front > .pc-postmark,

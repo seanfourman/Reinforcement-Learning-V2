@@ -504,7 +504,8 @@ class Match:
             old_gamma = self.gamma
             need_env_rebuild = False   # scene layout moved (counts / seed)
             need_agent_rebuild = False  # network shape changed (buffer / width)
-            replan = False              # DP planners must re-solve
+            replan = False              # GLOBAL DP change: BOTH planners must re-solve
+            replan_blue = False         # per-side (Blue's discount / speed): only Blue re-solves
 
             # ---- per-side LEARNING (Blue) ----
             if "alpha" in p:
@@ -532,10 +533,12 @@ class Match:
                 self.dp_max_sweeps = max(1, min(100_000, int(p["dpMaxIters"])))
                 replan = True
 
-            # ---- GLOBAL: DP planning speed (Bellman sweeps per tick, the race knob) ----
+            # ---- Blue's DP planning speed (Bellman sweeps per tick, the race knob) ----
+            # Per-side, exactly like set_red_params: it changes only HOW FAST Blue plans,
+            # never the solution, so it restarts Blue's own race and leaves Red's untouched.
             if "dpPlanning" in p:
                 self.dp_plan_speed = max(0.0, min(10.0, float(p["dpPlanning"])))
-                replan = True
+                replan_blue = True
 
             # ---- GLOBAL: Round-1 game mechanics (ice + "?" ghost/freeze blocks) ----
             # Each is pushed onto the env by _apply_env_config below; because the DP
@@ -616,14 +619,19 @@ class Match:
                     gl, fl = self.env.ghost_len, self.env.freeze_len
                     for a in ("red", "blue"):
                         self.env.status[a] = max(-fl, min(gl, self.env.status[a]))
-                # DP internals / discount changed -> RESTART the incremental plan so the
-                # convergence race replays from scratch with the new settings
-                if replan or (self.gamma != old_gamma and is_dp(self.algo_blue)):
+                # A GLOBAL DP change (theta / max-sweeps / a shared world mechanic) forces
+                # BOTH planners to re-solve. A change to Blue's OWN discount or planning
+                # speed restarts ONLY Blue's plan (Red's race keeps running), mirroring
+                # set_red_params, so tuning one side never disturbs the other's contest.
+                if replan:
                     for ag in (self.red, self.blue):
                         if hasattr(ag, "plan_speed"):     # a DP planner
                             ag.theta = self.dp_theta
                             ag.max_sweeps = self.dp_max_sweeps
                             ag.reset_learning()
+                elif (replan_blue or self.gamma != old_gamma) and is_dp(self.algo_blue) \
+                        and hasattr(self.blue, "plan_speed"):
+                    self.blue.reset_learning()
                 self._apply_epsilon()
             return self.params()
 

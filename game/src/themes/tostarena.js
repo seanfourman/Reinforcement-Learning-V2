@@ -56,8 +56,8 @@ export const tostarena = {
   envIntensity: 0.3,
   envBackground: false,
   camera: { startDist: 38, maxDist: 38 },
-  redName: "DQN",
-  blueName: "Dueling-DQN",
+  redName: "Actor-Critic",
+  blueName: "PPO",
 
   buildScene(scene, world, { renderer } = {}) {
     const group = new THREE.Group();

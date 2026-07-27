@@ -29,6 +29,13 @@ from env import MOVE_ACTIONS, N_ACTIONS, GHOST_LEN, FREEZE_LEN, WALL
 
 GOAL_REWARD = 1.0      # reward for transitioning INTO the goal (then terminal)
 DEFAULT_PLAN_SPEED = 0.6   # Bellman sweeps per tick (the convergence-race knob)
+# Ceiling on the per-sweep V / policy frames kept for the propagation animation and the
+# Stage-1 replay overlay. It must exceed a full run to convergence so the animation ends
+# on the SETTLED field and the replay can index by exact sweep count: truncated Policy
+# Iteration needs ~180 sweeps at the defaults, so the old 80/81 caps stopped it less than
+# halfway. Tied to max_sweeps at record time (so it never exceeds the safety ceiling) and
+# clamped here to keep the /api/dpsweeps payload bounded on very strict theta settings.
+MAX_TRACE_FRAMES = 1200
 
 
 class _DPBase:
@@ -40,7 +47,7 @@ class _DPBase:
 
     mode = "dp"
 
-    def __init__(self, env, agent, gamma=0.97, theta=1e-5, max_sweeps=2000,
+    def __init__(self, env, agent, gamma=0.98, theta=1e-5, max_sweeps=2000,
                  plan_speed=DEFAULT_PLAN_SPEED, seed=0):
         self.env = env
         self.agent = agent              # 'red' | 'blue'
@@ -122,12 +129,18 @@ class _DPBase:
         self._acc = 0.0                 # fractional-sweep accumulator
         self.sweeps = [0]               # iteration count (a list, for the panel's sum())
         self.sweep_log = []             # per-sweep {delta, meanV} for the convergence charts
-        self.backups = 0                # total Bellman backups (fair-compute measure)
+        self.backups = 0                # cumulative STATE-VALUE (V) updates = states x sweeps
+                                        # (what the panel's "State-value updates" shows). A VI
+                                        # sweep and a PI evaluation sweep each write V once per
+                                        # state; PI's policy-IMPROVEMENT scan is NOT counted here
+                                        # (it updates the policy, not V), so the metric compares
+                                        # like-for-like: PI's larger count = its extra sweeps.
         self.policy_changes = []        # PI only: #states whose greedy action changed
         self.v_frames = []              # per-sweep V-slices for the propagation animation
         # Canonical per-sweep policies are kept for Stage-1 replay.  Index 0 is the
-        # initial (pre-sweep) policy, so a recorded sweep count can index this list
-        # directly and show what the agent knew at that exact replay frame.
+        # initial (pre-sweep) policy, so a recorded sweep count indexes this list directly
+        # (up to MAX_TRACE_FRAMES) and shows what the agent knew at that exact replay frame;
+        # a run that exceeds the cap clamps to the last recorded frame.
         self.policy_frames = [self._policy_slice()]
 
     def plan(self):
@@ -179,9 +192,13 @@ class _DPBase:
         self.backups += len(self._model)
         self.sweep_log.append({"delta": round(delta, 6),
                                "meanV": round(sum(self.V.values()) / (len(self.V) or 1), 4)})
-        if len(self.v_frames) < 80:
+        # record a full run to convergence (bounded by the safety ceiling), so the
+        # propagation animation ends on the SETTLED field and the replay overlay can
+        # index by exact sweep count - PI needs ~180 sweeps, far past the old 80/81.
+        cap = min(self.max_sweeps + 1, MAX_TRACE_FRAMES)
+        if len(self.v_frames) < cap:
             self.v_frames.append(self._value_slice())
-        if len(self.policy_frames) < 81:
+        if len(self.policy_frames) < cap:
             self.policy_frames.append(self._policy_slice())
 
     def _sweep(self):
@@ -253,7 +270,7 @@ class PolicyIteration(_DPBase):
     """TRUNCATED (a.k.a. modified) policy iteration: a fixed budget of synchronous
     policy-EVALUATION passes, THEN one greedy IMPROVEMENT, repeat. Running evaluation to
     full convergence before every improvement (classic PI) needs hundreds of sweeps at
-    gamma~0.97 over this state space - far too slow for the live race - and "several
+    gamma~0.98 over this state space - far too slow for the live race - and "several
     rounds of evaluation then an improvement" is exactly what the round is meant to
     show. EVAL_SWEEPS=1 would BE value iteration; a handful shows distinct eval phases."""
 
@@ -281,7 +298,6 @@ class PolicyIteration(_DPBase):
             changed = 0
             for s in self.policy:
                 best_a, _ = self._greedy(s, self.V)
-                self.backups += 1
                 if best_a != self.policy[s]:
                     self.policy[s] = best_a
                     changed += 1

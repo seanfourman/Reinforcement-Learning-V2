@@ -1,4 +1,4 @@
-"""Round 3 — Fossil Falls / Cascade Kingdom (Q-Learning vs Monte-Carlo).
+"""Round 3 - Fossil Falls / Cascade Kingdom (SARSA vs Q-Learning).
 
 A hand-designed, left-right symmetric rock maze in a prehistoric canyon. Agent A
 starts in the bottom-left, agent B in the bottom-right, and they climb a winding
@@ -6,14 +6,13 @@ rock basin to the goal cells at the top centre, where a Power Moon floats over t
 falls. A central rock spine splits the two sides early and the corridors funnel
 both back toward the middle, so it stays a real race up the canyon.
 
-Scattered through it are SLIPPERY wet-rock cells ('S') by the water: on one the
-agent's chosen move slips to a perpendicular direction with the env's slip
-probability (slip_ctrl, 0.25 by default), split evenly left/right; a slip into rock
-stays put (see ``env._cross_move`` / ``env.move_dist`` - one shared model). That
-stochastic junction is the professor's slippery-cell requirement, and the contrast
-it draws here is TD bootstrapping (Q-Learning) vs full-episode returns (Monte-Carlo).
+This round is a bare navigate-to-goal SKELETON today: moves are deterministic
+(walls block, you stay put), with no coins, hazards, or slip. The old 'S' wet-rock
+cells are kept for shape only and now behave as plain FLOOR (the skeleton has no
+slip mechanic). The TD contrast (on-policy SARSA vs off-policy Q-Learning) rides on
+the bare maze; the real Fossil Falls game is still to be built.
 
-Legend:  # rock/wall   . path   S slippery wet rock   A/B spawns   G goal (moon)
+Legend:  # rock/wall   . path   S (legacy wet rock, now plain floor)   A/B spawns   G goal (moon)
 Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns).
 """
 

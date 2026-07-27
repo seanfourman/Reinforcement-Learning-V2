@@ -6,11 +6,11 @@ each round pits two **rival algorithms** against each other in a themed arena:
 
 | Round | Arena                         | Red vs Blue                          |
 | ----- | ----------------------------- | ------------------------------------ |
-| 1     | Peach's Castle                | **Value Iteration** vs **Policy Iteration** (navigate-to-goal gridworld) |
-| 2     | New Donk City                 | **SARSA** vs **Q-Learning** (on-policy vs off-policy TD) |
-| 3     | Fossil Falls                  | **Q-Learning** vs **Monte-Carlo** (bootstrapping vs episodic returns) |
+| 1     | Peach's Castle                | **Value Iteration** vs **Policy Iteration** (Dynamic Programming: a stochastic maze race) |
+| 2     | New Donk City                 | **Every-visit MC** vs **First-visit MC** (Monte-Carlo) |
+| 3     | Fossil Falls                  | **SARSA** vs **Q-Learning** (on-policy vs off-policy TD) |
 | 4     | Ruined Kingdom                | **DQN** vs **Double-DQN** (continuous, function approximation) |
-| 5     | Tostarena                     | **DQN** vs **Dueling-DQN** (sequential checkpoint rally) |
+| 5     | Tostarena                     | **Actor-Critic** vs **PPO** (Policy Gradient) |
 
 The two models are **real Python reinforcement learning** running in a background
 thread; the browser is a live 3D viewer that polls the match and renders it. Pure
@@ -66,7 +66,8 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 | Dynamic Programming       | Value Iteration + Policy Iteration (`rl/dp.py`, Round 1)     |
 | TD control                | Q-Learning (off-policy), SARSA (on-policy), Expected-SARSA   |
 | Monte-Carlo control       | episode-return updates                                      |
-| Function approximation    | DQN / Double-DQN / Dueling-DQN (`rl/dqn.py`, Rounds 4-5)     |
+| Function approximation    | DQN / Double-DQN / Dueling-DQN (`rl/dqn.py`, Round 4)        |
+| Policy gradient           | Actor-Critic / PPO / REINFORCE (`rl/pg.py`, Round 5)         |
 | Explore vs exploit        | ε-greedy with a decaying ε (shown live in the panel)        |
 | V & Q functions           | the value heatmap (V) + the click-a-tile Q inspector        |
 
@@ -79,7 +80,8 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 | `rl/continuous.py`   | `ContinuousArena` for the Round 4/5 continuous arenas         |
 | `rl/dp.py`           | Value Iteration + Policy Iteration planners (Round 1)         |
 | `rl/agents.py`       | Tabular agents: Q-Learning, SARSA, Expected-SARSA, Monte-Carlo |
-| `rl/dqn.py`          | The DQN family (Rounds 4-5)                                   |
+| `rl/dqn.py`          | The DQN family: DQN / Double-DQN / Dueling-DQN (Round 4)      |
+| `rl/pg.py`           | Policy Gradient: Actor-Critic / PPO / REINFORCE (Round 5)     |
 | `rl/match.py`        | Live self-play loop, stats, value grids, thread-safe controls |
 | `rl/worlds/`         | Per-round world layouts + the round/algorithm registry        |
 | `src/main.js`        | Live poll client: builds the scene, drives the render loop    |
