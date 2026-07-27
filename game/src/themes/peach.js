@@ -132,9 +132,8 @@ export const peach = {
     const redSpawn = at("R")[0];
     const blueSpawn = at("B")[0];
     const onBorder = (r, c) => r === 0 || c === 0 || r === H - 1 || c === W - 1;
-    // Round-1 game layout (empty on skeleton rounds): per-agent coins/blocks + ice
+    // Round-1 game layout (empty on skeleton rounds): per-agent coins/blocks + puddles
     const slipCells = world.slipCells || [];
-    const slipSet = new Set(slipCells.map(([r, c]) => `${r},${c}`));
 
     // ---- textures (the castle's own PBR set) --------------------------------
     const loader = new THREE.TextureLoader();
@@ -264,41 +263,19 @@ export const peach = {
       const LIGHT = 0xf7efe0;
       const DARK = 0x847a6c;
       const GOALC = 0xf0cf82;
-      const ICEC = 0xbfe8ff; // slippery tiles read as pale blue ice
       walk.forEach(([r, c], i) => {
         const p = cw(r, c);
         bd.position.set(p.x, 0.035, p.z); // top ~0.045
         bd.updateMatrix();
         tiles.setMatrixAt(i, bd.matrix);
         const goalCell = rows[r][c] === "E";
-        const iceCell = slipSet.has(`${r},${c}`);
         tiles.setColorAt(
           i,
-          bcol.set(goalCell ? GOALC : iceCell ? ICEC : (r + c) % 2 === 0 ? LIGHT : DARK),
+          bcol.set(goalCell ? GOALC : (r + c) % 2 === 0 ? LIGHT : DARK),
         );
       });
       if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
       group.add(tiles);
-
-      // a thin glossy sheen over the ice tiles so they read as slick (not just blue)
-      if (slipCells.length) {
-        const iceMat = new THREE.MeshStandardMaterial({
-          color: 0xdff3ff, roughness: 0.1, metalness: 0.15,
-          transparent: true, opacity: 0.5,
-        });
-        const ice = new THREE.InstancedMesh(
-          new THREE.BoxGeometry(0.92 * cell, 0.014, 0.92 * cell), iceMat, slipCells.length,
-        );
-        const io = new THREE.Object3D();
-        slipCells.forEach(([r, c], i) => {
-          const p = cw(r, c);
-          io.position.set(p.x, 0.052, p.z); // just above the board tiles
-          io.updateMatrix();
-          ice.setMatrixAt(i, io.matrix);
-        });
-        ice.receiveShadow = true;
-        group.add(ice);
-      }
 
       // slim gold frame standing a touch proud around the board perimeter
       const frameMat = new THREE.MeshStandardMaterial({
@@ -594,26 +571,32 @@ export const peach = {
       return obj;
     };
 
-    // COINS: recolored per side (the gold albedo is dropped - a clean team-metal coin)
+    // COINS: use the Coin asset's OWN textures (so it reads as a real coin), tinted per team
     objLoader
       .loadAsync("./assets/objects/Coin/Coin.dae")
       .then((asset) => {
         if (disposed) return;
         deskin(asset.scene);
+        const cdir = "./assets/objects/Coin/Textures/";
+        const cAlb = objTex(cdir + "coinbody00_alb.png");
+        const cNrm = objTex(cdir + "coinbody00_nrm.png", false);
         const mk = (cells, color, emissive, arr) => {
           if (!(cells && cells.length)) return;
+          // vivid team coins: the coin relief (map+normal) but a bright tint + a strong
+          // same-hue emissive GLOW (bloom-catching) + a shiny low-roughness metal
           const mat = new THREE.MeshStandardMaterial({
-            color, emissive, emissiveIntensity: 0.35, metalness: 0.9, roughness: 0.26,
+            map: cAlb, normalMap: cNrm,
+            color, emissive, emissiveIntensity: 0.6, metalness: 0.9, roughness: 0.22,
           });
           for (const [r, c] of cells) {
-            const coin = fitObject(asset.scene.clone(true), 0.5 * cell);
+            const coin = fitObject(asset.scene.clone(true), 0.55 * cell);
             setMat(coin, mat);
             // hover ABOVE the 0.7-tall maze walls so the coin reads from the game camera
             arr.push(place(coin, r, c, 0.95, true));
           }
         };
-        mk(world.redCoins, 0xff5a44, 0x5e1005, collect.redCoins);
-        mk(world.blueCoins, 0x5a8dff, 0x0a1a5e, collect.blueCoins);
+        mk(world.redCoins, 0xff5236, 0xff2c0e, collect.redCoins);
+        mk(world.blueCoins, 0x3d86ff, 0x1748ff, collect.blueCoins);
       })
       .catch((e) => console.warn("Coin model failed to load", e));
 
@@ -676,6 +659,83 @@ export const peach = {
         mk(world.blueBlocks, 0x0a1a5e, collect.blueBlocks);
       })
       .catch((e) => console.warn("Question Block model failed to load", e));
+
+    // ---- slippery PUDDLES: the SAME New Donk City cartoon water ------------------
+    // A generated seamless turquoise water texture on an EXTRUDED organic blob (a low
+    // rounded bulge), ripple normals + texture scroll in update(). Ported from city.js.
+    if (slipCells.length) {
+      const waterCanvasEl = () => {
+        const S = 256, cv = document.createElement("canvas");
+        cv.width = cv.height = S;
+        const ctx = cv.getContext("2d"), img = ctx.createImageData(S, S), d = img.data;
+        const lo = [24, 78, 140], hi = [58, 128, 190];
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            const u = x / S, v = y / S;
+            let n = 0.5 + 0.3 * Math.sin(2 * Math.PI * (u + v))
+                        + 0.2 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
+            n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
+            const i = (y * S + x) * 4;
+            d[i] = lo[0] + (hi[0] - lo[0]) * n;
+            d[i + 1] = lo[1] + (hi[1] - lo[1]) * n;
+            d[i + 2] = lo[2] + (hi[2] - lo[2]) * n;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return cv;
+      };
+      const waterTex = new THREE.CanvasTexture(waterCanvasEl());
+      waterTex.colorSpace = THREE.SRGBColorSpace;
+      waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+      waterTex.repeat.set(1.6, 1.6);
+      waterTex.anisotropy = maxAniso;
+      const waterNrm = loader.load("./assets/textures/mushroom-kingdom/water00_nrm.png");
+      waterNrm.wrapS = waterNrm.wrapT = THREE.RepeatWrapping;
+      waterNrm.repeat.set(2.2, 2.2);
+      waterNrm.anisotropy = maxAniso;
+      const waterMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, map: waterTex, transparent: true, opacity: 0.92,
+        roughness: 0.3, metalness: 0.1, emissive: 0x123a66, emissiveIntensity: 0.06,
+        normalMap: waterNrm, normalScale: new THREE.Vector2(0.14, 0.14), depthWrite: false,
+      });
+      const hashF = (seed, salt) => {
+        const x = Math.sin(seed * 374.761 + salt * 66.826) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      const puddleShape = (seed) => {
+        const s = new THREE.Shape();
+        const ph1 = hashF(seed, 1) * 6.283, ph2 = hashF(seed, 2) * 6.283;
+        const radius = (0.34 + hashF(seed, 4) * 0.03) * cell;
+        const rx = radius * (1.02 + (hashF(seed, 5) - 0.5) * 0.08);
+        const ry = radius * (0.98 + (hashF(seed, 6) - 0.5) * 0.08);
+        const n = 64;
+        for (let i = 0; i <= n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          const w = 1 + 0.06 * Math.sin(a * 3 + ph1) + 0.035 * Math.sin(a * 5 + ph2);
+          const x = Math.cos(a) * rx * w, y = Math.sin(a) * ry * w;
+          if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+        }
+        return s;
+      };
+      for (const [r, c] of slipCells) {
+        const seed = (r * 73856 + c * 19349) >>> 0;
+        const geo = new THREE.ExtrudeGeometry(puddleShape(seed), {
+          depth: 0.015 * cell, bevelEnabled: true,
+          bevelThickness: 0.04 * cell, bevelSize: 0.045 * cell, bevelSegments: 4,
+        });
+        geo.rotateX(-Math.PI / 2);
+        const p = cw(r, c);
+        const puddle = new THREE.Mesh(geo, waterMat);
+        puddle.position.set(p.x, 0.05, p.z); // a low rounded bulge on the board
+        puddle.renderOrder = 3;
+        puddle.receiveShadow = true;
+        group.add(puddle);
+      }
+      animated.water = waterNrm;
+      animated.waterTex = waterTex;
+      animated.waterMat = waterMat;
+    }
 
     // ---- the chase: Bowser hunts Peach around the grand staircase ----------
     // A decorative lap between the two SIDE staircases, whose feet sit right
@@ -912,6 +972,14 @@ export const peach = {
         // subtle animation: the goal inlay breathes
         if (animated.inlay)
           animated.inlay.emissiveIntensity = 0.25 + 0.15 * Math.sin(1.6 * t);
+        // slippery puddles: pulse + scroll the water (same as the New Donk City round)
+        if (animated.water) {
+          animated.waterMat.opacity = 0.82 + 0.04 * Math.sin(t * 1.4);
+          animated.water.offset.x = t * 0.015;
+          animated.water.offset.y = t * 0.011;
+          animated.waterTex.offset.x = t * 0.018;
+          animated.waterTex.offset.y = t * 0.012;
+        }
         // spin the coins + Shine, gently bob every collectible
         for (const s of spin) {
           if (s.spin) s.obj.rotation.y = t * 1.7;

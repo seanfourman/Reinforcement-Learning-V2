@@ -42,7 +42,8 @@ HALF = CELLS // 2                       # 4   left-half cell columns
 
 BRAID_P = 0.12                          # chance to open a between-floor wall (loops)
 COINS_PER_SIDE = 3                      # optional SCORING coins per agent (mirror pair)
-ICE_MAX = 5                             # cells in the shared icy (slippery) blob per side
+ICE_PER_SIDE = 3                        # scattered slippery PUDDLE cells per side (mirrored
+                                        # -> ~6 total), spread across the board, off the goal
 
 
 def _mirror(c):
@@ -147,23 +148,20 @@ def generate(seed=None):
     red_block = take(0.46)
     red_blocks = [red_block] if red_block else []
 
-    # a small SHARED ice blob: grow a connected patch from a mid-left seed (corridor
-    # cells included), strictly left of the axis, then mirror it to the right half.
+    # SHARED slippery puddles: SCATTER a few across the board (not a blob), kept clear
+    # of the Moon and spread apart, on the left half then MIRRORED to the right. Random
+    # per seed but spaced out so they land in varied, relevant spots.
+    mr, mc = moon
+    ice_pool = [cell for cell in cand if cell not in occupied
+                and abs(cell[0] - mr) + abs(cell[1] - mc) > 4]   # keep off the goal area
+    rng.shuffle(ice_pool)
     ice_left = []
-    seed = take(0.66)
-    if seed:
-        seen_ice, stack = {seed}, [seed]
-        while stack and len(ice_left) < ICE_MAX:
-            cur = stack.pop()
-            ice_left.append(cur)
-            cr, cc = cur
-            nbrs = [(cr + dr, cc + dc) for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))]
-            rng.shuffle(nbrs)
-            for nb in nbrs:
-                if nb in dist and nb[1] < MID and nb not in seen_ice and nb not in occupied:
-                    seen_ice.add(nb)
-                    stack.append(nb)
-    occupied |= set(ice_left)
+    for cell in ice_pool:
+        if len(ice_left) >= ICE_PER_SIDE:
+            break
+        if all(abs(cell[0] - o[0]) + abs(cell[1] - o[1]) > 3 for o in ice_left):  # spread out
+            ice_left.append(cell)
+            occupied.add(cell)
 
     def _m(cell):
         return (cell[0], _mirror(cell[1]))          # a left cell -> its blue mirror
