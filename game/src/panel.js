@@ -91,7 +91,7 @@ export const GLOBAL_PARAMS = [
   // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
   // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
   { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },
-  { key: 'blockGhostProb', label: 'Mystery Block outcome', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a Mystery Block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}% Ghost` },
+  { key: 'blockGhostProb', label: 'Mystery Block outcome', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a Mystery Block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, desc: 'Number of landed tiles for which wall-phasing stays active.', fmt: (v) => `${Math.round(v)}` },
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
@@ -455,7 +455,7 @@ const N_GROUPS = [
     'The task both AIs are racing to solve, and how their two methods differ.', 'Challenge'],
   ['tune', 'Tune your AI', ['rl-sec-hyper'],
     'Change how your AI learns. Effects show up live.', 'Tune'],
-  ['advanced', 'World', ['rl-sec-algo', 'rl-sec-world'],
+  ['advanced', 'World', ['rl-sec-shared', 'rl-sec-algo', 'rl-sec-world'],
     'Deeper knobs for the algorithm and the world itself. Safe to ignore.', 'World'],
   ['inside', 'Inside the AI', ['rl-sec-value', 'rl-polagree', 'rl-dp', 'rl-va', 'rl-dqn', 'rl-actdist'],
     'Peek at what your AI has actually learned.', 'Inside'],
@@ -548,8 +548,12 @@ export function initPanel() {
       ${showHelp && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
   };
-  const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
-  const worldParams = GLOBAL_PARAMS.filter((p) => p.sect === 'world');
+  // Scope drives placement: coloured controls tune one selected model; black
+  // controls affect both models / the run / the environment and belong in World.
+  const tuneParams = [...PARAMS, ...GLOBAL_PARAMS].filter((p) => p.color === C_OURS);
+  const sharedParams = PARAMS.filter((p) => p.color !== C_OURS);
+  const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo' && p.color !== C_OURS);
+  const worldParams = GLOBAL_PARAMS.filter((p) => p.sect === 'world' && p.color !== C_OURS);
 
   const panel = document.createElement('div');
   panel.id = 'rl-panel';
@@ -597,12 +601,12 @@ export function initPanel() {
       </div>
     </section>
     <section id="rl-sec-hyper" class="qk">
-      <h2>Hyperparameters</h2>
-      <div class="plegend">
-        <span><i class="ple-hue"></i><span id="rl-ple-model">Your model</span></span>
-        <span><i style="background:#141518"></i>Both models</span>
-      </div>
-      ${PARAMS.map(ctlHTML).join('')}
+      <h2><span id="rl-ple-model">Your model</span> parameters</h2>
+      ${tuneParams.map(ctlHTML).join('')}
+    </section>
+    <section id="rl-sec-shared">
+      <h2>Run &amp; episodes</h2>
+      ${sharedParams.map(ctlHTML).join('')}
     </section>
     <section id="rl-sec-algo">
       <h2>Algorithm internals</h2>
@@ -858,7 +862,7 @@ export function initPanel() {
       el.style.display = vis(el.dataset.scope) ? '' : 'none';
     });
     // collapse a settings card whose every slider is now hidden
-    ['rl-sec-hyper', 'rl-sec-algo', 'rl-sec-world'].forEach((id) => {
+    ['rl-sec-hyper', 'rl-sec-shared', 'rl-sec-algo', 'rl-sec-world'].forEach((id) => {
       const sec = panel.querySelector('#' + id);
       if (!sec) return;
       sec.hidden = ![...sec.querySelectorAll('.ctl[data-scope]')].some((el) => el.style.display !== 'none');
