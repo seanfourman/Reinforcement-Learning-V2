@@ -54,15 +54,11 @@ const STYLE = `
 .fb-side.red .fb-nm{background:linear-gradient(180deg,#ff6a5d,#bf1c1c);}
 /* BLACK track + thick black cartoonish border + 3D shadow; blue/red glossy fill kept */
 .fb-meter{position:relative;z-index:5;width:300px;height:18px;border:3px solid #000;border-radius:5px;
-  overflow:hidden;contain:paint;
   background:#0b0b0b;box-shadow:0 3px 0 #000,inset 0 2px 4px rgba(0,0,0,.7);}
 .fb-side.blue .fb-meter{transform:skewX(12deg);left:-22px;}
 .fb-side.red .fb-meter{transform:skewX(-12deg);left:22px;}
 .fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:200% 100%;border-radius:2px;
   animation:fb-shimmer 1.4s linear infinite;}
-.fb-fill.is-empty,.fb-fill[hidden]{display:none!important;visibility:hidden!important;opacity:0!important;
-  animation:none!important;background-image:none!important;box-shadow:none!important;
-  -webkit-mask-image:none!important;mask-image:none!important;}
 .fb-side.red .fb-fill{left:auto;right:0;}
 .fb-side.blue .fb-fill{background-image:linear-gradient(90deg,#1f53c8,#5aa6ff,#cfe6ff,#5aa6ff,#1f53c8);
   box-shadow:inset 0 3px 4px rgba(255,255,255,.55),inset 0 -4px 6px rgba(0,0,0,.35);
@@ -151,7 +147,7 @@ export function initHud() {
       <img class="fb-port" id="fb-port-${side}" alt="" />
       <div class="fb-col">
         <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">-</span></div>
-        <div class="fb-meter"><div class="fb-fill is-empty" id="fb-fill-${side}" hidden></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
+        <div class="fb-meter"><div class="fb-fill" id="fb-fill-${side}"></div><span class="fb-rate" id="fb-rate-${side}"></span></div>
         <div class="fb-dots" id="fb-dots-${side}"></div>
       </div>
     </div>`;
@@ -321,18 +317,12 @@ export function initHud() {
   const tickBars = () => {
     barCur.blue += (barTarget.blue - barCur.blue) * 0.08;
     barCur.red += (barTarget.red - barCur.red) * 0.08;
-    const render = (fill, rate, side, dir) => {
-      const shown = Math.round(barCur[side]);
-      const empty = shown === 0;
-      fill.hidden = empty;
-      fill.classList.toggle("is-empty", empty);
-      fill.style.display = empty ? "none" : "block";
-      fill.style.width = empty ? "0px" : `${barCur[side].toFixed(2)}%`;
-      rate.textContent = `${shown}%`;
-      if (!empty) setTipFade(fill, barCur[side], dir);
-    };
-    render(fillBlue, rateBlue, "blue", "right");
-    render(fillRed, rateRed, "red", "left");
+    fillBlue.style.width = `${barCur.blue.toFixed(2)}%`;
+    fillRed.style.width = `${barCur.red.toFixed(2)}%`;
+    rateBlue.textContent = `${Math.round(barCur.blue)}%`;
+    rateRed.textContent = `${Math.round(barCur.red)}%`;
+    setTipFade(fillBlue, barCur.blue, "right"); // blue charges right, fade the right tip
+    setTipFade(fillRed, barCur.red, "left"); // red charges left, fade the left tip
     requestAnimationFrame(tickBars);
   };
   requestAnimationFrame(tickBars);
