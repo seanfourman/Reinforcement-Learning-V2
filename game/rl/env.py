@@ -42,7 +42,7 @@ COIN_REWARD = 0.2      # value of an optional coin (a detour trade-off vs step c
 GHOST_LEN = 4          # steps of wall-phasing granted by a "?" ghost roll
 FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
 SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
-BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the "?" gamble worth taking so the
+BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble worth taking so the
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
 
 
@@ -61,7 +61,7 @@ class GridWorld(gym.Env):
         self.slip_prob = SLIP_PROB         # total chance an ice move slips (half each side)
         self.ghost_len = GHOST_LEN         # floor tiles reachable while wall-phasing
         self.freeze_len = FREEZE_LEN       # turns stuck after a freeze roll
-        self.block_ghost_prob = 0.5        # P(Ghost) on a "?" block; P(Freeze) = 1 - this
+        self.block_ghost_prob = 0.5        # P(Ghost) on a Mystery Block; P(Freeze) = 1 - this
         self.coin_reward = COIN_REWARD     # value of an optional coin
         self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
         self.world = None

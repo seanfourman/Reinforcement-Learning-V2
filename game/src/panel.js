@@ -87,15 +87,15 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, fmt: fLoc },
   { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, fmt: fLoc },
-  // --- Round-1 game mechanics (Peach's Castle: ice puddles + "?" ghost/freeze blocks).
+  // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
   // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
   // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
   { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },
-  { key: 'blockGhostProb', label: '? block: Ghost chance', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a ? block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}% (else Freeze)` },
+  { key: 'blockGhostProb', label: 'Mystery Block outcome', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a Mystery Block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}% Ghost` },
   { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, desc: 'Number of landed tiles for which wall-phasing stays active.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a ? block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'coinReward', label: 'Coin value', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
-  { key: 'blockReward', label: 'Ghost bonus', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a ? block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -353,6 +353,8 @@ const STYLE = `
 /* descriptive note under the Algorithm-internals / World settings cards */
 #rl-panel .cfgnote{font-size:10.5px;color:#a2a5ac;margin:12px 0 0;line-height:1.45;}
 #rl-panel .ctl-help{font-size:9.8px;color:#92969e;line-height:1.4;margin:6px 0 0;}
+#rl-panel .range-ends{display:flex;justify-content:space-between;margin-top:5px;color:#8a8d94;
+  font-size:9px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
 #rl-panel .dp-status{font-weight:800;}
 #rl-panel .dp-status.ok{color:#1f7a3d;}
 #rl-panel .dp-status.limit{color:#b45b12;}
@@ -536,10 +538,13 @@ export function initPanel() {
     const learn = p.color === C_OURS;   // a per-model learning knob (tints blue <-> red)
     const fill = learn ? 'var(--hue)' : (p.color || C_GLOBAL);
     const showHelp = ['dpTheta', 'dpMaxIters', 'dpPlanning'].includes(p.key);
+    const outcomeEnds = p.key === 'blockGhostProb'
+      ? '<div class="range-ends"><span>Freeze</span><span>Ghost</span></div>' : '';
     return `
     <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
       <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
+      ${outcomeEnds}
       ${showHelp && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
   };

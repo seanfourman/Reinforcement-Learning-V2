@@ -702,7 +702,7 @@ export const peach = {
         mk(world.redBlocks, TEAM_GLOW.red, collect.redBlocks);
         mk(world.blueBlocks, TEAM_GLOW.blue, collect.blueBlocks);
       })
-      .catch((e) => console.warn("Question Block model failed to load", e));
+      .catch((e) => console.warn("Mystery Block model failed to load", e));
 
     // ---- slippery PUDDLES: the SAME New Donk City cartoon water ------------------
     // A generated seamless turquoise water texture on an EXTRUDED organic blob (a low

@@ -121,7 +121,7 @@ class Match:
         self.slip_prob = SLIP_PROB              # ice/puddle slip chance (half each side)
         self.ghost_len = GHOST_LEN              # floor tiles reachable while wall-phasing
         self.freeze_len = FREEZE_LEN            # turns stuck after a freeze roll
-        self.block_ghost_prob = 0.5             # P(Ghost) on a "?" block; P(Freeze) = 1-this
+        self.block_ghost_prob = 0.5             # P(Ghost) on a Mystery Block
         self.coin_reward = COIN_REWARD          # value of an optional coin
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
         # DQN learners (continuous rounds 4-5)
@@ -932,7 +932,7 @@ class Match:
             meta = self._matchup()
             slip_prob = 0.0
             if not arena and getattr(env, "rich", False):
-                # Round 1's real game: a stochastic maze with optional coins + "?" blocks
+                # Round 1's real game: a stochastic maze with optional coins + Mystery Blocks
                 actions = ["North", "South", "West", "East"]
                 nbits = env._n_coins["blue"] + len(env.block_cells["blue"])
                 # floor cells carry all statuses; interior wall cells (ghost-only) carry
@@ -944,22 +944,22 @@ class Match:
                 gp = env.block_ghost_prob
                 sp = env.slip_prob
                 state_size = ((n_floor * (gl + fl + 1) + n_wall * gl) * (1 << nbits))
-                state_desc = ("your tile, which of your own coins/blocks you have claimed, "
+                state_desc = ("your tile, which of your own coins/Mystery Blocks you have claimed, "
                               "and your power-up / frozen countdown")
-                observation = ("Each model sees its own tile, its collected coins/blocks, and "
+                observation = ("Each model sees its own tile, its collected coins/Mystery Blocks, and "
                                "any active ghost or freeze timer - the rival stays invisible, so "
                                "it still plans as a single agent.")
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model owns a "
-                            "mirror-image set of coins/blocks, so the race is fair but solo.")
+                            "mirror-image set of coins/Mystery Blocks, so the race is fair but solo.")
                 dynamics = (f"Deterministic on dry tiles. On ICE a move slips sideways "
                             f"({round((1 - sp) * 100)}% intended, {round(sp * 50)}% each "
-                            f"perpendicular). A '?' block is a one-time gamble: {round(gp * 100)}% "
+                            f"perpendicular). A Mystery Block is a one-time gamble: {round(gp * 100)}% "
                             f"Ghost (phase through walls, up to {gl} floor tiles - the timer only "
                             f"counts tiles landed on, so you can never be trapped mid-wall) or "
                             f"{round((1 - gp) * 100)}% Freeze (stuck for {fl} turns).")
-                rewards = [["Step", -0.01], ["Coin", round(env.coin_reward, 2)],
-                           ["? block -> Ghost", round(env.block_reward, 2)],
+                rewards = [["Step", -0.01], ["Coin reward", round(env.coin_reward, 2)],
+                           ["Mystery Block reward", round(env.block_reward, 2)],
                            ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
                        "simultaneous arrival is a draw.")
