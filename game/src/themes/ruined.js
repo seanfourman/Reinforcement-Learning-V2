@@ -880,6 +880,9 @@ export const ruined = {
         root.updateMatrixWorld(true);
         root.traverse((o) => {
           if (!o.isMesh) return;
+          // Capture-only Mario moustache. It is exported as its own skinned
+          // mesh, so hiding it leaves the Banzai body, mouth and eyes intact.
+          if (o.name === "Eye1__BodyMT00") o.visible = false;
           o.castShadow = true;
           o.receiveShadow = false;
           track(o.geometry);
