@@ -384,9 +384,9 @@ function shade(r, g, b, f) {
   return `rgb(${Math.round(r * f)},${Math.round(g * f)},${Math.round(b * f)})`;
 }
 
-// draw a value grid as an ISOMETRIC 3D relief (the "value surface"): each cell is a
-// bar whose height + colour track V. Painter-ordered back-to-front. Used by the
-// Value-Iteration animation so scrubbing sweeps shows the surface rising from the goal.
+// Draw a value grid from directly above, matching the board orientation.  The former
+// isometric relief looked dramatic but made it unnecessarily hard to relate a value
+// cell to the actual maze while scrubbing propagation.
 function drawVSurface(canvas, grid) {
   const ctx = canvas.getContext("2d");
   const H = grid.length,
@@ -416,59 +416,27 @@ function drawVSurface(canvas, grid) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cw, ch);
   if (r1 < 0) return;
-  const R = r1 - r0 + 1,
-    C = c1 - c0 + 1,
-    span = hi - lo || 1;
-  const hw = (cw * 0.92) / (R + C); // half-width of a tile diamond
-  const hh = hw * 0.5;
-  const barH = ch * 0.34; // tallest bar
-  const ox = cw / 2 + ((R - C) * hw) / 2;
-  const oy = ch * 0.3;
-  const cells = [];
-  for (let r = r0; r <= r1; r++)
-    for (let c = c0; c <= c1; c++) if (grid[r][c] != null) cells.push([r, c]);
-  cells.sort((a, b) => a[0] + a[1] - (b[0] + b[1])); // back (small r+c) first
-  for (const [r, c] of cells) {
-    const rr = r - r0,
-      cc = c - c0;
-    const t = (grid[r][c] - lo) / span,
-      h = t * barH;
-    const x = ox + (cc - rr) * hw,
-      yb = oy + (cc + rr) * hh,
-      yt = yb - h;
-    const R8 = 41 + t * 179,
-      G8 = 107 - t * 54,
-      B8 = 235 - t * 189;
-    ctx.strokeStyle = "rgba(20,22,30,0.10)";
-    ctx.lineWidth = 0.5;
-    ctx.fillStyle = shade(R8, G8, B8, 0.72); // left face
-    ctx.beginPath();
-    ctx.moveTo(x - hw, yt);
-    ctx.lineTo(x, yt + hh);
-    ctx.lineTo(x, yb + hh);
-    ctx.lineTo(x - hw, yb);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = shade(R8, G8, B8, 0.55); // right face
-    ctx.beginPath();
-    ctx.moveTo(x + hw, yt);
-    ctx.lineTo(x, yt + hh);
-    ctx.lineTo(x, yb + hh);
-    ctx.lineTo(x + hw, yb);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = `rgb(${Math.round(R8)},${Math.round(G8)},${Math.round(B8)})`; // top
-    ctx.beginPath();
-    ctx.moveTo(x, yt - hh);
-    ctx.lineTo(x + hw, yt);
-    ctx.lineTo(x, yt + hh);
-    ctx.lineTo(x - hw, yt);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+  const R = r1 - r0 + 1, C = c1 - c0 + 1, span = hi - lo || 1;
+  const pad = 22;
+  const size = Math.min((cw - pad * 2) / C, (ch - pad * 2) / R);
+  const ox = (cw - C * size) / 2, oy = (ch - R * size) / 2;
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const v = grid[r][c];
+    const x = ox + (c - c0) * size, y = oy + (r - r0) * size;
+    if (v == null) ctx.fillStyle = "#d9dce2";
+    else {
+      const t = (v - lo) / span;
+      ctx.fillStyle = `rgb(${Math.round(41 + t * 179)},${Math.round(107 - t * 54)},${Math.round(235 - t * 189)})`;
+    }
+    ctx.fillRect(x, y, size, size);
+    ctx.strokeStyle = "rgba(20,22,30,.12)";
+    ctx.lineWidth = 0.6;
+    ctx.strokeRect(x, y, size, size);
   }
+  ctx.fillStyle = "#686d76";
+  ctx.font = "700 10px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("N", cw / 2, Math.max(11, oy - 7));
 }
 
 // ---- per-side learning curves ----
@@ -562,7 +530,7 @@ export function initReplay(parent) {
       // hand the frames to the shared player, PAUSED (Playback takes over from here);
       // pass the model so the Playback scrubber matches (red for Red runs)
       const label = `${model === "red" ? "Red" : "Blue"} #${rank + 1} - ${r.steps} steps`;
-      window.RL?.replay?.load?.(r.frames || [], label, model);
+      window.RL?.replay?.load?.(r.frames || [], label, model, r.policyFrames || []);
     } catch (e) {
       /* ignore a failed fetch - the list stays as-is */
     }
@@ -607,11 +575,9 @@ export function initDP(parent) {
     <section id="rl-dp" hidden>
       <h2>DP convergence</h2>
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
+      <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning…</b></div>
       <div class="stat"><span>Bellman backups</span><b id="rl-dp-backups">-</b></div>
-      <div class="btns" id="rl-dp-seg" style="margin-top:10px;">
-        <button data-a="red" class="active">Value Iteration</button>
-        <button data-a="blue">Policy Iteration</button>
-      </div>
+      <p class="hint">This always follows the model selected at the top of the Control Menu.</p>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -625,7 +591,7 @@ export function initDP(parent) {
   );
   const q = (s) => parent.querySelector(s);
   const sec = q("#rl-dp");
-  let dpAgent = "red";
+  let dpAgent = "blue";
   // plain decimal string, NEVER scientific notation (e.g. 0.00001, not 1e-5),
   // trimmed of trailing zeros. Keeps ~3 significant figures.
   const plainDec = (x) => {
@@ -657,13 +623,10 @@ export function initDP(parent) {
     chMeanV.resize();
     chPol.resize();
   });
-  q("#rl-dp-seg").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-a]");
-    if (!b) return;
-    [...q("#rl-dp-seg").children].forEach((x) =>
-      x.classList.toggle("active", x === b),
-    );
-    dpAgent = b.dataset.a;
+  window.addEventListener("rl-modelview", (e) => {
+    dpAgent = e.detail?.model === "cpu" ? "red" : "blue";
+    vframes = [];
+    vseek.value = 0;
     refresh();
     loadSweeps();
   });
@@ -721,6 +684,17 @@ export function initDP(parent) {
         d.name || d.method || "Dynamic Programming";
       q("#rl-dp-sweeps").textContent = `${d.sweepCount} sweeps - γ ${d.gamma}`;
       q("#rl-dp-backups").textContent = (d.backups || 0).toLocaleString();
+      const status = q("#rl-dp-status");
+      status.className = "dp-status";
+      if (d.hitLimit) {
+        status.textContent = "Sweep limit reached";
+        status.classList.add("limit");
+      } else if (d.converged) {
+        status.textContent = "Converged — policy is stable";
+        status.classList.add("ok");
+      } else {
+        status.textContent = `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
+      }
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),
         meanV: s.meanV,
@@ -730,6 +704,7 @@ export function initDP(parent) {
       const pol = d.policyChanges || [];
       polWrap.hidden = pol.length === 0; // only PI has policy-improvement iterations
       if (pol.length) chPol.draw(pol.map((c, i) => ({ i, changed: c })));
+      loadSweeps(); // frames grow while the selected planner is running
     } catch (e) {
       /* server warming up */
     }
@@ -972,7 +947,7 @@ export function initBriefing(parent) {
   if (hdr) hdr.insertAdjacentHTML("afterend", html);
   else parent.insertAdjacentHTML("beforeend", html);
   const body = parent.querySelector("#rl-brief-body");
-  let lastRound = -1;
+  let lastSpecKey = "";
   const horizon = (g) => (g != null && g < 1 ? (1 / (1 - g)).toFixed(1) : "∞");
   // keep the live discount/horizon in sync with the training stream (params carry live γ)
   function updateLive(gb, gr) {
@@ -985,8 +960,9 @@ export function initBriefing(parent) {
   async function refresh() {
     try {
       const s = await (await fetch("/api/mdp", { cache: "no-store" })).json();
-      if (s.round === lastRound) return updateLive(s.gammaBlue, s.gammaRed);
-      lastRound = s.round;
+      const specKey = JSON.stringify(s);
+      if (specKey === lastSpecKey) return updateLive(s.gammaBlue, s.gammaRed);
+      lastSpecKey = specKey;
       const rewards = (s.rewards || [])
         .map(
           ([k, v]) =>
@@ -1057,6 +1033,16 @@ export function initBriefing(parent) {
     const gb = st.params && st.params.gamma,
       gr = st.redParams && st.redParams.gamma;
     if (gb != null) updateLive(gb, gr == null ? gb : gr);
+    // World/dynamics edits keep the same round id, so the old implementation never
+    // rebuilt the Challenge card. Refresh when the live parameter signature changes.
+    const p = st.params || {};
+    const worldKey = [st.round?.index, p.maxSteps, p.slipProb, p.blockGhostProb,
+      p.ghostLen, p.freezeLen, p.coinReward, p.blockReward].join("|");
+    if (worldKey !== refresh.worldKey) {
+      refresh.worldKey = worldKey;
+      clearTimeout(refresh.timer);
+      refresh.timer = setTimeout(refresh, 120);
+    }
   });
   setInterval(refresh, 2000);
   refresh();

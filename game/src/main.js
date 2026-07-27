@@ -566,7 +566,9 @@ async function poll() {
     applyStats(snap);
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
-      if (arenaMode && heatMode !== "visits") {
+      if (replayActive && heatMode === "policy" && replay.renderPolicy()) {
+        // A replay must show the policy from its recorded sweep, not today's live model.
+      } else if (arenaMode && heatMode !== "visits") {
         // continuous rounds have no cells: sample the DQN's value field over the arena
         const f = await (
           await fetch(`${API}/api/field?agent=${heatAgent}`, { cache: "no-store" })
@@ -653,6 +655,7 @@ const replay = {
   fps: 12,
   label: "",
   agent: "blue", // which model this run belongs to (colours the scrubber)
+  policyFrames: [], // Stage-1 canonical policies, indexed by recorded DP sweep
   _timer: null,
   active() {
     return this.frames.length > 0;
@@ -662,7 +665,20 @@ const replay = {
     if (f) {
       latestFrame = f;
       actors.onFrame(f);
+      if (heatMode === "policy") this.renderPolicy();
     }
+  },
+  renderPolicy() {
+    if (!this.policyFrames.length || !this.frames.length) return false;
+    const f = this.frames[this.idx] || {};
+    const key = this.agent === "red" ? "redDpSweep" : "blueDpSweep";
+    const sweep = Math.max(0, Math.min(this.policyFrames.length - 1, f[key] || 0));
+    const grid = this.policyFrames[sweep];
+    if (!grid) return false;
+    heatmap.setPolicy(grid, this.agent);
+    heatmap.setGhostArrows([], this.agent);
+    heatmap.showPolicy();
+    return true;
   },
   _emit() {
     window.dispatchEvent(
@@ -697,12 +713,13 @@ const replay = {
     }
   },
   // load a run PAUSED at frame 0 (does NOT auto-play - the user presses play)
-  load(frames, label, agent) {
+  load(frames, label, agent, policyFrames = []) {
     this._stopTimer();
     this.frames = Array.isArray(frames) ? frames : [];
     this.idx = 0;
     this.label = label || "";
     this.agent = agent === "red" ? "red" : "blue";
+    this.policyFrames = Array.isArray(policyFrames) ? policyFrames : [];
     this.playing = false;
     replayActive = this.frames.length > 0;
     this._render();
@@ -746,6 +763,7 @@ const replay = {
     this.idx = 0;
     this.playing = false;
     this.label = "";
+    this.policyFrames = [];
     replayActive = false;
     this._emit();
   },
@@ -761,6 +779,7 @@ window.RL = {
     if (!agent) heatmap.hide();
     else if (arenaMode && heatMode !== "visits") heatmap.showArena();
     else if (heatMode === "value") heatmap.showNumbers();
+    else if (heatMode === "policy" && replayActive && replay.renderPolicy()) {}
     else if (heatMode === "policy") heatmap.showPolicy();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)

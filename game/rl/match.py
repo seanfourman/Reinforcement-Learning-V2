@@ -320,7 +320,15 @@ class Match:
         # frame 0 = the TRUE start (spawn positions, before any move). tick() records
         # snapshots AFTER stepping, so without this seed the replay began one move in
         # and agents appeared to start a square off their real spawn.
-        self._frames = [self.env.snapshot()]
+        self._frames = [self._replay_snapshot()]
+
+    def _replay_snapshot(self):
+        """Environment frame plus the tiny DP progress marker needed by replay."""
+        frame = self.env.snapshot()
+        for side, agent in (("red", self.red), ("blue", self.blue)):
+            if hasattr(agent, "sweeps"):
+                frame[f"{side}DpSweep"] = sum(agent.sweeps or [])
+        return frame
 
     # ------------------------------------------------------------------- tick
     def tick(self):
@@ -363,7 +371,7 @@ class Match:
                     if pos in self.env.cell_index:
                         vis[pos[0]][pos[1]] += 1
             if len(self._frames) < FRAME_CAP:
-                self._frames.append(self.env.snapshot())
+                self._frames.append(self._replay_snapshot())
             self.s_red, self.s_blue = ns_red, ns_blue
             self.a_red, self.a_blue = na_red, na_blue
 
@@ -400,8 +408,10 @@ class Match:
             self.best_episode = self.last_episode
         if winner in ("red", "blue"):
             lst = self._top[winner]
+            replay_policy = self._replay_policy_frames(winner)
             lst.append({"steps": self.env.steps, "episode": self.episode,
-                        "winner": winner, "frames": self._frames})
+                        "winner": winner, "frames": self._frames,
+                        "policyFrames": replay_policy})
             lst.sort(key=lambda e: e["steps"])   # fastest first
             del lst[TOP_N:]
         recent = list(self.recent)
@@ -423,6 +433,21 @@ class Match:
             "predQRed": round(self._dqn_field("red", "predQ"), 3),
             "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
         })
+
+    def _replay_policy_frames(self, agent):
+        """Compact HxW canonical policy history for a DP replay; empty for learners."""
+        planner = self._agent(agent)
+        frames = getattr(planner, "policy_frames", None)
+        if not frames:
+            return []
+        out = []
+        for fr in frames:
+            grid = [[None] * self.env.W for _ in range(self.env.H)]
+            for (r, c), action in fr.items():
+                if 0 <= r < self.env.H and 0 <= c < self.env.W:
+                    grid[r][c] = int(action)
+            out.append(grid)
+        return out
 
     def _ceremony_frame(self, side):
         frame = copy.deepcopy(self._frames[-1]) if self._frames else self.env.snapshot()
@@ -636,6 +661,7 @@ class Match:
         NOT here (they go through set_params). Lasts until the tier changes."""
         with self.lock:
             old_gamma = self.red_gamma
+            old_plan_speed = self.red_plan_speed
             if "alpha" in p:
                 self.red_alpha = max(0.0, min(1.0, float(p["alpha"])))
             if "gamma" in p:
@@ -646,12 +672,17 @@ class Match:
                 self.red_eps_end = max(0.0, min(1.0, float(p["epsEnd"])))
             if "epsEpisodes" in p:
                 self.red_eps_episodes = max(1, int(p["epsEpisodes"]))
+            if "dpPlanning" in p:
+                self.red_plan_speed = max(0.0, min(10.0, float(p["dpPlanning"])))
+                if hasattr(self.red, "plan_speed"):
+                    self.red.plan_speed = self.red_plan_speed
             if hasattr(self.red, "alpha"):
                 self.red.alpha = self.red_alpha
             if hasattr(self.red, "gamma"):
                 self.red.gamma = self.red_gamma
-            if self.red_gamma != old_gamma and is_dp(self.algo_red) and hasattr(self.red, "reset_learning"):
-                self.red.reset_learning()   # restart Red's incremental plan on a new discount
+            if ((self.red_gamma != old_gamma or self.red_plan_speed != old_plan_speed)
+                    and is_dp(self.algo_red) and hasattr(self.red, "reset_learning")):
+                self.red.reset_learning()   # replay the DP race with the new CPU setting
             self._apply_epsilon()
             return self.red_view()
 
@@ -664,6 +695,7 @@ class Match:
             "epsStart": round(self.red_eps_start, 3),
             "epsEnd": round(self.red_eps_end, 3),
             "epsEpisodes": self.red_eps_episodes,
+            "dpPlanning": round(self.red_plan_speed, 3),
             "maxSteps": self.env.max_steps,
             "targetEpisodes": self.target_episodes or 0,
         }
@@ -1046,7 +1078,8 @@ class Match:
                 ep = lst[rank]
                 return {"available": True, "which": "top", "agent": agent,
                         "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
-                        "episode": ep["episode"], "frames": ep["frames"]}
+                        "episode": ep["episode"], "frames": ep["frames"],
+                        "policyFrames": ep.get("policyFrames", [])}
             ep = self.best_episode if which == "best" else self.last_episode
             if not ep:
                 return {"available": False}
@@ -1077,6 +1110,9 @@ class Match:
                     "phases": 1,   # single-goal DP round (VI/PI run one plan)
                     "sweepCount": sum(getattr(a, "sweeps", []) or []),
                     "backups": getattr(a, "backups", 0),
+                    "converged": bool(getattr(a, "converged", False)),
+                    "hitLimit": bool(getattr(a, "hit_limit", False)),
+                    "maxSweeps": getattr(a, "max_sweeps", None),
                     "policyChanges": list(getattr(a, "policy_changes", []) or []),
                     "sweeps": list(log)}
 

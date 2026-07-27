@@ -51,13 +51,13 @@ const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 
 // are rendered by the N (Training) panel only, since they are match-wide (not
 // "Red's params") and route through setParams.
 export const PARAMS = [
-  { key: 'targetEpisodes', label: 'Stop after (episodes)', min: 0, max: 20000, step: 100, color: C_GLOBAL, scope: 'always', fmt: (v) => (v <= 0 ? 'no limit' : (+v).toLocaleString()) },
-  { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 1000, step: 10, color: C_GLOBAL, scope: 'always', fmt: (v) => (+v).toLocaleString() },
-  { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', fmt: (v) => (+v).toFixed(2) },
-  { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'eps', fmt: (v) => (+v).toLocaleString() },
+  { key: 'targetEpisodes', label: 'Stop after (episodes)', min: 0, max: 20000, step: 100, color: C_GLOBAL, scope: 'always', desc: 'Stops new training episodes at this count. 0 keeps running.', fmt: (v) => (v <= 0 ? 'no limit' : (+v).toLocaleString()) },
+  { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 1000, step: 10, color: C_GLOBAL, scope: 'always', desc: 'Ends an episode as a timeout if nobody reaches the goal in time.', fmt: (v) => (+v).toLocaleString() },
+  { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', desc: 'How strongly one new experience changes this model. Dynamic Programming does not use α.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', desc: 'How much future rewards matter. Higher values make the model plan farther ahead.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Chance of a random action at the start of training.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Final random-action chance after decay. It does not have to reach zero.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'eps', desc: 'Episodes needed to move linearly from ε start to ε end—not to zero.', fmt: (v) => (+v).toLocaleString() },
 ];
 
 // shared display + reset helpers
@@ -74,11 +74,14 @@ const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = bui
 // <-> backend-space where they differ (dpTheta rides a log/exponent slider).
 export const GLOBAL_PARAMS = [
   // --- algorithm internals ---
-  { key: 'dpTheta', label: 'Convergence θ', min: 1, max: 9, step: 1, sect: 'algo', scope: 'dp', def: 1e-5,
-    enc: (e) => Math.pow(10, -Math.round(e)), dec: (t) => Math.max(1, Math.min(9, Math.round(-Math.log10(t || 1e-5)))),
-    fmt: (e) => (10 ** -Math.round(e)).toFixed(Math.round(e)) },
-  { key: 'dpMaxIters', label: 'Max sweeps / phase', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000, fmt: fLoc },
-  { key: 'dpPlanning', label: 'Planning speed (sweeps/tick)', min: 0.1, max: 5, step: 0.1, sect: 'algo', scope: 'dp', def: 0.6, fmt: (v) => (+v).toFixed(1) },
+  { key: 'dpTheta', label: 'Convergence tolerance θ', min: -9, max: -1, step: 1, sect: 'algo', scope: 'dp', def: 1e-5,
+    desc: 'Converged when the largest value change is below θ. Left is stricter; right stops earlier.',
+    enc: (e) => Math.pow(10, Math.round(e)), dec: (t) => Math.max(-9, Math.min(-1, Math.round(Math.log10(t || 1e-5)))),
+    fmt: (e) => (10 ** Math.round(e)).toFixed(-Math.round(e)) },
+  { key: 'dpMaxIters', label: 'Maximum Bellman sweeps', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000,
+    desc: 'Safety cap on total planning sweeps. Raise it only if the model reaches the cap before convergence.', fmt: fLoc },
+  { key: 'dpPlanning', label: 'Planning speed (sweeps / step)', min: 0.1, max: 5, step: 0.1, color: C_OURS, sect: 'algo', scope: 'dp', def: 0.6,
+    desc: 'Bellman sweeps this selected model performs per game step. This is the Stage-1 race-speed control.', fmt: (v) => (+v).toFixed(1) },
   { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
@@ -87,12 +90,12 @@ export const GLOBAL_PARAMS = [
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + "?" ghost/freeze blocks).
   // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
   // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
-  { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, fmt: (v) => `${Math.round(v * 100)}%` },
-  { key: 'blockGhostProb', label: '? block: Ghost chance', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, fmt: (v) => `${Math.round(v * 100)}% (else Freeze)` },
-  { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, fmt: (v) => `${Math.round(v)}` },
-  { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, fmt: (v) => `${Math.round(v)}` },
-  { key: 'coinReward', label: 'Coin value', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, fmt: (v) => (+v).toFixed(2) },
-  { key: 'blockReward', label: 'Ghost bonus', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, fmt: (v) => (+v).toFixed(2) },
+  { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'blockGhostProb', label: '? block: Ghost chance', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a ? block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}% (else Freeze)` },
+  { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, desc: 'Number of landed tiles for which wall-phasing stays active.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a ? block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'coinReward', label: 'Coin value', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'blockReward', label: 'Ghost bonus', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a ? block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -349,6 +352,12 @@ const STYLE = `
 
 /* descriptive note under the Algorithm-internals / World settings cards */
 #rl-panel .cfgnote{font-size:10.5px;color:#a2a5ac;margin:12px 0 0;line-height:1.45;}
+#rl-panel .ctl-help{font-size:9.8px;color:#92969e;line-height:1.4;margin:6px 0 0;}
+#rl-panel .dp-note{padding:10px 11px;margin:0 0 12px;border-radius:9px;background:#eef3fb;color:#566277;
+  font-size:10.5px;line-height:1.45;}
+#rl-panel .dp-status{font-weight:800;}
+#rl-panel .dp-status.ok{color:#1f7a3d;}
+#rl-panel .dp-status.limit{color:#b45b12;}
 
 /* segmented control (value-map mode) */
 #rl-panel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
@@ -523,6 +532,7 @@ export function initPanel() {
     <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
       <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
+      ${p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
   };
   const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
@@ -575,6 +585,7 @@ export function initPanel() {
     </section>
     <section id="rl-sec-hyper" class="qk">
       <h2>Hyperparameters</h2>
+      <p class="dp-note" data-scope="dp">Stage 1 uses Dynamic Programming: it plans from the known world model, so it has no learning rate α, ε exploration, or evaluation-episode count. Episodes here run the current planned policy and create replays.</p>
       <div class="plegend">
         <span><i class="ple-hue"></i><span id="rl-ple-model">Your model</span></span>
         <span><i style="background:#141518"></i>Both models</span>
@@ -735,6 +746,7 @@ export function initPanel() {
     scrubEl.classList.toggle('show', on);  // grows in / collapses
     // red model -> the whole replay UI (tag REPLAY bg, play button, scrubber) goes red
     const red = on && s.agent === 'red';
+    if (on && !lastReplayActive) setModel(red ? 'cpu' : 'your');
     repTag.classList.toggle('red', red);
     // live = gray (CSS default), blue replay = blue, red replay = red
     playBtn.style.background = on ? (red ? '#e60012' : '#1f5fd0') : '';
@@ -822,6 +834,9 @@ export function initPanel() {
     panel.querySelectorAll('.ctl[data-scope]').forEach((el) => {
       el.style.display = vis(el.dataset.scope) ? '' : 'none';
     });
+    panel.querySelectorAll('.dp-note[data-scope]').forEach((el) => {
+      el.style.display = vis(el.dataset.scope) ? '' : 'none';
+    });
     // collapse a settings card whose every slider is now hidden
     ['rl-sec-hyper', 'rl-sec-algo', 'rl-sec-world'].forEach((id) => {
       const sec = panel.querySelector('#' + id);
@@ -833,11 +848,11 @@ export function initPanel() {
   // ---- per-model helpers used by applyModel (defined here, once the sliders exist) ----
   const loadLearn = () => {
     const src = panel.dataset.model === 'cpu' ? lastRedParams : lastParams;
-    for (const p of PARAMS) if (p.color === C_OURS) setFromBackend(p, src[p.key]);
+    for (const p of ALL_PARAMS) if (p.color === C_OURS) setFromBackend(p, src[p.key]);
   };
   const applyLock = () => {
     const disable = panel.dataset.model === 'cpu' && cpuLocked;
-    panel.querySelectorAll('#rl-sec-hyper .ctl.learn input[type=range]').forEach((el) => { el.disabled = disable; });
+    panel.querySelectorAll('.ctl.learn input[type=range]').forEach((el) => { el.disabled = disable; });
   };
   const reShowRelevant = () =>
     showRelevant(panel.dataset.model === 'cpu' ? lastAlgoRed : lastAlgoBlue, lastRoundIndex);

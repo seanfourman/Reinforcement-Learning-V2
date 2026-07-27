@@ -590,13 +590,19 @@ export const peach = {
     const TEAM_GLOW = { red: 0xff4636, blue: 0x2f6bff };
     // a billboarded halo added to `group` (world space) and pinned to the object each
     // frame in update(); stored on obj.userData.glow so it hides when the item is taken.
-    const addGlow = (obj, size, colorHex) => {
+    const addGlow = (obj, size, colorHex, behindObject = false) => {
       const spr = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowTex, color: colorHex, transparent: true, opacity: 0.9,
         blending: THREE.AdditiveBlending, depthWrite: false,
       }));
       spr.scale.setScalar(size * 2.4);
       spr.position.copy(obj.position);
+      if (behindObject) {
+        // Render the halo first and the opaque coin second. The depth test still
+        // respects walls, while the full coin silhouette cleanly covers the halo.
+        spr.renderOrder = 1;
+        obj.traverse((o) => { if (o.isMesh) o.renderOrder = 2; });
+      }
       group.add(spr);
       obj.userData.glow = spr;
     };
@@ -622,7 +628,7 @@ export const peach = {
             setMat(coin, coinMat);
             // hover ABOVE the 0.7-tall maze walls so the coin reads from the game camera
             arr.push(place(coin, r, c, 0.95, true));
-            addGlow(coin, 0.55 * cell, glowColor);
+            addGlow(coin, 0.44 * cell, glowColor, true); // 20% smaller, fully behind coin
           }
         };
         mk(world.redCoins, TEAM_GLOW.red, collect.redCoins);
@@ -644,7 +650,7 @@ export const peach = {
         }
         gx /= goals.length;
         gz /= goals.length;
-        const shine = fitObject(asset.scene, 1.15 * cell);
+        const shine = fitObject(asset.scene, 0.92 * cell); // 20% smaller goal Moon
         setMat(shine, new THREE.MeshStandardMaterial({
           map: objTex("./assets/objects/Shine/Textures/ShineBody_alb.png"),
           normalMap: objTex("./assets/objects/Shine/Textures/ShineBody_nrm.png", false),

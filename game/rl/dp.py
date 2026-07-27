@@ -118,12 +118,17 @@ class _DPBase:
         self.V = {s: 0.0 for s in self.states}
         self.policy = {s: MOVE_ACTIONS[0] for s in self._model}
         self.converged = False
+        self.hit_limit = False
         self._acc = 0.0                 # fractional-sweep accumulator
         self.sweeps = [0]               # iteration count (a list, for the panel's sum())
         self.sweep_log = []             # per-sweep {delta, meanV} for the convergence charts
         self.backups = 0                # total Bellman backups (fair-compute measure)
         self.policy_changes = []        # PI only: #states whose greedy action changed
         self.v_frames = []              # per-sweep V-slices for the propagation animation
+        # Canonical per-sweep policies are kept for Stage-1 replay.  Index 0 is the
+        # initial (pre-sweep) policy, so a recorded sweep count can index this list
+        # directly and show what the agent knew at that exact replay frame.
+        self.policy_frames = [self._policy_slice()]
 
     def plan(self):
         """Solve to convergence in one go (used by read-only previews / heatmaps that
@@ -145,6 +150,7 @@ class _DPBase:
             self._sweep()
             self.sweeps[0] += 1
             if self.sweeps[0] >= self.max_sweeps:
+                self.hit_limit = True
                 self.converged = True
 
     def _value_slice(self):
@@ -162,12 +168,20 @@ class _DPBase:
                     sl[g] = peak
         return sl
 
+    def _policy_slice(self):
+        """Greedy policy projected onto the ordinary, no-collectibles/no-power slice."""
+        key = (lambda i: (i,)) if not self.env.rich else (lambda i: (i, 0, 0))
+        return {cell: self.policy.get(key(i), MOVE_ACTIONS[0])
+                for i, cell in enumerate(self.cells)}
+
     def _log_sweep(self, delta):
         self.backups += len(self._model)
         self.sweep_log.append({"delta": round(delta, 6),
                                "meanV": round(sum(self.V.values()) / (len(self.V) or 1), 4)})
         if len(self.v_frames) < 80:
             self.v_frames.append(self._value_slice())
+        if len(self.policy_frames) < 81:
+            self.policy_frames.append(self._policy_slice())
 
     def _sweep(self):
         raise NotImplementedError
