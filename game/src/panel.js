@@ -736,14 +736,6 @@ export function initPanel() {
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
     window.RL?.panels?.toggle?.();
   });
-  document.addEventListener('click', (e) => {
-    const controlsTrigger = e.target?.closest?.('#rl-keys [data-act="controls"]');
-    const path = e.composedPath?.() || [];
-    const insidePanel = panel.contains(e.target) || path.includes(panel) || path.includes(lockBtn);
-    if (panel.classList.contains('open') && !insidePanel && !controlsTrigger)
-      panel.classList.remove('open');
-  });
-
   // ---- playback ----
   let paused = false;
   // arena nav (prev/next round) must fire ONCE per press, not once PER CLICK -
@@ -947,11 +939,7 @@ export function initPanel() {
     lockBtn.title = cpuLocked ? "Unlock to edit the CPU's values" : "Lock the CPU's values";
   };
   updateLockUI();
-  // The lock visually sits over the sticky header. Consume its pointer/click events
-  // so no edge of the circular hit target can leak into the outside-click closer.
-  lockBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-  lockBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  lockBtn.addEventListener('click', () => {
     cpuLocked = !cpuLocked;
     updateLockUI();
     applyLock();
