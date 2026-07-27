@@ -647,7 +647,8 @@ const devbar = initDevBar({ scene, camera, renderer, rig });
 // (graphs.js) only LOADS a run into it (paused); the panel's Playback card plays /
 // pauses / scrubs / sets speed and exits back to live. Every change is broadcast on
 // 'rl-replay-state' so the Playback UI mirrors it. While a run is loaded,
-// replayActive gates the live frames in applyStats.
+// replayActive gates the live frames in applyStats and the server temporarily
+// pauses training, restoring the exact previous live play/pause state on exit.
 const replay = {
   frames: [],
   idx: 0,
@@ -712,10 +713,15 @@ const replay = {
       this._timer = null;
     }
   },
-  // load a run PAUSED at frame 0 (does NOT auto-play - the user presses play)
-  load(frames, label, agent, policyFrames = []) {
+  // Load a run PAUSED at frame 0 (the user presses play). Entering the first
+  // replay also pauses live training; replacing one loaded replay with another
+  // keeps the same saved live state on the server.
+  async load(frames, label, agent, policyFrames = []) {
+    const nextFrames = Array.isArray(frames) ? frames : [];
+    if (!nextFrames.length) return;
+    if (!this.active()) await control({ cmd: "replayEnter" });
     this._stopTimer();
-    this.frames = Array.isArray(frames) ? frames : [];
+    this.frames = nextFrames;
     this.idx = 0;
     this.label = label || "";
     this.agent = agent === "red" ? "red" : "blue";
@@ -757,7 +763,9 @@ const replay = {
     if (this.playing) this._startTimer(); // re-arm at the new rate
   },
   stop() {
-    // exit replay -> back to the live game (the next poll renders live frames)
+    // Exit replay -> back to the live game. replayExit restores whether live
+    // training had been playing or paused before this replay session began.
+    const wasActive = this.active();
     this._stopTimer();
     this.frames = [];
     this.idx = 0;
@@ -766,6 +774,7 @@ const replay = {
     this.policyFrames = [];
     replayActive = false;
     this._emit();
+    if (wasActive) control({ cmd: "replayExit" });
   },
 };
 

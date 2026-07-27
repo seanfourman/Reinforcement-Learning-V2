@@ -45,6 +45,7 @@ mimetypes.add_type("text/css", ".css")
 match = Match(seed=None, round_id=1)
 _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
+_replay_restore_paused = None  # live pause state saved while a replay owns the screen
 _alive = True
 _sync_hold_until = 0.0 # frontend world-load sync hold; independent of user pause
 SYNC_HOLD_FALLBACK = 30.0
@@ -187,7 +188,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"error": f"bad control value: {e}"}, 400)
 
     def _control(self, body):
-        global _speed, _paused, _sync_hold_until
+        global _speed, _paused, _replay_restore_paused, _sync_hold_until
         cmd = body.get("cmd")
         extra = {}
         if cmd == "regenerate":
@@ -201,8 +202,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
         elif cmd == "pause":
             _paused = True
+            _replay_restore_paused = None
         elif cmd == "play":
             _paused = False
+            _replay_restore_paused = None
+        elif cmd == "replayEnter":
+            # Capture the live state only on the first replay. Loading a different
+            # recorded run while Replay is already open must not overwrite the
+            # original state with the temporary pause.
+            if _replay_restore_paused is None:
+                _replay_restore_paused = _paused
+            _paused = True
+        elif cmd == "replayExit":
+            if _replay_restore_paused is not None:
+                _paused = _replay_restore_paused
+                _replay_restore_paused = None
         elif cmd == "speed":
             _speed = max(1.0, min(15000.0, float(body.get("value", 60))))
         elif cmd == "sideAlgo":

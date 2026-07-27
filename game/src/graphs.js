@@ -571,7 +571,12 @@ export function initReplay(parent) {
       // hand the frames to the shared player, PAUSED (Playback takes over from here);
       // pass the model so the Playback scrubber matches (red for Red runs)
       const label = `${model === "red" ? "Red" : "Blue"} #${rank + 1} - ${r.steps} steps`;
-      window.RL?.replay?.load?.(r.frames || [], label, model, r.policyFrames || []);
+      await window.RL?.replay?.load?.(
+        r.frames || [],
+        label,
+        model,
+        r.policyFrames || [],
+      );
     } catch (e) {
       /* ignore a failed fetch - the list stays as-is */
     }
