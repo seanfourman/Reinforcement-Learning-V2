@@ -353,8 +353,6 @@ const STYLE = `
 /* descriptive note under the Algorithm-internals / World settings cards */
 #rl-panel .cfgnote{font-size:10.5px;color:#a2a5ac;margin:12px 0 0;line-height:1.45;}
 #rl-panel .ctl-help{font-size:9.8px;color:#92969e;line-height:1.4;margin:6px 0 0;}
-#rl-panel .dp-note{padding:10px 11px;margin:0 0 12px;border-radius:9px;background:#eef3fb;color:#566277;
-  font-size:10.5px;line-height:1.45;}
 #rl-panel .dp-status{font-weight:800;}
 #rl-panel .dp-status.ok{color:#1f7a3d;}
 #rl-panel .dp-status.limit{color:#b45b12;}
@@ -532,7 +530,7 @@ export function initPanel() {
     <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
       <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
-      ${p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
+      ${p.sect && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
   };
   const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
@@ -585,7 +583,6 @@ export function initPanel() {
     </section>
     <section id="rl-sec-hyper" class="qk">
       <h2>Hyperparameters</h2>
-      <p class="dp-note" data-scope="dp">Stage 1 uses Dynamic Programming: it plans from the known world model, so it has no learning rate α, ε exploration, or evaluation-episode count. Episodes here run the current planned policy and create replays.</p>
       <div class="plegend">
         <span><i class="ple-hue"></i><span id="rl-ple-model">Your model</span></span>
         <span><i style="background:#141518"></i>Both models</span>
@@ -775,6 +772,7 @@ export function initPanel() {
   // send only the keys the user actually touched, so nudging α never triggers the
   // world rebuild that a structural key (hazard counts / seed) does.
   let applyTimer = null;
+  let seedTimer = null;
   let pending = {};
   const flush = () => {
     const keys = Object.keys(pending);
@@ -794,6 +792,15 @@ export function initPanel() {
   };
   const queue = (p) => {
     const raw = +$(`#rl-p-${p.key}`).value;
+    // Random seed rebuilds the entire world. During a drag or held arrow key,
+    // keep replacing the requested seed and trigger exactly once after input settles.
+    if (p.key === 'trainSeed') {
+      clearTimeout(seedTimer);
+      seedTimer = setTimeout(() => {
+        window.RL.control({ cmd: 'setParams', params: { trainSeed: raw } });
+      }, 700);
+      return;
+    }
     pending[p.key] = p.enc ? p.enc(raw) : raw;
     clearTimeout(applyTimer);
     applyTimer = setTimeout(flush, 160);
@@ -832,9 +839,6 @@ export function initPanel() {
       }
     };
     panel.querySelectorAll('.ctl[data-scope]').forEach((el) => {
-      el.style.display = vis(el.dataset.scope) ? '' : 'none';
-    });
-    panel.querySelectorAll('.dp-note[data-scope]').forEach((el) => {
       el.style.display = vis(el.dataset.scope) ? '' : 'none';
     });
     // collapse a settings card whose every slider is now hidden

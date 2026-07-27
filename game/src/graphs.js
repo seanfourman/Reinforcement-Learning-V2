@@ -422,7 +422,10 @@ function drawVSurface(canvas, grid) {
   const ox = (cw - C * size) / 2, oy = (ch - R * size) / 2;
   for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
     const v = grid[r][c];
-    const x = ox + (c - c0) * size, y = oy + (r - r0) * size;
+    // Peach's Castle is viewed from the flipped side of the board. Rotate the
+    // diagnostic 180° as well so its cells line up with what the player sees.
+    const dc = C - 1 - (c - c0), dr = R - 1 - (r - r0);
+    const x = ox + dc * size, y = oy + dr * size;
     if (v == null) ctx.fillStyle = "#d9dce2";
     else {
       const t = (v - lo) / span;
@@ -436,7 +439,7 @@ function drawVSurface(canvas, grid) {
   ctx.fillStyle = "#686d76";
   ctx.font = "700 10px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("N", cw / 2, Math.max(11, oy - 7));
+  ctx.fillText("N", cw / 2, Math.min(ch - 5, oy + R * size + 14));
 }
 
 // ---- per-side learning curves ----
@@ -577,7 +580,6 @@ export function initDP(parent) {
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
       <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning…</b></div>
       <div class="stat"><span>Bellman backups</span><b id="rl-dp-backups">-</b></div>
-      <p class="hint">This always follows the model selected at the top of the Control Menu.</p>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -693,7 +695,9 @@ export function initDP(parent) {
         status.textContent = "Converged — policy is stable";
         status.classList.add("ok");
       } else {
-        status.textContent = `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
+        status.textContent = d.maxSweeps == null
+          ? `Planning… ${d.sweepCount}`
+          : `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
       }
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),
