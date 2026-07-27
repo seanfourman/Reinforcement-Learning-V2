@@ -710,6 +710,11 @@ export function initPanel() {
     if (getComputedStyle(panel).display === 'none') return; // hidden while the start menu is up
     window.RL?.panels?.toggle?.();
   });
+  document.addEventListener('click', (e) => {
+    const controlsTrigger = e.target?.closest?.('#rl-keys [data-act="controls"]');
+    if (panel.classList.contains('open') && !panel.contains(e.target) && !controlsTrigger)
+      panel.classList.remove('open');
+  });
 
   // ---- playback ----
   let paused = false;
