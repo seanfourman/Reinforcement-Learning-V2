@@ -938,16 +938,18 @@ export const city = {
     // mirrored on the right); an apple VANISHES with a little burst when its owner steps
     // on it, and the goal star stays LOCKED until someone holds all three. -----------
     const APPLE = OBJ + 'Regional Coins/';
+    // the CoinCollectG albedo is PURPLE, so a plain color tint reads muddy - push the
+    // emissive hard so the gems read as a clean, vivid BLUE (Cobalt) / RED (Crimson).
     const appleMat = (tint) => track(new THREE.MeshStandardMaterial({
       map: objTex(APPLE + 'CoinCollectG_alb.png'),
       roughnessMap: objTex(APPLE + 'CoinCollectG_rgh.png', false),
-      color: tint, roughness: 0.5, metalness: 0.08,
-      emissive: tint, emissiveIntensity: 0.16,
+      color: tint, roughness: 0.42, metalness: 0.08,
+      emissive: tint, emissiveIntensity: 0.55,
     }));
     const appleObjs = [];                  // {r,c,idx,side,wrap,baseS,baseY,prev,pop}
     const appleSpecs = [
-      { side: 'blue', cells: world.blueStars || [], tint: 0x7ea6ff },
-      { side: 'red', cells: world.redStars || [], tint: 0xff7e7e },
+      { side: 'blue', cells: world.blueStars || [], tint: 0x1e6bff },   // vivid blue
+      { side: 'red', cells: world.redStars || [], tint: 0xff2323 },     // vivid red
     ];
     const nStars = (world.blueStars || []).length;
     loadObj(APPLE + 'CoinCollectG.dae').then((proto) => {
@@ -1026,10 +1028,17 @@ export const city = {
         a.pop = Math.max(0, a.pop - dt * 2.4);
         if (got && a.pop <= 0) { a.wrap.visible = false; continue; }  // gone for the episode
         a.wrap.visible = true;
-        const burst = 1 + a.pop * 1.4;                     // swell as it pops
-        a.wrap.scale.setScalar(a.baseS * burst);
-        a.wrap.rotation.y = t * 1.7;
-        a.wrap.position.y = a.baseY + Math.sin(t * 2.2 + a.idx * 1.3) * 0.08 + a.pop * 0.55;
+        if (a.pop > 0) {
+          // COLLECTED: spin up fast, float UP and SHRINK away (no growing / no burst)
+          a.wrap.scale.setScalar(a.baseS * a.pop);
+          a.wrap.rotation.y += dt * 16;
+          a.wrap.position.y = a.baseY + (1 - a.pop) * 1.1;
+        } else {
+          // IDLE: constant size, a slow spin + a gentle floating bob
+          a.wrap.scale.setScalar(a.baseS);
+          a.wrap.rotation.y = t * 1.4;
+          a.wrap.position.y = a.baseY + Math.sin(t * 2.2 + a.idx * 1.3) * 0.1;
+        }
       }
       for (const [tag, bits] of [[tagBlue, blueBits], [tagRed, redBits]]) {
         if (!tag) continue;

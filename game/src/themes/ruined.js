@@ -21,7 +21,7 @@ const ASSETS = "./assets/models/ruined-kingdom/";
 const FALLING_ASSETS = "./assets/models/falling/";
 const BANZAI_DIR = "./assets/objects/Banzai%20Bill/";
 const BANZAI_ASSET = `${BANZAI_DIR}KillerMagnum.dae`;
-const BANZAI_LENGTH = 4.2;
+const BANZAI_LENGTH = 2;
 const FALLING_PROP_SCALE = 0.02;
 const FALLING_TOP_Y = 30;
 const FALLING_BOTTOM_Y = -13;
@@ -832,6 +832,10 @@ export const ruined = {
     const explosionFx = [];
     const seenExplosionIds = new Set();
     const seenExplosionOrder = [];
+    const MAX_EXPLOSION_FX = 6;
+    const MAX_EXPLOSION_LIGHTS = 3;
+    const MAX_NEW_EXPLOSIONS_PER_FRAME = 2;
+    let explosionSpawnCredit = MAX_NEW_EXPLOSIONS_PER_FRAME;
     const disposeMissileModel = (model) => {
       const skeletons = new Set();
       model?.traverse((o) => {
@@ -929,23 +933,132 @@ export const ruined = {
         console.warn("Could not load Banzai Bill", err);
       });
 
-    const flashTexture = (() => {
+    // Odyssey's Banzai Bill does not use a photographic fireball. Its impact is
+    // a very short cluster of irregular toon-shaded blobs, followed (on walls)
+    // by a few pale dust puffs. Keep the geometry shared; every live blast only
+    // owns its small set of animated materials.
+    const toonGradient = (() => {
       const cv = document.createElement("canvas");
-      cv.width = cv.height = 256;
+      cv.width = 4;
+      cv.height = 1;
       const g = cv.getContext("2d");
-      const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-      grad.addColorStop(0, "rgba(255,255,255,1)");
-      grad.addColorStop(0.16, "rgba(255,245,150,1)");
-      grad.addColorStop(0.42, "rgba(255,116,20,.92)");
-      grad.addColorStop(0.72, "rgba(120,22,3,.46)");
-      grad.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 256, 256);
+      ["#3a3a3a", "#797979", "#b9b9b9", "#ffffff"].forEach((color, i) => {
+        g.fillStyle = color;
+        g.fillRect(i, 0, 1, 1);
+      });
       const tx = trackTexture(new THREE.CanvasTexture(cv));
-      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.minFilter = THREE.NearestFilter;
+      tx.magFilter = THREE.NearestFilter;
+      tx.generateMipmaps = false;
       return tx;
     })();
-    const shockGeo = track(new THREE.TorusGeometry(1, 0.08, 10, 48));
+
+    const explosionBlobGeometry = (() => {
+      const geometry = track(new THREE.IcosahedronGeometry(0.5, 4));
+      const position = geometry.attributes.position;
+      const normal = geometry.attributes.normal;
+      for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i);
+        const y = position.getY(i);
+        const z = position.getZ(i);
+        const length = Math.max(0.0001, Math.hypot(x, y, z));
+        const nx = x / length;
+        const ny = y / length;
+        const nz = z / length;
+        const wobble =
+          1 +
+          Math.sin(nx * 8.7 + ny * 4.1 - nz * 2.3) * 0.06 +
+          Math.sin(nz * 10.3 - nx * 3.7 + ny * 2.9) * 0.035;
+        position.setXYZ(i, x * wobble, y * wobble, z * wobble);
+        // Keep a smooth radial normal across the polyhedron's duplicated
+        // vertices; computeVertexNormals() would turn it into a faceted rock.
+        normal.setXYZ(i, nx, ny, nz);
+      }
+      position.needsUpdate = true;
+      normal.needsUpdate = true;
+      return geometry;
+    })();
+
+    const explosionBurstGeometry = (() => {
+      const positions = [];
+      const colors = [];
+      const innerColor = new THREE.Color(0xda9e51);
+      const tipColor = new THREE.Color(0xf6de4a);
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const inner = 0.28 + (i % 3) * 0.025;
+        const outer = i % 2 ? 1.08 : 1.42;
+        const halfWidth = i % 2 ? 0.046 : 0.062;
+        positions.push(
+          Math.cos(angle - halfWidth) * inner,
+          0,
+          Math.sin(angle - halfWidth) * inner,
+          Math.cos(angle) * outer,
+          0,
+          Math.sin(angle) * outer,
+          Math.cos(angle + halfWidth) * inner,
+          0,
+          Math.sin(angle + halfWidth) * inner,
+        );
+        colors.push(
+          innerColor.r,
+          innerColor.g,
+          innerColor.b,
+          tipColor.r,
+          tipColor.g,
+          tipColor.b,
+          innerColor.r,
+          innerColor.g,
+          innerColor.b,
+        );
+      }
+      const geometry = track(new THREE.BufferGeometry());
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3),
+      );
+      geometry.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(colors, 3),
+      );
+      return geometry;
+    })();
+
+    const explosionCurlGeometry = (() => {
+      const path = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-0.5, 0, -0.02),
+        new THREE.Vector3(-0.38, 0, 0.3),
+        new THREE.Vector3(-0.08, 0, 0.48),
+        new THREE.Vector3(0.28, 0, 0.4),
+        new THREE.Vector3(0.48, 0, 0.12),
+        new THREE.Vector3(0.32, 0, -0.08),
+      ]);
+      return track(new THREE.TubeGeometry(path, 12, 0.045, 5, false));
+    })();
+
+    const explosionCoreTexture = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 128;
+      const g = cv.getContext("2d");
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.18, "rgba(255,251,208,1)");
+      grad.addColorStop(0.46, "rgba(245,235,85,.86)");
+      grad.addColorStop(0.7, "rgba(221,130,101,.34)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
+      const tx = trackTexture(new THREE.CanvasTexture(cv));
+      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.anisotropy = maxAniso;
+      return tx;
+    })();
+
+    const FIRE_CORE = new THREE.Color(0xfffbd0);
+    const FIRE_HOT = new THREE.Color(0xf5eb55);
+    const FIRE_GOLD = new THREE.Color(0xda9e51);
+    const FIRE_CORAL = new THREE.Color(0xdd8265);
+    const FIRE_BURNT = new THREE.Color(0xac4b40);
 
     function missileVisual(missile) {
       let visual = missileVisuals.get(missile.id);
@@ -975,88 +1088,274 @@ export const ruined = {
     }
 
     function spawnExplosion(event) {
+      while (explosionFx.length >= MAX_EXPLOSION_FX) {
+        disposeExplosion(explosionFx.shift());
+      }
       const p = simToScene(event.pos);
       const blast = new THREE.Group();
-      blast.position.set(p.x, 0.72, p.z);
+      blast.position.set(p.x, 0.88, p.z);
+      const isHit = Boolean(event.hit);
 
-      const flashMat = new THREE.SpriteMaterial({
-        map: flashTexture,
+      const coreMat = new THREE.SpriteMaterial({
+        map: explosionCoreTexture,
         color: 0xffffff,
         transparent: true,
         opacity: 1,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
+        toneMapped: false,
       });
-      const flash = new THREE.Sprite(flashMat);
-      flash.scale.setScalar(1.2);
-      blast.add(flash);
+      const core = new THREE.Sprite(coreMat);
+      core.scale.setScalar(0.32);
+      core.renderOrder = 34;
+      blast.add(core);
 
-      const shockMat = new THREE.MeshBasicMaterial({
-        color:
-          event.hit === "red"
-            ? 0xff493c
-            : event.hit === "blue"
-              ? 0x5d8dff
-              : 0xffae32,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const shock = new THREE.Mesh(shockGeo, shockMat);
-      shock.rotation.x = Math.PI / 2;
-      shock.scale.setScalar(0.15);
-      blast.add(shock);
-
-      const count = event.hit ? 38 : 28;
-      const positions = new Float32Array(count * 3);
-      const velocities = [];
-      for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const speed = 2.2 + Math.random() * 5.6;
-        velocities.push(
-          new THREE.Vector3(
-            Math.cos(a) * speed,
-            1.2 + Math.random() * 5.5,
-            Math.sin(a) * speed,
-          ),
-        );
-      }
-      const sparkGeo = new THREE.BufferGeometry();
-      sparkGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      const sparkMat = new THREE.PointsMaterial({
-        color: 0xffc34a,
-        size: event.hit ? 0.34 : 0.25,
+      const burstMat = new THREE.MeshBasicMaterial({
+        vertexColors: true,
         transparent: true,
         opacity: 1,
         depthWrite: false,
+        depthTest: true,
+        side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
+        toneMapped: false,
       });
-      const sparks = new THREE.Points(sparkGeo, sparkMat);
-      blast.add(sparks);
+      const burst = new THREE.Mesh(explosionBurstGeometry, burstMat);
+      burst.position.y = 0.035;
+      burst.rotation.y = Math.random() * Math.PI * 2;
+      burst.scale.setScalar(0.42);
+      burst.renderOrder = 33;
+      blast.add(burst);
 
-      const light = new THREE.PointLight(
-        event.hit ? 0xff6a28 : 0xffa43a,
-        event.hit ? 9 : 6,
-        event.hit ? 14 : 10,
-        2,
-      );
-      light.position.y = 0.6;
-      blast.add(light);
+      const fireLayers = [];
+      const fireCount = isHit ? 8 : 7;
+      const blastScale = isHit ? 1.13 : 1.09;
+      for (let i = 0; i < fireCount; i++) {
+        const emissivePeak =
+          i === 0 ? 1.02 : i === 1 ? 0.7 : 0.48 + Math.random() * 0.13;
+        const material = new THREE.MeshToonMaterial({
+          color: FIRE_CORE,
+          gradientMap: toonGradient,
+          emissive: FIRE_HOT,
+          emissiveIntensity: emissivePeak,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          depthTest: true,
+          toneMapped: false,
+        });
+        const mesh = new THREE.Mesh(explosionBlobGeometry, material);
+        const angle =
+          i === 0
+            ? 0
+            : i * 2.399963229728653 +
+              (Math.random() - 0.5) * 0.62;
+        const radius =
+          (i === 0
+            ? 0
+            : i === 1
+              ? 0.2 + Math.random() * 0.12
+              : 0.48 + Math.random() * 0.3) * 1.08;
+        const origin = new THREE.Vector3(
+          Math.cos(angle) * radius,
+          i === 0
+            ? 0.12
+            : -0.08 + Math.random() * 0.5,
+          Math.sin(angle) * radius,
+        );
+        mesh.position.copy(origin);
+        mesh.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+          Math.random() * Math.PI,
+        );
+        mesh.scale.setScalar(0.001);
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        mesh.renderOrder = 29;
+        blast.add(mesh);
+
+        const size =
+          (i === 0
+            ? 1.5
+            : i === 1
+              ? 1.3 + Math.random() * 0.14
+              : 1.1 + Math.random() * 0.34) * blastScale;
+        fireLayers.push({
+          mesh,
+          material,
+          origin,
+          delay: i === 0 ? 0 : 0.018 + Math.random() * 0.045,
+          life: i === 0 ? 0.42 : 0.34 + Math.random() * 0.05,
+          maxScale: new THREE.Vector3(
+            size * (0.9 + Math.random() * 0.18),
+            size * (0.82 + Math.random() * 0.22),
+            size * (0.9 + Math.random() * 0.18),
+          ),
+          maxOpacity: i === 0 ? 1 : 0.94,
+          heatOffset:
+            i === 0
+              ? -0.1
+              : i === 1
+                ? 0.06
+                : 0.14 + Math.random() * 0.12,
+          emissivePeak,
+          spin: new THREE.Vector3(
+            (Math.random() - 0.5) * 1.5,
+            (Math.random() - 0.5) * 1.7,
+            (Math.random() - 0.5) * 1.5,
+          ),
+          drift: new THREE.Vector3(
+            Math.cos(angle) * (0.12 + Math.random() * 0.17),
+            0.04 + Math.random() * 0.13,
+            Math.sin(angle) * (0.12 + Math.random() * 0.17),
+          ),
+        });
+      }
+
+      const curlLayers = [];
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2 + Math.random() * 0.45;
+        const material = new THREE.MeshBasicMaterial({
+          color: i === 1 ? 0xfff394 : 0xf6de4a,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          depthTest: true,
+          toneMapped: false,
+        });
+        const mesh = new THREE.Mesh(explosionCurlGeometry, material);
+        const curlRadius = 0.5 + Math.random() * 0.14;
+        const origin = new THREE.Vector3(
+          Math.cos(angle) * curlRadius,
+          0.08 + i * 0.055,
+          Math.sin(angle) * curlRadius,
+        );
+        mesh.position.copy(origin);
+        mesh.rotation.y = angle;
+        mesh.scale.setScalar(0.001);
+        mesh.renderOrder = 31;
+        blast.add(mesh);
+        curlLayers.push({
+          mesh,
+          material,
+          origin,
+          delay: 0.19 + i * 0.028,
+          life: 0.28 + Math.random() * 0.055,
+          maxScale: 0.72 + Math.random() * 0.17,
+          maxOpacity: 0.92,
+          spin: (Math.random() - 0.5) * 1.2,
+          drift: new THREE.Vector3(
+            Math.cos(angle) * (0.16 + Math.random() * 0.1),
+            0.1 + Math.random() * 0.1,
+            Math.sin(angle) * (0.16 + Math.random() * 0.1),
+          ),
+        });
+      }
+
+      // Character impacts end on the fire cluster. Only a wall hit leaves the
+      // brief pale debris cloud visible in the Odyssey reference.
+      const dustLayers = [];
+      if (!isHit) {
+        const outward = new THREE.Vector3(
+          p.x - sceneCenter[0],
+          0,
+          p.z - sceneCenter[1],
+        );
+        if (outward.lengthSq() < 0.001) outward.set(0, 0, 1);
+        outward.normalize();
+        const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
+        const dustPalette = [0xf4efe5, 0xe7e0d3, 0xd2ccc4, 0xb7b0aa];
+        for (let i = 0; i < 8; i++) {
+          const color = dustPalette[i % dustPalette.length];
+          const material = new THREE.MeshToonMaterial({
+            color,
+            gradientMap: toonGradient,
+            emissive: color,
+            emissiveIntensity: 0.08,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            depthTest: true,
+            toneMapped: false,
+          });
+          const mesh = new THREE.Mesh(explosionBlobGeometry, material);
+          const side = (Math.random() - 0.5) * 1.6;
+          const origin = new THREE.Vector3()
+            .addScaledVector(tangent, side)
+            .addScaledVector(outward, (Math.random() - 0.5) * 0.16);
+          origin.y = -0.14 + Math.random() * 0.55;
+          mesh.position.copy(origin);
+          mesh.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+          );
+          mesh.scale.setScalar(0.001);
+          mesh.renderOrder = 21 + i;
+          blast.add(mesh);
+          const width = 0.55 + Math.random() * 0.34;
+          dustLayers.push({
+            mesh,
+            material,
+            origin,
+            delay: 0.27 + Math.random() * 0.045,
+            life: 0.39 + Math.random() * 0.05,
+            maxScale: new THREE.Vector3(
+              width,
+              0.5 + Math.random() * 0.4,
+              0.44 + Math.random() * 0.28,
+            ),
+            maxOpacity: 0.58 + Math.random() * 0.16,
+            spin: new THREE.Vector3(
+              (Math.random() - 0.5) * 0.65,
+              (Math.random() - 0.5) * 0.75,
+              (Math.random() - 0.5) * 0.65,
+            ),
+            drift: new THREE.Vector3()
+              .addScaledVector(tangent, (Math.random() - 0.5) * 0.32)
+              .addScaledVector(outward, -0.08 - Math.random() * 0.16)
+              .add(new THREE.Vector3(0, 0.32 + Math.random() * 0.42, 0)),
+          });
+        }
+      }
+
+      const hasLightBudget =
+        explosionFx.filter((fx) => fx.light).length < MAX_EXPLOSION_LIGHTS;
+      const light = hasLightBudget
+        ? new THREE.PointLight(
+            0xffdc57,
+            isHit ? 18 : 15,
+            isHit ? 9 : 8,
+            2,
+          )
+        : null;
+      if (light) {
+        light.position.y = 0.45;
+        light.castShadow = false;
+        blast.add(light);
+      }
       group.add(blast);
+      const duration =
+        Math.max(
+          0.52,
+          ...fireLayers.map((layer) => layer.delay + layer.life),
+          ...curlLayers.map((layer) => layer.delay + layer.life),
+          ...dustLayers.map((layer) => layer.delay + layer.life),
+        ) + 0.06;
       explosionFx.push({
         group: blast,
-        flash,
-        flashMat,
-        shock,
-        shockMat,
-        sparks,
-        sparkGeo,
-        sparkMat,
-        velocities,
+        core,
+        coreMat,
+        burst,
+        burstMat,
+        fireLayers,
+        curlLayers,
+        dustLayers,
         light,
+        lightPeak: isHit ? 18 : 15,
         age: 0,
-        duration: event.hit ? 1.15 : 0.9,
+        duration,
       });
     }
 
@@ -1065,22 +1364,126 @@ export const ruined = {
         const fx = explosionFx[i];
         fx.age += dt;
         const u = Math.min(1, fx.age / fx.duration);
-        const fade = 1 - u;
-        fx.flash.scale.setScalar(1.2 + u * 8.5);
-        fx.flashMat.opacity = fade * fade;
-        fx.shock.scale.setScalar(0.2 + u * 5.2);
-        fx.shockMat.opacity = fade * 0.9;
-        fx.light.intensity = fade * fade * 9;
-        const pos = fx.sparkGeo.attributes.position;
-        for (let s = 0; s < fx.velocities.length; s++) {
-          const v = fx.velocities[s];
-          v.y -= dt * 8.5;
-          pos.array[s * 3] += v.x * dt;
-          pos.array[s * 3 + 1] += v.y * dt;
-          pos.array[s * 3 + 2] += v.z * dt;
+
+        const coreU = Math.min(1, fx.age / 0.29);
+        fx.core.scale.setScalar(
+          0.32 + 1.48 * (1 - Math.exp(-coreU * 7.5)),
+        );
+        fx.coreMat.opacity =
+          1 - THREE.MathUtils.smoothstep(coreU, 0.22, 1);
+
+        const burstU = Math.min(1, fx.age / 0.2);
+        fx.burst.scale.setScalar(
+          0.42 + 0.78 * (1 - Math.pow(1 - burstU, 3)),
+        );
+        fx.burst.rotation.y += dt * 1.2;
+        fx.burstMat.opacity =
+          1 - THREE.MathUtils.smoothstep(burstU, 0.16, 1);
+
+        for (const layer of fx.fireLayers) {
+          const local = (fx.age - layer.delay) / layer.life;
+          if (local <= 0 || local >= 1) {
+            layer.material.opacity = 0;
+            continue;
+          }
+          const appear = THREE.MathUtils.smoothstep(local, 0, 0.075);
+          const fade = 1 - THREE.MathUtils.smoothstep(local, 0.56, 1);
+          const enter = Math.min(1, local / 0.18);
+          const pop = 1 - Math.pow(1 - enter, 3);
+          const contract =
+            1 - 0.62 * THREE.MathUtils.smoothstep(local, 0.54, 1);
+          layer.mesh.scale
+            .copy(layer.maxScale)
+            .multiplyScalar(Math.max(0.001, pop * contract));
+          const move = THREE.MathUtils.smoothstep(local, 0.12, 1);
+          layer.mesh.position
+            .copy(layer.origin)
+            .addScaledVector(layer.drift, move);
+          layer.mesh.rotation.x += layer.spin.x * dt;
+          layer.mesh.rotation.y += layer.spin.y * dt;
+          layer.mesh.rotation.z += layer.spin.z * dt;
+          layer.material.opacity = appear * fade * layer.maxOpacity;
+
+          const heat = THREE.MathUtils.clamp(
+            local + layer.heatOffset,
+            0,
+            1,
+          );
+          if (heat < 0.2) {
+            layer.material.color.lerpColors(
+              FIRE_CORE,
+              FIRE_HOT,
+              heat / 0.2,
+            );
+          } else if (heat < 0.48) {
+            layer.material.color.lerpColors(
+              FIRE_HOT,
+              FIRE_GOLD,
+              (heat - 0.2) / 0.28,
+            );
+          } else if (heat < 0.75) {
+            layer.material.color.lerpColors(
+              FIRE_GOLD,
+              FIRE_CORAL,
+              (heat - 0.48) / 0.27,
+            );
+          } else {
+            layer.material.color.lerpColors(
+              FIRE_CORAL,
+              FIRE_BURNT,
+              (heat - 0.75) / 0.25,
+            );
+          }
+          layer.material.emissive.copy(layer.material.color);
+          layer.material.emissiveIntensity =
+            0.04 +
+            layer.emissivePeak *
+              (1 - THREE.MathUtils.smoothstep(local, 0.1, 0.68));
         }
-        pos.needsUpdate = true;
-        fx.sparkMat.opacity = fade;
+
+        for (const layer of fx.curlLayers) {
+          const local = (fx.age - layer.delay) / layer.life;
+          if (local <= 0 || local >= 1) {
+            layer.material.opacity = 0;
+            continue;
+          }
+          const appear = THREE.MathUtils.smoothstep(local, 0, 0.1);
+          const fade = 1 - THREE.MathUtils.smoothstep(local, 0.46, 1);
+          const grow = 1 - Math.pow(1 - Math.min(1, local / 0.22), 3);
+          layer.mesh.scale.setScalar(
+            Math.max(0.001, layer.maxScale * grow),
+          );
+          layer.mesh.position
+            .copy(layer.origin)
+            .addScaledVector(layer.drift, local);
+          layer.mesh.rotation.y += layer.spin * dt;
+          layer.material.opacity = appear * fade * layer.maxOpacity;
+        }
+
+        for (const layer of fx.dustLayers) {
+          const local = (fx.age - layer.delay) / layer.life;
+          if (local <= 0 || local >= 1) {
+            layer.material.opacity = 0;
+            continue;
+          }
+          const appear = THREE.MathUtils.smoothstep(local, 0, 0.13);
+          const fade = 1 - THREE.MathUtils.smoothstep(local, 0.56, 1);
+          const grow = 1 - Math.pow(1 - Math.min(1, local / 0.32), 3);
+          layer.mesh.scale
+            .copy(layer.maxScale)
+            .multiplyScalar(Math.max(0.001, grow));
+          layer.mesh.position
+            .copy(layer.origin)
+            .addScaledVector(layer.drift, local);
+          layer.mesh.rotation.x += layer.spin.x * dt;
+          layer.mesh.rotation.y += layer.spin.y * dt;
+          layer.mesh.rotation.z += layer.spin.z * dt;
+          layer.material.opacity = appear * fade * layer.maxOpacity;
+        }
+
+        if (fx.light) {
+          fx.light.intensity = fx.lightPeak * Math.exp(-fx.age * 10.5);
+        }
         if (u >= 1) {
           disposeExplosion(fx);
           explosionFx.splice(i, 1);
@@ -1090,13 +1493,18 @@ export const ruined = {
 
     function disposeExplosion(fx) {
       group.remove(fx.group);
-      fx.flashMat.dispose();
-      fx.shockMat.dispose();
-      fx.sparkGeo.dispose();
-      fx.sparkMat.dispose();
+      fx.coreMat.dispose();
+      fx.burstMat.dispose();
+      for (const layer of fx.fireLayers) layer.material.dispose();
+      for (const layer of fx.curlLayers) layer.material.dispose();
+      for (const layer of fx.dustLayers) layer.material.dispose();
     }
 
     function updateMissiles(frame, dt) {
+      explosionSpawnCredit = Math.min(
+        MAX_NEW_EXPLOSIONS_PER_FRAME,
+        explosionSpawnCredit + dt * 12,
+      );
       const active = new Set();
       for (const missile of frame?.missiles || []) {
         active.add(missile.id);
@@ -1124,10 +1532,30 @@ export const ruined = {
         disposeMissileModel(visual.model);
         missileVisuals.delete(id);
       }
+      const unseenExplosions = [];
       for (const event of frame?.explosions || []) {
         if (seenExplosionIds.has(event.id)) continue;
-        rememberExplosion(event.id);
-        spawnExplosion(event);
+        unseenExplosions.push(event);
+      }
+      const spawnCount = Math.min(
+        MAX_NEW_EXPLOSIONS_PER_FRAME,
+        Math.floor(explosionSpawnCredit),
+        unseenExplosions.length,
+      );
+      if (spawnCount > 0) {
+        const selected = unseenExplosions
+          .sort(
+            (a, b) =>
+              Number(Boolean(b.hit)) - Number(Boolean(a.hit)) ||
+              Number(b.id) - Number(a.id),
+          )
+          .slice(0, spawnCount)
+          .sort((a, b) => Number(a.id) - Number(b.id));
+        for (const event of selected) {
+          rememberExplosion(event.id);
+          spawnExplosion(event);
+        }
+        explosionSpawnCredit -= selected.length;
       }
       updateExplosions(dt);
     }
@@ -1137,6 +1565,7 @@ export const ruined = {
       seenExplosionOrder.length = 0;
       for (const fx of explosionFx) disposeExplosion(fx);
       explosionFx.length = 0;
+      explosionSpawnCredit = MAX_NEW_EXPLOSIONS_PER_FRAME;
       for (const event of frameToSuppress?.explosions || []) {
         rememberExplosion(event.id);
       }
@@ -1182,6 +1611,12 @@ export const ruined = {
       for (const o of trash) o.dispose?.();
     }
 
-    return { group, update, resetEffects, dispose, ready: missileReady };
+    return {
+      group,
+      update,
+      resetEffects,
+      dispose,
+      ready: missileReady,
+    };
   },
 };

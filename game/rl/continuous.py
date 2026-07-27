@@ -38,7 +38,7 @@ AGENT_R = 0.55
 MAX_STEPS = 300       # optimal run is ~86 steps, so this is ample + cheap timeouts
 
 # Round-4 Banzai Bill survival game.
-MISSILE_R = 0.46
+MISSILE_R = 0.30
 MISSILE_SPAWN_Z = -2.0
 MISSILE_MIN_SPEED = 3.2
 MISSILE_MAX_SPEED = 6.8
