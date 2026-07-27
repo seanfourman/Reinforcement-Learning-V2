@@ -481,7 +481,9 @@ function drawVSurface(canvas, grid) {
   ctx.fillStyle = "#686d76";
   ctx.font = "700 10px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("N", cw / 2, Math.min(ch - 5, oy + R * size + 14));
+  // The diagnostic is rotated with Peach's camera, so its visual top is the
+  // player-facing North even though it corresponds to increasing matrix rows.
+  ctx.fillText("N", cw / 2, Math.max(10, oy - 8));
   return true;
 }
 
@@ -1004,7 +1006,8 @@ export function initDiag(parent) {
 
     const ad = s.actionDist;
     if (ad && ad.labels) {
-      q("#rl-act-body").innerHTML = ad.labels
+      const labels = s.round?.index === 0 ? ["S", "N", "E", "W"] : ad.labels;
+      q("#rl-act-body").innerHTML = labels
         .map(
           (lb, i) =>
             `<div class="actrow"><span class="al">${lb}</span>` +

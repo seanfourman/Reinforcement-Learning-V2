@@ -1187,9 +1187,15 @@ class Match:
         n = len(ro) or 1
         return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
 
-    def _action_labels(self):
-        return ["N", "S", "W", "E"] if self.env.n_actions == 4 \
-            else [str(i) for i in range(self.env.n_actions)]
+    def _action_labels(self, full=False):
+        if self.env.n_actions != 4:
+            return [str(i) for i in range(self.env.n_actions)]
+        # Peach's camera views the board from the opposite side. Keep the learner's
+        # stable action indices, but expose directions as the player sees them:
+        # row -1 is screen-down, row +1 screen-up, col -1 right, col +1 left.
+        if self.round_id == 1:
+            return ["South", "North", "East", "West"] if full else ["S", "N", "E", "W"]
+        return ["North", "South", "West", "East"] if full else ["N", "S", "W", "E"]
 
     def action_dist(self):
         """Normalized action-frequency histogram per side (is the policy balanced?)."""
@@ -1453,4 +1459,5 @@ class Match:
             m = self.env.effective_actions(agent, (r, c))
             valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
             best = max(valid, key=lambda i: q[i])
-            return {"agent": agent, "cell": [r, c], "q": q, "best": best, "mask": m}
+            return {"agent": agent, "cell": [r, c], "q": q, "best": best,
+                    "mask": m, "labels": self._action_labels(full=True)}
