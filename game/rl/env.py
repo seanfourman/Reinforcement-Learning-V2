@@ -41,6 +41,8 @@ COIN_REWARD = 0.2      # value of an optional coin (a detour trade-off vs step c
 GHOST_LEN = 4          # steps of wall-phasing granted by a "?" ghost roll
 FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
 SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
+BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the "?" gamble worth taking so the
+                       # power-up actually shows; a FREEZE roll gets nothing - the risk)
 
 
 class GridWorld(gym.Env):
@@ -91,6 +93,20 @@ class GridWorld(gym.Env):
         self._block_bit = {a: {cell: self._n_coins[a] + k
                                for k, cell in enumerate(self.block_cells[a])}
                            for a in ("red", "blue")}
+        # POSITION index: floor cells first (so cell_index-keyed states stay valid),
+        # PLUS - on Round 1 - the interior maze-WALL cells the ghost power-up can phase
+        # onto ONE CELL AT A TIME. Ghost stays inside the playable bbox (it can step onto
+        # an interior wall but not out into the margin / off the board).
+        if self.rich and self.floor_cells:
+            rs = [r for r, _ in self.floor_cells]
+            cs = [c for _, c in self.floor_cells]
+            r0, r1, c0, c1 = min(rs), max(rs), min(cs), max(cs)
+            inner_walls = [(r, c) for r in range(r0, r1 + 1) for c in range(c0, c1 + 1)
+                           if g[r][c] == WALL]
+            self.pos_cells = list(self.floor_cells) + inner_walls
+        else:
+            self.pos_cells = list(self.floor_cells)
+        self.pos_index = {cell: i for i, cell in enumerate(self.pos_cells)}
 
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
@@ -104,19 +120,16 @@ class GridWorld(gym.Env):
         # interface symmetry with _static_passable.
         return 0 <= r < self.H and 0 <= c < self.W and self.world.grid[r][c] != WALL
 
-    def _ghost_resolve(self, agent, pos, direction):
-        """A GHOSTING move (a "?" power-up): phase THROUGH walls, landing on the next
-        FLOOR cell in ``direction`` (skipping any contiguous walls). An immediate floor
-        neighbour is a normal 1-step move; a solid run to the map edge stays put. Every
-        landing is a real floor cell, so the position index stays valid."""
+    def _ghost_step(self, cell, direction):
+        """A GHOSTING move (a "?" power-up): step exactly ONE cell in ``direction`` -
+        onto a floor cell OR straight onto an interior maze-wall cell (phasing, one
+        square at a time). Only cells inside the playable region (in pos_index) are
+        enterable, so the ghost can't drift off the board into the margin/void."""
+        if direction not in MOVE_ACTIONS:
+            return cell
         dr, dc = ACTIONS[direction]
-        nr, nc = pos[0] + dr, pos[1] + dc
-        while 0 <= nr < self.H and 0 <= nc < self.W:
-            if self.world.grid[nr][nc] != WALL:
-                return (nr, nc)
-            nr += dr
-            nc += dc
-        return pos
+        nxt = (cell[0] + dr, cell[1] + dc)
+        return nxt if nxt in self.pos_index else cell
 
     # ------------------------------------------------------------------ reset
     def reset(self, *, seed=None, options=None, regenerate=False):
@@ -168,7 +181,7 @@ class GridWorld(gym.Env):
         status)``. The SAME tuple keys the Q-table, the DP value field, and every
         heatmap projection - visualizations call this with a probe cell to read V/policy
         at that tile given the agent's live coins/power-up."""
-        idx = self.cell_index[cell]
+        idx = self.pos_index[cell]
         if not self.rich:
             return (idx,)
         return (idx, self.collect[agent], self.status[agent])
@@ -205,7 +218,7 @@ class GridWorld(gym.Env):
             return [True] * self.n_actions
         mask = [False] * self.n_actions
         for a in MOVE_ACTIONS:
-            land = self._ghost_resolve(agent, pos, a) if status > 0 else self._resolve(agent, pos, a)
+            land = self._ghost_step(pos, a) if status > 0 else self._resolve(agent, pos, a)
             if land != pos:
                 mask[a] = True
         if not any(mask):
@@ -236,21 +249,21 @@ class GridWorld(gym.Env):
         RACE outcome is added by ``step`` (it depends on the OTHER agent, so it is not
         part of either agent's own MDP), and the planner credits the goal itself."""
         idx = state[0]
-        cell = self.floor_cells[idx]
+        cell = self.pos_cells[idx]
         if not self.rich:
             nxt = self._resolve(agent, cell, action) if action in MOVE_ACTIONS else cell
-            return [(1.0, (self.cell_index[nxt],), -STEP_COST, nxt in self.goal_set)]
+            return [(1.0, (self.pos_index[nxt],), -STEP_COST, nxt in self.goal_set)]
 
         mask, status = state[1], state[2]
         # FROZEN: the agent cannot act; it waits out the timer (still paying the step
         # cost - the lost tempo IS the penalty) as the counter ticks back toward 0.
         if status < 0:
             return [(1.0, (idx, mask, status + 1), -STEP_COST, False)]
-
-        ghost = status > 0
-        # on ICE a normal move slips sideways (forces expected-value reasoning); a
-        # ghosting move is precise (the power-up overrides the slip) and phases walls.
-        if action in MOVE_ACTIONS and not ghost and cell in self.slip_cells:
+        # GHOST: a precise ONE-CELL phase (may step onto an interior wall), no slip.
+        if status > 0:
+            return self._land(agent, 1.0, self._ghost_step(cell, action), mask, status, True)
+        # NORMAL: walls block; on ICE the move slips sideways (expected-value reasoning).
+        if action in MOVE_ACTIONS and cell in self.slip_cells:
             p1, p2 = PERP[action]
             moves = [(1.0 - SLIP_PROB, action), (SLIP_PROB / 2, p1), (SLIP_PROB / 2, p2)]
         else:
@@ -258,34 +271,34 @@ class GridWorld(gym.Env):
 
         out = []
         for prob, mv in moves:
-            if mv not in MOVE_ACTIONS:
-                land = cell
-            elif ghost:
-                land = self._ghost_resolve(agent, cell, mv)
-            else:
-                land = self._resolve(agent, cell, mv)
-            out.extend(self._land(agent, prob, land, mask, status, ghost))
+            land = self._resolve(agent, cell, mv) if mv in MOVE_ACTIONS else cell
+            out.extend(self._land(agent, prob, land, mask, 0, False))
         return out
 
     def _land(self, agent, prob, land, mask, status, ghost):
-        """Resolve the successor(s) of LANDING on ``land``: goal (terminal), coin
-        pickup (+reward, set bit), a "?" block (one-time 50/50 ghost vs freeze), else a
-        plain step (ghost counter decrements)."""
-        lidx = self.cell_index[land]
+        """Successor(s) of landing on ``land``. Goal = terminal. Coins/blocks live on
+        FLOOR cells only. A GHOST step decrements its timer ONLY when it lands on a
+        FLOOR cell, so the agent can never be stranded inside a wall with the power-up
+        already expired (on wall cells the timer holds, so it keeps phasing until out)."""
+        lidx = self.pos_index[land]
         if land in self.goal_set:
             return [(prob, (lidx, mask, 0), -STEP_COST, True)]
+        is_floor = self.world.grid[land[0]][land[1]] != WALL
         reward = -STEP_COST
         nmask = mask
-        cbit = self._coin_bit[agent].get(land)
-        if cbit is not None and not (mask >> cbit) & 1:
-            nmask |= (1 << cbit)
-            reward += COIN_REWARD
-        nstatus = status - 1 if ghost else 0        # ghost ticks down; normal stays 0
-        bbit = self._block_bit[agent].get(land)
-        if bbit is not None and not (mask >> bbit) & 1:
-            nmask |= (1 << bbit)                      # block consumed (one-time)
-            return [(prob * 0.5, (lidx, nmask, GHOST_LEN), reward, False),
-                    (prob * 0.5, (lidx, nmask, -FREEZE_LEN), reward, False)]
+        if is_floor:
+            cbit = self._coin_bit[agent].get(land)
+            if cbit is not None and not (mask >> cbit) & 1:
+                nmask |= (1 << cbit)
+                reward += COIN_REWARD
+        nstatus = (status - 1 if is_floor else status) if ghost else 0
+        if is_floor:
+            bbit = self._block_bit[agent].get(land)
+            if bbit is not None and not (mask >> bbit) & 1:
+                nmask |= (1 << bbit)                  # block consumed (one-time)
+                # GHOST = power-up (bonus + ability); FREEZE = pure downside (the risk)
+                return [(prob * 0.5, (lidx, nmask, GHOST_LEN), reward + BLOCK_REWARD, False),
+                        (prob * 0.5, (lidx, nmask, -FREEZE_LEN), reward, False)]
         return [(prob, (lidx, nmask, nstatus), reward, False)]
 
     def _apply_rich(self, agent, action):
@@ -300,7 +313,7 @@ class GridWorld(gym.Env):
                 chosen = cand
                 break
         _, ns, rew, _done = chosen
-        self._set_pos(agent, self.floor_cells[ns[0]])
+        self._set_pos(agent, self.pos_cells[ns[0]])
         self.collect[agent] = ns[1]
         self.status[agent] = ns[2]
         return rew + STEP_COST                        # strip base step cost -> coin bonus

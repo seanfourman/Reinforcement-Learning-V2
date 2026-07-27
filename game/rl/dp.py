@@ -25,7 +25,7 @@ heatmap reuse them unchanged; ``learn_step`` is where a sweep budget is spent (t
 agent "thinks" as it moves), and ``end_episode`` is a no-op.
 """
 
-from env import MOVE_ACTIONS, N_ACTIONS, GHOST_LEN, FREEZE_LEN
+from env import MOVE_ACTIONS, N_ACTIONS, GHOST_LEN, FREEZE_LEN, WALL
 
 GOAL_REWARD = 1.0      # reward for transitioning INTO the goal (then terminal)
 DEFAULT_PLAN_SPEED = 0.6   # Bellman sweeps per tick (the convergence-race knob)
@@ -56,21 +56,28 @@ class _DPBase:
         return {tuple(e) for e in self.env.world.escape}
 
     def _cell(self, state):
-        return self.env.floor_cells[state[0]]
+        return self.env.pos_cells[state[0]]
 
     def _is_goal(self, state):
         return self._cell(state) in self.goals
 
     def _enumerate_states(self):
         """Every planning state. Skeleton rounds: one per cell. Round 1: the product
-        cell x its own collected-mask x power-up/frozen status."""
-        n = self.env.n_cells
+        cell x its own collected-mask x status - but a WALL cell is only reachable while
+        GHOSTING, so wall cells get positive (ghost) statuses only (keeps the space small
+        even though ghost positions now include interior walls)."""
         if not self.env.rich:
-            return [(i,) for i in range(n)]
+            return [(i,) for i in range(self.env.n_cells)]
         nbits = self.env._n_coins[self.agent] + len(self.env.block_cells[self.agent])
-        statuses = range(-FREEZE_LEN, GHOST_LEN + 1)
-        return [(i, m, s) for i in range(n)
-                for m in range(1 << nbits) for s in statuses]
+        grid = self.env.world.grid
+        states = []
+        for i, (r, c) in enumerate(self.env.pos_cells):
+            floor = grid[r][c] != WALL
+            statuses = range(-FREEZE_LEN, GHOST_LEN + 1) if floor else range(1, GHOST_LEN + 1)
+            for m in range(1 << nbits):
+                for s in statuses:
+                    states.append((i, m, s))
+        return states
 
     def _q_of(self, state, action, V):
         # transitions are precomputed once per plan (the env is static); fall back to a

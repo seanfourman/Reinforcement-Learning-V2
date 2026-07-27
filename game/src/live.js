@@ -27,6 +27,7 @@ export function createLiveActors(scene, walkers) {
       w.group.scale.setScalar(agentScale);
       w.group.position.x = rendered[side].x;
       w.group.position.z = rendered[side].z;
+      w.group.position.y = w.baseY || 0; // stand at height until the next update's y write
       w.group.rotation.y = heading[side];
       group.add(w.group);
       if (side === 'red') king = w; else princess = w;
@@ -85,11 +86,14 @@ export function createLiveActors(scene, walkers) {
         m.userData._origOpacity = m.opacity;
         m.userData._origTransparent = m.transparent;
         m.userData._origColor = m.color ? m.color.getHex() : null;
+        m.userData._origEmissive = m.emissive ? m.emissive.getHex() : null;
+        m.userData._origEmissiveIntensity = ('emissiveIntensity' in m) ? m.emissiveIntensity : null;
       }
     });
   }
 
-  // ghost = translucent (phasing walls); frozen = icy-tinted; normal = restore
+  // ghost = translucent (rainbow hue cycled per-frame while phasing); frozen = lightly
+  // frosted inside an ice block; normal = restore. Applied on status CHANGE only.
   function applyWalkerStatus(walker, st) {
     if (!walker || !walker.group) return;
     captureOrig(walker);
@@ -101,19 +105,70 @@ export function createLiveActors(scene, walkers) {
         const u = m.userData || {};
         if (st === 'ghost') {
           m.transparent = true;
-          m.opacity = 0.4;
-          if (m.color && u._origColor != null) m.color.setHex(u._origColor);
+          m.opacity = 0.62;            // color + glow are set each frame in rainbowWalker
         } else if (st === 'frozen') {
           m.transparent = u._origTransparent;
           m.opacity = u._origOpacity == null ? 1 : u._origOpacity;
-          if (m.color && u._origColor != null) m.color.setHex(u._origColor).lerp(FROZEN_TINT, 0.55);
+          if (m.color && u._origColor != null) m.color.setHex(u._origColor).lerp(FROZEN_TINT, 0.3);
+          if (m.emissive && u._origEmissive != null) {
+            m.emissive.setHex(u._origEmissive);
+            if (u._origEmissiveIntensity != null) m.emissiveIntensity = u._origEmissiveIntensity;
+          }
         } else {
           m.transparent = u._origTransparent;
           m.opacity = u._origOpacity == null ? 1 : u._origOpacity;
           if (m.color && u._origColor != null) m.color.setHex(u._origColor);
+          if (m.emissive && u._origEmissive != null) {
+            m.emissive.setHex(u._origEmissive);
+            if (u._origEmissiveIntensity != null) m.emissiveIntensity = u._origEmissiveIntensity;
+          }
         }
       }
     });
+  }
+
+  // cycle the whole walker through vivid, GLOWING rainbow hues (the ghost POWER-UP)
+  function rainbowWalker(walker, t) {
+    const hue = (t * 0.9) % 1;                 // fast, aggressive cycle
+    walker.group.traverse((o) => {
+      if (!o.isMesh) return;
+      const ms = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of ms) {
+        if (!m) continue;
+        if (m.color) m.color.setHSL(hue, 1.0, 0.55);
+        if (m.emissive) {                       // self-lit so the rainbow really pops
+          m.emissive.setHSL(hue, 1.0, 0.5);
+          if ('emissiveIntensity' in m) m.emissiveIntensity = 0.9;
+        }
+      }
+    });
+  }
+
+  // a cartoon ICE crystal that encases a FROZEN walker (built lazily, per side)
+  const iceBlock = { red: null, blue: null };
+  function ensureIce(key) {
+    if (iceBlock[key]) return iceBlock[key];
+    const geo = new THREE.IcosahedronGeometry(0.6, 0);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xbfeaff, transparent: true, opacity: 0.6,
+      roughness: 0.1, metalness: 0.05, flatShading: true,
+      emissive: 0x3a86c8, emissiveIntensity: 0.3,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = false;
+    group.add(m);
+    iceBlock[key] = m;
+    return m;
+  }
+  function updateIce(key, walker, on, t) {
+    const ice = on ? ensureIce(key) : iceBlock[key];
+    if (!ice) return;
+    ice.visible = on;
+    if (!on) return;
+    const p = walker.group.position;
+    ice.position.set(p.x, agentScale * 0.6, p.z);
+    ice.scale.set(agentScale * 0.8, agentScale * 1.0, agentScale * 0.8); // smaller, hugs body
+    ice.rotation.y = t * 0.6;
   }
 
   function clearCelebration() {
@@ -268,10 +323,14 @@ export function createLiveActors(scene, walkers) {
         updateVictoryPose(walker, celebration);
         continue;
       }
+      const st = status[key];
       const r = rendered[key], tg = target[key];
       const dx = tg.x - r.x, dz = tg.z - r.z;
       const moving = Math.abs(dx) + Math.abs(dz) > 0.02;
-      const teleport = Math.hypot(dx, dz) > 1.5; // episode reset (goal->spawn), mirror, or ladder
+      // ghost now moves ONE cell per step (even onto a wall cell), so a ghost move is
+      // ~1 cell and interpolates like any move -> it walks square by square through the
+      // wall. Only a big jump (episode reset goal->spawn) snaps.
+      const teleport = Math.hypot(dx, dz) > 1.5;
       if (teleport) {
         r.x = tg.x; r.z = tg.z; // snap instead of sliding through walls
       } else {
@@ -290,7 +349,19 @@ export function createLiveActors(scene, walkers) {
       } else {
         faceToward(walker, key, dx, dz);
       }
-      updateWalker(walker, dt, moving);
+      // ---- "?" power-up visuals (normal: updateWalker OWNS y - never clobber it) --
+      const baseY = walker.baseY || 0;
+      if (st === 'frozen') {
+        walker.moveAmt = 0;                          // locked solid: no leg motion
+        walker.group.position.y = baseY;             // stand at normal height in the ice
+      } else {
+        updateWalker(walker, dt, moving);            // sets y = baseY + walk-bob/breathe
+        if (st === 'ghost') {
+          rainbowWalker(walker, t);                  // rainbow power-up hues
+          walker.group.position.y = baseY + 0.28 + Math.sin(t * 4) * 0.07; // spectral hover
+        }
+      }
+      updateIce(key, walker, st === 'frozen', t);
     }
 
     if (!frame) return;

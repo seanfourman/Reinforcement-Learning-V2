@@ -328,9 +328,10 @@ class Match:
             if self.env.objective != "arena":   # arena positions are floats, not cells
                 for pos, vis in ((self.env.red_pos, self.red_visits),
                                  (self.env.blue_pos, self.blue_visits)):
-                    r, c = pos
-                    if 0 <= r < self.env.H and 0 <= c < self.env.W:
-                        vis[r][c] += 1
+                    # count FLOOR cells only; a ghosting agent can sit on a wall cell,
+                    # which the travel heatmap (floor-only) never reads (skip dead writes)
+                    if pos in self.env.cell_index:
+                        vis[pos[0]][pos[1]] += 1
             if len(self._frames) < FRAME_CAP:
                 self._frames.append(self.env.snapshot())
             self.s_red, self.s_blue = ns_red, ns_blue
@@ -826,7 +827,12 @@ class Match:
                 # Round 1's real game: a stochastic maze with optional coins + "?" blocks
                 actions = ["North", "South", "West", "East"]
                 nbits = env._n_coins["blue"] + len(env.block_cells["blue"])
-                state_size = env.n_cells * (1 << nbits) * (GHOST_LEN + FREEZE_LEN + 1)
+                # floor cells carry all statuses; interior wall cells (ghost-only) carry
+                # just the positive ghost statuses (see dp._enumerate_states)
+                n_floor = env.n_cells
+                n_wall = len(getattr(env, "pos_cells", [])) - n_floor
+                state_size = ((n_floor * (GHOST_LEN + FREEZE_LEN + 1) + n_wall * GHOST_LEN)
+                              * (1 << nbits))
                 state_desc = ("your tile, which of your own coins/blocks you have claimed, "
                               "and your power-up / frozen countdown")
                 observation = ("Each model sees its own tile, its collected coins/blocks, and "
@@ -837,7 +843,8 @@ class Match:
                             "mirror-image set of coins/blocks, so the race is fair but solo.")
                 dynamics = ("Deterministic on dry tiles. On ICE a move slips sideways (70% "
                             "intended, 15% each perpendicular). A '?' block is a one-time 50/50 "
-                            "gamble: Ghost (phase through walls for 4 steps) or Freeze (stuck for 3).")
+                            "gamble: Ghost (phase through walls one cell at a time, ~4 moves) or "
+                            "Freeze (stuck for 3 turns).")
                 rewards = [["Step", -0.01], ["Coin", round(COIN_REWARD, 2)],
                            ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
