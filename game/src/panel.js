@@ -526,11 +526,12 @@ export function initPanel() {
   const ctlHTML = (p) => {
     const learn = p.color === C_OURS;   // a per-model learning knob (tints blue <-> red)
     const fill = learn ? 'var(--hue)' : (p.color || C_GLOBAL);
+    const showHelp = ['dpTheta', 'dpMaxIters', 'dpPlanning'].includes(p.key);
     return `
     <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
       <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
       <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
-      ${p.sect && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
+      ${showHelp && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
   };
   const algoParams = GLOBAL_PARAMS.filter((p) => p.sect === 'algo');
@@ -610,8 +611,8 @@ export function initPanel() {
       <h2>Value map</h2>
       <div class="seg">
         <button id="rl-h-off" class="active">Off</button>
-        <button id="rl-h-value">Value</button>
         <button id="rl-h-policy">Policy</button>
+        <button id="rl-h-value">Value</button>
         <button id="rl-h-visits">Visits</button>
       </div>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
