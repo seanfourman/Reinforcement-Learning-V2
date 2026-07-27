@@ -65,7 +65,6 @@ export const PARAMS = [
 
 // shared display + reset helpers
 const fLoc = (v) => (+v).toLocaleString();
-const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = built-in
 
 // GLOBAL settings (N panel only), scoped per round by showRelevant():
 //   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap + speed
@@ -99,6 +98,11 @@ export const GLOBAL_PARAMS = [
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
+  // --- Round-2 game mechanics (New Donk City: spike traps + piranha plants + warp
+  // pipes). Structural: each edit regenerates the maze from the seed. ---
+  { key: 'r2Spikes', label: 'Spike traps', min: 0, max: 10, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Spike-trap tiles per side (mirrored). Stepping on one is instant death.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 4, step: 1, sect: 'world', scope: 'r2', def: 1, desc: 'Piranha plants per side. Stepping onto a tile next to one is instant death.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r2Dests', label: 'Warp spread', min: 2, max: 5, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'How many places a pipe can warp you to. One lands by the goal, the rest are a cheap re-dive, so more destinations makes the gamble longer.', fmt: (v) => `${Math.round(v)}` },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -888,6 +892,7 @@ export function initPanel() {
         case 'dp': return isDP;                   // convergence + sweeps + speed: DP round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
         case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
+        case 'r2': return roundIndex === 1;       // Round-2 game mechanics (spikes/plants/pipes)
         default: return true;                     // 'always'
       }
     };

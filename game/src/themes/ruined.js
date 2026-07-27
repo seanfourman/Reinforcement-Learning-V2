@@ -19,7 +19,6 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 const ASSETS = "./assets/models/ruined-kingdom/";
 const FALLING_ASSETS = "./assets/models/falling/";
-const AGENT_Y = 0.55;
 const FALLING_PROP_SCALE = 0.02;
 const FALLING_TOP_Y = 30;
 const FALLING_BOTTOM_Y = -13;
@@ -215,7 +214,6 @@ export const ruined = {
     const A = world.arena || 20;
     const C = A / 2;
     const obstacles = world.obstacles || [];
-    const goalPos = world.goal || [C, 2.5];
     const goalR = world.goalR || 1.4;
     const spawns = world.spawns || {
       red: [3, A - 2.5],

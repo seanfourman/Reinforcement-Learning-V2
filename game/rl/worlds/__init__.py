@@ -56,9 +56,9 @@ ALGO_LABELS = {
 }
 
 
-def make_world(round_id=1, seed=None):
+def make_world(round_id=1, seed=None, **cfg):
     mod = ROUND_MODULES.get(round_id, peach)
-    return mod.generate(seed)
+    return mod.generate(seed, **cfg)
 
 
 def round_algos(round_id):

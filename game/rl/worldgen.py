@@ -14,9 +14,10 @@ from worlds.grid import (  # noqa: F401  (re-exported)
 from worlds import make_world, round_meta, ROUNDS  # noqa: F401
 
 
-def generate(seed=None, round_id=1):
-    """Build a round's world (default Round 1 = Peach's Castle)."""
-    return make_world(round_id, seed)
+def generate(seed=None, round_id=1, **cfg):
+    """Build a round's world (default Round 1 = Peach's Castle). Extra keyword args
+    (e.g. Round 2's hazard counts) are forwarded to the round's generator."""
+    return make_world(round_id, seed, **cfg)
 
 
 if __name__ == "__main__":

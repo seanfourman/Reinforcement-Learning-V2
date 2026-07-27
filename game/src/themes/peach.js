@@ -41,39 +41,6 @@ const MODEL_ROT = Math.PI; // radians, flip the whole castle scene 180 degrees
 
 const TEX_CHECKS = 6; // MarbleCheckFloor00 has 6 checker squares across each texture tile (measured)
 const FLOOR_MULT = 1; // foyer floor checks are this many board-cells across (1 = same size as the board tiles)
-const TEAM_RED = 0xb8332c;
-const TEAM_BLUE = 0x2456c8;
-
-function crownShape() {
-  const s = new THREE.Shape();
-  s.moveTo(-0.42, -0.22);
-  s.lineTo(-0.42, 0.18);
-  s.lineTo(-0.24, 0.02);
-  s.lineTo(-0.08, 0.28);
-  s.lineTo(0.08, 0.02);
-  s.lineTo(0.24, 0.28);
-  s.lineTo(0.42, 0.02);
-  s.lineTo(0.42, -0.22);
-  s.closePath();
-  return s;
-}
-
-function starShape() {
-  // 4-point compass star - the Blue spawn emblem (shape-codes the teams so
-  // the medallions stay tellable apart without color)
-  const s = new THREE.Shape();
-  s.moveTo(0, 0.5);
-  s.lineTo(0.13, 0.13);
-  s.lineTo(0.5, 0);
-  s.lineTo(0.13, -0.13);
-  s.lineTo(0, -0.5);
-  s.lineTo(-0.13, -0.13);
-  s.lineTo(-0.5, 0);
-  s.lineTo(-0.13, 0.13);
-  s.closePath();
-  return s;
-}
-
 export const peach = {
   name: "peach",
   title: "Peach's Castle",
@@ -129,9 +96,6 @@ export const peach = {
       return out;
     };
     const goals = at("E");
-    const redSpawn = at("R")[0];
-    const blueSpawn = at("B")[0];
-    const onBorder = (r, c) => r === 0 || c === 0 || r === H - 1 || c === W - 1;
     // Round-1 game layout (empty on skeleton rounds): per-agent coins/blocks + puddles
     const slipCells = world.slipCells || [];
 
@@ -336,7 +300,6 @@ export const peach = {
     // '#' cells INSIDE the play area (Round 1's procedural maze) are drawn as
     // instanced white-marble boxes capped with a slim gold rail. The OUTER frame
     // (the walled margin around the board) stays unrendered - plain foyer floor.
-    void onBorder;
     {
       // board interior bounds (from the walkable cells), so the outer frame is skipped
       let rMin = H, rMax = -1, cMin = W, cMax = -1;
@@ -463,47 +426,6 @@ export const peach = {
 
       // (goal light pool removed - the thin gold inlay marks the goal, no glow)
     }
-
-    // ---- spawns: small flush marble medallions (static, quiet) --------------
-    const goldMat = new THREE.MeshStandardMaterial({
-      color: 0xd9a94a,
-      metalness: 0.85,
-      roughness: 0.35,
-    });
-    const medallion = (spawn, color, emblemShape, emblemScale) => {
-      if (!spawn) return;
-      const { x, z } = cw(spawn[0], spawn[1]);
-      const disc = new THREE.Mesh(
-        new THREE.CircleGeometry(0.3 * cell, 40),
-        new THREE.MeshStandardMaterial({
-          map: tex("MarbleWhite00_alb.png", 0.5, 0.5),
-          color,
-          roughness: 0.5,
-          metalness: 0,
-        }),
-      );
-      disc.rotation.x = -Math.PI / 2;
-      disc.position.set(x, 0.05, z); // above the raised board tiles
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.3 * cell, 0.36 * cell, 48),
-        goldMat,
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(x, 0.052, z);
-      const emblem = new THREE.Mesh(
-        new THREE.ShapeGeometry(emblemShape),
-        new THREE.MeshStandardMaterial({
-          color: 0xf7f3ee,
-          roughness: 0.45,
-          metalness: 0,
-        }),
-      );
-      emblem.rotation.x = -Math.PI / 2;
-      emblem.scale.setScalar(emblemScale * cell);
-      emblem.position.set(x, 0.054, z);
-      group.add(disc, ring, emblem);
-    };
-    // spawn medallions removed (no start-position icons on the board)
 
     // ---- Round-1 game objects: coins, Shine, "?" power-up blocks -------------
     // Each agent owns a MIRROR set of coins + one "?" block (Red tinted warm, Blue

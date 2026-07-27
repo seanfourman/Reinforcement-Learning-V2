@@ -125,6 +125,11 @@ class Match:
         self.block_ghost_prob = 0.5             # P(Ghost) on a Mystery Block
         self.coin_reward = COIN_REWARD          # value of an optional coin
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
+        # Round-2 game mechanics (New Donk City): hazard counts, applied at WORLD GEN
+        # (a change regenerates the maze, since they alter the layout).
+        self.r2_spikes = 3                      # spike traps per side
+        self.r2_plants = 1                      # piranha plants per side
+        self.r2_dests = 3                       # warp-pipe destinations (gamble breadth)
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -173,7 +178,11 @@ class Match:
         if getattr(mod, "CONTINUOUS", False):
             return ContinuousArena(seed, round_id=round_id,
                                    theme=getattr(mod, "THEME", "ruined"))
-        return GridWorld(seed, round_id=round_id)
+        gen_cfg = {}
+        if round_id == 2:                       # New Donk City hazard counts
+            gen_cfg = {"n_spikes": self.r2_spikes, "n_plants": self.r2_plants,
+                       "n_dests": self.r2_dests}
+        return GridWorld(seed, round_id=round_id, gen_cfg=gen_cfg)
 
     def _apply_env_config(self):
         """Apply the step-cap override + the Round-1 mechanic params onto the current env,
@@ -563,6 +572,17 @@ class Match:
                 self.block_reward = max(0.0, min(2.0, float(p["blockReward"])))
                 replan = True
 
+            # ---- GLOBAL: Round-2 hazard counts (regenerate the New Donk City maze) ----
+            if "r2Spikes" in p:
+                self.r2_spikes = max(0, min(10, int(p["r2Spikes"])))
+                need_env_rebuild = True
+            if "r2Plants" in p:
+                self.r2_plants = max(0, min(4, int(p["r2Plants"])))
+                need_env_rebuild = True
+            if "r2Dests" in p:
+                self.r2_dests = max(2, min(5, int(p["r2Dests"])))
+                need_env_rebuild = True
+
             # ---- GLOBAL: DQN internals ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
@@ -655,6 +675,9 @@ class Match:
             "freezeLen": self.freeze_len,
             "coinReward": round(self.coin_reward, 2),
             "blockReward": round(self.block_reward, 2),
+            "r2Spikes": self.r2_spikes,
+            "r2Plants": self.r2_plants,
+            "r2Dests": self.r2_dests,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -973,6 +996,31 @@ class Match:
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
                        "simultaneous arrival is a draw.")
                 slip_prob = sp
+            elif not arena and getattr(env, "hazardous", False):
+                # Round 2 (New Donk City): a stochastic hazard maze - the Monte-Carlo gamble
+                actions = ["North", "South", "West", "East"]
+                state_desc = "your tile only: the (row, column) cell index"
+                state_size = getattr(env, "n_cells", None)
+                n_spikes = len(getattr(env, "spike_cells", ()))
+                n_plants = len(getattr(env, "plant_cells", ()))
+                n_pipes = len(getattr(env, "pipe_map", ()))
+                observation = ("Each model sees ONLY its own tile - a single-agent navigator. The "
+                               "spikes, plants and pipes are FIXED features of the map, so the tile "
+                               "index alone stays Markov; the rival is invisible.")
+                sees_opp = False
+                opp_info = ("Nothing. There is no opponent term in the state; each model races its "
+                            "own copy of the same hazard maze.")
+                dynamics = (f"Deterministic walking (walls block). {n_spikes} SPIKE tiles and "
+                            f"{n_plants} PIRANHA PLANT tiles are lethal - stepping on a spike, or "
+                            f"onto a tile next to a plant, ENDS the episode as a loss. {n_pipes} WARP "
+                            f"PIPES teleport you to a UNIFORMLY-RANDOM destination (the gamble). The "
+                            f"Power Star sits in a sealed room reachable ONLY by warping in, so a "
+                            f"model must learn - from returns alone - to value the pipe by its "
+                            f"EXPECTED payoff, not one lucky hop.")
+                rewards = [["Step", -0.01], ["Win (reach the Power Star)", 1.0],
+                           ["Die on a hazard / lose", -1.0]]
+                win = ("First to warp to the Power Star wins. Dying on a spike or the plant is a "
+                       "loss; a simultaneous finish is a draw.")
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]

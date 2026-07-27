@@ -165,8 +165,6 @@ let menu = null; // start menu (cabin background); gates the game boot
 const hud = initHud(); // Blue top-left / Red top-right score + round banner
 const transition = createTransition(); // video-game curtain between arenas
 const awardCeremony = createAwardCeremony({
-  camera,
-  actors,
   onDone: () => control({ cmd: "nextRound" }),
   onExit: () => returnToStartMenu(),
 });
@@ -984,6 +982,5 @@ renderer.setAnimationLoop(() => {
 
   if (themeScene) themeScene.update?.(t, dt, latestFrame);
   actors.update(dt, t);
-  awardCeremony.update(dt, t);
   fx.composer.render();
 });

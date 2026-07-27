@@ -79,7 +79,7 @@ def _build():
     )
 
 
-def generate(seed=None):
+def generate(seed=None, **_):
     world = _build()
     validate(world)
     return world

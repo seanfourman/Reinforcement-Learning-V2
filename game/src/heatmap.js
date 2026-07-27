@@ -245,7 +245,6 @@ export function createHeatmap(scene) {
 
   // ---- greedy-policy ARROWS (per-cell argmax action) on the same canvas plane ----
   // grid[r][c] = 0=N,1=S,2=W,3=E, or null. Fed by /api/values?mode=policy.
-  const PDIR = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // N,S,W,E in canvas (x right, y down)
   function setPolicy(grid, agent) {
     _setTeam(agent);
     // floor policy as the SAME 3D arrows as the ghost/wall arrows, laid low on the ground

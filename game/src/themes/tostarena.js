@@ -3,16 +3,9 @@
 // A STREET-LEVEL town square, composed like the city round (round 2), not the
 // floating-island rounds: the arena is Tostarena's sandy plaza, the town's
 // adobe buildings RING it on every side at ground level, and the desert runs
-// to the fog. There is no grid: the round is a CHECKPOINT RALLY - each racer's
-// ordered tour (near-side oasis -> far-side ruin gate -> the pyramid finish)
-// is drawn straight onto the sand as a dashed racing line in its own colour,
-// with glowing rings at every waypoint and a light beacon standing on whichever
-// ring is that racer's CURRENT target (driven live from the snapshot's
-// redCp/blueCp). The town FOUNTAIN stands in the middle of the plaza, its
-// shallow pool doubling as the env's central slow-zone; the two outer QUICKSAND
-// pools swirl where the env slows the racers, and two procedural DUST DEVILS
-// roam, mirroring the env's deterministic orbit. The Inverted Pyramid hovers
-// tip-down beyond the north edge as the finish monument.
+// to the fog. There is no grid: the round is a checkpoint rally across a clean
+// sand plaza. The Inverted Pyramid hovers tip-down beyond the north edge as the
+// finish monument.
 //
 // Nothing may cover the y=0 arena surface above ~0.16 (the racers' feet).
 // Models come from the vendored Sand Kingdom OBJ/MTL pack in
@@ -84,22 +77,6 @@ export const tostarena = {
     // ---- the round's spec from the env ------------------------------------
     const A = world.arena || 20;
     const C = A / 2;
-    const tours = world.tours || {
-      red: [
-        [4.0, 12.5, 1.3],
-        [16.0, 8.0, 1.3],
-        [C, 2.6, 1.5],
-      ],
-      blue: [
-        [16.0, 12.5, 1.3],
-        [4.0, 8.0, 1.3],
-        [C, 2.6, 1.5],
-      ],
-    };
-    const quicksand = world.quicksand || [];
-    const spawns = world.spawns || { red: [7, A - 2.5], blue: [13, A - 2.5] };
-    const finish = tours.red[tours.red.length - 1];
-
     // ---- shared texture helper --------------------------------------------
     function assetTexture(name, repeatX = 1, repeatY = 1, color = true) {
       const tex = trackTexture(texLoader.load(ASSETS + name));
@@ -310,7 +287,6 @@ export const tostarena = {
     // ---- the desert floor: STREET LEVEL, like the city round ---------------
     // One big sand plane at y=0 running out to the fog - the arena is just the
     // kerbed plaza in the middle of town, not a floating island.
-    const TOP = 0; // the ground plane IS the play surface
     {
       const GROUND = 260;
       const rep = GROUND / 10; // bigger sand tiles (~7 units) so the grain reads
@@ -339,215 +315,7 @@ export const tostarena = {
       group.add(g);
     }
 
-    // The board is kept CLEAN: no kerb outline, no decorative sand patches,
-    // and none of the on-board props (pools, palms, ruin gates, fountain,
-    // dust devils) below.
-    //
-    // The RL route markers (dashed racing lines, checkpoint rings, target
-    // beacons) are BUILT below but gated behind SHOW_MARKERS. It is false for
-    // now - the arena stays bare while we polish the scene, and the gameplay
-    // overlay goes back in LAST. Flip this to true to restore every marker and
-    // its update() animation in one shot.
-    const SHOW_MARKERS = false;
-
-    // ---- the RACING LINES: each side's tour dashed onto the sand -----------
-    const lineMats = {
-      red: track(
-        new THREE.MeshBasicMaterial({
-          color: 0xff7a5c,
-          transparent: true,
-          opacity: 0.4,
-          depthWrite: false,
-        }),
-      ),
-      blue: track(
-        new THREE.MeshBasicMaterial({
-          color: 0x6fb4ff,
-          transparent: true,
-          opacity: 0.4,
-          depthWrite: false,
-        }),
-      ),
-    };
-    const dashGeo = track(new THREE.PlaneGeometry(0.5, 0.2));
-    function dashLine(from, to, mat) {
-      const dx = to[0] - from[0],
-        dz = to[1] - from[1];
-      const len = Math.hypot(dx, dz);
-      const ang = Math.atan2(dz, dx);
-      const n = Math.max(2, Math.floor(len / 0.85));
-      for (let i = 1; i < n; i++) {
-        const t = i / n;
-        const m = new THREE.Mesh(dashGeo, mat);
-        m.rotation.x = -Math.PI / 2;
-        m.rotation.z = -ang;
-        m.position.set(from[0] + dx * t, 0.055, from[1] + dz * t);
-        m.renderOrder = 1;
-        group.add(m);
-      }
-    }
-    if (SHOW_MARKERS)
-      for (const side of ["red", "blue"]) {
-        let prev = spawns[side];
-        for (const wp of tours[side]) {
-          dashLine(prev, wp, lineMats[side]);
-          prev = wp;
-        }
-      }
-
-    // ---- CHECKPOINT RINGS + the two current-target BEACONS -----------------
-    // rings[side][k] pulses while k is that side's live target (frame.redCp /
-    // frame.blueCp), holds steady while upcoming, and fades once passed.
-    const RING_COLORS = { red: 0xff6a4a, blue: 0x58a8ff };
-    const rings = { red: [], blue: [] };
-    function addRing(x, z, r, color, width = 0.16, y = 0.062) {
-      const geo = track(new THREE.RingGeometry(r - width, r, 48));
-      const mat = track(
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: 0.55,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        }),
-      );
-      const m = new THREE.Mesh(geo, mat);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set(x, y, z);
-      m.renderOrder = 2;
-      group.add(m);
-      return { mesh: m, mat, base: 0.55 };
-    }
-    let goldRing = null;
-    if (SHOW_MARKERS) {
-      for (const side of ["red", "blue"]) {
-        const tour = tours[side];
-        for (let k = 0; k < tour.length - 1; k++) {
-          const [x, z, r] = tour[k];
-          rings[side].push(addRing(x, z, r, RING_COLORS[side]));
-        }
-      }
-      // the shared finish: one gold ring + per-side accents just outside it
-      const [fx, fz, fr] = finish;
-      goldRing = addRing(fx, fz, fr, 0xffd24a, 0.2);
-      rings.red.push(addRing(fx, fz, fr + 0.3, RING_COLORS.red, 0.07));
-      rings.blue.push(addRing(fx, fz, fr + 0.55, RING_COLORS.blue, 0.07));
-    }
-
-    // one light beacon per side, standing on that racer's CURRENT target ring
-    const beacons = {};
-    if (SHOW_MARKERS)
-      for (const side of ["red", "blue"]) {
-        const geo = track(
-          new THREE.CylinderGeometry(0.34, 0.5, 3.4, 18, 1, true),
-        );
-        const mat = track(
-          new THREE.MeshBasicMaterial({
-            color: RING_COLORS[side],
-            transparent: true,
-            opacity: 0.22,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          }),
-        );
-        const m = new THREE.Mesh(geo, mat);
-        m.renderOrder = 3;
-        m.traverse((o) => (o.userData.excludeBloom = true));
-        const [bx, bz] = tours[side][0];
-        m.position.set(bx, 1.72, bz);
-        group.add(m);
-        beacons[side] = { mesh: m, mat };
-      }
-
-    // QUICKSAND pool discs removed from the clean board (kept empty so the
-    // swirl-animation loop in update() stays a harmless no-op).
-    const sandSwirls = [];
-
-    // ---- DUST DEVILS: two procedural tornados driven by the live frame -----
-    // The env moves them on a deterministic mirrored orbit; between snapshot
-    // polls we ease toward the latest reported position (same trick live.js
-    // uses for the racers), falling back to the local formula when no frame
-    // has arrived yet (start menu / preview).
-    const TOR = { D0: 2.2, D1: 1.8, Z0: 9.0, Z1: 3.5, WD: 0.055, WZ: 0.031 };
-    function tornadoFormula(steps) {
-      const d = TOR.D0 + TOR.D1 * Math.sin(TOR.WD * steps);
-      const z = TOR.Z0 + TOR.Z1 * Math.sin(TOR.WZ * steps + 1.1);
-      return [
-        [C - d, z],
-        [C + d, z],
-      ];
-    }
-    const devilMatBase = {
-      color: 0xdcbd8f,
-      transparent: true,
-      roughness: 1,
-      metalness: 0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    };
-    const devils = [];
-    function dustDevil(seed) {
-      const g = new THREE.Group();
-      const spinners = [];
-      for (let i = 0; i < 6; i++) {
-        const f = i / 5;
-        const r = 0.3 + f * 0.8;
-        const geo = track(
-          new THREE.CylinderGeometry(r * 1.08, r * 0.78, 0.6, 12, 1, true),
-        );
-        const mat = track(
-          new THREE.MeshStandardMaterial({
-            ...devilMatBase,
-            opacity: 0.34 - f * 0.04,
-          }),
-        );
-        const m = new THREE.Mesh(geo, mat);
-        m.position.y = 0.32 + i * 0.55;
-        m.position.x = (hashFloat(seed, i, 61) - 0.5) * 0.16;
-        m.position.z = (hashFloat(seed, i, 62) - 0.5) * 0.16;
-        m.userData.spin = 5.5 - f * 2.4;
-        g.add(m);
-        spinners.push(m);
-      }
-      // dusty skirt at the foot
-      const skirt = new THREE.Mesh(
-        track(new THREE.SphereGeometry(0.8, 12, 8)),
-        track(
-          new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.24 }),
-        ),
-      );
-      skirt.scale.set(1.5, 0.4, 1.5);
-      skirt.position.y = 0.22;
-      g.add(skirt);
-      // orbiting debris chips
-      const chips = new THREE.Group();
-      for (let i = 0; i < 6; i++) {
-        const chip = new THREE.Mesh(
-          track(new THREE.PlaneGeometry(0.16, 0.12)),
-          track(
-            new THREE.MeshStandardMaterial({ ...devilMatBase, opacity: 0.6 }),
-          ),
-        );
-        const a = (i / 6) * Math.PI * 2;
-        const rr = 0.7 + hashFloat(seed, i, 63) * 0.5;
-        chip.position.set(
-          Math.cos(a) * rr,
-          0.5 + hashFloat(seed, i, 64) * 2.4,
-          Math.sin(a) * rr,
-        );
-        chip.rotation.set(a, a * 1.7, a * 0.6);
-        chips.add(chip);
-      }
-      g.add(chips);
-      g.traverse((o) => (o.userData.excludeBloom = true));
-      group.add(g);
-      devils.push({ g, spinners, chips, target: null });
-      return g;
-    }
-    // (dust devils removed from the clean board; `devils` stays empty so the
-    // animation loop no-ops. dustDevil() / tornadoFormula kept for easy revive.)
-    void dustDevil;
+    // Keep the playable sand surface clear; scene landmarks stay outside it.
 
     // ---- LANDMARKS ---------------------------------------------------------
     // the Inverted Pyramid: the finish monument, hovering beyond the north rim,
@@ -926,68 +694,7 @@ export const tostarena = {
     }
 
     // ---- animation + teardown ---------------------------------------------
-    let simSteps = 0; // formula clock while no live frame is available
-    function update(t, dt, frame) {
-      // checkpoint rings + beacons track each side's live tour progress
-      // (gated: while SHOW_MARKERS is off the gameplay overlay is not built, so
-      // there is nothing to animate here)
-      if (SHOW_MARKERS) {
-        const prog = {
-          red: frame && Number.isInteger(frame.redCp) ? frame.redCp : 0,
-          blue: frame && Number.isInteger(frame.blueCp) ? frame.blueCp : 0,
-        };
-        for (const side of ["red", "blue"]) {
-          const list = rings[side];
-          const k = Math.min(prog[side], list.length - 1);
-          for (let i = 0; i < list.length; i++) {
-            const ring = list[i];
-            if (i < prog[side]) {
-              ring.mat.opacity = 0.1; // passed: a faint memory on the sand
-            } else if (i === k) {
-              // the live target breathes
-              ring.mat.opacity = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(t * 3.2));
-              ring.mesh.scale.setScalar(1 + 0.05 * Math.sin(t * 3.2));
-            } else {
-              ring.mat.opacity = 0.3;
-            }
-          }
-          // the beacon stands on the current target
-          const tour = tours[side];
-          const [bx, bz] = tour[Math.min(prog[side], tour.length - 1)];
-          const b = beacons[side];
-          const bob = 0.12 * Math.sin(t * 2.1 + (side === "red" ? 0 : 2));
-          b.mesh.position.set(
-            bx +
-              (side === "red" ? -0.2 : 0.2) *
-                (prog[side] === tours[side].length - 1 ? 1 : 0),
-            1.72 + bob,
-            bz,
-          );
-          b.mat.opacity = 0.16 + 0.1 * (0.5 + 0.5 * Math.sin(t * 2.6));
-          b.mesh.visible = !(frame && frame.winner); // hide once race is decided
-        }
-        goldRing.mat.opacity = 0.45 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.2));
-      }
-
-      // dust devils: ease toward the env's reported positions (or the local
-      // deterministic orbit before the first frame arrives)
-      simSteps += dt / 0.05;
-      const targets =
-        frame && Array.isArray(frame.tornados) && frame.tornados.length >= 2
-          ? frame.tornados
-          : tornadoFormula(simSteps);
-      devils.forEach((dv, i) => {
-        const [tx, tz] = targets[i];
-        dv.g.position.x += (tx - dv.g.position.x) * Math.min(1, dt * 6);
-        dv.g.position.z += (tz - dv.g.position.z) * Math.min(1, dt * 6);
-        for (const s of dv.spinners) s.rotation.y += dt * s.userData.spin;
-        dv.chips.rotation.y += dt * 3.4;
-        dv.g.rotation.y += dt * 0.4;
-      });
-
-      // quicksand slowly swirls
-      for (const s of sandSwirls) s.tex.rotation -= dt * s.speed * 6;
-
+    function update(t, dt) {
       // the Inverted Pyramid hovers + turns
       if (pyramid) {
         pyramid.w.position.y = pyramid.y + Math.sin(t * 0.5) * 0.35;

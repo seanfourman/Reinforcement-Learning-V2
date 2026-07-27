@@ -19,7 +19,6 @@ const GRID = 20;
 const CTR = GRID / 2;
 const ASSETS = './assets/models/city-newdonk/';
 const MK_TEXTURES = './assets/textures/mushroom-kingdom/';
-const DIVIDER_ROW = 12;
 
 // Zone half-extents measured from the board centre (CTR,CTR). The board is
 // [0,20] => half 10; each ring stacks outward from there.
@@ -102,9 +101,6 @@ export const city = {
     const protos = new Map();
     const maxAnisotropy = renderer?.capabilities?.getMaxAnisotropy?.() ?? 4;
     let disposed = false;
-
-    const cellWall = (r, c) =>
-      r >= 0 && r < GRID && c >= 0 && c < GRID && rows[r][c] === '#';
 
     // ---- shared asset / material helpers ---------------------------------
     function assetTexture(name, repeatX = 1, repeatY = 1, color = true) {
@@ -510,10 +506,12 @@ export const city = {
 
     // ---- hedge maze: rounded leaf masses on every wall cell ---------------
     const mazeRows = world.rows || [];
+    const plantSet = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
     const wallCells = [];
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
-        if ((mazeRows[r] || '')[c] === '#') wallCells.push([r, c]);
+        // hedges fill wall cells EXCEPT where a piranha plant stands (drawn below)
+        if ((mazeRows[r] || '')[c] === '#' && !plantSet.has(r * GRID + c)) wallCells.push([r, c]);
       }
     }
     function addShrubMaze(cells) {
@@ -826,6 +824,144 @@ export const city = {
       }
     });
 
+    // ======================================================================
+    // Round-2 game objects: SPIKE TRAPS, PIRANHA PLANTS, WARP PIPES.
+    // These DAEs are Z-up, inch-unit SkinnedMeshes whose samplers three cannot
+    // bind, so (as in the peach round) we DESKIN them to rest-pose meshes and skin
+    // each with a hand-loaded PBR material. They all animate off the live frame.
+    // ======================================================================
+    const OBJ = './assets/objects/';
+    const objTex = (path, srgb = true) => {
+      const tex = trackTexture(texLoader.load(encodeURI(path)));
+      tex.anisotropy = maxAnisotropy;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+    const deskin = (root) => {
+      const skinned = [];
+      root.traverse((o) => o.isSkinnedMesh && skinned.push(o));
+      for (const sm of skinned) {
+        const m = new THREE.Mesh(sm.geometry, sm.material);
+        m.name = sm.name;
+        m.position.copy(sm.position);
+        m.quaternion.copy(sm.quaternion);
+        m.scale.copy(sm.scale);
+        if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+      }
+      return root;
+    };
+    // centre in X/Z, sit the BASE at y=0, scale so the largest side spans `size`
+    const fitObject = (obj, size) => {
+      obj.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(obj);
+      const dim = box.getSize(new THREE.Vector3());
+      const ctr = box.getCenter(new THREE.Vector3());
+      obj.position.set(-ctr.x, -box.min.y, -ctr.z);
+      const wrap = new THREE.Group();
+      wrap.add(obj);
+      wrap.scale.setScalar(size / (Math.max(dim.x, dim.y, dim.z) || 1));
+      return wrap;
+    };
+    const setObjMat = (obj, mat) => obj.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = mat;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      track(o.geometry);
+    });
+    const loadObj = (path) => collada.loadAsync(encodeURI(path)).then((asset) => {
+      if (disposed) return null;
+      deskin(asset.scene);
+      return asset.scene;
+    }).catch((e) => { console.warn('R2 object failed to load:', path, e); return null; });
+
+    const cellX = (c) => c + 0.5, cellZ = (r) => r + 0.5;
+    let prevRed = null, prevBlue = null;   // last frame's actor cells (warp-entry detect)
+
+    // ---- SPIKE TRAPS: sunk under the lawn, SHOOT UP when an actor steps on ----
+    const spikeMat = track(new THREE.MeshStandardMaterial({
+      map: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_alb.png'),
+      normalMap: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_nrm.png', false),
+      roughnessMap: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_rgh.png', false),
+      color: 0xffffff, roughness: 0.62, metalness: 0.12,   // let the metal albedo read (no blue sheen)
+    }));
+    // sharp metal NEEDLES that shoot out of the trap plate on a hit (the DAE's own
+    // pop-up is a skeleton animation we stripped when deskinning, so add our own)
+    const needleMat = track(new THREE.MeshStandardMaterial({ color: 0xe2e7ec, roughness: 0.28, metalness: 0.6 }));
+    const needleGeo = track(new THREE.ConeGeometry(0.05, 0.5, 6));
+    const spikeObjs = [];                  // {r, c, box, needles, hot}
+    loadObj(OBJ + 'Spike Trap/Spike Trap.dae').then((proto) => {
+      if (!proto) return;
+      for (const [r, c] of world.spikes || []) {
+        const box = fitObject(proto.clone(true), 0.9);
+        setObjMat(box, spikeMat);
+        box.position.set(cellX(c), 0.02, cellZ(r));      // the trap plate sits flush + VISIBLE
+        group.add(box);
+        const needles = new THREE.Group();
+        for (let i = 0; i < 9; i++) {                    // a 3x3 cluster of spikes
+          const cone = new THREE.Mesh(needleGeo, needleMat);
+          cone.position.set(((i % 3) - 1) * 0.24, 0.25, (Math.floor(i / 3) - 1) * 0.24);
+          cone.castShadow = true;
+          needles.add(cone);
+        }
+        needles.position.set(cellX(c), 0.1, cellZ(r));
+        needles.scale.y = 0.001;                          // retracted until triggered
+        group.add(needles);
+        spikeObjs.push({ r, c, box, needles, hot: 0 });
+      }
+    });
+
+    // ---- PIRANHA PLANTS: stand on their tile, LUNGE + rise when they bite -----
+    const plantMat = track(new THREE.MeshStandardMaterial({
+      map: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_alb.png'),
+      normalMap: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_nrm.png', false),
+      roughnessMap: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_rgh.png', false),
+      roughness: 0.62, metalness: 0.0,
+    }));
+    const plantObjs = [];                  // {r, c, wrap, baseS, chomp}
+    loadObj(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBig.dae').then((proto) => {
+      if (!proto) return;
+      for (const [r, c] of world.plants || []) {
+        const wrap = fitObject(proto.clone(true), 1.5);
+        setObjMat(wrap, plantMat);
+        wrap.position.set(cellX(c), 0.02, cellZ(r));
+        group.add(wrap);
+        plantObjs.push({ r, c, wrap, baseS: wrap.scale.x, chomp: 0 });
+      }
+    });
+
+    // ---- WARP PIPES: one on every entry AND destination; glow, flash on a warp -
+    const pipeMat = track(new THREE.MeshStandardMaterial({
+      map: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_alb.png'),
+      normalMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_nrm.png', false),
+      roughnessMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_rgh.png', false),
+      color: 0x46c24d, roughness: 0.55, metalness: 0.12,
+      emissive: 0x1f7a2a, emissiveIntensity: 0.1,
+    }));
+    const pipeObjs = [];                   // {r, c, wrap, entry, flash, mat}
+    const pipeCells = [];
+    const pipeSeen = new Set();
+    for (const p of world.pipes || []) {
+      const add = (cell, entry) => {
+        const key = cell[0] * GRID + cell[1];
+        if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], entry }); }
+      };
+      add(p.entry, true);
+      for (const d of p.dests) add(d, false);
+    }
+    loadObj(OBJ + 'Warp Pipe/Warp Pipe.dae').then((proto) => {
+      if (!proto) return;
+      for (const pc of pipeCells) {
+        const wrap = fitObject(proto.clone(true), pc.entry ? 0.95 : 0.72);
+        const mat = track(pipeMat.clone());
+        setObjMat(wrap, mat);
+        wrap.position.set(cellX(pc.c), 0.02, cellZ(pc.r));
+        group.add(wrap);
+        pipeObjs.push({ r: pc.r, c: pc.c, wrap, entry: pc.entry, flash: 0, mat });
+      }
+    });
+
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
       waterMat.opacity = 0.82 + 0.04 * Math.sin(t * 1.4);
@@ -847,6 +983,52 @@ export const city = {
         tx.mesh.position.set(x, ROAD_Y, z);
         tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
       }
+
+      // ---- Round-2 hazards react to the live frame ------------------------
+      const rCell = frame && Array.isArray(frame.red) ? frame.red : null;
+      const bCell = frame && Array.isArray(frame.blue) ? frame.blue : null;
+      const onCell = (o, cell) => cell && cell[0] === o.r && cell[1] === o.c;
+      const manhattan = (o, cell) => Math.abs(cell[0] - o.r) + Math.abs(cell[1] - o.c);
+
+      // SPIKES: an actor standing on the trap tile IS a death frame -> NEEDLES shoot up
+      for (const s of spikeObjs) {
+        const stepped = onCell(s, rCell) || onCell(s, bCell);
+        s.hot = stepped ? 1 : Math.max(0, s.hot - dt * 2.2);
+        const e = s.hot * s.hot * (3 - 2 * s.hot);                  // smoothstep ease
+        s.needles.scale.y = 0.001 + e;                             // needles extend
+        s.box.position.y = 0.02 + e * 0.05;                        // the plate jolts
+      }
+
+      // PLANTS: idle turn; LUNGE (scale + rise + twist) when an actor is next to it
+      for (const p of plantObjs) {
+        const near = (rCell && manhattan(p, rCell) <= 1) || (bCell && manhattan(p, bCell) <= 1);
+        p.chomp = near ? 1 : Math.max(0, p.chomp - dt * 2.0);
+        const lunge = Math.sin(Math.min(1, p.chomp) * Math.PI);    // 0 -> 1 -> 0 over a bite
+        p.wrap.scale.setScalar(p.baseS * (1 + lunge * 0.30));
+        p.wrap.rotation.y = t * 0.5 + lunge * 0.6;
+        p.wrap.position.y = 0.02 + lunge * 0.14;
+      }
+
+      // PIPES: entries pulse invitingly; a warp FLASHES the entry used + the exit
+      const flashKeys = new Set();
+      const flashEntryNear = (prev) => {
+        if (!prev) return;
+        for (const pipe of pipeObjs) {
+          if (pipe.entry && Math.abs(pipe.r - prev[0]) + Math.abs(pipe.c - prev[1]) === 1) {
+            flashKeys.add(pipe.r * GRID + pipe.c);
+          }
+        }
+      };
+      if (frame && frame.redWarp) { flashKeys.add(frame.redWarp[0] * GRID + frame.redWarp[1]); flashEntryNear(prevRed); }
+      if (frame && frame.blueWarp) { flashKeys.add(frame.blueWarp[0] * GRID + frame.blueWarp[1]); flashEntryNear(prevBlue); }
+      for (const pipe of pipeObjs) {
+        if (flashKeys.has(pipe.r * GRID + pipe.c)) pipe.flash = 1;
+        else pipe.flash = Math.max(0, pipe.flash - dt * 1.8);
+        const idle = pipe.entry ? 0.16 + 0.06 * Math.sin(t * 2 + pipe.r) : 0.04;
+        pipe.mat.emissiveIntensity = idle + pipe.flash * 1.6;
+        pipe.wrap.position.y = 0.02 + pipe.flash * 0.06;
+      }
+      if (frame) { prevRed = frame.red; prevBlue = frame.blue; }
     }
 
     function dispose() {

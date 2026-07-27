@@ -2295,37 +2295,6 @@ export function createStartMenu({
     #rl-howto .hw-opp:nth-child(2) .oa{width:60px;height:60px;}
     #rl-howto .hw-opp:nth-child(3) .oa{width:70px;height:70px;}
     #rl-howto .hw-opp .ostars{font-size:12px;color:#f6b21b;-webkit-text-stroke:.4px #000;letter-spacing:1px;}
-    /* ---- page-3: VS arena ---- */
-    #rl-howto .vs-arena{position:relative;display:flex;align-items:stretch;justify-content:center;
-      width:330px;border:3px solid #000;border-radius:16px;overflow:hidden;
-      background:linear-gradient(100deg,#d9e3ff 0 46%,#f6ead0 46% 54%,#ffdfda 54% 100%);
-      box-shadow:inset 0 3px 0 rgba(255,255,255,.45),inset 0 -5px 0 rgba(0,0,0,.07);}
-    #rl-howto .vs-fighter{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:13px 10px;}
-    #rl-howto .vs-ava{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
-      font-size:27px;border:3px solid #000;box-shadow:0 4px 0 #000;}
-    #rl-howto .vs-fighter.blue .vs-ava{background:radial-gradient(circle at 38% 30%,#7e9dff,#2348c0);}
-    #rl-howto .vs-fighter.red .vs-ava{background:radial-gradient(circle at 38% 30%,#ff7164,#b81f1f);}
-    #rl-howto .vs-name{font-weight:900;font-size:16px;letter-spacing:1px;}
-    #rl-howto .vs-fighter.blue .vs-name{color:#2348c0;}
-    #rl-howto .vs-fighter.red .vs-name{color:#b81f1f;}
-    #rl-howto .vs-tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#7b6240;}
-    #rl-howto .vs-clash{flex:none;width:0;display:flex;align-items:center;justify-content:center;z-index:2;}
-    #rl-howto .vs-word{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;
-      background:#000;color:#fff;font-weight:900;font-size:17px;font-style:italic;letter-spacing:1px;
-      box-shadow:0 0 0 4px #fffdf6,0 0 0 7px #000,0 5px 0 rgba(0,0,0,.3);transform:rotate(-9deg);}
-    /* ---- page-4: champion podium ---- */
-    #rl-howto .hw-podium{display:flex;align-items:flex-end;gap:8px;}
-    #rl-howto .pod{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
-      border:2.5px solid #000;border-radius:9px 9px 0 0;box-shadow:0 3px 0 #000;color:#3a2a14;font-weight:900;}
-    #rl-howto .pod .pn{font-size:19px;padding-bottom:4px;}
-    #rl-howto .pod.p1{width:82px;height:96px;background:linear-gradient(180deg,#ffdc5c,#f6b21b);}
-    #rl-howto .pod.p2{width:66px;height:66px;background:linear-gradient(180deg,#eef1f6,#bcc6d4);}
-    #rl-howto .pod.p3{width:66px;height:48px;background:linear-gradient(180deg,#f3b483,#cd7f32);}
-    #rl-howto .pod .ptrophy{position:absolute;top:-46px;font-size:48px;filter:drop-shadow(0 4px 0 rgba(0,0,0,.2));}
-    /* TEMP placeholder box for pages whose visual isn't built yet */
-    #rl-howto .hw-ph{display:grid;place-items:center;width:300px;height:118px;box-sizing:border-box;
-      border:3px dashed rgba(0,0,0,.3);border-radius:16px;background:rgba(0,0,0,.035);
-      color:rgba(0,0,0,.42);font-weight:800;font-size:15px;letter-spacing:2px;text-transform:uppercase;}
     /* "Face off" stage: the 4 round boards fanned in a stack - R2 + R3 prominent in
        front, R1 + R4 dimmed behind the top corners (art in game/assets/arenas/) */
     #rl-howto .hw-arenas{position:absolute;inset:0;pointer-events:none;}
@@ -3107,21 +3076,6 @@ export function createStartMenu({
     `<div class="hw-opp"><div class="oa" style="background-image:url(./assets/icons/${key}.png)"></div>` +
     `<div class="ostars">${"★".repeat(stars)}${"☆".repeat(5 - stars)}</div></div>`;
   const hwLadder = `<div class="hw-ladder">${hwOpp("toad", 1)}${hwOpp("yoshi", 3)}${hwOpp("bowser", 5)}</div>`;
-  // page 3 - the red-vs-blue duel
-  const hwArena = `<div class="vs-arena">` +
-    `<div class="vs-fighter blue"><div class="vs-ava">🧠</div><div class="vs-name">YOU</div><div class="vs-tag">your team</div></div>` +
-    `<div class="vs-clash"><span class="vs-word">VS</span></div>` +
-    `<div class="vs-fighter red"><div class="vs-ava">🧠</div><div class="vs-name">RIVAL</div><div class="vs-tag">computer</div></div>` +
-    `</div>`;
-  // page 4 - the crown
-  const hwPodium = `<div class="hw-podium">` +
-    `<div class="pod p2"><span class="pn">2</span></div>` +
-    `<div class="pod p1"><span class="ptrophy">🏆</span><span class="pn">1</span></div>` +
-    `<div class="pod p3"><span class="pn">3</span></div>` +
-    `</div>`;
-  // TEMP: placeholder for the face-off + champion visuals (real designs coming later;
-  // hwArena / hwPodium above are kept for when we wire the real thing back in)
-  const hwPlaceholder = `<div class="hw-ph">Placeholder</div>`;
   // the "Face off" visual: the 4 round boards fanned in a stack (R2 + R3 in front)
   const hwArenaStack =
     `<div class="hw-arenas">` +

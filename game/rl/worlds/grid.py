@@ -38,7 +38,8 @@ class World:
                  red_spawn, blue_spawn, escape, objective="cross",
                  coins=None, shine=None,
                  red_coins=None, blue_coins=None,
-                 red_blocks=None, blue_blocks=None, slip=None):
+                 red_blocks=None, blue_blocks=None, slip=None,
+                 spikes=None, plants=None, pipes=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -55,6 +56,16 @@ class World:
         self.red_blocks = [tuple(b) for b in (red_blocks or [])]
         self.blue_blocks = [tuple(b) for b in (blue_blocks or [])]
         self.slip = [tuple(s) for s in (slip or [])]
+        # Round-2 game layout (New Donk City): shared hazards. ``spikes`` are floor
+        # cells that KILL on entry; ``plants`` are impassable piranha cells whose
+        # orthogonal floor neighbours kill on entry; ``pipes`` are stochastic warps,
+        # each ``{"entry": (r,c), "dests": [(r,c), ...]}`` (entering warps to a
+        # uniformly-random dest). Empty on every other round.
+        self.spikes = [tuple(s) for s in (spikes or [])]
+        self.plants = [tuple(p) for p in (plants or [])]
+        self.pipes = [{"entry": tuple(p["entry"]),
+                       "dests": [tuple(d) for d in p["dests"]]}
+                      for p in (pipes or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -75,25 +86,50 @@ class World:
             "blueCoins": [list(c) for c in self.blue_coins],
             "redBlocks": [list(b) for b in self.red_blocks],
             "blueBlocks": [list(b) for b in self.blue_blocks],
+            # Round-2 hazards (empty elsewhere): spike traps, piranha plants, warp pipes.
+            "spikes": [list(s) for s in self.spikes],
+            "plants": [list(p) for p in self.plants],
+            "pipes": [{"entry": list(p["entry"]),
+                       "dests": [list(d) for d in p["dests"]]}
+                      for p in self.pipes],
         }
 
 
 def validate(world):
-    """Reachability check: each spawn must have a path to a goal tile. Raises on an
-    unsolvable map."""
+    """Reachability check: each spawn must have a path to a goal tile, staying ALIVE.
+    Hazard-aware (Round 2): spike cells and piranha-adjacent cells are lethal, so a
+    safe path may not cross them; a warp pipe adds teleport edges from its entry to
+    every destination. Raises on an unsolvable map."""
     g, H, W = world.grid, world.H, world.W
     goals = {tuple(e) for e in world.escape}
+    spikes = set(world.spikes)
+    plants = set(world.plants)
+    # cells that kill on entry: spike tiles + every floor tile orthogonally next to a plant
+    lethal = set(spikes)
+    for (pr, pc) in plants:
+        for dr, dc in ORTHO:
+            nr, nc = pr + dr, pc + dc
+            if 0 <= nr < H and 0 <= nc < W and g[nr][nc] != WALL:
+                lethal.add((nr, nc))
+    # pipe teleport edges: entry -> each destination (entering a pipe is always safe)
+    warp = {}
+    for p in world.pipes:
+        warp.setdefault(tuple(p["entry"]), []).extend(tuple(d) for d in p["dests"])
+
+    def passable(r, c):
+        return 0 <= r < H and 0 <= c < W and g[r][c] != WALL and (r, c) not in plants
 
     def reach(start):
         seen, stack = {tuple(start)}, [tuple(start)]
         while stack:
-            r, c = stack.pop()
-            for dr, dc in ORTHO:
-                nr, nc = r + dr, c + dc
-                if not (0 <= nr < H and 0 <= nc < W) or (nr, nc) in seen:
+            cell = stack.pop()
+            nbrs = [(cell[0] + dr, cell[1] + dc) for dr, dc in ORTHO]
+            nbrs += warp.get(cell, [])                     # a pipe warps onward
+            for (nr, nc) in nbrs:
+                if (nr, nc) in seen or not passable(nr, nc):
                     continue
-                if g[nr][nc] == WALL:
-                    continue
+                if (nr, nc) in lethal and (nr, nc) not in goals:
+                    continue                                # a safe path avoids death
                 seen.add((nr, nc))
                 stack.append((nr, nc))
         return seen
@@ -101,6 +137,6 @@ def validate(world):
     problems = []
     for name, spawn in (("red", world.red_spawn), ("blue", world.blue_spawn)):
         if not (reach(spawn) & goals):
-            problems.append(f"{name}: cannot reach the goal")
+            problems.append(f"{name}: cannot reach the goal alive")
     if problems:
         raise ValueError("world invalid:\n  " + "\n  ".join(problems))

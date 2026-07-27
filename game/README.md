@@ -89,7 +89,6 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 | `src/themes/`        | Per-round arena geometry, palette, sky and camera             |
 | `src/startmenu.js`   | Character select + cinematic start menu                       |
 | `src/panel.js`       | The Training Control panel (N)                                 |
-| `src/cpupanel.js`    | The CPU panel (M)                                             |
 | `src/graphs.js`      | Learning-curve / DP-convergence charts + episode replay       |
 | `src/heatmap.js`     | The learned-value heatmap overlay                             |
 | `vendor/three/`      | Bundled three.js (no package manager needed)                  |

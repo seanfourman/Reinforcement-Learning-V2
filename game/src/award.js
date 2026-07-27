@@ -1,12 +1,3 @@
-import * as THREE from "three";
-
-const STAGE_DURATION = 5200;
-const STAGE_ADVANCE_AT = 2850;
-const FINAL_DURATION = 12000;
-const INTRO = 1450;
-const HOLD = 2350;
-const FINAL_POSE_DURATION = 10 * 60 * 1000;
-
 const STYLE = `
 @font-face{font-family:"SuperMario256";src:url("./assets/fonts/SuperMario256.ttf") format("truetype");font-display:swap;}
 /* z 24 = BELOW the round-transition iris (z 60): the closing black circle SWALLOWS the
@@ -47,34 +38,6 @@ const STYLE = `
 #rl-award .sub{display:block;margin-top:12px;color:#fff;font-family:"SuperMario256","Arial Black",sans-serif;
   font-size:20px;letter-spacing:.5px;-webkit-text-stroke:4px #000;paint-order:stroke fill;
   text-shadow:1px 1px 0 #000,2px 2px 0 #000,3px 3px 0 #000,4px 4px 0 #000;}
-#rl-award .point{display:none;}   /* the +1 POINT pill is gone - just the middle text now */
-#rl-award.show .point{animation:rl-point-in .42s cubic-bezier(.16,1.35,.25,1) .72s both;}
-@keyframes rl-point-in{to{opacity:1;transform:translateX(-50%) translateY(-10px);}}
-#rl-award.stage{background:
-  radial-gradient(circle 170px at var(--sx,50%) var(--sy,56%),rgba(255,244,155,.18),rgba(255,244,155,.04) 42%,rgba(0,0,0,0) 70%),
-  rgba(0,0,0,.44);}
-#rl-award.stage .burst{background:
-  radial-gradient(circle 92px at var(--sx,50%) var(--sy,56%),rgba(255,255,255,.18),rgba(255,255,255,0) 72%);}
-#rl-award.stage .spark{left:var(--sx,50%);top:var(--sy,56%);}
-#rl-award.stage .banner{margin-top:8vh;}
-#rl-award.stage .winner{font-size:clamp(38px,6vw,78px);}
-#rl-award.stage .sub{font-size:15px;}
-#rl-award .ring{position:absolute;left:var(--sx,50%);top:var(--sy,56%);width:160px;height:160px;
-  margin:-80px 0 0 -80px;border:5px solid #ffd443;border-radius:50%;box-shadow:0 0 0 4px #000,0 0 30px #ffd443;
-  opacity:0;transform:scale(.45);display:none;}
-#rl-award.stage .ring{display:block;animation:rl-ring 1.1s cubic-bezier(.16,1.25,.25,1) .16s both;}
-#rl-award.blue .ring{border-color:#67a9ff;box-shadow:0 0 0 4px #000,0 0 30px #67a9ff;}
-#rl-award.red .ring{border-color:#ff7468;box-shadow:0 0 0 4px #000,0 0 30px #ff7468;}
-@keyframes rl-ring{35%{opacity:1;transform:scale(1.08);}100%{opacity:.72;transform:scale(1);}}
-#rl-award .coin{position:absolute;left:0;top:0;width:58px;height:58px;border-radius:50%;border:4px solid #000;
-  display:none;place-items:center;background:#ffd443;color:#1b1607;font-family:"SuperMario256","Arial Black",sans-serif;
-  font-size:22px;box-shadow:0 5px 0 #000;transform:translate(var(--sxpx,50vw),var(--sypx,50vh)) translate(-50%,-50%);}
-#rl-award.stage .coin{display:grid;animation:rl-coin-fly 1.35s cubic-bezier(.2,.8,.2,1) 1.15s both;}
-@keyframes rl-coin-fly{
-  0%{transform:translate(var(--sxpx,50vw),var(--sypx,50vh)) translate(-50%,-50%) scale(.7);opacity:0;}
-  16%{opacity:1;transform:translate(var(--sxpx,50vw),var(--sypx,50vh)) translate(-50%,-72%) scale(1.08);}
-  100%{opacity:0;transform:translate(var(--txpx,50vw),var(--typx,8vh)) translate(-50%,-50%) scale(.55);}
-}
 #rl-final{position:fixed;inset:0;z-index:26;pointer-events:none;display:grid;place-items:center;
   opacity:0;transition:opacity .24s ease;font-family:"Segoe UI",system-ui,sans-serif;
   background:radial-gradient(circle at 50% 45%,rgba(255,218,73,.16),rgba(0,0,0,.42) 54%,rgba(0,0,0,.72));}
@@ -126,11 +89,6 @@ const STYLE = `
 @keyframes rl-confetti{0%{top:-8%;opacity:0;}8%{opacity:1;}100%{top:108%;opacity:0;transform:translateX(calc(var(--x) + var(--s))) rotate(calc(var(--r) + 380deg));}}
 `;
 
-const ease = (t) => {
-  const x = Math.max(0, Math.min(1, t));
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-};
-
 function sideLabel(side) {
   return side === "blue" ? "Player" : "CPU";
 }
@@ -167,7 +125,7 @@ function confettiHTML() {
   return bits.join("");
 }
 
-export function createAwardCeremony({ camera, actors, onDone, onExit }) {
+export function createAwardCeremony({ onDone, onExit }) {
   const style = document.createElement("style");
   style.textContent = STYLE;
   document.head.appendChild(style);
@@ -176,9 +134,7 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   el.id = "rl-award";
   el.innerHTML =
     `<div class="burst">${sparkHTML()}</div>` +
-    `<div class="ring"></div><div class="coin">+1</div>` +
-    `<div class="banner"><div class="winner">WINNER!</div><div class="sub"></div></div>` +
-    `<div class="point">+1 STAGE POINT</div>`;
+    `<div class="banner"><div class="winner">WINNER!</div><div class="sub"></div></div>`;
   document.body.appendChild(el);
 
   const finalEl = document.createElement("div");
@@ -204,26 +160,18 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     }
   });
 
-  const tmpFocus = new THREE.Vector3();
-  const tmpActor = new THREE.Vector3();
-  const tmpClose = new THREE.Vector3();
-  const tmpLook = new THREE.Vector3();
-  const tmpPos = new THREE.Vector3();
-  const tmpScreen = new THREE.Vector3();
-  let state = null;
   let drawTimer = null;
 
   function hide() {
     clearTimeout(drawTimer);
-    el.classList.remove("show", "blue", "red", "stage", "close", "draw");
-    state = null;
+    el.classList.remove("show", "blue", "red", "draw");
   }
 
   // ONE simple finish banner for both a winner and a draw: NO camera zoom, NO celebrate,
   // NO point pill - just the centred-ish text, held a moment, then advance / final standings.
   function finishBanner(cls, main, sub, finalRound, award, stats) {
     clearTimeout(drawTimer);
-    el.classList.remove("show", "blue", "red", "stage", "close", "draw");
+    el.classList.remove("show", "blue", "red", "draw");
     el.classList.add(cls);
     el.querySelector(".winner").textContent = main;
     el.querySelector(".sub").textContent = sub;
@@ -246,21 +194,6 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
   function showDraw(award, stats) {
     const finalRound = (award.roundIndex ?? 0) + 1 >= (award.roundTotal ?? 1);
     finishBanner("draw", "DRAW", "No clear winner this round", finalRound, award, stats);
-  }
-
-  function setStageSpot(side) {
-    actors.getSideFocus(side, tmpFocus);
-    tmpScreen.copy(tmpFocus).project(camera);
-    const xPct = THREE.MathUtils.clamp((tmpScreen.x * 0.5 + 0.5) * 100, 8, 92);
-    const yPct = THREE.MathUtils.clamp((-tmpScreen.y * 0.5 + 0.5) * 100, 12, 86);
-    const xPx = (xPct / 100) * window.innerWidth;
-    const yPx = (yPct / 100) * window.innerHeight;
-    el.style.setProperty("--sx", `${xPct.toFixed(2)}%`);
-    el.style.setProperty("--sy", `${yPct.toFixed(2)}%`);
-    el.style.setProperty("--sxpx", `${xPx.toFixed(1)}px`);
-    el.style.setProperty("--sypx", `${yPx.toFixed(1)}px`);
-    el.style.setProperty("--txpx", side === "blue" ? "25vw" : "75vw");
-    el.style.setProperty("--typx", "9vh");
   }
 
   function showFinal(award, stats) {
@@ -302,59 +235,14 @@ export function createAwardCeremony({ camera, actors, onDone, onExit }) {
     return true;
   }
 
-  function update() {
-    if (!state) return;
-
-    const elapsed = performance.now() - state.startTime;
-    if (elapsed >= FINAL_DURATION && state.advanceStarted && !state.finalRound) {
-      hide();
-      return;
-    }
-
-    actors.getSideFocus(state.side, tmpFocus);
-    tmpLook.copy(tmpFocus);
-    tmpLook.y += 0.08;
-    tmpClose.copy(tmpFocus).addScaledVector(state.dir, 4.25);
-    tmpClose.y = tmpFocus.y + 1.05 + Math.sin(elapsed * 0.006) * 0.06;
-
-    if (elapsed < INTRO) {
-      const u = ease(elapsed / INTRO);
-      tmpPos.lerpVectors(state.startPos, tmpClose, u);
-      camera.position.copy(tmpPos);
-      camera.lookAt(tmpLook);
-    } else {
-      const sway = Math.sin(elapsed * 0.0028) * 0.18;
-      tmpPos.copy(tmpClose).addScaledVector(state.dir, Math.sin(elapsed * 0.004) * 0.12);
-      tmpPos.x += -state.dir.z * sway;
-      tmpPos.z += state.dir.x * sway;
-      camera.position.copy(tmpPos);
-      camera.lookAt(tmpLook);
-    }
-
-    if (!state.advanceStarted && elapsed >= INTRO + HOLD) {
-      state.advanceStarted = true;
-      if (state.finalRound) {
-        actors.celebrate(state.side, {
-          duration: FINAL_POSE_DURATION,
-          faceYaw: Math.atan2(tmpClose.x - tmpActor.x, tmpClose.z - tmpActor.z),
-        });
-        el.classList.remove("show");
-        showFinal(state.award, state.stats);
-      } else {
-        onDone?.({ side: state.side, award: state.award, stats: state.stats });
-      }
-    }
-  }
-
   return {
     start,
     showFinal,
     showDraw,
-    update,
     stop: () => {
       hide();
       finalEl.classList.remove("show", "blue", "red", "tie");
     },
-    active: () => !!state || finalEl.classList.contains("show"),
+    active: () => finalEl.classList.contains("show"),
   };
 }

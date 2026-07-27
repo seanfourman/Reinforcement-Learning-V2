@@ -56,7 +56,7 @@ def _cell(cr, cc):
     return (LO + 2 * cr, LO + 2 * cc)   # maze cell (cr, cc) -> grid position
 
 
-def generate(seed=None):
+def generate(seed=None, **_):
     rng = random.Random(seed)
     g = [[WALL] * SIZE for _ in range(SIZE)]
 

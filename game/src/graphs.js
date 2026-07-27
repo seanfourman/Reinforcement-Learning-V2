@@ -369,59 +369,6 @@ function makeChart(canvas, cfg) {
   return { draw, resize };
 }
 
-// draw a value grid (H x W, nulls = walls) as a cropped blue(low)->red(high) heatmap
-// on a 2D canvas - used by the Value-Iteration propagation animation.
-function drawVGrid(canvas, grid) {
-  const ctx = canvas.getContext("2d");
-  const H = grid.length,
-    W = grid[0] ? grid[0].length : 0;
-  let r0 = H,
-    r1 = -1,
-    c0 = W,
-    c1 = -1,
-    lo = Infinity,
-    hi = -Infinity;
-  for (let r = 0; r < H; r++)
-    for (let c = 0; c < W; c++) {
-      const v = grid[r][c];
-      if (v == null) continue;
-      if (r < r0) r0 = r;
-      if (r > r1) r1 = r;
-      if (c < c0) c0 = c;
-      if (c > c1) c1 = c;
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cw = canvas.clientWidth || 280,
-    ch = canvas.clientHeight || 280;
-  canvas.width = Math.round(cw * dpr);
-  canvas.height = Math.round(ch * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cw, ch);
-  if (r1 < 0) return;
-  const span = hi - lo || 1,
-    rows = r1 - r0 + 1,
-    cols = c1 - c0 + 1;
-  const tw = cw / cols,
-    th = ch / rows;
-  for (let r = r0; r <= r1; r++)
-    for (let c = c0; c <= c1; c++) {
-      const v = grid[r][c];
-      if (v == null) {
-        ctx.fillStyle = "#e8eaee";
-      } else {
-        const t = (v - lo) / span;
-        ctx.fillStyle = `rgb(${Math.round(41 + t * 179)},${Math.round(107 - t * 54)},${Math.round(235 - t * 189)})`;
-      }
-      ctx.fillRect((c - c0) * tw, (r - r0) * th, tw + 0.6, th + 0.6);
-    }
-}
-
-function shade(r, g, b, f) {
-  return `rgb(${Math.round(r * f)},${Math.round(g * f)},${Math.round(b * f)})`;
-}
-
 // Draw a value grid from directly above, matching the board orientation.  The former
 // isometric relief looked dramatic but made it unnecessarily hard to relate a value
 // cell to the actual maze while scrubbing propagation.

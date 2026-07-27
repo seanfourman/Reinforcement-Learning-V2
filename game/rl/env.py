@@ -49,10 +49,11 @@ BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble w
 class GridWorld(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self, seed=None, round_id=1):
+    def __init__(self, seed=None, round_id=1, gen_cfg=None):
         super().__init__()
         self._seed = seed
         self.round_id = round_id
+        self.gen_cfg = dict(gen_cfg or {})   # extra world-gen params (Round-2 hazard counts)
         self.max_steps = MAX_STEPS      # per-episode step cap (tunable from the panel)
         # Round-1 game mechanics, tunable LIVE from the panel (match.py pushes these onto
         # the env via set_dynamics after any (re)build). Kept as INSTANCE attrs - not module
@@ -68,7 +69,7 @@ class GridWorld(gym.Env):
         self.rng = random.Random(seed)   # kept for interface parity (moves are deterministic)
         self.action_space = spaces.Discrete(N_ACTIONS)
         self.n_actions = N_ACTIONS        # match.py reads this off the env
-        self._install(worldgen.generate(seed, round_id))
+        self._install(worldgen.generate(seed, round_id, **self.gen_cfg))
 
     # ---------------------------------------------------------------- install
     def _install(self, world):
@@ -119,6 +120,25 @@ class GridWorld(gym.Env):
             self.pos_cells = list(self.floor_cells)
         self.pos_index = {cell: i for i, cell in enumerate(self.pos_cells)}
 
+        # ---- Round-2 hazards (New Donk City): spike traps, piranha plants, warp
+        # pipes. Empty on every other round -> self.hazardous stays False and the
+        # env is the plain deterministic navigate-to-goal skeleton. The STATE is
+        # still just (cell,) (no mask/timer): death is terminal and a pipe is a
+        # stochastic teleport, so the (cell,) MDP stays Markov for Monte-Carlo. ----
+        self.spike_cells = {tuple(s) for s in getattr(world, "spikes", [])}
+        self.plant_cells = {tuple(p) for p in getattr(world, "plants", [])}
+        # every FLOOR tile orthogonally next to a plant kills on entry (it lunges)
+        self.plant_lethal = set()
+        for (pr, pc) in self.plant_cells:
+            for dr, dc in ACTIONS:
+                nr, nc = pr + dr, pc + dc
+                if 0 <= nr < self.H and 0 <= nc < self.W and g[nr][nc] != WALL:
+                    self.plant_lethal.add((nr, nc))
+        # pipe ENTRY cell -> its list of destinations (entering warps to a random one)
+        self.pipe_map = {tuple(p["entry"]): [tuple(d) for d in p["dests"]]
+                         for p in getattr(world, "pipes", [])}
+        self.hazardous = bool(self.spike_cells or self.plant_cells or self.pipe_map)
+
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
         """Passability for a STATIC model (a planner's transition model): in-bounds
@@ -166,7 +186,7 @@ class GridWorld(gym.Env):
             self.rng = random.Random(seed)
         if regenerate or self.world is None:
             self._install(worldgen.generate(seed if seed is not None else self._seed,
-                                            self.round_id))
+                                            self.round_id, **self.gen_cfg))
         self.red_pos = self.world.red_spawn
         self.blue_pos = self.world.blue_spawn
         self.steps = 0
@@ -181,6 +201,10 @@ class GridWorld(gym.Env):
         # "shape" now carries collected-coin reward (0 on the skeleton rounds).
         self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
                          "blue": {"terminal": 0.0, "shape": 0.0, "other": 0.0}}
+        # Round-2: which hazard (if any) killed each agent on the LAST step, and any
+        # pipe destination it warped to - surfaced in snapshot for the death/warp FX.
+        self._dead = {"red": None, "blue": None}
+        self._warped = {"red": None, "blue": None}
         obs = (self.observe("red"), self.observe("blue"))
         return obs, {}
 
@@ -355,6 +379,25 @@ class GridWorld(gym.Env):
         self.status[agent] = ns[2]
         return rew + STEP_COST                        # strip base step cost -> coin bonus
 
+    def _r2_resolve(self, agent, action):
+        """Round-2 move: walk one tile (walls block), then apply hazards. Returns
+        ``(final_cell, death, warp_dest)`` - ``death`` is "spike"/"plant"/None and
+        ``warp_dest`` is the tile a pipe teleported the agent onto (else None).
+        Stepping INTO a pipe entry warps to a uniformly-random destination (the
+        gamble); landing on a spike, or on a tile next to a plant, is death."""
+        cur = self._pos(agent)
+        nxt = self._move(agent, cur, action)          # deterministic, walls block
+        warp = None
+        if nxt != cur and nxt in self.pipe_map:        # stepped INTO a pipe -> warp
+            nxt = self.rng.choice(self.pipe_map[nxt])
+            warp = nxt
+        death = None
+        if nxt in self.spike_cells:
+            death = "spike"
+        elif nxt in self.plant_lethal:
+            death = "plant"
+        return nxt, death, warp
+
     def _status_name(self, agent):
         s = self.status.get(agent, 0)
         return "ghost" if s > 0 else "frozen" if s < 0 else "normal"
@@ -368,25 +411,39 @@ class GridWorld(gym.Env):
         self.steps += 1
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
         shape = {"red": 0.0, "blue": 0.0}      # coin reward, tracked for the decomposition
+        dead = {"red": None, "blue": None}     # Round-2: which hazard killed each agent
+        warped = {"red": None, "blue": None}
 
         for agent, act in (("red", a_red), ("blue", a_blue)):
             if self.rich:
                 bonus = self._apply_rich(agent, act)   # updates pos / collect / status
                 reward[agent] += bonus
                 shape[agent] = bonus
+            elif self.hazardous:
+                nxt, death, warp = self._r2_resolve(agent, act)
+                self._set_pos(agent, nxt)
+                dead[agent] = death
+                warped[agent] = warp
             else:
                 self._set_pos(agent, self._move(agent, self._pos(agent), act))
+        self._dead, self._warped = dead, warped
 
-        # reach the goal -> win; both crossing on the SAME step is a genuine DRAW.
+        # terminal: reach the goal (WIN) or die on a hazard (LOSE). Rank each agent
+        # goal(2) > alive(1) > dead(0): the higher rank wins, equal ranks draw. With
+        # no deaths this reduces EXACTLY to Round 1's "first onto the goal wins".
         terminal = {"red": 0.0, "blue": 0.0}
         reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
-        if reached:
+        died = [a for a in ("red", "blue") if dead[a]]
+        if reached or died:
             self.done = True
-            if len(reached) == 2:
+            rank = {a: (2 if self._pos(a) in self.goal_set else (0 if dead[a] else 1))
+                    for a in ("red", "blue")}
+            if rank["red"] == rank["blue"]:
                 self.winner = None
-                terminal["red"] = terminal["blue"] = WIN
+                term = WIN if rank["red"] == 2 else LOSE   # both scored / both died
+                terminal["red"] = terminal["blue"] = term
             else:
-                self.winner = reached[0]
+                self.winner = "red" if rank["red"] > rank["blue"] else "blue"
                 loser = "blue" if self.winner == "red" else "red"
                 terminal[self.winner] = WIN
                 terminal[loser] = LOSE
@@ -425,6 +482,17 @@ class GridWorld(gym.Env):
                 snap[ck] = m & ((1 << n) - 1)      # coin bits: hide collected coins
                 snap[bk] = m >> n                   # block bits: empty used "?" blocks
                 snap[sk] = self._status_name(agent)  # "normal" | "ghost" | "frozen"
+        if getattr(self, "hazardous", False):
+            # Round-2 per-frame FX cues: a hazard death ("spike"/"plant") and any pipe
+            # warp destination, so the theme can trigger the spike-rise / plant-chomp /
+            # warp animations and the board can SNAP (not slide) a teleported agent.
+            dead = getattr(self, "_dead", {}) or {}
+            warped = getattr(self, "_warped", {}) or {}
+            for agent, dk, wk in (("red", "redDead", "redWarp"),
+                                  ("blue", "blueDead", "blueWarp")):
+                snap[dk] = dead.get(agent)
+                w = warped.get(agent)
+                snap[wk] = list(w) if w else None
         return snap
 
 
