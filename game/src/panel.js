@@ -19,9 +19,9 @@ export const NAMES = {
   reinforce: 'REINFORCE', actor_critic: 'Actor-Critic', ppo: 'PPO',
 };
 const ACTION_NAMES = ['North', 'South', 'West', 'East'];
-// Peach's Castle is viewed from the opposite side of the matrix. These names
-// describe the directions on screen while preserving the backend action indices.
-const PEACH_ACTION_NAMES = ['South', 'North', 'East', 'West'];
+// Peach's Castle is viewed from the opposite side of the matrix. Present the
+// conventional N/S/W/E order while reading the matching backend indices.
+const PEACH_ACTION_ORDER = [1, 0, 3, 2];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
 const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)
@@ -1042,12 +1042,14 @@ export function initPanel() {
     // raw argmax - a higher-Q move that bumps a wall is blocked and shown dimmed
     const best = (d.best != null) ? d.best : d.q.indexOf(Math.max(...d.q));
     const mask = d.mask || null;
-    const actionNames = lastRoundIndex === 0 ? PEACH_ACTION_NAMES : (d.labels || ACTION_NAMES);
+    const actionNames = ACTION_NAMES;
+    const actionOrder = lastRoundIndex === 0 ? PEACH_ACTION_ORDER : [0, 1, 2, 3];
     $('#rl-qinspect').innerHTML =
       `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) - ${d.agent === 'red' ? 'Red' : 'Blue'}</div>` +
-      d.q.map((q, i) => {
+      actionOrder.map((i, displayIndex) => {
+        const q = d.q[i];
         const blk = mask && !mask[i];
-        return `<div class="qrow${blk ? ' blk' : ''}"><span>${actionNames[i]}${i === best ? ' ★' : ''}${blk ? ' <span class="blktag">blocked</span>' : ''}</span>
+        return `<div class="qrow${blk ? ' blk' : ''}"><span>${actionNames[displayIndex]}${i === best ? ' ★' : ''}${blk ? ' <span class="blktag">blocked</span>' : ''}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;
             width:${(Math.abs(q) / span) * 100}%"></i></span>
           <span>${q.toFixed(2)}</span></div>`;

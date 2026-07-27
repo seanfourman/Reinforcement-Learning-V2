@@ -1006,11 +1006,13 @@ export function initDiag(parent) {
 
     const ad = s.actionDist;
     if (ad && ad.labels) {
-      const labels = s.round?.index === 0 ? ["S", "N", "E", "W"] : ad.labels;
-      q("#rl-act-body").innerHTML = labels
+      const peach = s.round?.index === 0;
+      const labels = peach ? ["N", "S", "W", "E"] : ad.labels;
+      const order = peach ? [1, 0, 3, 2] : labels.map((_, i) => i);
+      q("#rl-act-body").innerHTML = order
         .map(
-          (lb, i) =>
-            `<div class="actrow"><span class="al">${lb}</span>` +
+          (i, displayIndex) =>
+            `<div class="actrow"><span class="al">${labels[displayIndex]}</span>` +
             `<span class="ab"><i class="b" style="width:${pct(ad.blue[i] || 0)}"></i></span>` +
             `<span class="ab"><i class="r" style="width:${pct(ad.red[i] || 0)}"></i></span></div>`,
         )
