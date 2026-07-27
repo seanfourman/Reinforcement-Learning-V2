@@ -95,19 +95,12 @@ const STYLE = `
    ESC/Back, with a lighter shadow */
 #rl-keys{position:fixed;left:0.8vw;bottom:1.5vh;z-index:7;display:flex;flex-direction:row;align-items:center;
   gap:22px;color:#fff;pointer-events:none;font-family:"Segoe UI",system-ui,sans-serif;}
-#rl-keys .kh{position:relative;display:flex;align-items:center;gap:9px;pointer-events:auto;cursor:pointer;
-  padding:6px 10px;margin:-6px -10px;border-radius:4px;transform-origin:left center;
-  transition:transform .16s ease,background-color .16s ease,box-shadow .16s ease;}
+#rl-keys .kh{display:flex;align-items:center;gap:9px;pointer-events:auto;cursor:pointer;}
 #rl-keys .key{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
-  font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:background-color .16s ease,color .16s ease;}
-#rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.38);
-  transition:color .16s ease,text-shadow .16s ease;}
-/* compact version of the Main Screen's selected white card */
-#rl-keys .kh:hover{background:#fff;transform:rotate(-1.7deg) scale(1.06);
-  box-shadow:0 10px 26px rgba(0,0,0,.3);}
-#rl-keys .kh:hover .txt{color:#3a3a3a;text-shadow:none;}
-#rl-keys .kh:hover .key{background:#e8352b;color:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);}
+  font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
+#rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.38);}
+#rl-keys .kh:hover{opacity:.85;}
 #rl-keys .kh.finish .txt{min-width:96px;}
 #rl-keys .kh.finish.armed .txt{color:#dfe7ff;}
 #rl-keys .kh.finish.done.blue .txt{color:#7fb4ff;}
