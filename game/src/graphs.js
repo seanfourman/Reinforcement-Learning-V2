@@ -731,24 +731,47 @@ export function initDP(parent) {
       q("#rl-dp-backups").textContent = (d.backups || 0).toLocaleString();
       const status = q("#rl-dp-status");
       status.className = "dp-status";
-      const hasCompletionStatus =
-        typeof d.converged === "boolean" &&
-        typeof d.hitLimit === "boolean" &&
-        Number.isFinite(Number(d.maxSweeps));
-      if (!hasCompletionStatus) {
-        status.textContent = "Restart server to enable status";
-        status.classList.add("limit");
-      } else if (d.hitLimit) {
+      // New servers report completion explicitly. For an older still-running
+      // backend, derive the same result from the convergence trace instead of
+      // showing a permanent and unhelpful "restart server" warning.
+      const isPolicyIteration =
+        d.method === "policy_iteration" || d.name === "Policy Iteration";
+      const trace = Array.isArray(d.sweeps) ? d.sweeps : [];
+      const lastSweep = trace.length ? trace[trace.length - 1] : null;
+      const toleranceReached =
+        lastSweep != null &&
+        Number.isFinite(Number(lastSweep.delta)) &&
+        Number(lastSweep.delta) < Number(d.theta);
+      const changes = Array.isArray(d.policyChanges) ? d.policyChanges : [];
+      const policyStable = changes.length > 0 && Number(changes[changes.length - 1]) === 0;
+      const inferredConverged =
+        toleranceReached && (!isPolicyIteration || policyStable);
+      const converged =
+        typeof d.converged === "boolean" ? d.converged : inferredConverged;
+      const statsMax = window.RL?.getStats?.()?.params?.dpMaxIters;
+      const maxSweeps = d.maxSweeps != null && Number.isFinite(Number(d.maxSweeps))
+        ? Number(d.maxSweeps)
+        : statsMax != null && Number.isFinite(Number(statsMax))
+          ? Number(statsMax)
+          : null;
+      const hitLimit =
+        typeof d.hitLimit === "boolean"
+          ? d.hitLimit
+          : !converged && maxSweeps != null && Number(d.sweepCount) >= maxSweeps;
+      if (hitLimit) {
         status.textContent = "Stopped at sweep limit — not converged";
         status.classList.add("limit");
-      } else if (d.converged) {
+      } else if (converged) {
         status.textContent =
-          d.method === "policy_iteration" || d.name === "Policy Iteration"
+          isPolicyIteration
             ? "Converged — policy is stable"
             : "Converged — tolerance reached";
         status.classList.add("ok");
       } else {
-        status.textContent = `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
+        status.textContent =
+          maxSweeps == null
+            ? `Planning… ${d.sweepCount}`
+            : `Planning… ${d.sweepCount} / ${maxSweeps}`;
       }
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),

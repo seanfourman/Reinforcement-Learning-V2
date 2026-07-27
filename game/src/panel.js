@@ -121,10 +121,6 @@ const STYLE = `
 #rl-panel .hdr .harena{display:flex;align-items:center;gap:10px;margin-top:0;
   padding-right:0;transition:padding-right .3s ease;}
 #rl-panel[data-model="cpu"] .hdr .harena{padding-right:42px;}
-/* circular close button at the top-left of the header - closes (slides out) the panel */
-#rl-panel .hdr .closebtn{flex:none;width:24px;height:24px;padding:0;border-radius:50%;border:0;
-  background:#1f1f21;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-#rl-panel .hdr .closebtn svg{width:12px;height:12px;display:block;}
 /* 5 round-result dots (pushed to the right of the arena name): who won each round */
 #rl-panel .hdr .rdots{flex:none;margin-left:auto;display:flex;gap:6px;align-items:center;}
 #rl-panel .hdr .rdot{width:12px;height:12px;border-radius:50%;background:#d7dade;}   /* not played yet = grey */
@@ -561,7 +557,7 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
-      <div class="harena"><button class="closebtn" type="button" aria-label="Close controls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg></button><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
+      <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
       <div class="mselect">
         <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your">
@@ -645,8 +641,6 @@ export function initPanel() {
   const body = panel.querySelector('.rl-body');
   const playback = body.querySelector('#rl-sec-playback');
   const lockBtn = body.querySelector('.lockbtn');
-  const closeBtn = body.querySelector('.closebtn');
-  closeBtn?.addEventListener('click', () => panel.classList.remove('open'));
   const hdrEl = body.querySelector('.hdr');
   initGraphs(body); // the player's graph sections
 
