@@ -54,9 +54,9 @@ HISTORY_CAP = 4000         # max learning-curve points kept per round
 TOP_N = 30                 # best replays kept PER MODEL (red/blue), fastest first
 
 # Red (the CPU) is NOT tunable from the panel; its strength comes from the chosen
-# CPU character's tier (1 = easiest .. 5 = hardest). A higher tier means a higher
-# learning rate and a faster, greedier epsilon schedule, so Red learns a stronger
-# policy. This shapes the TD/MC learning rounds; DP rounds plan optimally regardless.
+# CPU character's tier (1 = easiest .. 5 = hardest). Stage 1 reads ONLY plan_speed.
+# The learning rate and epsilon schedule are stored in the same cross-stage character
+# profile for the later learning arenas, but DP never reads or applies them.
 RED_GAMMA = 0.98
 
 
@@ -78,12 +78,13 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
 # 10 CPU hyperparameter MODELS, one PER CHARACTER (level 0 = Mario, easiest .. 9 =
 # Parabones, hardest). Each is strictly better than the last, so beating an opponent takes
 # increasingly good play. On the DP round (R1) a higher plan_speed makes the CPU reach the
-# OPTIMAL policy in FEWER ticks (converges faster -> harder to out-race, verified). On the
+# converged policy in FEWER ticks (converges faster -> harder to out-race, verified). On the
 # learning rounds (2-5) a higher alpha + lower final epsilon + fewer decay episodes make it
-# learn a stronger policy sooner. gamma is fixed at RED_GAMMA (for DP the optimal policy is
-# gamma-independent anyway). To retune a single opponent, edit its row here.
+# learn a stronger policy sooner. gamma is fixed at RED_GAMMA. To retune a single
+# opponent, edit its row here.
 RED_MODELS = [
-    #  plan_speed  alpha  eps_start  eps_end  eps_episodes
+    #  Stage 1 ----  |  Later learning arenas ------------------------------
+    #  plan_speed    |  alpha  eps_start  eps_end  eps_episodes
     {"plan_speed": 0.15, "alpha": 0.08, "eps_start": 1.00, "eps_end": 0.35, "eps_episodes": 9000},  # 0 Mario
     {"plan_speed": 0.30, "alpha": 0.12, "eps_start": 0.96, "eps_end": 0.30, "eps_episodes": 8000},  # 1 Luigi
     {"plan_speed": 0.50, "alpha": 0.16, "eps_start": 0.92, "eps_end": 0.26, "eps_episodes": 7000},  # 2 Yoshi

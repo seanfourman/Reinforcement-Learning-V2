@@ -77,7 +77,11 @@ document.addEventListener("pointerdown", (e) => {
     activeZoomRelease();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && activeZoomRelease) activeZoomRelease();
+  if (e.key === "Escape" && activeZoomRelease) {
+    e.preventDefault();
+    e.stopPropagation();
+    activeZoomRelease();
+  }
 });
 
 // a small auto-scaling line chart on a crisp (dpr-aware) canvas
@@ -613,7 +617,7 @@ export function initDP(parent) {
       <h2>DP convergence</h2>
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
       <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning…</b></div>
-      <div class="stat"><span>Bellman backups</span><b id="rl-dp-backups">-</b></div>
+      <div class="stat"><span>State-value updates</span><b id="rl-dp-backups">-</b></div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -722,16 +726,24 @@ export function initDP(parent) {
       q("#rl-dp-backups").textContent = (d.backups || 0).toLocaleString();
       const status = q("#rl-dp-status");
       status.className = "dp-status";
-      if (d.hitLimit) {
-        status.textContent = "Sweep limit reached";
+      const hasCompletionStatus =
+        typeof d.converged === "boolean" &&
+        typeof d.hitLimit === "boolean" &&
+        Number.isFinite(Number(d.maxSweeps));
+      if (!hasCompletionStatus) {
+        status.textContent = "Restart server to enable status";
+        status.classList.add("limit");
+      } else if (d.hitLimit) {
+        status.textContent = "Stopped at sweep limit — not converged";
         status.classList.add("limit");
       } else if (d.converged) {
-        status.textContent = "Converged — policy is stable";
+        status.textContent =
+          d.method === "policy_iteration" || d.name === "Policy Iteration"
+            ? "Converged — policy is stable"
+            : "Converged — tolerance reached";
         status.classList.add("ok");
       } else {
-        status.textContent = d.maxSweeps == null
-          ? `Planning… ${d.sweepCount}`
-          : `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
+        status.textContent = `Planning… ${d.sweepCount} / ${d.maxSweeps}`;
       }
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),

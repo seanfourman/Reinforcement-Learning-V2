@@ -139,19 +139,20 @@ class _DPBase:
             self.sweeps[0] += 1
             if self.converged:
                 break
+        if not self.converged and self.sweeps[0] >= self.max_sweeps:
+            self.hit_limit = True
 
     def plan_tick(self):
         """Advance the plan by ``plan_speed`` sweeps this tick (fractional accrues)."""
-        if self.converged or self.plan_speed <= 0.0:
+        if self.converged or self.hit_limit or self.plan_speed <= 0.0:
             return
         self._acc += self.plan_speed
-        while self._acc >= 1.0 and not self.converged:
+        while self._acc >= 1.0 and not self.converged and not self.hit_limit:
             self._acc -= 1.0
             self._sweep()
             self.sweeps[0] += 1
-            if self.sweeps[0] >= self.max_sweeps:
+            if self.sweeps[0] >= self.max_sweeps and not self.converged:
                 self.hit_limit = True
-                self.converged = True
 
     def _value_slice(self):
         """V projected onto the board for the propagation animation: value at each cell

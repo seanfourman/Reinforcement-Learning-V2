@@ -75,13 +75,13 @@ const fCount = (v) => (v < 0 ? 'default' : String(Math.round(v)));   // -1 = bui
 export const GLOBAL_PARAMS = [
   // --- algorithm internals ---
   { key: 'dpTheta', label: 'Convergence tolerance θ', min: -9, max: -1, step: 1, sect: 'algo', scope: 'dp', def: 1e-5,
-    desc: 'Converged when the largest value change is below θ. Left is stricter; right stops earlier.',
+    desc: 'After one full pass over every state, planning stops when the largest value change is below θ. Policy Iteration must also make zero policy changes. Smaller θ is stricter.',
     enc: (e) => Math.pow(10, Math.round(e)), dec: (t) => Math.max(-9, Math.min(-1, Math.round(Math.log10(t || 1e-5)))),
     fmt: (e) => (10 ** Math.round(e)).toFixed(-Math.round(e)) },
   { key: 'dpMaxIters', label: 'Maximum Bellman sweeps', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000,
-    desc: 'Safety cap on total planning sweeps. Raise it only if the model reaches the cap before convergence.', fmt: fLoc },
+    desc: 'One sweep updates every state once. This is only a safety ceiling: reaching it stops planning without proving convergence.', fmt: fLoc },
   { key: 'dpPlanning', label: 'Planning speed (sweeps / step)', min: 0.1, max: 5, step: 0.1, color: C_OURS, sect: 'algo', scope: 'dp', def: 0.6,
-    desc: 'Bellman sweeps this selected model performs per game step. This is the Stage-1 race-speed control.', fmt: (v) => (+v).toFixed(1) },
+    desc: 'How much planning happens between moves. 1.0 = one full pass over all states per game step; 0.5 = one pass every two steps; 2.0 = two passes per step. It changes planning speed, not the final solution.', fmt: (v) => (+v).toFixed(1) },
   { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, fmt: fLoc },
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
