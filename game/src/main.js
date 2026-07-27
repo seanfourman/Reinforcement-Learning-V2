@@ -582,9 +582,12 @@ async function poll() {
         ).json();
         if (holdUI || menuIdle) return; // don't surface an overlay into the menu
         if (v.grid) {
-          if (heatMode === "value") heatmap.setNumbers(v.grid, v.best);
-          else if (heatMode === "policy") heatmap.setPolicy(v.grid);
-          else heatmap.setGrid(v.grid);
+          // arrows + greedy value-number are coloured to match the viewed agent (heatAgent)
+          if (heatMode === "value") { heatmap.setNumbers(v.grid, v.best, heatAgent); heatmap.setGhostArrows([]); }
+          // policy: floor arrows on the ground + raised ghost arrows on the walls (only
+          // present while the agent is phasing, so they appear/vanish with the power-up)
+          else if (heatMode === "policy") { heatmap.setPolicy(v.grid, heatAgent); heatmap.setGhostArrows(v.ghostArrows, heatAgent); }
+          else { heatmap.setGrid(v.grid); heatmap.setGhostArrows([]); }
         }
       }
     }
@@ -757,7 +760,8 @@ window.RL = {
     heatMode = mode || "value";
     if (!agent) heatmap.hide();
     else if (arenaMode && heatMode !== "visits") heatmap.showArena();
-    else if (heatMode === "value" || heatMode === "policy") heatmap.showNumbers();
+    else if (heatMode === "value") heatmap.showNumbers();
+    else if (heatMode === "policy") heatmap.showPolicy();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)
     window.dispatchEvent(

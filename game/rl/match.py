@@ -1081,7 +1081,32 @@ class Match:
                 m = self.env.effective_actions(agent, (r, c))
                 valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
                 grid[r][c] = max(valid, key=lambda i: q[i])
-            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "policy"}
+            # while this agent is GHOSTING, also expose its phase-direction on each
+            # interior WALL cell (its through-wall plan) - rendered as raised arrows;
+            # empty otherwise, so the arrows show only during the power-up.
+            ghost = []
+            if getattr(self.env, "rich", False) and self.env.status.get(agent, 0) > 0:
+                ghost = self._ghost_wall_arrows(agent)
+            return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W,
+                    "mode": "policy", "ghostArrows": ghost}
+
+    def _ghost_wall_arrows(self, agent):
+        """The greedy phase-direction (N/S/W/E) on each interior WALL cell for the
+        agent's CURRENT ghost state - i.e. which way it would keep phasing from there."""
+        a = self._agent(agent)
+        pos_cells = getattr(self.env, "pos_cells", None)
+        if not pos_cells:
+            return []
+        out = []
+        for cell in pos_cells[self.env.n_cells:]:      # the appended interior-wall cells
+            state = self.env.full_state(agent, cell)
+            if a.state_value(state) is None:
+                continue
+            q = a.q_values(state)
+            m = self.env.effective_actions(agent, cell)
+            valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
+            out.append([cell[0], cell[1], int(max(valid, key=lambda i: q[i]))])
+        return out
 
     def visit_stats(self, agent):
         """Board coverage / unique cells / visitation entropy (exploration breadth)."""

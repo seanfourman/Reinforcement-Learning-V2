@@ -45,6 +45,55 @@ export function createHeatmap(scene) {
   amesh.frustumCulled = false;
   scene.add(amesh);
 
+  // ---- POLICY ARROWS (3D): ONE crisp arrow design used for BOTH the floor policy AND
+  // the raised ghost (through-wall) policy, so they look identical. Flat extruded arrows
+  // laid on the ground; floor arrows sit low, ghost arrows float above the walls (only
+  // while an agent is phasing). Both point in true WORLD directions (self-correct under
+  // the camera flip, matching the agent's actual moves).
+  const PMAX = 520;
+  const TEAM = { red: 0xe23a2c, blue: 0x2f6bff };    // arrow colour follows the viewed policy
+  // a slim, small arrow (thinner shaft + head than before)
+  const _aShape = new THREE.Shape();
+  _aShape.moveTo(-0.24, -0.045); _aShape.lineTo(0.05, -0.045); _aShape.lineTo(0.05, -0.12);
+  _aShape.lineTo(0.30, 0);       _aShape.lineTo(0.05, 0.12);   _aShape.lineTo(0.05, 0.045);
+  _aShape.lineTo(-0.24, 0.045);  _aShape.closePath();
+  const arrowGeo = new THREE.ExtrudeGeometry(_aShape, { depth: 0.05, bevelEnabled: false });
+  arrowGeo.rotateX(-Math.PI / 2);                    // lay flat, arrow pointing +X (world)
+  // OPAQUE + depthTest ON: the arrows are real world objects, so a wall IN FRONT hides
+  // the floor ones (they read as on-the-ground entities), not a flat sheet over the scene.
+  const arrowMat = new THREE.MeshBasicMaterial({ color: TEAM.blue });
+  const YAW = [Math.PI / 2, -Math.PI / 2, Math.PI, 0]; // N,S,W,E -> yaw so +X points that way
+  const adummy = new THREE.Object3D();
+  const mkArrows = () => {
+    const m = new THREE.InstancedMesh(arrowGeo, arrowMat, PMAX);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false; m.visible = false; m.count = 0;
+    scene.add(m);
+    return m;
+  };
+  const farrows = mkArrows();   // floor policy (on the ground, occluded by walls)
+  const garrows = mkArrows();   // ghost policy raised above the walls (only while phasing)
+  function _setTeam(agent) { if (TEAM[agent] != null) arrowMat.color.setHex(TEAM[agent]); }
+  function _placeArrows(mesh, cells, y) {
+    const s = 0.82 * getCell();  // a bit smaller
+    let i = 0;
+    for (const cell of cells || []) {
+      if (i >= PMAX) break;
+      const [r, c, act] = cell;
+      const w = cellToWorld(r, c);
+      adummy.position.set(w.x, y, w.z);
+      adummy.rotation.set(0, YAW[act] || 0, 0);
+      adummy.scale.setScalar(s);
+      adummy.updateMatrix();
+      mesh.setMatrixAt(i++, adummy.matrix);
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.visible = i > 0;
+    return i;
+  }
+  function setGhostArrows(list, agent) { _setTeam(agent); _placeArrows(garrows, list, 1.12); }
+
   function setArenaField(field) {
     const n = field.n, A = field.arena, val = field.value;
     const lo = field.vmin, span = (field.vmax - field.vmin) || 1;
@@ -157,8 +206,10 @@ export function createHeatmap(scene) {
     }
   }
 
-  function setNumbers(grid, bestGrid) {
+  const TEAM_CSS = { red: '#e23a2c', blue: '#2f6bff' }; // greedy number colour, per agent
+  function setNumbers(grid, bestGrid, agent) {
     placePlane(); // scale + board slide so the numbers sit on the tiles
+    const teamFill = TEAM_CSS[agent] || '#123fb0'; // the GREEDY action's number, agent-coloured
     cctx.clearRect(0, 0, CW, CH);
     const H = grid.length, W = grid[0] ? grid[0].length : 0;
     const tw = CW / W, th = CH / H;
@@ -184,7 +235,7 @@ export function createHeatmap(scene) {
           cctx.font = `${d === best ? '800 ' : '600 '}${f}px system-ui,Arial,sans-serif`;
           cctx.lineWidth = Math.max(2, f * 0.2);
           cctx.strokeStyle = 'rgba(12,14,18,0.55)';     // dark edge: crisp, never blooms
-          cctx.fillStyle = d === best ? '#123fb0' : '#2a2d34';
+          cctx.fillStyle = d === best ? teamFill : '#2a2d34';
           putText(q[d].toFixed(1), x, y);
         }
       }
@@ -195,38 +246,18 @@ export function createHeatmap(scene) {
   // ---- greedy-policy ARROWS (per-cell argmax action) on the same canvas plane ----
   // grid[r][c] = 0=N,1=S,2=W,3=E, or null. Fed by /api/values?mode=policy.
   const PDIR = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // N,S,W,E in canvas (x right, y down)
-  function setPolicy(grid) {
-    placePlane(); // scale + board slide (arrows self-orient under the flip, so no glyph spin)
-    cctx.clearRect(0, 0, CW, CH);
-    const H = grid.length, W = grid[0] ? grid[0].length : 0;
-    const tw = CW / W, th = CH / H;
-    const L = Math.min(tw, th) * 0.30;
-    cctx.lineCap = 'round';
-    cctx.lineJoin = 'round';
-    cctx.fillStyle = '#123fb0';
-    cctx.strokeStyle = '#123fb0';
-    for (let r = 0; r < H; r++) {
-      for (let c = 0; c < W; c++) {
-        const a = grid[r] && grid[r][c];
-        if (a === null || a === undefined) continue;
-        const cx = (c + 0.5) * tw, cy = (r + 0.5) * th;
-        const [dx, dy] = PDIR[a];
-        const ex = cx + dx * L, ey = cy + dy * L;
-        cctx.lineWidth = Math.max(4, L * 0.26);
-        cctx.beginPath();
-        cctx.moveTo(cx - dx * L, cy - dy * L);
-        cctx.lineTo(ex, ey);
-        cctx.stroke();
-        const hw = L * 0.55, px = -dy, py = dx; // perpendicular for the head
-        cctx.beginPath();
-        cctx.moveTo(ex, ey);
-        cctx.lineTo(ex - dx * hw + px * hw * 0.6, ey - dy * hw + py * hw * 0.6);
-        cctx.lineTo(ex - dx * hw - px * hw * 0.6, ey - dy * hw - py * hw * 0.6);
-        cctx.closePath();
-        cctx.fill();
+  function setPolicy(grid, agent) {
+    _setTeam(agent);
+    // floor policy as the SAME 3D arrows as the ghost/wall arrows, laid low on the ground
+    const cells = [];
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r] || [];
+      for (let c = 0; c < row.length; c++) {
+        const a = row[c];
+        if (a !== null && a !== undefined) cells.push([r, c, a]);
       }
     }
-    tex.needsUpdate = true;
+    _placeArrows(farrows, cells, 0.1);
   }
 
   return {
@@ -235,10 +266,12 @@ export function createHeatmap(scene) {
     setPolicy,
     setFlip,
     setArenaField,
-    showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; },
-    showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; },
-    showArena() { amesh.visible = true; mesh.visible = false; numPlane.visible = false; },
-    hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; },
-    get visible() { return mesh.visible || numPlane.visible || amesh.visible; },
+    setGhostArrows,
+    showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
+    showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
+    showPolicy() { farrows.visible = farrows.count > 0; numPlane.visible = false; mesh.visible = false; amesh.visible = false; },
+    showArena() { amesh.visible = true; mesh.visible = false; numPlane.visible = false; farrows.visible = false; setGhostArrows([]); },
+    hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
+    get visible() { return mesh.visible || numPlane.visible || amesh.visible || farrows.visible; },
   };
 }
