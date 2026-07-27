@@ -522,10 +522,6 @@ export function initDP(parent) {
         <button data-a="red" class="active">Value Iteration</button>
         <button data-a="blue">Policy Iteration</button>
       </div>
-      <div class="ctl" style="margin-top:12px;">
-        <div class="row"><span>Convergence θ</span><b id="rl-dp-theta-v">0.00001</b></div>
-        <input type="range" id="rl-dp-theta" min="-6" max="0" step="0.5" value="-5" style="--fill:#1a1a1a">
-      </div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -581,29 +577,8 @@ export function initDP(parent) {
     refresh();
     loadSweeps();
   });
-  // convergence threshold theta: re-solve BOTH planners live -> the charts re-paint
-  const theta = q("#rl-dp-theta"),
-    thetaV = q("#rl-dp-theta-v");
-  const paintTheta = () => {
-    const p =
-      ((+theta.value - +theta.min) / (+theta.max - +theta.min || 1)) * 100;
-    theta.style.background = `linear-gradient(to right,#1a1a1a ${p}%,#e1e3e8 ${p}%)`;
-  };
-  let thTimer = null;
-  theta.addEventListener("input", () => {
-    const th = Math.pow(10, +theta.value);
-    thetaV.textContent = plainDec(th);
-    paintTheta();
-    clearTimeout(thTimer);
-    thTimer = setTimeout(() => {
-      window.RL?.control?.({ cmd: "setParams", params: { dpTheta: th } });
-      setTimeout(() => {
-        refresh();
-        loadSweeps();
-      }, 60);
-    }, 220);
-  });
-  paintTheta();
+  // convergence threshold theta lives in the World panel (ALGORITHM INTERNALS) - the
+  // same dpTheta value, so it is not duplicated here.
   // ---- Value-Iteration propagation animation (per-sweep V snapshots) ----
   const anim = q("#rl-dp-anim"),
     vcanvas = q("#rl-dp-vcanvas"),
