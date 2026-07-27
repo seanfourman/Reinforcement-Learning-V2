@@ -582,11 +582,11 @@ export const peach = {
         const cNrm = objTex(cdir + "coinbody00_nrm.png", false);
         const mk = (cells, color, emissive, arr) => {
           if (!(cells && cells.length)) return;
-          // vivid team coins: the coin relief (map+normal) but a bright tint + a strong
-          // same-hue emissive GLOW (bloom-catching) + a shiny low-roughness metal
+          // lively team coins: the coin relief (map+normal) + a bright tint + a GENTLE
+          // same-hue emissive (enough to read vivid, not a glowing blob) + metal shine
           const mat = new THREE.MeshStandardMaterial({
             map: cAlb, normalMap: cNrm,
-            color, emissive, emissiveIntensity: 0.6, metalness: 0.9, roughness: 0.22,
+            color, emissive, emissiveIntensity: 0.28, metalness: 0.85, roughness: 0.3,
           });
           for (const [r, c] of cells) {
             const coin = fitObject(asset.scene.clone(true), 0.55 * cell);
