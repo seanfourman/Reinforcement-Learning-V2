@@ -212,7 +212,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif cmd == "setRedParams":
             match.set_red_params(body.get("params", {}))
         elif cmd == "cpuTier":
-            match.set_cpu_tier(body.get("value", 1), body.get("diff"))
+            match.set_cpu_tier(body.get("value", 1), body.get("level"))
         elif cmd == "loadouts":
             match.set_loadouts(body.get("cpu"), body.get("player"))
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK

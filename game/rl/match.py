@@ -75,20 +75,31 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
     return max(lo, min(hi, n))
 
 
-def red_params(diff):
-    """Map a CPU DIFFICULTY fraction (0 = easiest / Mario .. 1 = hardest / Parabones) to
-    Red's learning-rate + epsilon schedule (+ DP plan speed). This is PER-CHARACTER (finer
-    than the 1-5 display tier), so all 10 opponents scale to distinct, progressively better
-    hyperparameters - the point being you need increasingly good play to beat them."""
-    f = max(0.0, min(1.0, float(diff)))        # 0 .. 1
-    lerp = lambda a, b: a + (b - a) * f        # noqa: E731
-    return {
-        "alpha": round(lerp(0.08, 0.40), 3),   # harder -> learns faster (TD/MC rounds)
-        "eps_start": round(lerp(1.00, 0.60), 3),
-        "eps_end": round(lerp(0.35, 0.01), 3), # harder -> ends much greedier (stronger)
-        "eps_episodes": int(lerp(9000, 500)),  # harder -> decays sooner
-        "plan_speed": round(lerp(0.15, 2.2), 3),  # DP (R1): harder converges much faster
-    }
+# 10 CPU hyperparameter MODELS, one PER CHARACTER (level 0 = Mario, easiest .. 9 =
+# Parabones, hardest). Each is strictly better than the last, so beating an opponent takes
+# increasingly good play. On the DP round (R1) a higher plan_speed makes the CPU reach the
+# OPTIMAL policy in FEWER ticks (converges faster -> harder to out-race, verified). On the
+# learning rounds (2-5) a higher alpha + lower final epsilon + fewer decay episodes make it
+# learn a stronger policy sooner. gamma is fixed at RED_GAMMA (for DP the optimal policy is
+# gamma-independent anyway). To retune a single opponent, edit its row here.
+RED_MODELS = [
+    #  plan_speed  alpha  eps_start  eps_end  eps_episodes
+    {"plan_speed": 0.15, "alpha": 0.08, "eps_start": 1.00, "eps_end": 0.35, "eps_episodes": 9000},  # 0 Mario
+    {"plan_speed": 0.30, "alpha": 0.12, "eps_start": 0.96, "eps_end": 0.30, "eps_episodes": 8000},  # 1 Luigi
+    {"plan_speed": 0.50, "alpha": 0.16, "eps_start": 0.92, "eps_end": 0.26, "eps_episodes": 7000},  # 2 Yoshi
+    {"plan_speed": 0.75, "alpha": 0.20, "eps_start": 0.88, "eps_end": 0.22, "eps_episodes": 6000},  # 3 Toadette
+    {"plan_speed": 1.05, "alpha": 0.24, "eps_start": 0.84, "eps_end": 0.18, "eps_episodes": 5000},  # 4 Pauline
+    {"plan_speed": 1.40, "alpha": 0.28, "eps_start": 0.80, "eps_end": 0.14, "eps_episodes": 4000},  # 5 Koopa
+    {"plan_speed": 1.80, "alpha": 0.31, "eps_start": 0.75, "eps_end": 0.10, "eps_episodes": 3000},  # 6 Bowser
+    {"plan_speed": 2.25, "alpha": 0.34, "eps_start": 0.70, "eps_end": 0.07, "eps_episodes": 2000},  # 7 Peach
+    {"plan_speed": 2.80, "alpha": 0.37, "eps_start": 0.65, "eps_end": 0.04, "eps_episodes": 1000},  # 8 Toad
+    {"plan_speed": 3.40, "alpha": 0.40, "eps_start": 0.60, "eps_end": 0.01, "eps_episodes": 400},   # 9 Parabones
+]
+
+
+def red_params(level):
+    """The CPU hyperparameter MODEL for a character level (0..9); higher = stronger."""
+    return dict(RED_MODELS[max(0, min(len(RED_MODELS) - 1, int(round(level))))])
 
 
 class Match:
@@ -130,8 +141,8 @@ class Match:
         self.eps_start, self.eps_end, self.eps_episodes = 1.0, 0.05, 3000
         self.target_episodes = None            # auto-pause after N episodes (None = run forever)
         self.red_tier = 1                      # CPU display tier (1-5), from the chosen character
-        self.red_diff = 0.0                    # CPU difficulty 0..1 (per-character, finer)
-        self._red_from_tier()                  # derive Red's params from the difficulty
+        self.red_level = 0                     # CPU hyperparameter model 0..9 (per-character)
+        self._red_from_tier()                  # derive Red's params from the model
         # per-round algorithm overrides from the menu selection (empty = the
         # ROUND_ALGOS defaults). cpu_algos = the chosen CPU character's algorithm per
         # round (Red); player_algos = the player's card pick per round (Blue). Applied
@@ -214,7 +225,7 @@ class Match:
     def _red_from_tier(self):
         """(Re)derive Red's params from its per-character DIFFICULTY. Manual overrides via
         set_red_params replace these until the character (difficulty) changes again."""
-        rp = red_params(self.red_diff)
+        rp = red_params(self.red_level)
         self.red_alpha = rp["alpha"]
         self.red_gamma = RED_GAMMA
         self.red_eps_start = rp["eps_start"]
@@ -599,18 +610,19 @@ class Match:
             "targetEpisodes": self.target_episodes or 0,
         }
 
-    def set_cpu_tier(self, tier, diff=None):
+    def set_cpu_tier(self, tier, level=None):
         """Set the CPU (Red) difficulty from the chosen character. ``tier`` (1..5) is the
-        display tier; ``diff`` (0..1) is the finer PER-CHARACTER strength that actually
-        drives the hyperparameters (defaults to the tier if not given). Rebuilds Red and
-        restarts fresh; no-op if unchanged, so the frontend can send it freely on start."""
+        display tier; ``level`` (0..9) picks the PER-CHARACTER hyperparameter model in
+        RED_MODELS that actually drives Red's strength (defaults from the tier if not
+        given). Rebuilds Red and restarts fresh; no-op if unchanged, so the frontend can
+        send it freely on start."""
         with self.lock:
             t = max(1, min(5, int(tier)))
-            d = ((t - 1) / 4.0) if diff is None else max(0.0, min(1.0, float(diff)))
-            if t == self.red_tier and abs(d - self.red_diff) < 1e-6:
+            lv = int(round((t - 1) / 4.0 * 9)) if level is None else max(0, min(9, int(round(level))))
+            if t == self.red_tier and lv == self.red_level:
                 return
             self.red_tier = t
-            self.red_diff = d
+            self.red_level = lv
             self._red_from_tier()              # a new opponent resets any manual override
             self._build_agents()
             self.finish_event = None

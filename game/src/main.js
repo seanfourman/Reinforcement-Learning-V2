@@ -11,7 +11,7 @@ import { getTheme } from "./themes/index.js";
 import { initHud } from "./hud.js";
 import { createAwardCeremony } from "./award.js";
 import { createTransition } from "./transition.js";
-import { createStartMenu, getCpuTier, getCpuDifficulty, getCpuAlgos, getPlayerAlgos } from "./startmenu.js";
+import { createStartMenu, getCpuTier, getCpuLevel, getCpuAlgos, getPlayerAlgos } from "./startmenu.js";
 import { createLoadScreen } from "./loadscreen.js";
 import { loadBoardWalkers } from "./boardchars.js";
 import { initDevBar } from "./devbar.js";
@@ -800,9 +800,9 @@ function startFromMenu() {
     // a fresh game = a fresh tournament. The server persists the round + score across
     // page loads, so without this a previous session's round 5 / stray point leaks in.
     control({ cmd: "resetTournament" });
-    // Red's strength: the 1-5 tier is the display label; diff (0..1) is the finer
-    // per-character difficulty that actually scales the hyperparameters
-    control({ cmd: "cpuTier", value: getCpuTier(), diff: getCpuDifficulty() });
+    // Red's strength: the 1-5 tier is the display label; level (0..9) picks the
+    // per-character hyperparameter model (RED_MODELS) that actually scales the CPU
+    control({ cmd: "cpuTier", value: getCpuTier(), level: getCpuLevel() });
     // starting from the menu = always resume training. The server keeps _paused across
     // page reloads, so a stale pause from a previous session could leave the board frozen
     // while the Playback UI (which resets to "playing") shows play - clear it here.

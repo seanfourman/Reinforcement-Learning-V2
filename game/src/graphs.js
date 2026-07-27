@@ -292,7 +292,6 @@ function makeChart(canvas, cfg) {
     });
     ctx.textAlign = "left";
   }
-  canvas.style.cursor = "crosshair";
   canvas.addEventListener("mousemove", (e) => {
     drawHover(e.clientX - canvas.getBoundingClientRect().left);
   });

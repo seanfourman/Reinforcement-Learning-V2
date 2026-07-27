@@ -64,14 +64,14 @@ export function getCpuTier() {
   }
 }
 
-// the CPU's finer PER-CHARACTER difficulty, 0 (Mario, easiest) .. 1 (Parabones, hardest).
-// The 1-5 tier is only the display label; THIS is what scales Red's hyperparameters so all
-// 10 opponents are distinct and progressively harder to beat.
-export function getCpuDifficulty() {
+// the CPU's PER-CHARACTER hyperparameter LEVEL, 0 (Mario, easiest) .. 9 (Parabones,
+// hardest) - the character's index. The 1-5 tier is only the display label; THIS picks
+// which of the 10 RED_MODELS drives Red, so all 10 opponents are distinct + progressively
+// harder to beat (better hyperparameters -> converges to the optimal policy faster).
+export function getCpuLevel() {
   try {
     const i = JSON.parse(localStorage.getItem("rl-chars") || "{}")["1"];
-    const n = CHARACTERS.length - 1;
-    return Number.isInteger(i) && n > 0 ? Math.max(0, Math.min(1, i / n)) : 0;
+    return Number.isInteger(i) ? Math.max(0, Math.min(CHARACTERS.length - 1, i)) : 0;
   } catch (e) {
     return 0;
   }
