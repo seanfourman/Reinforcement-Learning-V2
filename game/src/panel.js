@@ -100,7 +100,6 @@ export const GLOBAL_PARAMS = [
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
   // --- Round-2 game mechanics (New Donk City: a regioned hedge maze linked by warp
   // pipes + slippery puddles). Structural: each edit regenerates the maze from the seed. ---
-  { key: 'r2Dests', label: 'Warp spread', min: 2, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Exit pipes per dive pipe (2-3). Each has a FIXED probability baked into the map, so a wider spread makes the pipe gamble harder to value.', fmt: (v) => `${Math.round(v)}` },
   { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 4, step: 1, sect: 'world', scope: 'r2', def: 2, desc: 'Piranha plants per side (mirrored). Stepping within one tile of one (incl. diagonals) costs a life (respawn). A safe route around them always exists.', fmt: (v) => `${Math.round(v)}` },
   { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 8, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Slippery puddles per side (mirrored), placed beside the plants. A move on one may skid sideways into a plant’s jaws.', fmt: (v) => `${Math.round(v)}` },
   // --- reproducibility ---

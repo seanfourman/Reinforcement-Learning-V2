@@ -10,9 +10,9 @@ solid hedge walls:
     Region A (spawn, bottom)  ->  Region B  ->  Region C  ->  Region D (goal, top)
 
 You CANNOT walk between regions - the separator walls are unbroken. The ONLY way up is
-the WARP-PIPE NETWORK: each region holds a DIVE pipe whose FIXED-probability
-destinations are EXIT pipes in the region above - you leap into a pipe and pop OUT of a
-pipe (never into open ground). Which exit you get is the stochastic part MC must value.
+the WARP-PIPE NETWORK: each region holds a DIVE pipe that warps to its ONE fixed EXIT
+pipe in the region above - you leap into a pipe and pop OUT of a pipe (a fixed pipe ->
+pipe pair, never into open ground).
 
 Each agent gathers its OWN three Power Stars - one in each of regions A/B/C - and the
 goal at the top stays LOCKED until it holds all three (see env.py's ``star_mode``).
@@ -45,7 +45,6 @@ REGIONS = (REGION_A, REGION_B, REGION_C, REGION_D)
 
 GOALS = [(0, 9), (0, 10)]         # the two mirror-symmetric goal cells (top centre)
 
-DEF_DESTS = 3                      # exit pipes per dive pipe (2..3, the gamble breadth)
 DEF_PLANTS = 2                     # piranha plants per side (mirrored)
 DEF_SLIP = 3                       # slippery puddles per side (mirrored)
 WALL_DENSITY = 0.24                # target hedge-wall fraction per region. The maze FILLS
@@ -80,10 +79,9 @@ def _region_of(r):
     return None
 
 
-def generate(seed=None, n_dests=DEF_DESTS, n_plants=DEF_PLANTS, n_slip=DEF_SLIP, **_):
-    """Build Round 2's regioned maze. Extra keyword args (stale hazard counts from older
-    configs, e.g. n_spikes) are accepted and ignored."""
-    n_dests = max(2, min(3, int(n_dests)))
+def generate(seed=None, n_plants=DEF_PLANTS, n_slip=DEF_SLIP, **_):
+    """Build Round 2's regioned maze. Extra keyword args (stale knobs from older configs,
+    e.g. n_spikes / n_dests) are accepted and ignored."""
     n_plants = max(0, min(4, int(n_plants)))
     n_slip = max(0, min(8, int(n_slip)))
 
@@ -92,18 +90,18 @@ def generate(seed=None, n_dests=DEF_DESTS, n_plants=DEF_PLANTS, n_slip=DEF_SLIP,
     # tour is solvable for both racers.
     for attempt in range(300):
         rng = random.Random((seed if seed is not None else 0) * 131 + attempt)
-        world = _build(rng, n_dests, n_plants, n_slip)
+        world = _build(rng, n_plants, n_slip)
         if world is not None:
             validate(world)
             return world
     # Fallback: no plants (always solvable) + open-ish regions.
     rng = random.Random(seed)
-    world = _build(rng, n_dests, 0, n_slip)
+    world = _build(rng, 0, n_slip)
     validate(world)
     return world
 
 
-def _build(rng, n_dests, n_plants, n_slip):
+def _build(rng, n_plants, n_slip):
     g = [[WALL] * SIZE for _ in range(SIZE)]
 
     # ---- carve every region as an OPEN band (full width); separators stay walls -------
@@ -122,30 +120,31 @@ def _build(rng, n_dests, n_plants, n_slip):
     blue_stars = [(17, 5), (12, 5), (7, 5)]
     red_stars = [(r, _mirror(c)) for (r, c) in blue_stars]
 
-    # LEFT-half pipes: a DIVE pipe in each region, whose destinations are EXIT pipes in the
-    # region ABOVE (you always pop OUT of a pipe, never onto open ground). Every exit is in
-    # the next region + CLUSTERED near that region's star and its own dive pipe, so a dive
-    # always makes progress and the onward walk is short. The randomness is WHICH exit you
-    # get - each has a FIXED probability baked into the seed (Monte-Carlo must value it).
+    # LEFT-half pipes, each = (DIVE entry, solid EXIT pipe, LANDING tile). Stepping onto the
+    # dive pipe warps you to the LANDING - a floor cell right BESIDE a SOLID exit pipe in the
+    # region above. You pop out NEXT TO a pipe, never standing ON one, so a pipe is never
+    # re-enterable; the landing sits by that region's star + next dive pipe (short climb).
     raw_pipes = [
-        ((15, 8), [(13, 6), (13, 5), (12, 7)], [0.5, 0.3, 0.2]),   # A -> B (exits near star B + diveB)
-        ((10, 8), [(8, 6), (8, 5), (7, 7)], [0.5, 0.3, 0.2]),      # B -> C (exits near star C + diveC)
-        ((5, 8), [(3, 8), (3, 6), (2, 7)], [0.5, 0.3, 0.2]),       # C -> D (exits near the goal)
+        ((15, 8), (13, 6), (12, 6)),   # A -> B  (land beside star B)
+        ((10, 8), (8, 6), (7, 6)),     # B -> C  (land beside star C)
+        ((5, 8), (3, 7), (2, 7)),      # C -> D  (land toward the goal)
     ]
-    pipes = []
-    for entry, dests, weights in raw_pipes:
-        d = dests[:n_dests]
-        w = weights[:n_dests]
-        pipes.append({"entry": entry, "dests": d, "weights": w, "exit": None})
-        m_entry = (entry[0], _mirror(entry[1]))
-        m_dests = [(r, _mirror(c)) for (r, c) in d]
-        pipes.append({"entry": m_entry, "dests": m_dests, "weights": list(w), "exit": None})
+    pipes, exit_walls = [], set()
+    for entry, exit_cell, land in raw_pipes:
+        me = (entry[0], _mirror(entry[1]))
+        mx = (exit_cell[0], _mirror(exit_cell[1]))
+        ml = (land[0], _mirror(land[1]))
+        pipes.append({"entry": entry, "dests": [land], "weights": [1.0], "exit": exit_cell})
+        pipes.append({"entry": me, "dests": [ml], "weights": [1.0], "exit": mx})
+        exit_walls |= {exit_cell, mx}
+    for (r, c) in exit_walls:                       # a SOLID exit pipe stands here (not a hedge)
+        g[r][c] = WALL
 
-    # the goal APPROACH: the central 2-wide column in region D so any exit can walk to the goal
+    # the goal APPROACH: the central 2-wide column in region D so any landing reaches the goal
     goal_col = [(r, c) for r in range(REGION_D[0], REGION_D[1] + 1) for c in (9, 10)]
 
     entries = {p["entry"] for p in pipes}
-    dests = {d for p in pipes for d in p["dests"]}
+    dests = {d for p in pipes for d in p["dests"]}   # the LANDING tiles (floor, beside a pipe)
     reserved = set()
     reserved |= entries | dests
     reserved |= {blue_spawn, red_spawn}
@@ -239,7 +238,8 @@ def _build(rng, n_dests, n_plants, n_slip):
     # avoid every reserved cell, and the ALIVE tour must survive. Placed in mirror pairs. ---
     plants = []
     plant_pool = [(r, c) for r in range(SIZE) for c in range(0, 10)
-                  if g[r][c] == WALL and _region_of(r) is not None and (r, c) not in reserved
+                  if g[r][c] == WALL and _region_of(r) is not None
+                  and (r, c) not in reserved and (r, c) not in exit_walls
                   and any(0 <= nb[0] < SIZE and 0 <= nb[1] < SIZE and g[nb[0]][nb[1]] == FLOOR
                           for nb in _nbrs((r, c)))]
     rng.shuffle(plant_pool)

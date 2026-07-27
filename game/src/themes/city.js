@@ -506,12 +506,14 @@ export const city = {
 
     // ---- hedge maze: rounded leaf masses on every wall cell ---------------
     const mazeRows = world.rows || [];
-    // piranha plants stand on wall cells - keep the hedge off those (the plant is there)
-    const plantSet = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
+    // piranha plants AND solid exit pipes stand on wall cells - keep the hedge off those
+    // (the plant / pipe object is drawn there instead).
+    const noHedge = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
+    for (const p of world.pipes || []) if (p.exit) noHedge.add(p.exit[0] * GRID + p.exit[1]);
     const wallCells = [];
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
-        if ((mazeRows[r] || '')[c] === '#' && !plantSet.has(r * GRID + c)) wallCells.push([r, c]);
+        if ((mazeRows[r] || '')[c] === '#' && !noHedge.has(r * GRID + c)) wallCells.push([r, c]);
       }
     }
     function addShrubMaze(cells) {
@@ -878,9 +880,9 @@ export const city = {
 
     const cellX = (c) => c + 0.5, cellZ = (r) => r + 0.5;
 
-    // ---- WARP PIPES: you leap into a DIVE pipe (an entry) and pop OUT of an EXIT pipe (a
-    // destination) - BOTH stand as real green pipes, so a warp always goes pipe -> pipe,
-    // never onto open ground. Which exit you emerge from is the stochastic part.
+    // ---- WARP PIPES: you leap into a DIVE pipe (an entry) and pop OUT of its ONE EXIT pipe
+    // (its destination) - BOTH stand as real green pipes, so a warp always goes pipe -> pipe
+    // (a fixed pair), never onto open ground.
     const pipeMat = track(new THREE.MeshStandardMaterial({
       map: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_alb.png'),
       normalMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_nrm.png', false),
@@ -896,8 +898,8 @@ export const city = {
       if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], role }); }
     };
     for (const p of world.pipes || []) {
-      addPipe(p.entry, 'entrance');                       // the dive pipe
-      for (const d of p.dests || []) addPipe(d, 'exit');  // the exit pipes you pop out of
+      addPipe(p.entry, 'entrance');                       // the DIVE pipe (walkable-in, warps)
+      if (p.exit) addPipe(p.exit, 'exit');                // the SOLID exit pipe you pop out beside
     }
     loadObj(OBJ + 'Warp Pipe/Warp Pipe.dae').then((proto) => {
       if (!proto) return;

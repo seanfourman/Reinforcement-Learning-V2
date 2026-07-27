@@ -50,11 +50,15 @@ export function createLiveActors(scene, walkers) {
   // or a hazard DEATH (impaled/eaten on the tile it died on, then respawn). Driven by
   // the env's per-frame event cells; overrides the normal target-follow while playing.
   const fx = { red: null, blue: null };
+  // Seconds after a warp emerge during which we GLIDE (never snap) toward the live sim
+  // position, so the char slides fluidly out of the pipe instead of teleport-jumping.
+  const warpSettle = { red: 0, blue: 0 };
   // Round-1 "?" power-up state per side: 'ghost' (phasing walls -> translucent) or
   // 'frozen' (stuck -> icy tint). Applied on change only (see applyWalkerStatus).
   const status = { red: 'normal', blue: 'normal' };
   const appliedStatus = { red: null, blue: null };
   const lastFxStep = { red: -1, blue: -1 };   // dedup the one-shot Round-2 FX per sim step
+  const lastMissileHit = { red: 0, blue: 0 }; // dedup persistent Round-4 blast events
   const FROZEN_TINT = new THREE.Color(0x8fd0ff);
   let frame = null;
   let layout = null;
@@ -237,6 +241,8 @@ export function createLiveActors(scene, walkers) {
     princess.group.scale.setScalar(agentScale);
     escGlow.visible = !on;
     if (!on) return;
+    lastMissileHit.red = 0;
+    lastMissileHit.blue = 0;
 
     const arenaSize = world?.arena || 20;
     arenaScale = Math.max(0.01, Number(world?.sceneScale) || 1);
@@ -283,6 +289,44 @@ export function createLiveActors(scene, walkers) {
       };
       velocity.red = { x: f.redVel?.[0] || 0, z: f.redVel?.[1] || 0 };
       velocity.blue = { x: f.blueVel?.[0] || 0, z: f.blueVel?.[1] || 0 };
+      // A terminal explosion survives the backend's automatic episode reset for
+      // several snapshots. Play the hit once, holding the victim at the blast
+      // before the newly reset spawn is allowed to take over.
+      for (const blast of f.explosions || []) {
+        const victims =
+          blast.hit === 'both'
+            ? ['red', 'blue']
+            : blast.hit === 'red' || blast.hit === 'blue'
+              ? [blast.hit]
+              : [];
+        for (const side of victims) {
+          if (blast.id <= lastMissileHit[side]) continue;
+          lastMissileHit[side] = blast.id;
+          fx[side] = {
+            type: 'missile',
+            t: 0,
+            // Replay seek may jump directly to the terminal frame: start at that
+            // frame's exact actor position. A live carryover event arrives after
+            // auto-reset, so there we intentionally retain the rendered death spot.
+            start: { ...(blast.carryover ? rendered[side] : target[side]) },
+            at: arenaPoint(blast.pos),
+          };
+        }
+        if (victims.length === 1) {
+          const winner = victims[0] === 'red' ? 'blue' : 'red';
+          if (blast.id > lastMissileHit[winner]) {
+            lastMissileHit[winner] = blast.id;
+            fx[winner] = {
+              type: 'missileWin',
+              t: 0,
+              start: {
+                ...(blast.carryover ? rendered[winner] : target[winner]),
+              },
+              yaw: heading[winner],
+            };
+          }
+        }
+      }
       return;
     }
     target.red = cwArr(f.red);
@@ -403,10 +447,58 @@ export function createLiveActors(scene, walkers) {
         g.position.set(f.to.x, baseY, f.to.z);
         g.scale.setScalar(agentScale);
         fx[key] = null;
-        return true;
+        warpSettle[key] = 0.5;      // GLIDE (never snap) toward the live sim position next,
+        return true;                // so the char slides out of the pipe fluidly, no jump
       }
       g.rotation.y = heading[key];
       return false;
+    }
+    if (f.type === 'missile') {
+      const DUR = 0.78;
+      if (f.t < DUR) {
+        const u = f.t / DUR;
+        const ease = 1 - Math.pow(1 - u, 3);
+        const awayX = f.start.x - f.at.x;
+        const awayZ = f.start.z - f.at.z;
+        const awayLen = Math.hypot(awayX, awayZ) || 1;
+        g.position.set(
+          f.start.x + (awayX / awayLen) * ease * 1.2,
+          Math.sin(u * Math.PI) * 1.5 + ease * 0.25,
+          f.start.z + (awayZ / awayLen) * ease * 1.2,
+        );
+        g.scale.setScalar(agentScale * Math.max(0.08, 1 - ease * 0.92));
+        g.rotation.y += dt * (10 + u * 18);
+        return false;
+      }
+      rendered[key] = { ...target[key] };
+      g.position.set(target[key].x, baseY, target[key].z);
+      g.scale.setScalar(agentScale);
+      g.rotation.y = spawnFacing[key];
+      heading[key] = spawnFacing[key];
+      fx[key] = null;
+      return true;
+    }
+    if (f.type === 'missileWin') {
+      const DUR = 0.78;
+      if (f.t < DUR) {
+        const u = f.t / DUR;
+        g.position.set(
+          f.start.x,
+          baseY + Math.pow(Math.sin(u * Math.PI * 2), 2) * 0.55,
+          f.start.z,
+        );
+        g.scale.setScalar(agentScale * (1 + Math.sin(u * Math.PI) * 0.08));
+        g.rotation.y = f.yaw + Math.sin(u * Math.PI * 4) * 0.18;
+        walker.moveAmt = 0;
+        return false;
+      }
+      rendered[key] = { ...target[key] };
+      g.position.set(target[key].x, baseY, target[key].z);
+      g.scale.setScalar(agentScale);
+      g.rotation.y = spawnFacing[key];
+      heading[key] = spawnFacing[key];
+      fx[key] = null;
+      return true;
     }
     // DEATH: on the tile it died on - a plant yanks it UP small, spikes squash it FLAT -
     // then it is gone and the respawn snaps in.
@@ -457,7 +549,10 @@ export function createLiveActors(scene, walkers) {
       // Arena metres may be stretched into several scene units. Scale the reset
       // threshold with that mapping so ordinary fast movement never gets mistaken
       // for a teleport after the visual stretch.
-      const teleport = Math.hypot(dx, dz) > (arena ? 1.5 * arenaScale : 1.5);
+      // just after a warp we GLIDE toward the emerge->live position (no snap) so the exit
+      // reads fluid; otherwise a >1.5-tile jump is a reset teleport and snaps.
+      warpSettle[key] = Math.max(0, warpSettle[key] - dt);
+      const teleport = warpSettle[key] <= 0 && Math.hypot(dx, dz) > (arena ? 1.5 * arenaScale : 1.5);
       if (teleport) {
         r.x = tg.x; r.z = tg.z; // snap instead of sliding through walls
       } else {
@@ -516,6 +611,22 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
+  function resetArenaEffects(frameToSuppress = null) {
+    lastMissileHit.red = 0;
+    lastMissileHit.blue = 0;
+    for (const blast of frameToSuppress?.explosions || []) {
+      if (!blast.hit) continue;
+      // A single hit creates both a victim and winner animation, so baseline
+      // both sides when restoring a live frame after leaving Replay.
+      lastMissileHit.red = Math.max(lastMissileHit.red, blast.id || 0);
+      lastMissileHit.blue = Math.max(lastMissileHit.blue, blast.id || 0);
+    }
+    for (const [key, walker] of [['red', king], ['blue', princess]]) {
+      if (fx[key]?.type?.startsWith('missile')) fx[key] = null;
+      walker.group.scale.setScalar(agentScale);
+    }
+  }
+
   function getSidePosition(side, out = new THREE.Vector3()) {
     sideWalker(side).group.getWorldPosition(out);
     return out;
@@ -546,6 +657,6 @@ export function createLiveActors(scene, walkers) {
 
   return {
     setWorld, onFrame, snapFrame, update, group, setWalkers, setHidden, setArena, resetFacing,
-    getSidePosition, getSideFocus, celebrate,
+    resetArenaEffects, getSidePosition, getSideFocus, celebrate,
   };
 }

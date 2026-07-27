@@ -51,7 +51,7 @@ def is_deep(algo):
 FRAME_CAP = 801            # max frames recorded for one replayable episode
                            # (800 steps + the seeded frame-0 spawn snapshot)
 HISTORY_CAP = 4000         # max learning-curve points kept per round
-TOP_N = 30                 # best replays kept PER MODEL (red/blue), fastest first
+TOP_N = 30                 # best replays kept per model (fastest or longest by game)
 
 # Red (the CPU) is NOT tunable from the panel; its strength comes from the chosen
 # CPU character's tier (1 = easiest .. 5 = hardest). Stage 1 reads ONLY plan_speed.
@@ -127,7 +127,6 @@ class Match:
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
         # Round-2 game mechanics (New Donk City): maze knobs, applied at WORLD GEN
         # (a change regenerates the regioned maze, since they alter the layout).
-        self.r2_dests = 3                       # exit pipes per dive pipe (2-3, fixed probs)
         self.r2_plants = 2                      # piranha plants per side (mirrored)
         self.r2_slip = 3                        # slippery puddles per side (mirrored)
         # DQN learners (continuous rounds 4-5)
@@ -180,8 +179,7 @@ class Match:
                                    theme=getattr(mod, "THEME", "ruined"))
         gen_cfg = {}
         if round_id == 2:                       # New Donk City maze knobs
-            gen_cfg = {"n_dests": self.r2_dests, "n_plants": self.r2_plants,
-                       "n_slip": self.r2_slip}
+            gen_cfg = {"n_plants": self.r2_plants, "n_slip": self.r2_slip}
         return GridWorld(seed, round_id=round_id, gen_cfg=gen_cfg)
 
     def _apply_env_config(self):
@@ -271,6 +269,10 @@ class Match:
                                    alpha=self.alpha, gamma=self.gamma)
 
     def _reset_stats(self):
+        if getattr(self.env, "missile_game", False):
+            # A manual model/world reset is not an automatic episode transition;
+            # no terminal blast from the discarded run should survive it forever.
+            self.env.explosions = []
         self.episode = 0
         self.total_steps = 0
         self.wins = {"red": 0, "blue": 0, "draw": 0}
@@ -281,9 +283,11 @@ class Match:
         self.hist = deque(maxlen=HISTORY_CAP)   # learning curve points
         self._frames = []                       # frames of the in-flight episode
         self.last_episode = None                # most recent finished episode
-        self.best_episode = None                # shortest WINNING episode so far
-        self._best_len = 10 ** 9
-        # the TOP_N fastest WINNING episodes per model, for the replay browser
+        self.best_episode = None
+        # Navigation rounds rank the fastest win; missile survival ranks the
+        # longest winning survival. The replay browser receives the same ordering.
+        self._best_len = -1 if getattr(self.env, "missile_game", False) else 10 ** 9
+        # the TOP_N winning episodes per model, ordered by the round's objective
         self._top = {"red": [], "blue": []}
         # per-cell visit counts per side (the "where do they travel" heatmap)
         self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
@@ -342,6 +346,14 @@ class Match:
     def _replay_snapshot(self):
         """Environment frame plus the tiny DP progress marker needed by replay."""
         frame = self.env.snapshot()
+        if getattr(self.env, "missile_game", False):
+            # Terminal explosions are carried briefly across the automatic reset so
+            # live polling cannot miss them. They belong to the previous episode and
+            # must never contaminate the next episode's recorded replay.
+            frame["explosions"] = [
+                event for event in frame.get("explosions", [])
+                if not event.get("carryover", False)
+            ]
         for side, agent in (("red", self.red), ("blue", self.blue)):
             if hasattr(agent, "sweeps"):
                 frame[f"{side}DpSweep"] = sum(agent.sweeps or [])
@@ -416,11 +428,11 @@ class Match:
                 self.ret_hist["red"].append(self.ep_return["red"])
                 self.ret_hist["blue"].append(self.ep_return["blue"])
                 self.episode += 1
-                self._finish_episode(w)
+                self._finish_episode(w, truncated=truncated)
                 self._new_episode()
             return done
 
-    def _finish_episode(self, winner):
+    def _finish_episode(self, winner, truncated=False):
         """Snapshot the finished episode for replay + log a learning-curve point."""
         parts = getattr(self.env, "ep_parts", None)   # grid env's reward decomposition
         if parts is not None:
@@ -428,16 +440,27 @@ class Match:
         self._record_probe()
         self.last_episode = {"winner": winner, "steps": self.env.steps,
                              "frames": self._frames}
-        if winner in ("red", "blue") and self.env.steps < self._best_len:
+        survival = bool(getattr(self.env, "missile_game", False))
+        is_best = (
+            self.env.steps > self._best_len if survival
+            else self.env.steps < self._best_len
+        )
+        replay_sides = (
+            [winner] if winner in ("red", "blue")
+            else ["red", "blue"] if survival and truncated
+            else []
+        )
+        if replay_sides and is_best:
             self._best_len = self.env.steps
             self.best_episode = self.last_episode
-        if winner in ("red", "blue"):
-            lst = self._top[winner]
-            replay_policy = self._replay_policy_frames(winner)
+        for replay_side in replay_sides:
+            lst = self._top[replay_side]
+            replay_policy = self._replay_policy_frames(replay_side)
             lst.append({"steps": self.env.steps, "episode": self.episode,
-                        "winner": winner, "frames": self._frames,
+                        "winner": winner if winner in ("red", "blue") else "timeout",
+                        "frames": self._frames,
                         "policyFrames": replay_policy})
-            lst.sort(key=lambda e: e["steps"])   # fastest first
+            lst.sort(key=lambda e: e["steps"], reverse=survival)
             del lst[TOP_N:]
         recent = list(self.recent)
         n = len(recent) or 1
@@ -588,9 +611,6 @@ class Match:
                 replan = True
 
             # ---- GLOBAL: Round-2 maze knobs (regenerate the New Donk City maze) ----
-            if "r2Dests" in p:
-                self.r2_dests = max(2, min(3, int(p["r2Dests"])))
-                need_env_rebuild = True
             if "r2Plants" in p:
                 self.r2_plants = max(0, min(4, int(p["r2Plants"])))
                 need_env_rebuild = True
@@ -690,7 +710,6 @@ class Match:
             "freezeLen": self.freeze_len,
             "coinReward": round(self.coin_reward, 2),
             "blockReward": round(self.block_reward, 2),
-            "r2Dests": self.r2_dests,
             "r2Plants": self.r2_plants,
             "r2Slip": self.r2_slip,
             "dqnBatch": self.dqn_batch,
@@ -1036,13 +1055,12 @@ class Match:
                 dynamics = (f"Deterministic walking (hedge walls block). The maze is split into four "
                             f"stacked REGIONS separated by solid walls, so you CANNOT walk between "
                             f"them: the only way up is the {n_pipes} WARP PIPES - you leap into a dive "
-                            f"pipe and pop OUT of one of 2-3 EXIT pipes in the region above, each with a "
-                            f"FIXED probability baked into the map (never re-rolled). {n_plants} PIRANHA "
-                            f"PLANTS lurk on the hedges; stepping within one tile of one (incl. diagonals) "
-                            f"costs a life - you take the loss penalty and RESPAWN (keeping any stars), "
-                            f"and the race goes on. {n_slip} slippery PUDDLES sit beside the plants, so a "
-                            f"skid can shove you into the jaws. A safe route around every plant always "
-                            f"exists; the model must learn it - plus the pipe gamble - from returns alone.")
+                            f"pipe and pop OUT of its ONE fixed EXIT pipe in the region above (a pipe-to-"
+                            f"pipe pair). {n_plants} PIRANHA PLANTS lurk on the hedges; stepping within "
+                            f"one tile of one (incl. diagonals) costs a life - you take the loss penalty "
+                            f"and RESPAWN (keeping any stars), and the race goes on. {n_slip} slippery "
+                            f"PUDDLES sit beside the plants, so a skid can shove you into the jaws. A safe "
+                            f"route around every plant always exists; the model must learn it from returns.")
                 rewards = [["Step", -0.01], ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
                            ["Win (all 3 stars, then the goal)", 1.0], ["Die on a plant (respawn)", -1.0]]
                 win = (f"Gather all {n_stars} of your Power Stars - one per region - THEN reach the "
@@ -1062,6 +1080,40 @@ class Match:
                             "(you stay put).")
                 rewards = [["Step", -0.01], ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = "First to reach the Power Moon wins; a simultaneous arrival is a draw."
+            elif getattr(env, "missile_game", False):
+                actions = ["8 compass thrusts + coast (9)"]
+                state_size = None
+                sees_opp = True
+                state_desc = (
+                    "continuous 40-vector: both characters' motion, three stable "
+                    "Banzai Bill slots, homing state, arena clearance and timing"
+                )
+                observation = (
+                    "Each model sees its own motion, the rival's relative motion, rim "
+                    "clearance, elapsed difficulty and the next launch. Three fixed "
+                    "missile slots expose position, velocity, target, age and whether "
+                    "the missile has entered the tower."
+                )
+                opp_info = (
+                    "Relative position and velocity. This is required because a Banzai "
+                    "Bill targeting the rival still changes the observing agent's future."
+                )
+                dynamics = (
+                    "Continuous thrust and momentum inside a circular tower. Banzai Bills "
+                    "enter through the north opening, turn with a capped homing rate, and "
+                    "explode on a character or the curved rim. Speed, homing, launch rate "
+                    "and concurrent missile count rise with survival time."
+                )
+                rewards = [
+                    ["Survive one decision", 0.015],
+                    ["Safe explosion", "up to +0.12 by distance"],
+                    ["Opponent is hit", 1.0],
+                    ["Hit by Banzai Bill", -1.25],
+                ]
+                win = (
+                    "A missile hit eliminates that character; the surviving character "
+                    "wins the episode. A simultaneous blast is a draw."
+                )
             else:
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None
@@ -1155,12 +1207,14 @@ class Match:
 
     def replay(self, which="last", agent=None, rank=0):
         with self.lock:
+            metric = "longest" if getattr(self.env, "missile_game", False) else "fastest"
             if which == "top":
                 lst = self._top.get(agent, [])
                 if not (0 <= rank < len(lst)):
                     return {"available": False}
                 ep = lst[rank]
                 return {"available": True, "which": "top", "agent": agent,
+                        "metric": metric,
                         "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
                         "episode": ep["episode"], "frames": ep["frames"],
                         "policyFrames": ep.get("policyFrames", [])}
@@ -1168,6 +1222,7 @@ class Match:
             if not ep:
                 return {"available": False}
             return {"available": True, "which": which, "winner": ep["winner"],
+                    "metric": metric,
                     "steps": ep["steps"], "frames": ep["frames"]}
 
     def replays_index(self, agent):
@@ -1175,6 +1230,7 @@ class Match:
         with self.lock:
             lst = self._top.get(agent, [])
             return {"agent": agent, "count": len(lst),
+                    "metric": "longest" if getattr(self.env, "missile_game", False) else "fastest",
                     "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"]}
                               for i, e in enumerate(lst)]}
 

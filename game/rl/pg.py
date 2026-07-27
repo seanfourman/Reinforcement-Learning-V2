@@ -400,11 +400,11 @@ def make_pg(algo, obs_dim, n_actions, **kwargs):
 if __name__ == "__main__":
     import sys
     from collections import deque
-    from continuous import ContinuousArena, N_ACTIONS, OBS_DIM
+    from continuous import ContinuousArena, N_ACTIONS
 
     which = sys.argv[1] if len(sys.argv) > 1 else "ppo"
-    env = ContinuousArena(seed=0)
-    agent = make_pg(which, OBS_DIM, N_ACTIONS, alpha=0.2, gamma=0.98, seed=0)
+    env = ContinuousArena(seed=0, round_id=5, theme="tostarena")
+    agent = make_pg(which, env.obs_dim, N_ACTIONS, alpha=0.2, gamma=0.98, seed=0)
     print(f"training {agent.name} on the continuous arena ...")
 
     EPISODES = 1500

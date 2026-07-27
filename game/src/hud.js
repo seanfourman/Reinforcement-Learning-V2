@@ -82,6 +82,11 @@ const STYLE = `
 .fb-rnum .i{font-size:56px;color:#fff;line-height:.9;}
 .fb-rnum .sep{font-size:38px;color:#8f98ad;}
 .fb-rnum .t{font-size:42px;color:#8f98ad;}
+.fb-survival{display:none;margin-top:8px;padding:5px 11px;border:2px solid #000;border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,94,45,.96),rgba(142,22,10,.96));
+  box-shadow:0 3px 0 #000;color:#fff;font:800 12px/1 "Segoe UI",system-ui,sans-serif;
+  letter-spacing:.7px;white-space:nowrap;text-shadow:0 1px 2px #000;}
+.fb-survival.show{display:block;}
 /* round-win dots under each bar - absolute so they don't change the column layout */
 .fb-dots{position:absolute;top:100%;margin-top:7px;display:flex;gap:8px;}
 .fb-side.blue .fb-dots{left:8px;}
@@ -154,7 +159,8 @@ export function initHud() {
   hud.innerHTML =
     sideHTML("blue", "P1") +
     `<div id="fb-center"><div class="fb-rlabel">Round</div>` +
-    `<div class="fb-rnum"><b class="i" id="fb-round-i">1</b><span class="sep">/</span><span class="t" id="fb-round-t">1</span></div></div>` +
+    `<div class="fb-rnum"><b class="i" id="fb-round-i">1</b><span class="sep">/</span><span class="t" id="fb-round-t">1</span></div>` +
+    `<div class="fb-survival" id="fb-survival"></div></div>` +
     sideHTML("red", "CPU");
   document.body.appendChild(hud);
 
@@ -337,6 +343,22 @@ export function initHud() {
     $("#fb-round-t").textContent = total;
     $("#fb-algo-blue").textContent = r.labelBlue || s.algoBlue || "";
     $("#fb-algo-red").textContent = r.labelRed || s.algoRed || "";
+    const survival = $("#fb-survival");
+    const frame = e.detail.frame || {};
+    if (frame.gameMode === "missileSurvival") {
+      const terminalBlast = [...(frame.explosions || [])]
+        .reverse()
+        .find((blast) => blast.hit);
+      const survivalTime =
+        terminalBlast?.survivalTime ?? frame.survivalTime ?? 0;
+      const homing = terminalBlast?.difficulty ?? frame.difficulty ?? 0;
+      survival.classList.add("show");
+      survival.textContent =
+        `SURVIVE ${Number(survivalTime).toFixed(1)}s  ·  HOMING ${Math.round(homing * 100)}%`;
+    } else {
+      survival.classList.remove("show");
+      survival.textContent = "";
+    }
     // bars = each side's RECENT win share; the rAF loop eases the fill toward this smoothly
     const rr = s.recentRate || {};
     barTarget.blue = (rr.blue ?? 0) * 100;

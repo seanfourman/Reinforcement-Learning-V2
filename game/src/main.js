@@ -159,6 +159,7 @@ let arenaMode = false; // round 4 (continuous arena): the theme renders its own 
 let worldVersion = -1; // last world we built
 let latestStats = null;
 let latestFrame = null;
+let latestLiveFrame = null;
 let lastWorldJson = null; // most recently (re)built world - for the entry name card
 let menu = null; // start menu (cabin background); gates the game boot
 
@@ -217,7 +218,12 @@ function rebuildWorld(worldJson) {
 
   // only the fixed GRID rounds are cached resident; the continuous arena (round 4,
   // no stable rows) always builds fresh so it's never served a stale scene.
-  const cacheable = !!(theme.buildScene && worldJson.rows);
+  const cacheable = !!(
+    theme.buildScene &&
+    worldJson.objective !== "arena" &&
+    Array.isArray(worldJson.rows) &&
+    worldJson.rows.length
+  );
   const cached = cacheable ? sceneCache.get(key) : null;
   if (cached && cached.rowsKey === rowsKey) {
     // REUSE the warm resident scene: instant, no reload / re-parse / recompile.
@@ -259,7 +265,13 @@ function rebuildWorld(worldJson) {
 // holder (never rendered), so it's invisible until gameplay re-attaches its group.
 async function prewarmRound(worldJson) {
   const key = worldJson && worldJson.theme;
-  if (!key || !worldJson.rows) return; // skip the continuous arena (no stable rows)
+  if (
+    !key ||
+    worldJson.objective === "arena" ||
+    !Array.isArray(worldJson.rows) ||
+    !worldJson.rows.length
+  )
+    return; // skip the continuous arena (no stable rows)
   const theme = getTheme(key);
   if (!theme || !theme.buildScene || sceneCache.has(key)) return;
   try {
@@ -335,6 +347,7 @@ async function control(body) {
 
 let heatAgent = null; // 'red' | 'blue' | null - which model's overlay to show
 let heatMode = "value"; // 'value' (V(s)) | 'visits' (where it travels)
+let heatGeneration = 0; // invalidates an in-flight field request after Off/mode change
 let pollCount = 0;
 let polling = false;
 let pollTimer = null;
@@ -399,6 +412,7 @@ function seedEventSerials(stats) {
 
 function applyStats(snap) {
   latestStats = snap.stats;
+  latestLiveFrame = snap.frame;
   // while a replay is playing, the SCENE (actors + themeScene, which reads
   // latestFrame) shows the recorded frames - don't clobber it with live frames.
   // The HUD / panels below still get the live stats (training keeps running).
@@ -409,7 +423,11 @@ function applyStats(snap) {
   seedEventSerials(snap.stats);
   maybeHandleAwardEvent(snap.stats);
   maybeStartFinishCeremony(snap.stats);
-  window.dispatchEvent(new CustomEvent("rl-snapshot", { detail: snap }));
+  const displayedSnap =
+    replayActive && latestFrame ? { ...snap, frame: latestFrame } : snap;
+  window.dispatchEvent(
+    new CustomEvent("rl-snapshot", { detail: displayedSnap }),
+  );
 }
 
 let returningToMenu = false;
@@ -567,32 +585,65 @@ async function poll() {
       if (replayActive && heatMode === "policy" && replay.renderPolicy()) {
         // A replay must show the policy from its recorded sweep, not today's live model.
       } else if (arenaMode) {
-        // Continuous rounds have no board cells. Value/Policy are sampled slices
-        // through the network; Visits is a continuous position-density field.
-        const f = await (
-          await fetch(`${API}/api/field?agent=${heatAgent}&mode=${heatMode}`, {
-            cache: "no-store",
-          })
-        ).json();
-        if (holdUI || menuIdle) return; // don't surface an overlay into the menu
-        if (f.available) {
-          heatmap.setArenaField(f, heatMode);
-          heatmap.showArena(heatMode);
+        if (replayActive) {
+          // A DQN arena field is conditioned on the current missiles. The server
+          // cannot reconstruct that field for an old replay frame, so do not show
+          // a confidently wrong live-state overlay over historical motion.
+          heatmap.hide();
+        } else {
+          // Continuous rounds have no board cells. Value/Policy are sampled slices
+          // through the network; Visits is a continuous position-density field.
+          const requestedAgent = heatAgent;
+          const requestedMode = heatMode;
+          const requestedGeneration = heatGeneration;
+          const f = await (
+            await fetch(
+              `${API}/api/field?agent=${requestedAgent}&mode=${requestedMode}`,
+              { cache: "no-store" },
+            )
+          ).json();
+          if (
+            holdUI ||
+            menuIdle ||
+            requestedGeneration !== heatGeneration ||
+            requestedAgent !== heatAgent ||
+            requestedMode !== heatMode
+          )
+            return;
+          if (f.available) {
+            heatmap.setArenaField(f, requestedMode);
+            heatmap.showArena(requestedMode);
+          }
         }
       } else {
-        const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
+        const requestedAgent = heatAgent;
+        const requestedMode = heatMode;
+        const requestedGeneration = heatGeneration;
+        const m =
+          requestedMode === "value"
+            ? "q"
+            : requestedMode === "policy"
+              ? "policy"
+              : "visits";
         const v = await (
-          await fetch(`${API}/api/values?agent=${heatAgent}&mode=${m}`, {
+          await fetch(`${API}/api/values?agent=${requestedAgent}&mode=${m}`, {
             cache: "no-store",
           })
         ).json();
-        if (holdUI || menuIdle) return; // don't surface an overlay into the menu
+        if (
+          holdUI ||
+          menuIdle ||
+          requestedGeneration !== heatGeneration ||
+          requestedAgent !== heatAgent ||
+          requestedMode !== heatMode
+        )
+          return;
         if (v.grid) {
           // arrows + greedy value-number are coloured to match the viewed agent (heatAgent)
-          if (heatMode === "value") { heatmap.setNumbers(v.grid, v.best, heatAgent); heatmap.setGhostArrows([]); }
+          if (requestedMode === "value") { heatmap.setNumbers(v.grid, v.best, requestedAgent); heatmap.setGhostArrows([]); }
           // policy: floor arrows on the ground + raised ghost arrows on the walls (only
           // present while the agent is phasing, so they appear/vanish with the power-up)
-          else if (heatMode === "policy") { heatmap.setPolicy(v.grid, heatAgent); heatmap.setGhostArrows(v.ghostArrows, heatAgent); }
+          else if (requestedMode === "policy") { heatmap.setPolicy(v.grid, requestedAgent); heatmap.setGhostArrows(v.ghostArrows, requestedAgent); }
           else { heatmap.setGrid(v.grid); heatmap.setGhostArrows([]); }
         }
       }
@@ -623,7 +674,7 @@ const ndc = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hit = new THREE.Vector3();
 renderer.domElement.addEventListener("click", async (e) => {
-  if (!heatAgent) return;
+  if (!heatAgent || arenaMode) return;
   ndc.x = (e.clientX / innerWidth) * 2 - 1;
   ndc.y = -(e.clientY / innerHeight) * 2 + 1;
   ray.setFromCamera(ndc, camera);
@@ -653,6 +704,11 @@ const devbar = initDevBar({ scene, camera, renderer, rig });
 // 'rl-replay-state' so the Playback UI mirrors it. While a run is loaded,
 // replayActive gates the live frames in applyStats and the server temporarily
 // pauses training, restoring the exact previous live play/pause state on exit.
+function resetArenaReplayEffects(frameToSuppress = null) {
+  actors.resetArenaEffects?.(frameToSuppress);
+  themeScene?.resetEffects?.(frameToSuppress);
+}
+
 const replay = {
   frames: [],
   idx: 0,
@@ -732,12 +788,16 @@ const replay = {
     this.policyFrames = Array.isArray(policyFrames) ? policyFrames : [];
     this.playing = false;
     replayActive = this.frames.length > 0;
+    resetArenaReplayEffects();
     this._render();
     this._emit();
   },
   play() {
     if (!this.frames.length) return;
-    if (this.idx >= this.frames.length - 1) this.idx = 0; // restart if parked at end
+    if (this.idx >= this.frames.length - 1) {
+      this.idx = 0; // restart if parked at end
+      resetArenaReplayEffects();
+    }
     this.playing = true;
     replayActive = true;
     this._render();
@@ -759,6 +819,7 @@ const replay = {
     this.playing = false; // scrubbing pauses
     this.idx = Math.max(0, Math.min(this.frames.length - 1, i | 0));
     replayActive = true;
+    resetArenaReplayEffects();
     this._render();
     this._emit();
   },
@@ -777,6 +838,9 @@ const replay = {
     this.label = "";
     this.policyFrames = [];
     replayActive = false;
+    latestFrame = latestLiveFrame;
+    resetArenaReplayEffects(latestLiveFrame);
+    if (latestLiveFrame) actors.onFrame(latestLiveFrame);
     this._emit();
     if (wasActive) control({ cmd: "replayExit" });
   },
@@ -787,6 +851,7 @@ window.RL = {
   control,
   getStats: () => latestStats,
   setHeatmap: (agent, mode) => {
+    heatGeneration++;
     heatAgent = agent;
     heatMode = mode || "value";
     if (!agent) heatmap.hide();

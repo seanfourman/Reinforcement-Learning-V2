@@ -1,9 +1,9 @@
-"""Round 4 - Ruined Kingdom: the CONTINUOUS, function-approximation arena.
+"""Round 4 - Ruined Kingdom: continuous Banzai Bill survival.
 
 Metadata only. Unlike the grid rounds there is no tabular ``World`` here - the
-environment is ``rl/continuous.ContinuousArena`` (continuous state, NN value
-function), which ``match.py`` instantiates directly for any round flagged
-``CONTINUOUS``. So ``generate()`` is never used to build this round's env.
+environment is ``rl/continuous.ContinuousArena``: two DQN agents dodge increasingly
+fast homing missiles on a circular tower, using continuous positions/velocities and
+a neural value function. ``match.py`` instantiates it directly for this round.
 """
 
 THEME = "ruined"
