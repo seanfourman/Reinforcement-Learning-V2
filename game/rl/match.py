@@ -116,6 +116,14 @@ class Match:
         self.dp_theta = 1e-5                    # convergence threshold
         self.dp_max_sweeps = 2000               # hard iteration cap per phase
         self.dp_plan_speed = 0.6               # Blue's Bellman sweeps per tick (race knob)
+        # Round-1 game mechanics (Peach's Castle): pushed onto the env after any (re)build
+        # via _apply_env_config; a change re-enumerates + re-solves both DP planners.
+        self.slip_prob = SLIP_PROB              # ice/puddle slip chance (half each side)
+        self.ghost_len = GHOST_LEN              # floor tiles reachable while wall-phasing
+        self.freeze_len = FREEZE_LEN            # turns stuck after a freeze roll
+        self.block_ghost_prob = 0.5             # P(Ghost) on a "?" block; P(Freeze) = 1-this
+        self.coin_reward = COIN_REWARD          # value of an optional coin
+        self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -167,9 +175,17 @@ class Match:
         return GridWorld(seed, round_id=round_id)
 
     def _apply_env_config(self):
-        """Apply the step-cap override onto the current env, after any (re)build."""
+        """Apply the step-cap override + the Round-1 mechanic params onto the current env,
+        after any (re)build (a fresh env starts at the module defaults). Returns True iff a
+        push changed the DP STATE SPACE (ghost/freeze length) - the caller re-enumerates."""
         if self.max_steps_override is not None:
             self.env.max_steps = self.max_steps_override
+        setd = getattr(self.env, "set_dynamics", None)
+        if setd:
+            return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
+                        freeze_len=self.freeze_len, block_ghost_prob=self.block_ghost_prob,
+                        coin_reward=self.coin_reward, block_reward=self.block_reward)
+        return False
 
     def _rebuild_world(self):
         """Rebuild the live env from the current world config (train seed) and the
@@ -495,6 +511,29 @@ class Match:
                 self.dp_plan_speed = max(0.0, min(10.0, float(p["dpPlanning"])))
                 replan = True
 
+            # ---- GLOBAL: Round-1 game mechanics (ice + "?" ghost/freeze blocks) ----
+            # Each is pushed onto the env by _apply_env_config below; because the DP
+            # planners precompute their transition model (and enumerate a status range),
+            # ANY mechanic change means both planners must re-solve from scratch -> replan.
+            if "slipProb" in p:
+                self.slip_prob = max(0.0, min(0.9, float(p["slipProb"])))
+                replan = True
+            if "blockGhostProb" in p:
+                self.block_ghost_prob = max(0.0, min(1.0, float(p["blockGhostProb"])))
+                replan = True
+            if "ghostLen" in p:
+                self.ghost_len = max(1, min(8, int(p["ghostLen"])))
+                replan = True
+            if "freezeLen" in p:
+                self.freeze_len = max(1, min(8, int(p["freezeLen"])))
+                replan = True
+            if "coinReward" in p:
+                self.coin_reward = max(0.0, min(2.0, float(p["coinReward"])))
+                replan = True
+            if "blockReward" in p:
+                self.block_reward = max(0.0, min(2.0, float(p["blockReward"])))
+                replan = True
+
             # ---- GLOBAL: DQN internals ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
@@ -538,7 +577,19 @@ class Match:
                 self._reset_stats()
                 self._new_episode()
             else:
-                self._apply_env_config()
+                space_moved = self._apply_env_config()
+                # A ghost/freeze LENGTH change re-sizes the DP state space (the planners
+                # re-enumerate below). Without a scene rebuild the episode keeps running, so
+                # the in-flight env.status can now sit OUTSIDE the new range (e.g. status 8
+                # while ghost_len just dropped to 3) - a state the re-enumerated planner has
+                # no V/policy for. Pull each agent's live status back into the new bounds so
+                # it stays on a planned state (else policy_action's masked fallback / the Q
+                # inspector would hit an un-enumerated successor). Only fires on a genuine
+                # length change; slip/coin/prob edits leave the status range untouched.
+                if space_moved and hasattr(self.env, "status"):
+                    gl, fl = self.env.ghost_len, self.env.freeze_len
+                    for a in ("red", "blue"):
+                        self.env.status[a] = max(-fl, min(gl, self.env.status[a]))
                 # DP internals / discount changed -> RESTART the incremental plan so the
                 # convergence race replays from scratch with the new settings
                 if replan or (self.gamma != old_gamma and is_dp(self.algo_blue)):
@@ -563,6 +614,13 @@ class Match:
             "dpTheta": self.dp_theta,
             "dpMaxIters": self.dp_max_sweeps,
             "dpPlanning": self.dp_plan_speed,
+            # round-1 game mechanics (Peach's Castle)
+            "slipProb": round(self.slip_prob, 2),
+            "blockGhostProb": round(self.block_ghost_prob, 2),
+            "ghostLen": self.ghost_len,
+            "freezeLen": self.freeze_len,
+            "coinReward": round(self.coin_reward, 2),
+            "blockReward": round(self.block_reward, 2),
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -849,8 +907,11 @@ class Match:
                 # just the positive ghost statuses (see dp._enumerate_states)
                 n_floor = env.n_cells
                 n_wall = len(getattr(env, "pos_cells", [])) - n_floor
-                state_size = ((n_floor * (GHOST_LEN + FREEZE_LEN + 1) + n_wall * GHOST_LEN)
-                              * (1 << nbits))
+                # live (panel-tunable) mechanic values, so the briefing matches the game
+                gl, fl = env.ghost_len, env.freeze_len
+                gp = env.block_ghost_prob
+                sp = env.slip_prob
+                state_size = ((n_floor * (gl + fl + 1) + n_wall * gl) * (1 << nbits))
                 state_desc = ("your tile, which of your own coins/blocks you have claimed, "
                               "and your power-up / frozen countdown")
                 observation = ("Each model sees its own tile, its collected coins/blocks, and "
@@ -859,16 +920,18 @@ class Match:
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model owns a "
                             "mirror-image set of coins/blocks, so the race is fair but solo.")
-                dynamics = ("Deterministic on dry tiles. On ICE a move slips sideways (70% "
-                            "intended, 15% each perpendicular). A '?' block is a one-time 50/50 "
-                            "gamble: Ghost (phase through walls one cell at a time, ~4 moves) or "
-                            "Freeze (stuck for 3 turns).")
-                rewards = [["Step", -0.01], ["Coin", round(COIN_REWARD, 2)],
-                           ["? block -> Ghost", round(BLOCK_REWARD, 2)],
+                dynamics = (f"Deterministic on dry tiles. On ICE a move slips sideways "
+                            f"({round((1 - sp) * 100)}% intended, {round(sp * 50)}% each "
+                            f"perpendicular). A '?' block is a one-time gamble: {round(gp * 100)}% "
+                            f"Ghost (phase through walls, up to {gl} floor tiles - the timer only "
+                            f"counts tiles landed on, so you can never be trapped mid-wall) or "
+                            f"{round((1 - gp) * 100)}% Freeze (stuck for {fl} turns).")
+                rewards = [["Step", -0.01], ["Coin", round(env.coin_reward, 2)],
+                           ["? block -> Ghost", round(env.block_reward, 2)],
                            ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
                        "simultaneous arrival is a draw.")
-                slip_prob = SLIP_PROB
+                slip_prob = sp
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]

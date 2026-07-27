@@ -571,32 +571,62 @@ export const peach = {
       return obj;
     };
 
-    // COINS: use the Coin asset's OWN textures (so it reads as a real coin), tinted per team
+    // per-team GLOW aura: a soft additive halo, coloured for the owning player, around a
+    // coin / "?" block that otherwise keeps its OWN normal texture (gold coin, yellow box).
+    const glowTex = (() => {
+      const S = 128, cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      g.addColorStop(0, "rgba(255,255,255,1)");
+      g.addColorStop(0.4, "rgba(255,255,255,0.5)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, S, S);
+      const tx = new THREE.CanvasTexture(cv);
+      tx.colorSpace = THREE.SRGBColorSpace;
+      return tx;
+    })();
+    const TEAM_GLOW = { red: 0xff4636, blue: 0x2f6bff };
+    // a billboarded halo added to `group` (world space) and pinned to the object each
+    // frame in update(); stored on obj.userData.glow so it hides when the item is taken.
+    const addGlow = (obj, size, colorHex) => {
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glowTex, color: colorHex, transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      spr.scale.setScalar(size * 2.4);
+      spr.position.copy(obj.position);
+      group.add(spr);
+      obj.userData.glow = spr;
+    };
+
+    // COINS: their OWN normal gold texture; the owning player's colour is the GLOW around it
     objLoader
       .loadAsync("./assets/objects/Coin/Coin.dae")
       .then((asset) => {
         if (disposed) return;
         deskin(asset.scene);
         const cdir = "./assets/objects/Coin/Textures/";
-        const cAlb = objTex(cdir + "coinbody00_alb.png");
-        const cNrm = objTex(cdir + "coinbody00_nrm.png", false);
-        const mk = (cells, color, emissive, arr) => {
-          if (!(cells && cells.length)) return;
-          // lively team coins: the coin relief (map+normal) + a bright tint + a GENTLE
-          // same-hue emissive (enough to read vivid, not a glowing blob) + metal shine
-          const mat = new THREE.MeshStandardMaterial({
-            map: cAlb, normalMap: cNrm,
-            color, emissive, emissiveIntensity: 0.28, metalness: 0.85, roughness: 0.3,
-          });
-          for (const [r, c] of cells) {
+        // one shared, un-tinted gold coin material. This theme has NO HDRI env map,
+        // so keep metalness LOW - a high-metal surface with nothing to reflect renders
+        // black; low metal lets the gold albedo read directly under the scene lights.
+        const coinMat = new THREE.MeshStandardMaterial({
+          map: objTex(cdir + "coinbody00_alb.png"),
+          normalMap: objTex(cdir + "coinbody00_nrm.png", false),
+          metalness: 0.25, roughness: 0.4,
+        });
+        const mk = (cells, glowColor, arr) => {
+          for (const [r, c] of cells || []) {
             const coin = fitObject(asset.scene.clone(true), 0.55 * cell);
-            setMat(coin, mat);
+            setMat(coin, coinMat);
             // hover ABOVE the 0.7-tall maze walls so the coin reads from the game camera
             arr.push(place(coin, r, c, 0.95, true));
+            addGlow(coin, 0.55 * cell, glowColor);
           }
         };
-        mk(world.redCoins, 0xff5236, 0xff2c0e, collect.redCoins);
-        mk(world.blueCoins, 0x3d86ff, 0x1748ff, collect.blueCoins);
+        mk(world.redCoins, TEAM_GLOW.red, collect.redCoins);
+        mk(world.blueCoins, TEAM_GLOW.blue, collect.blueCoins);
       })
       .catch((e) => console.warn("Coin model failed to load", e));
 
@@ -633,30 +663,30 @@ export const peach = {
       })
       .catch((e) => console.warn("Shine model failed to load", e));
 
-    // "?" BLOCKS: keep the iconic yellow "?" albedo, add a per-side rim glow
+    // "?" BLOCKS: their OWN normal yellow "?" texture; owning player's colour is the GLOW
     objLoader
       .loadAsync("./assets/objects/Question%20Block/BlockQuestion.dae")
       .then((asset) => {
         if (disposed) return;
         deskin(asset.scene);
         const dir = "./assets/objects/Question%20Block/";
-        const alb = objTex(dir + "BlockQuestionBody_alb.png");
-        const nrm = objTex(dir + "BlockQuestionBody_nrm.png", false);
-        const rgh = objTex(dir + "BlockQuestionBody_rgh.png", false);
-        const mk = (cells, emissive, arr) => {
-          if (!(cells && cells.length)) return;
-          const mat = new THREE.MeshStandardMaterial({
-            map: alb, normalMap: nrm, roughnessMap: rgh,
-            emissive, emissiveIntensity: 0.4, metalness: 0.2, roughness: 1,
-          });
-          for (const [r, c] of cells) {
+        // one shared, un-tinted "?" block material (albedo + normal + roughness)
+        const blkMat = new THREE.MeshStandardMaterial({
+          map: objTex(dir + "BlockQuestionBody_alb.png"),
+          normalMap: objTex(dir + "BlockQuestionBody_nrm.png", false),
+          roughnessMap: objTex(dir + "BlockQuestionBody_rgh.png", false),
+          metalness: 0.2, roughness: 1,
+        });
+        const mk = (cells, glowColor, arr) => {
+          for (const [r, c] of cells || []) {
             const blk = fitObject(asset.scene.clone(true), 0.82 * cell);
-            setMat(blk, mat);
+            setMat(blk, blkMat);
             arr.push(place(blk, r, c, 0.55 * cell, false));
+            addGlow(blk, 0.82 * cell, glowColor);
           }
         };
-        mk(world.redBlocks, 0x5e1005, collect.redBlocks);
-        mk(world.blueBlocks, 0x0a1a5e, collect.blueBlocks);
+        mk(world.redBlocks, TEAM_GLOW.red, collect.redBlocks);
+        mk(world.blueBlocks, TEAM_GLOW.blue, collect.blueBlocks);
       })
       .catch((e) => console.warn("Question Block model failed to load", e));
 
@@ -980,16 +1010,21 @@ export const peach = {
           animated.waterTex.offset.x = t * 0.018;
           animated.waterTex.offset.y = t * 0.012;
         }
-        // spin the coins + Shine, gently bob every collectible
+        // spin the coins + Shine, gently bob every collectible (glow rides along)
         for (const s of spin) {
           if (s.spin) s.obj.rotation.y = t * 1.7;
           s.obj.position.y = s.baseY + Math.sin(t * 2 + s.obj.position.x) * 0.08;
+          if (s.obj.userData.glow) s.obj.userData.glow.position.copy(s.obj.position);
         }
         // hide each coin/block the live frame reports collected/used (bit i per index)
         if (frame) {
           const hide = (arr, mask) => {
             const m = mask | 0;
-            for (let i = 0; i < arr.length; i++) arr[i].visible = !((m >> i) & 1);
+            for (let i = 0; i < arr.length; i++) {
+              const on = !((m >> i) & 1);
+              arr[i].visible = on;
+              if (arr[i].userData.glow) arr[i].userData.glow.visible = on;
+            }
           };
           hide(collect.redCoins, frame.redCoins);
           hide(collect.blueCoins, frame.blueCoins);
@@ -1012,6 +1047,9 @@ export const peach = {
               for (const v of Object.values(m)) v?.isTexture && v.dispose?.();
               m.dispose?.();
             }
+          } else if (o.isSprite) {
+            o.material?.map?.dispose?.();   // the shared glow texture (idempotent)
+            o.material?.dispose?.();
           }
         });
       },

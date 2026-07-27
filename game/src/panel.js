@@ -84,9 +84,16 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, fmt: fLoc },
   { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, fmt: fLoc },
+  // --- Round-1 game mechanics (Peach's Castle: ice puddles + "?" ghost/freeze blocks).
+  // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
+  // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
+  { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'blockGhostProb', label: '? block: Ghost chance', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, fmt: (v) => `${Math.round(v * 100)}% (else Freeze)` },
+  { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, fmt: (v) => `${Math.round(v)}` },
+  { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, fmt: (v) => `${Math.round(v)}` },
+  { key: 'coinReward', label: 'Coin value', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, fmt: (v) => (+v).toFixed(2) },
+  { key: 'blockReward', label: 'Ghost bonus', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, fmt: (v) => (+v).toFixed(2) },
   // --- reproducibility ---
-  // (world dynamics + hazard knobs removed: the levels are bare reach-the-goal
-  // skeletons - no slip / thrust / drag / obstacles / tornados / quicksand yet)
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
 
@@ -808,6 +815,7 @@ export function initPanel() {
         case 'eps': return !isDP && !isPg;        // ε-greedy schedule: not DP, not PG (PG samples its policy)
         case 'dp': return isDP;                   // convergence + sweeps + speed: DP round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
+        case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
         default: return true;                     // 'always'
       }
     };

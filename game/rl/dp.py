@@ -70,10 +70,14 @@ class _DPBase:
             return [(i,) for i in range(self.env.n_cells)]
         nbits = self.env._n_coins[self.agent] + len(self.env.block_cells[self.agent])
         grid = self.env.world.grid
+        # read the timer ranges off the LIVE env (panel-tunable), not the module defaults,
+        # so a changed ghost/freeze length re-enumerates the right state space on replan.
+        gl = getattr(self.env, "ghost_len", GHOST_LEN)
+        fl = getattr(self.env, "freeze_len", FREEZE_LEN)
         states = []
         for i, (r, c) in enumerate(self.env.pos_cells):
             floor = grid[r][c] != WALL
-            statuses = range(-FREEZE_LEN, GHOST_LEN + 1) if floor else range(1, GHOST_LEN + 1)
+            statuses = range(-fl, gl + 1) if floor else range(1, gl + 1)
             for m in range(1 << nbits):
                 for s in statuses:
                     states.append((i, m, s))
@@ -86,7 +90,11 @@ class _DPBase:
         outs = trans[action] if trans else self.env.state_transition(self.agent, state, action)
         q = 0.0
         for prob, ns, reward, done in outs:
-            q += prob * (reward + (GOAL_REWARD if done else self.gamma * V[ns]))
+            # V.get (not V[ns]): during normal planning every successor is enumerated, but
+            # if a live status is briefly out of the enumerated range (e.g. a mid-episode
+            # ghost/freeze-length shrink before match clamps it), treat the unknown state as
+            # V=0 rather than KeyError-crashing the planner thread / the Q-inspector probe.
+            q += prob * (reward + (GOAL_REWARD if done else self.gamma * V.get(ns, 0.0)))
         return q
 
     def _greedy(self, state, V):

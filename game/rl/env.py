@@ -54,6 +54,16 @@ class GridWorld(gym.Env):
         self._seed = seed
         self.round_id = round_id
         self.max_steps = MAX_STEPS      # per-episode step cap (tunable from the panel)
+        # Round-1 game mechanics, tunable LIVE from the panel (match.py pushes these onto
+        # the env via set_dynamics after any (re)build). Kept as INSTANCE attrs - not module
+        # constants - so the shared model (state_transition / _land) reads the CURRENT values
+        # and the DP planners re-enumerate when a length changes. Defaults = module constants.
+        self.slip_prob = SLIP_PROB         # total chance an ice move slips (half each side)
+        self.ghost_len = GHOST_LEN         # floor tiles reachable while wall-phasing
+        self.freeze_len = FREEZE_LEN       # turns stuck after a freeze roll
+        self.block_ghost_prob = 0.5        # P(Ghost) on a "?" block; P(Freeze) = 1 - this
+        self.coin_reward = COIN_REWARD     # value of an optional coin
+        self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
         self.world = None
         self.rng = random.Random(seed)   # kept for interface parity (moves are deterministic)
         self.action_space = spaces.Discrete(N_ACTIONS)
@@ -131,6 +141,24 @@ class GridWorld(gym.Env):
         dr, dc = ACTIONS[direction]
         nxt = (cell[0] + dr, cell[1] + dc)
         return nxt if nxt in self.pos_index else cell
+
+    # -------------------------------------------------------- tunable dynamics
+    def set_dynamics(self, *, slip_prob=None, ghost_len=None, freeze_len=None,
+                     block_ghost_prob=None, coin_reward=None, block_reward=None):
+        """Update the Round-1 mechanic params live from the panel. A None (or negative)
+        value KEEPS the current one. Returns True iff a change moved the DP STATE SPACE
+        (the ghost / freeze timer range), so the caller knows the planners must
+        re-ENUMERATE, not merely rebuild their cached transition model."""
+        def pick(cur, new, lo, hi):
+            return cur if (new is None or new < 0) else max(lo, min(hi, new))
+        old_gl, old_fl = self.ghost_len, self.freeze_len
+        self.slip_prob = pick(self.slip_prob, slip_prob, 0.0, 0.9)
+        self.ghost_len = int(pick(self.ghost_len, ghost_len, 1, 8))
+        self.freeze_len = int(pick(self.freeze_len, freeze_len, 1, 8))
+        self.block_ghost_prob = pick(self.block_ghost_prob, block_ghost_prob, 0.0, 1.0)
+        self.coin_reward = pick(self.coin_reward, coin_reward, 0.0, 2.0)
+        self.block_reward = pick(self.block_reward, block_reward, 0.0, 2.0)
+        return self.ghost_len != old_gl or self.freeze_len != old_fl
 
     # ------------------------------------------------------------------ reset
     def reset(self, *, seed=None, options=None, regenerate=False):
@@ -266,7 +294,8 @@ class GridWorld(gym.Env):
         # NORMAL: walls block; on ICE the move slips sideways (expected-value reasoning).
         if action in MOVE_ACTIONS and cell in self.slip_cells:
             p1, p2 = PERP[action]
-            moves = [(1.0 - SLIP_PROB, action), (SLIP_PROB / 2, p1), (SLIP_PROB / 2, p2)]
+            sp = self.slip_prob
+            moves = [(1.0 - sp, action), (sp / 2, p1), (sp / 2, p2)]
         else:
             moves = [(1.0, action)]
 
@@ -291,15 +320,19 @@ class GridWorld(gym.Env):
             cbit = self._coin_bit[agent].get(land)
             if cbit is not None and not (mask >> cbit) & 1:
                 nmask |= (1 << cbit)
-                reward += COIN_REWARD
+                reward += self.coin_reward
+        # a GHOST step spends a tile of its timer ONLY when it lands on FLOOR; on a wall
+        # cell the timer HOLDS (see the class doc), so status can never reach 0 mid-wall.
         nstatus = (status - 1 if is_floor else status) if ghost else 0
         if is_floor:
             bbit = self._block_bit[agent].get(land)
             if bbit is not None and not (mask >> bbit) & 1:
                 nmask |= (1 << bbit)                  # block consumed (one-time)
                 # GHOST = power-up (bonus + ability); FREEZE = pure downside (the risk)
-                return [(prob * 0.5, (lidx, nmask, GHOST_LEN), reward + BLOCK_REWARD, False),
-                        (prob * 0.5, (lidx, nmask, -FREEZE_LEN), reward, False)]
+                pg = self.block_ghost_prob
+                return [(prob * pg, (lidx, nmask, self.ghost_len),
+                         reward + self.block_reward, False),
+                        (prob * (1.0 - pg), (lidx, nmask, -self.freeze_len), reward, False)]
         return [(prob, (lidx, nmask, nstatus), reward, False)]
 
     def _apply_rich(self, agent, action):
