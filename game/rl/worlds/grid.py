@@ -39,7 +39,8 @@ class World:
                  coins=None, shine=None,
                  red_coins=None, blue_coins=None,
                  red_blocks=None, blue_blocks=None, slip=None,
-                 spikes=None, plants=None, pipes=None):
+                 spikes=None, plants=None, pipes=None,
+                 red_stars=None, blue_stars=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -64,8 +65,14 @@ class World:
         self.spikes = [tuple(s) for s in (spikes or [])]
         self.plants = [tuple(p) for p in (plants or [])]
         self.pipes = [{"entry": tuple(p["entry"]),
-                       "dests": [tuple(d) for d in p["dests"]]}
+                       "dests": [tuple(d) for d in p["dests"]],
+                       "weights": [float(w) for w in p["weights"]] if p.get("weights") else None,
+                       "exit": tuple(p["exit"]) if p.get("exit") else None}
                       for p in (pipes or [])]
+        # Round-2 PER-AGENT Power Stars (mirror pairs): 3 collectibles each; the goal
+        # is locked until an agent holds all 3.
+        self.red_stars = [tuple(s) for s in (red_stars or [])]
+        self.blue_stars = [tuple(s) for s in (blue_stars or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -78,6 +85,8 @@ class World:
             "theme": self.theme, "roundId": self.round_id, "title": self.title,
             "objective": self.objective,
             "rows": self.rows(),
+            "redSpawn": list(self.red_spawn),
+            "blueSpawn": list(self.blue_spawn),
             "escape": [list(e) for e in self.escape],
             "coins": [list(c) for c in self.coins],
             "shine": [list(s) for s in self.shine],
@@ -90,8 +99,13 @@ class World:
             "spikes": [list(s) for s in self.spikes],
             "plants": [list(p) for p in self.plants],
             "pipes": [{"entry": list(p["entry"]),
-                       "dests": [list(d) for d in p["dests"]]}
+                       "dests": [list(d) for d in p["dests"]],
+                       "weights": list(p["weights"]) if p.get("weights") else None,
+                       "exit": list(p["exit"]) if p.get("exit") else None}
                       for p in self.pipes],
+            # Round-2 PER-AGENT Power Stars (mirror pairs) - the collect-3-then-goal game.
+            "redStars": [list(s) for s in self.red_stars],
+            "blueStars": [list(s) for s in self.blue_stars],
         }
 
 
@@ -106,11 +120,12 @@ def validate(world):
     plants = set(world.plants)
     # cells that kill on entry: spike tiles + every floor tile orthogonally next to a plant
     lethal = set(spikes)
-    for (pr, pc) in plants:
-        for dr, dc in ORTHO:
-            nr, nc = pr + dr, pc + dc
-            if 0 <= nr < H and 0 <= nc < W and g[nr][nc] != WALL:
-                lethal.add((nr, nc))
+    for (pr, pc) in plants:                       # a plant kills its 8 neighbours (incl diagonals)
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                nr, nc = pr + dr, pc + dc
+                if (dr or dc) and 0 <= nr < H and 0 <= nc < W and g[nr][nc] != WALL:
+                    lethal.add((nr, nc))
     # pipe teleport edges: entry -> each destination (entering a pipe is always safe)
     warp = {}
     for p in world.pipes:

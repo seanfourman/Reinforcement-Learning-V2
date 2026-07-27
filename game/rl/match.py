@@ -128,8 +128,8 @@ class Match:
         # Round-2 game mechanics (New Donk City): hazard counts, applied at WORLD GEN
         # (a change regenerates the maze, since they alter the layout).
         self.r2_spikes = 3                      # spike traps per side
-        self.r2_plants = 1                      # piranha plants per side
-        self.r2_dests = 3                       # warp-pipe destinations (gamble breadth)
+        self.r2_plants = 2                      # piranha plants per side
+        self.r2_dests = 3                       # destinations per warp pipe (2-3, fixed probs)
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -574,13 +574,13 @@ class Match:
 
             # ---- GLOBAL: Round-2 hazard counts (regenerate the New Donk City maze) ----
             if "r2Spikes" in p:
-                self.r2_spikes = max(0, min(10, int(p["r2Spikes"])))
+                self.r2_spikes = max(0, min(8, int(p["r2Spikes"])))
                 need_env_rebuild = True
             if "r2Plants" in p:
                 self.r2_plants = max(0, min(4, int(p["r2Plants"])))
                 need_env_rebuild = True
             if "r2Dests" in p:
-                self.r2_dests = max(2, min(5, int(p["r2Dests"])))
+                self.r2_dests = max(2, min(3, int(p["r2Dests"])))
                 need_env_rebuild = True
 
             # ---- GLOBAL: DQN internals ----
@@ -997,30 +997,40 @@ class Match:
                        "simultaneous arrival is a draw.")
                 slip_prob = sp
             elif not arena and getattr(env, "hazardous", False):
-                # Round 2 (New Donk City): a stochastic hazard maze - the Monte-Carlo gamble
+                # Round 2 (New Donk City): the COLLECT-3-STARS race - the Monte-Carlo tour.
                 actions = ["North", "South", "West", "East"]
-                state_desc = "your tile only: the (row, column) cell index"
-                state_size = getattr(env, "n_cells", None)
+                n_stars = getattr(env, "n_stars", 0)
+                star_mode = getattr(env, "star_mode", False)
+                n_floor = getattr(env, "n_cells", None)
                 n_spikes = len(getattr(env, "spike_cells", ()))
                 n_plants = len(getattr(env, "plant_cells", ()))
                 n_pipes = len(getattr(env, "pipe_map", ()))
-                observation = ("Each model sees ONLY its own tile - a single-agent navigator. The "
-                               "spikes, plants and pipes are FIXED features of the map, so the tile "
-                               "index alone stays Markov; the rival is invisible.")
+                if star_mode:
+                    state_desc = (f"your tile AND which of your {n_stars} Power Stars you already "
+                                  f"hold - the cell index x a {n_stars}-bit star mask")
+                    state_size = (n_floor * (1 << n_stars)) if n_floor else None
+                else:
+                    state_desc = "your tile only: the (row, column) cell index"
+                    state_size = n_floor
+                observation = (f"Each model sees its own tile and its own {n_stars}-star progress - a "
+                               "single-agent navigator. Spikes, plants and pipes are FIXED map "
+                               "features, so (tile, stars-held) stays Markov; the rival is invisible.")
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
-                            "own copy of the same hazard maze.")
+                            "own mirror-image copy of the same star-collecting maze.")
                 dynamics = (f"Deterministic walking (walls block). {n_spikes} SPIKE tiles and "
                             f"{n_plants} PIRANHA PLANT tiles are lethal - stepping on a spike, or "
-                            f"onto a tile next to a plant, ENDS the episode as a loss. {n_pipes} WARP "
-                            f"PIPES teleport you to a UNIFORMLY-RANDOM destination (the gamble). The "
-                            f"Power Star sits in a sealed room reachable ONLY by warping in, so a "
-                            f"model must learn - from returns alone - to value the pipe by its "
-                            f"EXPECTED payoff, not one lucky hop.")
-                rewards = [["Step", -0.01], ["Win (reach the Power Star)", 1.0],
-                           ["Die on a hazard / lose", -1.0]]
-                win = ("First to warp to the Power Star wins. Dying on a spike or the plant is a "
-                       "loss; a simultaneous finish is a draw.")
+                            f"onto a tile within one of a plant (incl. diagonals), costs a life: you "
+                            f"take the loss penalty and RESPAWN (keeping any stars), and the race goes "
+                            f"on. {n_pipes} WARP PIPES teleport you to one of 2-3 FIXED destinations "
+                            f"with FIXED probabilities (baked into the map, never re-rolled), and they "
+                            f"CHAIN and LOOP - a fast but risky alternative to the safe walk, whose "
+                            f"EXPECTED payoff a model must learn from returns alone.")
+                rewards = [["Step", -0.01], ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
+                           ["Win (all 3 stars, then the goal)", 1.0], ["Die on a hazard (respawn)", -1.0]]
+                win = (f"Gather all {n_stars} of your Power Stars, THEN reach the goal - it stays "
+                       "LOCKED until you hold every star. First to finish the tour wins; a "
+                       "simultaneous finish is a draw.")
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]

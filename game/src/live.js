@@ -42,10 +42,15 @@ export function createLiveActors(scene, walkers) {
   const spawnFacing = { red: Math.PI, blue: Math.PI }; // restored on episode reset
   const rendered = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   const target = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
+  // Round-2 one-shot FX: a warp DIVE (shrink into the entrance pipe, pop out the exit)
+  // or a hazard DEATH (impaled/eaten on the tile it died on, then respawn). Driven by
+  // the env's per-frame event cells; overrides the normal target-follow while playing.
+  const fx = { red: null, blue: null };
   // Round-1 "?" power-up state per side: 'ghost' (phasing walls -> translucent) or
   // 'frozen' (stuck -> icy tint). Applied on change only (see applyWalkerStatus).
   const status = { red: 'normal', blue: 'normal' };
   const appliedStatus = { red: null, blue: null };
+  const lastFxStep = { red: -1, blue: -1 };   // dedup the one-shot Round-2 FX per sim step
   const FROZEN_TINT = new THREE.Color(0x8fd0ff);
   let frame = null;
   let layout = null;
@@ -247,6 +252,24 @@ export function createLiveActors(scene, walkers) {
     }
     target.red = cwArr(f.red);
     target.blue = cwArr(f.blue);
+    // Round-2: kick off the dive / death animation for whatever a char did this tick.
+    // Each event lives in ONE sim-step snapshot; guard on the step counter so the FX
+    // starts exactly once even though we poll that snapshot many times.
+    const step = f.steps || 0;
+    for (const side of ['red', 'blue']) {
+      if (step < lastFxStep[side]) lastFxStep[side] = -1;        // episode rewound
+      if (fx[side] || step === lastFxStep[side]) continue;
+      const warpTo = f[side + 'Warp'], from = f[side + 'WarpFrom'];
+      const dead = f[side + 'Dead'], at = f[side + 'DeadAt'];
+      if (warpTo && from) {
+        // start = the tile it stood on; pipe = the entrance it leaps into; to = where it pops out
+        fx[side] = { type: 'warp', t: 0, start: { ...rendered[side] }, pipe: cwArr(from), to: cwArr(warpTo) };
+        lastFxStep[side] = step;
+      } else if (dead === 'plant' && at) {          // ONLY the plant animates the char (eaten);
+        fx[side] = { type: 'death', t: 0, kind: dead, at: cwArr(at) };  // a spike death is the
+        lastFxStep[side] = step;                    // rising spikes alone - the char just vanishes
+      }
+    }
   }
 
   function snapFrame(f) {
@@ -308,6 +331,64 @@ export function createLiveActors(scene, walkers) {
     walker.parts.hipR.rotation.x = -0.16;
   }
 
+  // Round-2 one-shot animation: dive into a pipe + pop out the exit, or die on a
+  // hazard then respawn. Returns true when finished (releases the normal follow).
+  function playFx(key, walker, dt) {
+    const f = fx[key];
+    f.t += dt;
+    const g = walker.group;
+    const baseY = walker.baseY || 0;
+    if (f.type === 'warp') {
+      const LEAP = 0.32, FALL = 0.48, END = 0.72;
+      if (f.t < LEAP) {                              // LEAP off the tile, ARC through the air onto the pipe
+        const u = f.t / LEAP;
+        g.position.set(
+          f.start.x + (f.pipe.x - f.start.x) * u,
+          Math.sin(u * Math.PI) * 1.5,                          // up-and-over jump arc
+          f.start.z + (f.pipe.z - f.start.z) * u,
+        );
+        g.scale.setScalar(agentScale);
+      } else if (f.t < FALL) {                       // FALL INTO the pipe (sink down + shrink away)
+        const u = (f.t - LEAP) / (FALL - LEAP);
+        g.position.set(f.pipe.x, -0.85 * u, f.pipe.z);
+        g.scale.setScalar(agentScale * (1 - 0.9 * u));
+      } else if (f.t < END) {                        // EMERGE at the destination (rise up + grow)
+        const u = (f.t - FALL) / (END - FALL);
+        g.position.set(f.to.x, -0.85 * (1 - u), f.to.z);
+        g.scale.setScalar(agentScale * (0.1 + 0.9 * u));
+      } else {
+        rendered[key] = { ...f.to };
+        g.position.set(f.to.x, baseY, f.to.z);
+        g.scale.setScalar(agentScale);
+        fx[key] = null;
+        return true;
+      }
+      g.rotation.y = heading[key];
+      return false;
+    }
+    // DEATH: on the tile it died on - a plant yanks it UP small, spikes squash it FLAT -
+    // then it is gone and the respawn snaps in.
+    const DUR = 0.55;
+    if (f.t < DUR) {
+      const u = f.t / DUR;
+      if (f.kind === 'plant') {
+        g.position.set(f.at.x, u * 0.9, f.at.z);     // lifted into the mouth
+        g.scale.setScalar(agentScale * (1 - 0.85 * u));
+      } else {
+        g.position.set(f.at.x, 0, f.at.z);
+        g.scale.set(agentScale * (1 + 0.3 * u), agentScale * (1 - 0.9 * u), agentScale * (1 + 0.3 * u));
+      }
+      g.rotation.y += dt * 12;
+      return false;
+    }
+    rendered[key] = { ...target[key] };              // respawn position
+    g.position.set(target[key].x, baseY, target[key].z);
+    g.scale.setScalar(agentScale);
+    g.rotation.y = heading[key];
+    fx[key] = null;
+    return true;
+  }
+
   function update(dt, t) {
     if (celebration && performance.now() - celebration.start > celebration.duration) {
       clearCelebration();
@@ -319,6 +400,7 @@ export function createLiveActors(scene, walkers) {
         applyWalkerStatus(walker, status[key]);   // ghost/frozen power-up tint on change
         appliedStatus[key] = status[key];
       }
+      if (fx[key]) { if (!playFx(key, walker, dt)) continue; }   // Round-2 dive / death FX
       if (celebration && celebration.side === key) {
         updateVictoryPose(walker, celebration);
         continue;

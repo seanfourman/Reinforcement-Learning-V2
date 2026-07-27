@@ -507,6 +507,8 @@ export const city = {
     // ---- hedge maze: rounded leaf masses on every wall cell ---------------
     const mazeRows = world.rows || [];
     const plantSet = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
+    // the exit-pipe tiles are WALL cells too - keep hedges off them (a pipe stands there)
+    for (const p of world.pipes || []) if (p.exit) plantSet.add(p.exit[0] * GRID + p.exit[1]);
     const wallCells = [];
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
@@ -888,15 +890,16 @@ export const city = {
     }));
     // sharp metal NEEDLES that shoot out of the trap plate on a hit (the DAE's own
     // pop-up is a skeleton animation we stripped when deskinning, so add our own)
-    const needleMat = track(new THREE.MeshStandardMaterial({ color: 0xe2e7ec, roughness: 0.28, metalness: 0.6 }));
-    const needleGeo = track(new THREE.ConeGeometry(0.05, 0.5, 6));
+    const needleMat = track(new THREE.MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.25, metalness: 0.7 }));
+    const needleGeo = track(new THREE.ConeGeometry(0.08, 0.8, 6));   // big, obvious metal spikes
     const spikeObjs = [];                  // {r, c, box, needles, hot}
     loadObj(OBJ + 'Spike Trap/Spike Trap.dae').then((proto) => {
       if (!proto) return;
       for (const [r, c] of world.spikes || []) {
         const box = fitObject(proto.clone(true), 0.9);
+        box.scale.y *= 0.4;                              // a LOW, flush trap plate (not a tall box)
         setObjMat(box, spikeMat);
-        box.position.set(cellX(c), 0.02, cellZ(r));      // the trap plate sits flush + VISIBLE
+        box.position.set(cellX(c), 0.02, cellZ(r));      // sits flush + VISIBLE
         group.add(box);
         const needles = new THREE.Group();
         for (let i = 0; i < 9; i++) {                    // a 3x3 cluster of spikes
@@ -931,36 +934,112 @@ export const city = {
       }
     });
 
-    // ---- WARP PIPES: one on every entry AND destination; glow, flash on a warp -
+    // ---- WARP PIPES: the divable MOUTHS of the warp network (one per entry). A char
+    // leaps in and pops out at a destination (the emerge is the actor's own animation),
+    // so only the interactive entries stand as pipes - no fake, un-enterable landings.
     const pipeMat = track(new THREE.MeshStandardMaterial({
       map: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_alb.png'),
       normalMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_nrm.png', false),
       roughnessMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_rgh.png', false),
       color: 0x46c24d, roughness: 0.55, metalness: 0.12,
-      emissive: 0x1f7a2a, emissiveIntensity: 0.1,
+      emissive: 0x000000, emissiveIntensity: 0,           // NO glow - a plain green pipe
     }));
-    const pipeObjs = [];                   // {r, c, wrap, entry, flash, mat}
+    const pipeObjs = [];                   // {r, c, wrap, flash, mat, role}
     const pipeCells = [];
     const pipeSeen = new Set();
-    for (const p of world.pipes || []) {
-      const add = (cell, entry) => {
+    for (const p of world.pipes || []) {   // one divable pipe per warp ENTRANCE
+      const addPipe = (cell, role) => {
         const key = cell[0] * GRID + cell[1];
-        if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], entry }); }
+        if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], role }); }
       };
-      add(p.entry, true);
-      for (const d of p.dests) add(d, false);
+      addPipe(p.entry, 'entrance');
     }
     loadObj(OBJ + 'Warp Pipe/Warp Pipe.dae').then((proto) => {
       if (!proto) return;
       for (const pc of pipeCells) {
-        const wrap = fitObject(proto.clone(true), pc.entry ? 0.95 : 0.72);
+        const wrap = fitObject(proto.clone(true), 0.95);
         const mat = track(pipeMat.clone());
         setObjMat(wrap, mat);
         wrap.position.set(cellX(pc.c), 0.02, cellZ(pc.r));
         group.add(wrap);
-        pipeObjs.push({ r: pc.r, c: pc.c, wrap, entry: pc.entry, flash: 0, mat });
+        pipeObjs.push({ r: pc.r, c: pc.c, wrap, flash: 0, mat, role: pc.role });
       }
     });
+
+    // ---- POWER STARS to collect: 3 per agent, the CoinCollectG "apple" (a purple
+    // faceted tomato). Each agent claims its OWN three (Cobalt's on the left, Crimson's
+    // mirrored on the right); an apple VANISHES with a little burst when its owner steps
+    // on it, and the goal star stays LOCKED until someone holds all three. -----------
+    const APPLE = OBJ + 'Regional Coins/';
+    const appleMat = (tint) => track(new THREE.MeshStandardMaterial({
+      map: objTex(APPLE + 'CoinCollectG_alb.png'),
+      roughnessMap: objTex(APPLE + 'CoinCollectG_rgh.png', false),
+      color: tint, roughness: 0.5, metalness: 0.08,
+      emissive: tint, emissiveIntensity: 0.16,
+    }));
+    const appleObjs = [];                  // {r,c,idx,side,wrap,baseS,baseY,prev,pop}
+    const appleSpecs = [
+      { side: 'blue', cells: world.blueStars || [], tint: 0x7ea6ff },
+      { side: 'red', cells: world.redStars || [], tint: 0xff7e7e },
+    ];
+    const nStars = (world.blueStars || []).length;
+    loadObj(APPLE + 'CoinCollectG.dae').then((proto) => {
+      if (!proto) return;
+      for (const spec of appleSpecs) {
+        const mat = appleMat(spec.tint);
+        spec.cells.forEach(([r, c], idx) => {
+          const wrap = fitObject(proto.clone(true), 0.78);
+          setObjMat(wrap, mat);
+          const baseY = 0.42;
+          wrap.position.set(cellX(c), baseY, cellZ(r));
+          group.add(wrap);
+          appleObjs.push({ r, c, idx, side: spec.side, wrap, baseS: wrap.scale.x, baseY, prev: false, pop: 0 });
+        });
+      }
+    });
+
+    // ---- progress tags: a per-side apple tally that climbs 0/3 -> 3/3. These live
+    // IN the scene group (billboard sprites), NOT the DOM: the city scene is prebuilt
+    // offscreen during the menu and kept warm in a cache (never dispose()'d on a round
+    // switch), so a DOM overlay would leak onto every screen. A group sprite is added
+    // and removed with the group, so it only ever shows while Round 2 is on screen.
+    const popcount = (n) => { let k = 0; while (n) { k += n & 1; n >>>= 1; } return k; };
+    function makeTag(name, css) {
+      const cvs = document.createElement('canvas');
+      cvs.width = 320; cvs.height = 110;
+      const tex = trackTexture(new THREE.CanvasTexture(cvs));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const spr = new THREE.Sprite(track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })));
+      spr.renderOrder = 20;
+      const draw = (count) => {
+        const g = cvs.getContext('2d');
+        g.clearRect(0, 0, 320, 110);
+        g.fillStyle = 'rgba(10,14,26,0.82)';
+        g.strokeStyle = css; g.lineWidth = 6;
+        const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+        rr(6, 6, 308, 98, 40); g.fill(); g.stroke();
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = "bold 34px 'Trebuchet MS',system-ui,sans-serif";
+        g.fillStyle = css; g.fillText(name, 160, 38);
+        g.font = "bold 46px 'Trebuchet MS',system-ui,sans-serif";
+        g.fillStyle = '#fff'; g.fillText(`🍅 ${count}/${nStars}`, 160, 76);
+        tex.needsUpdate = true;
+      };
+      return { spr, draw, last: -1 };
+    }
+    let tagBlue = null, tagRed = null;
+    if (nStars > 0 && typeof document !== 'undefined') {
+      tagBlue = makeTag(city.blueName, '#7ea6ff');
+      tagRed = makeTag(city.redName, '#ff7e7e');
+      tagBlue.spr.scale.set(3.2, 1.1, 1); tagRed.spr.scale.set(3.2, 1.1, 1);
+      // float each tally above its own spawn corner (the camera side), so it reads
+      // as that racer's progress
+      const bs = world.blueSpawn || [SIZE - 2, 5], rs = world.redSpawn || [SIZE - 2, 13];
+      tagBlue.spr.position.set(cellX(bs[1]), 3.4, cellZ(bs[0]) - 0.5);
+      tagRed.spr.position.set(cellX(rs[1]), 3.4, cellZ(rs[0]) - 0.5);
+      tagBlue.draw(0); tagRed.draw(0);
+      group.add(tagBlue.spr); group.add(tagRed.spr);
+    }
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
@@ -969,12 +1048,40 @@ export const city = {
       waterNrm.offset.y = t * 0.011;
       waterTex.offset.x = t * 0.018;                                            // cartoon water drifts
       waterTex.offset.y = t * 0.012;
+      // ---- POWER-STAR COLLECTIBLES (apples) + per-side progress + goal lock -------
+      const blueBits = (frame && frame.blueStars) || 0;
+      const redBits = (frame && frame.redStars) || 0;
+      const bitsFor = (side) => (side === 'blue' ? blueBits : redBits);
+      for (const a of appleObjs) {
+        const got = ((bitsFor(a.side) >> a.idx) & 1) === 1;
+        if (got && !a.prev) a.pop = 1;                     // just claimed -> burst
+        a.prev = got;
+        a.pop = Math.max(0, a.pop - dt * 2.4);
+        if (got && a.pop <= 0) { a.wrap.visible = false; continue; }  // gone for the episode
+        a.wrap.visible = true;
+        const burst = 1 + a.pop * 1.4;                     // swell as it pops
+        a.wrap.scale.setScalar(a.baseS * burst);
+        a.wrap.rotation.y = t * 1.7;
+        a.wrap.position.y = a.baseY + Math.sin(t * 2.2 + a.idx * 1.3) * 0.08 + a.pop * 0.55;
+      }
+      for (const [tag, bits] of [[tagBlue, blueBits], [tagRed, redBits]]) {
+        if (!tag) continue;
+        const n = popcount(bits);
+        if (n !== tag.last) { tag.draw(n); tag.last = n; }     // redraw only on a change
+      }
       if (star) {                                                                // power star spins, bobs + breathes
-        star.mesh.rotation.y = t * 1.3;
+        // the goal prize is LOCKED until an agent holds all 3 apples: dim + grey while
+        // locked, and it flares bright gold + spins up the moment someone completes.
+        const unlocked = nStars > 0 && Math.max(popcount(blueBits), popcount(redBits)) >= nStars;
+        star.mesh.rotation.y = t * (unlocked ? 3.0 : 1.3);
         star.mesh.position.y = star.baseY + Math.sin(t * 2) * 0.12;
         const breath = 0.5 + 0.5 * Math.sin(t * 1.5);    // slow in/out (~4s)
-        for (const m of star.mats) m.emissiveIntensity = 0.15 + breath * 0.3;   // body glints
-        star.light.intensity = 0.06 + breath * 0.16;
+        const lock = unlocked ? 1 : 0.28;                // dim while still locked
+        for (const m of star.mats) {
+          m.emissiveIntensity = (0.15 + breath * 0.3) * lock;
+          m.color.setHex(unlocked ? 0xffd12a : 0x9a8f6a);   // gold when open, dull while locked
+        }
+        star.light.intensity = (0.06 + breath * 0.16) * lock;
       }
       for (const tx of taxis) {
         const d = t * TAXI_SPEED * tx.dir + tx.base;
@@ -984,50 +1091,45 @@ export const city = {
         tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
       }
 
-      // ---- Round-2 hazards react to the live frame ------------------------
+      // ---- Round-2 hazards react to the live frame. A death/warp resolves in ONE
+      // sim tick (the char instantly respawns/teleports), so we can't key off the
+      // char's CURRENT tile - we key off the EVENT cells the env reports: DeadAt (the
+      // tile a char died on) and WarpFrom / Warp (the pipe dived into / popped out of).
       const rCell = frame && Array.isArray(frame.red) ? frame.red : null;
       const bCell = frame && Array.isArray(frame.blue) ? frame.blue : null;
-      const onCell = (o, cell) => cell && cell[0] === o.r && cell[1] === o.c;
-      const manhattan = (o, cell) => Math.abs(cell[0] - o.r) + Math.abs(cell[1] - o.c);
+      const key = (cell) => cell[0] * GRID + cell[1];
+      const cheby = (o, cell) => cell && Math.max(Math.abs(cell[0] - o.r), Math.abs(cell[1] - o.c)) <= 1;
 
-      // SPIKES: an actor standing on the trap tile IS a death frame -> NEEDLES shoot up
-      for (const s of spikeObjs) {
-        const stepped = onCell(s, rCell) || onCell(s, bCell);
-        s.hot = stepped ? 1 : Math.max(0, s.hot - dt * 2.2);
-        const e = s.hot * s.hot * (3 - 2 * s.hot);                  // smoothstep ease
-        s.needles.scale.y = 0.001 + e;                             // needles extend
-        s.box.position.y = 0.02 + e * 0.05;                        // the plate jolts
-      }
-
-      // PLANTS: idle turn; LUNGE (scale + rise + twist) when an actor is next to it
-      for (const p of plantObjs) {
-        const near = (rCell && manhattan(p, rCell) <= 1) || (bCell && manhattan(p, bCell) <= 1);
-        p.chomp = near ? 1 : Math.max(0, p.chomp - dt * 2.0);
-        const lunge = Math.sin(Math.min(1, p.chomp) * Math.PI);    // 0 -> 1 -> 0 over a bite
-        p.wrap.scale.setScalar(p.baseS * (1 + lunge * 0.30));
-        p.wrap.rotation.y = t * 0.5 + lunge * 0.6;
-        p.wrap.position.y = 0.02 + lunge * 0.14;
-      }
-
-      // PIPES: entries pulse invitingly; a warp FLASHES the entry used + the exit
-      const flashKeys = new Set();
-      const flashEntryNear = (prev) => {
-        if (!prev) return;
-        for (const pipe of pipeObjs) {
-          if (pipe.entry && Math.abs(pipe.r - prev[0]) + Math.abs(pipe.c - prev[1]) === 1) {
-            flashKeys.add(pipe.r * GRID + pipe.c);
-          }
+      const deadCells = new Set();     // tiles a char died on this frame
+      const plantDeaths = [];          // DeadAt tiles from a PLANT kill
+      if (frame) {
+        for (const [d, at] of [[frame.redDead, frame.redDeadAt], [frame.blueDead, frame.blueDeadAt]]) {
+          if (at && d === 'spike') deadCells.add(key(at));
+          if (at && d === 'plant') plantDeaths.push(at);
         }
-      };
-      if (frame && frame.redWarp) { flashKeys.add(frame.redWarp[0] * GRID + frame.redWarp[1]); flashEntryNear(prevRed); }
-      if (frame && frame.blueWarp) { flashKeys.add(frame.blueWarp[0] * GRID + frame.blueWarp[1]); flashEntryNear(prevBlue); }
-      for (const pipe of pipeObjs) {
-        if (flashKeys.has(pipe.r * GRID + pipe.c)) pipe.flash = 1;
-        else pipe.flash = Math.max(0, pipe.flash - dt * 1.8);
-        const idle = pipe.entry ? 0.16 + 0.06 * Math.sin(t * 2 + pipe.r) : 0.04;
-        pipe.mat.emissiveIntensity = idle + pipe.flash * 1.6;
-        pipe.wrap.position.y = 0.02 + pipe.flash * 0.06;
       }
+
+      // SPIKES: the trap's NEEDLES shoot up on the tile a char just died on (NO char
+      // animation - the rising spikes ARE the death). Rise fast, sink slowly.
+      for (const s of spikeObjs) {
+        const hit = deadCells.has(key(s));
+        s.hot = hit ? 1 : Math.max(0, s.hot - dt * 1.4);
+        const e = s.hot * s.hot * (3 - 2 * s.hot);
+        s.needles.scale.y = 0.001 + e * 1.3;                       // spikes SHOOT UP
+        s.box.position.y = 0.02 + e * 0.06;                        // the plate jolts
+      }
+
+      // PLANTS: STATIC; a hard LUNGE when a char dies in its 8-cell zone (incl diagonal)
+      for (const p of plantObjs) {
+        const bite = plantDeaths.some((at) => cheby(p, at)) || cheby(p, rCell) || cheby(p, bCell);
+        p.chomp = bite ? 1 : Math.max(0, p.chomp - dt * 1.4);
+        const lunge = Math.sin(Math.min(1, p.chomp) * Math.PI);
+        p.wrap.scale.set(p.baseS * (1 + lunge * 0.12), p.baseS * (1 + lunge * 0.6), p.baseS * (1 + lunge * 0.12));
+        p.wrap.rotation.y = lunge * 0.5;
+        p.wrap.position.y = 0.02 + lunge * 0.26;
+      }
+
+      // PIPES: fully STATIC (no glow, no grow) - the warp reads from the char's leap/fall.
       if (frame) { prevRed = frame.red; prevBlue = frame.blue; }
     }
 

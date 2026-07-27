@@ -44,6 +44,8 @@ FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
 SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
 BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble worth taking so the
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
+STAR_REWARD = 0.35     # Round-2: reward for collecting one of the 3 required Power Stars
+                       # (the shaping that makes the 3-star hunt learnable for Monte-Carlo)
 
 
 class GridWorld(gym.Env):
@@ -65,6 +67,7 @@ class GridWorld(gym.Env):
         self.block_ghost_prob = 0.5        # P(Ghost) on a Mystery Block; P(Freeze) = 1 - this
         self.coin_reward = COIN_REWARD     # value of an optional coin
         self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
+        self.star_reward = STAR_REWARD     # Round-2: value of one of the 3 required Power Stars
         self.world = None
         self.rng = random.Random(seed)   # kept for interface parity (moves are deterministic)
         self.action_space = spaces.Discrete(N_ACTIONS)
@@ -95,9 +98,11 @@ class GridWorld(gym.Env):
         self.block_cells = {"red": list(getattr(world, "red_blocks", [])),
                             "blue": list(getattr(world, "blue_blocks", []))}
         self.slip_cells = {tuple(s) for s in getattr(world, "slip", [])}
+        # "rich" = Round 1's coin/Mystery-Block game (state = cell x mask x status).
+        # Gated on coins/blocks ONLY, NOT slip: Round 2 also uses slippery cells but is
+        # a DIFFERENT game (hazardous), so slip alone must not turn on the R1 machinery.
         self.rich = bool(self.coin_cells["red"] or self.coin_cells["blue"]
-                         or self.block_cells["red"] or self.block_cells["blue"]
-                         or self.slip_cells)
+                         or self.block_cells["red"] or self.block_cells["blue"])
         # collect-mask bit layout per agent: coins take the low bits, blocks the next.
         self._n_coins = {a: len(self.coin_cells[a]) for a in ("red", "blue")}
         self._coin_bit = {a: {cell: i for i, cell in enumerate(self.coin_cells[a])}
@@ -127,17 +132,42 @@ class GridWorld(gym.Env):
         # stochastic teleport, so the (cell,) MDP stays Markov for Monte-Carlo. ----
         self.spike_cells = {tuple(s) for s in getattr(world, "spikes", [])}
         self.plant_cells = {tuple(p) for p in getattr(world, "plants", [])}
-        # every FLOOR tile orthogonally next to a plant kills on entry (it lunges)
+        # every FLOOR tile within 1 of a plant - INCLUDING DIAGONALS (the 8 neighbours) -
+        # kills on entry: the plant lunges and eats anyone who gets that close.
         self.plant_lethal = set()
         for (pr, pc) in self.plant_cells:
-            for dr, dc in ACTIONS:
-                nr, nc = pr + dr, pc + dc
-                if 0 <= nr < self.H and 0 <= nc < self.W and g[nr][nc] != WALL:
-                    self.plant_lethal.add((nr, nc))
-        # pipe ENTRY cell -> its list of destinations (entering warps to a random one)
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = pr + dr, pc + dc
+                    if 0 <= nr < self.H and 0 <= nc < self.W and g[nr][nc] != WALL:
+                        self.plant_lethal.add((nr, nc))
+        # pipe ENTRY cell -> its destinations, and the FIXED probability of each. The
+        # weights are baked into the map at generation time (``p["weights"]``) and NEVER
+        # regenerate per episode, so a pipe is a stationary stochastic teleport (Markov).
         self.pipe_map = {tuple(p["entry"]): [tuple(d) for d in p["dests"]]
                          for p in getattr(world, "pipes", [])}
+        self.pipe_wt = {}
+        for p in getattr(world, "pipes", []):
+            entry = tuple(p["entry"])
+            w = list(p.get("weights") or [])
+            n = len(self.pipe_map[entry])
+            if len(w) != n or sum(w) <= 0:            # default: uniform over the dests
+                w = [1.0] * n
+            self.pipe_wt[entry] = w
         self.hazardous = bool(self.spike_cells or self.plant_cells or self.pipe_map)
+
+        # ---- Round-2 STARS: 3 collectibles PER AGENT (mirror pairs), collected on
+        # entry. The final goal stays LOCKED until an agent holds all 3, so the state
+        # carries a per-agent star bitmask (cell x star_mask) - Markov for Monte-Carlo. --
+        self.star_cells = {"red": [tuple(s) for s in getattr(world, "red_stars", [])],
+                           "blue": [tuple(s) for s in getattr(world, "blue_stars", [])]}
+        self.n_stars = len(self.star_cells["red"])
+        self.star_bit = {a: {cell: i for i, cell in enumerate(self.star_cells[a])}
+                         for a in ("red", "blue")}
+        self.star_full = (1 << self.n_stars) - 1
+        self.star_mode = self.hazardous and self.n_stars > 0
 
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
@@ -205,6 +235,10 @@ class GridWorld(gym.Env):
         # pipe destination it warped to - surfaced in snapshot for the death/warp FX.
         self._dead = {"red": None, "blue": None}
         self._warped = {"red": None, "blue": None}
+        self._dead_at = {"red": None, "blue": None}
+        self._warp_from = {"red": None, "blue": None}
+        # Round-2: per-agent bitmask of Power Stars collected this episode (0..star_full)
+        self.stars_collected = {"red": 0, "blue": 0}
         obs = (self.observe("red"), self.observe("blue"))
         return obs, {}
 
@@ -235,9 +269,11 @@ class GridWorld(gym.Env):
         heatmap projection - visualizations call this with a probe cell to read V/policy
         at that tile given the agent's live coins/power-up."""
         idx = self.pos_index[cell]
-        if not self.rich:
-            return (idx,)
-        return (idx, self.collect[agent], self.status[agent])
+        if self.rich:
+            return (idx, self.collect[agent], self.status[agent])
+        if getattr(self, "star_mode", False):      # Round 2: cell x stars-collected mask
+            return (idx, self.stars_collected[agent])
+        return (idx,)
 
     # ------------------------------------------------------------------- step
     def _pos(self, agent):
@@ -386,17 +422,28 @@ class GridWorld(gym.Env):
         Stepping INTO a pipe entry warps to a uniformly-random destination (the
         gamble); landing on a spike, or on a tile next to a plant, is death."""
         cur = self._pos(agent)
-        nxt = self._move(agent, cur, action)          # deterministic, walls block
-        warp = None
-        if nxt != cur and nxt in self.pipe_map:        # stepped INTO a pipe -> warp
-            nxt = self.rng.choice(self.pipe_map[nxt])
-            warp = nxt
+        move = action
+        # SLIP: on a puddle a move may skid to a perpendicular tile (like Round-1 ice).
+        if action in MOVE_ACTIONS and cur in self.slip_cells:
+            r = self.rng.random()
+            if r < self.slip_prob:
+                p1, p2 = PERP[action]
+                move = p1 if r < self.slip_prob * 0.5 else p2
+        landed = self._move(agent, cur, move)          # the tile stepped onto (walls block)
+        entry, warp = None, None
+        if landed != cur and landed in self.pipe_map:  # stepped INTO a pipe -> warp
+            entry = landed                              # the pipe ENTRANCE (dive point)
+            dests = self.pipe_map[landed]               # sample by the pipe's FIXED weights
+            warp = self.rng.choices(dests, weights=self.pipe_wt.get(landed))[0]
+            nxt = warp
+        else:
+            nxt = landed
         death = None
         if nxt in self.spike_cells:
             death = "spike"
         elif nxt in self.plant_lethal:
             death = "plant"
-        return nxt, death, warp
+        return nxt, death, warp, entry
 
     def _status_name(self, agent):
         s = self.status.get(agent, 0)
@@ -412,7 +459,9 @@ class GridWorld(gym.Env):
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
         shape = {"red": 0.0, "blue": 0.0}      # coin reward, tracked for the decomposition
         dead = {"red": None, "blue": None}     # Round-2: which hazard killed each agent
-        warped = {"red": None, "blue": None}
+        warped = {"red": None, "blue": None}   # the warp DESTINATION
+        dead_at = {"red": None, "blue": None}  # the tile where it died (before respawn)
+        warp_from = {"red": None, "blue": None}  # the pipe ENTRANCE it dived into
 
         for agent, act in (("red", a_red), ("blue", a_blue)):
             if self.rich:
@@ -420,35 +469,68 @@ class GridWorld(gym.Env):
                 reward[agent] += bonus
                 shape[agent] = bonus
             elif self.hazardous:
-                nxt, death, warp = self._r2_resolve(agent, act)
+                nxt, death, warp, entry = self._r2_resolve(agent, act)
                 self._set_pos(agent, nxt)
                 dead[agent] = death
                 warped[agent] = warp
+                warp_from[agent] = entry
+                if death:
+                    dead_at[agent] = nxt               # remember WHERE it died for the FX
+                elif self.star_mode and nxt in self.star_bit[agent]:
+                    bit = self.star_bit[agent][nxt]    # collect a Power Star on entry
+                    if not (self.stars_collected[agent] >> bit) & 1:
+                        self.stars_collected[agent] |= (1 << bit)
+                        reward[agent] += STAR_REWARD
+                        shape[agent] += STAR_REWARD
             else:
                 self._set_pos(agent, self._move(agent, self._pos(agent), act))
         self._dead, self._warped = dead, warped
+        self._dead_at, self._warp_from = dead_at, warp_from
 
-        # terminal: reach the goal (WIN) or die on a hazard (LOSE). Rank each agent
-        # goal(2) > alive(1) > dead(0): the higher rank wins, equal ranks draw. With
-        # no deaths this reduces EXACTLY to Round 1's "first onto the goal wins".
         terminal = {"red": 0.0, "blue": 0.0}
-        reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
-        died = [a for a in ("red", "blue") if dead[a]]
-        if reached or died:
-            self.done = True
-            rank = {a: (2 if self._pos(a) in self.goal_set else (0 if dead[a] else 1))
-                    for a in ("red", "blue")}
-            if rank["red"] == rank["blue"]:
-                self.winner = None
-                term = WIN if rank["red"] == 2 else LOSE   # both scored / both died
-                terminal["red"] = terminal["blue"] = term
+        if self.hazardous:
+            # Round 2: a DEATH is a per-agent setback, NOT the end of the race. The dead
+            # agent takes the LOSE penalty and RESPAWNS at its spawn, and keeps going;
+            # the OTHER agent's run is untouched. The episode ends only when someone
+            # reaches the goal (that agent wins) or on the max-steps timeout.
+            spawns = {"red": self.world.red_spawn, "blue": self.world.blue_spawn}
+            for a in ("red", "blue"):
+                if dead[a]:
+                    reward[a] += LOSE
+                    terminal[a] += LOSE
+                    self._set_pos(a, spawns[a])            # respawn (stars kept), race continues
+            # the goal is LOCKED until all 3 stars are held: reaching it early does nothing
+            if self.star_mode:
+                reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set
+                           and self.stars_collected[a] == self.star_full]
             else:
-                self.winner = "red" if rank["red"] > rank["blue"] else "blue"
-                loser = "blue" if self.winner == "red" else "red"
-                terminal[self.winner] = WIN
-                terminal[loser] = LOSE
-            reward["red"] += terminal["red"]
-            reward["blue"] += terminal["blue"]
+                reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
+            if reached:
+                self.done = True
+                self.winner = None if len(reached) == 2 else reached[0]
+                for a in reached:                          # only the finisher(s) score
+                    terminal[a] += WIN
+                    reward[a] += WIN
+        else:
+            # Round 1 / skeleton: first ONTO the goal wins, the other loses, a tie draws
+            # (rank goal(2) > alive(1) > dead(0); there are no deaths off Round 2).
+            reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
+            died = [a for a in ("red", "blue") if dead[a]]
+            if reached or died:
+                self.done = True
+                rank = {a: (2 if self._pos(a) in self.goal_set else (0 if dead[a] else 1))
+                        for a in ("red", "blue")}
+                if rank["red"] == rank["blue"]:
+                    self.winner = None
+                    term = WIN if rank["red"] == 2 else LOSE
+                    terminal["red"] = terminal["blue"] = term
+                else:
+                    self.winner = "red" if rank["red"] > rank["blue"] else "blue"
+                    loser = "blue" if self.winner == "red" else "red"
+                    terminal[self.winner] = WIN
+                    terminal[loser] = LOSE
+                reward["red"] += terminal["red"]
+                reward["blue"] += terminal["blue"]
 
         self._accum_parts(reward, terminal, shape)
 
@@ -488,11 +570,21 @@ class GridWorld(gym.Env):
             # warp animations and the board can SNAP (not slide) a teleported agent.
             dead = getattr(self, "_dead", {}) or {}
             warped = getattr(self, "_warped", {}) or {}
-            for agent, dk, wk in (("red", "redDead", "redWarp"),
-                                  ("blue", "blueDead", "blueWarp")):
-                snap[dk] = dead.get(agent)
+            dead_at = getattr(self, "_dead_at", {}) or {}
+            warp_from = getattr(self, "_warp_from", {}) or {}
+            for agent, pre in (("red", "red"), ("blue", "blue")):
+                snap[pre + "Dead"] = dead.get(agent)                 # "spike"|"plant"|None
                 w = warped.get(agent)
-                snap[wk] = list(w) if w else None
+                snap[pre + "Warp"] = list(w) if w else None          # warp DESTINATION cell
+                da = dead_at.get(agent)
+                snap[pre + "DeadAt"] = list(da) if da else None      # the tile it died on
+                wf = warp_from.get(agent)
+                snap[pre + "WarpFrom"] = list(wf) if wf else None    # the pipe ENTRANCE it dived
+            if getattr(self, "star_mode", False):
+                sc = getattr(self, "stars_collected", {}) or {}
+                snap["redStars"] = sc.get("red", 0)      # bitmask of collected stars (hide + progress)
+                snap["blueStars"] = sc.get("blue", 0)
+                snap["nStars"] = self.n_stars
         return snap
 
 
