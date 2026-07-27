@@ -157,7 +157,7 @@ const STYLE = `
 #rl-panel .hdr .msel:not(.active):hover{opacity:.75;}
 #rl-panel .hdr .msel .msel-k{display:block;font-size:8.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#a2a5ac;}
 #rl-panel .hdr .msel .msel-n{display:block;font-size:16px;font-weight:800;letter-spacing:-.3px;line-height:1.15;margin-top:3px;color:#7c7f86;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s;}
+  white-space:nowrap;overflow:visible;text-overflow:clip;transition:color .2s;}
 #rl-panel .hdr .msel .msel-s{display:block;font-style:normal;font-size:9.5px;font-weight:700;color:#a8abb2;margin-top:4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #rl-panel .hdr .msel.active .msel-n{color:#fff;} /* name goes white on the coloured block (was the same hue as the bg) */
