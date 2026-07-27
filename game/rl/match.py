@@ -1117,6 +1117,23 @@ class Match:
                     "policyChanges": list(getattr(a, "policy_changes", []) or []),
                     "sweeps": list(log)}
 
+    def dp_planning_complete(self):
+        """True only when both Stage-1 planners genuinely converged.
+
+        Hitting the safety sweep limit is intentionally not completion: the UI
+        reports that separately and the other planner may still be working.
+        """
+        with self.lock:
+            agents = (self.red, self.blue)
+            return (
+                all(is_dp(algo) for algo in (self.algo_red, self.algo_blue))
+                and all(
+                    bool(getattr(agent, "converged", False))
+                    and not bool(getattr(agent, "hit_limit", False))
+                    for agent in agents
+                )
+            )
+
     def dp_sweeps(self, agent):
         """Per-sweep V snapshots (H x W grids) for the Value-Iteration propagation
         animation - watch value spread outward from the goal one ring per sweep."""

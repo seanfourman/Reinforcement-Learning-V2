@@ -762,10 +762,7 @@ export function initDP(parent) {
         status.textContent = "Stopped at sweep limit — not converged";
         status.classList.add("limit");
       } else if (converged) {
-        status.textContent =
-          isPolicyIteration
-            ? "Converged — policy is stable"
-            : "Converged — tolerance reached";
+        status.textContent = "Converged";
         status.classList.add("ok");
       } else {
         status.textContent =

@@ -46,6 +46,7 @@ match = Match(seed=None, round_id=1)
 _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
 _replay_restore_paused = None  # live pause state saved while a replay owns the screen
+_convergence_paused = False    # both Stage-1 planners finished; live Play is unnecessary
 _alive = True
 _sync_hold_until = 0.0 # frontend world-load sync hold; independent of user pause
 SYNC_HOLD_FALLBACK = 30.0
@@ -60,6 +61,7 @@ def trainer():
     daemon thread - that would silently freeze the sim forever while the server
     keeps serving a stale frame. So the loop body is guarded: log once and keep
     going (with a short backoff so a hard-looping error can't spin the CPU)."""
+    global _paused, _convergence_paused
     while _alive:
         try:
             if _paused or time.monotonic() < _sync_hold_until:
@@ -68,11 +70,18 @@ def trainer():
             sp = _speed
             if sp <= 120:
                 match.tick()
+                if match.dp_planning_complete():
+                    _paused = True
+                    _convergence_paused = True
                 time.sleep(1.0 / sp)
             else:
                 batch = min(2000, int(sp / 60))
                 for _ in range(batch):
                     match.tick()
+                    if match.dp_planning_complete():
+                        _paused = True
+                        _convergence_paused = True
+                        break
                 time.sleep(1.0 / 60)
         except Exception:
             traceback.print_exc()
@@ -106,7 +115,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         route = parsed.path
 
         if route == "/api/snapshot":
-            return self._json(match.snapshot())
+            snap = match.snapshot()
+            snap.setdefault("stats", {})["paused"] = _paused
+            snap["stats"]["convergencePaused"] = _convergence_paused
+            return self._json(snap)
         if route == "/api/world":
             # locked accessor: version + world read atomically (never torn apart by
             # a concurrent round switch)
@@ -188,9 +200,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"error": f"bad control value: {e}"}, 400)
 
     def _control(self, body):
-        global _speed, _paused, _replay_restore_paused, _sync_hold_until
+        global _speed, _paused, _replay_restore_paused, _convergence_paused, _sync_hold_until
         cmd = body.get("cmd")
         extra = {}
+        replans = {
+            "regenerate", "reset", "resetTournament", "sideAlgo", "setParams",
+            "setRedParams", "cpuTier", "loadouts", "prevRound", "nextRound", "setRound",
+        }
+        # A reset, algorithm/world edit, or round change gives the planners new
+        # work. If convergence was what paused the run, resume it automatically.
+        if cmd in replans and _convergence_paused:
+            _paused = False
+            _convergence_paused = False
         if cmd == "regenerate":
             match.regenerate(seed=body.get("seed"))
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
@@ -203,9 +224,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif cmd == "pause":
             _paused = True
             _replay_restore_paused = None
+            _convergence_paused = False
         elif cmd == "play":
             _paused = False
             _replay_restore_paused = None
+            _convergence_paused = False
         elif cmd == "replayEnter":
             # Capture the live state only on the first replay. Loading a different
             # recorded run while Replay is already open must not overwrite the
@@ -249,6 +272,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         else:
             return {"error": f"unknown cmd {cmd!r}"}
         return {"ok": True, "speed": _speed, "paused": _paused,
+                "convergencePaused": _convergence_paused,
                 "worldVersion": match.world_version, "roundId": match.round_id,
                 "algoRed": match.algo_red, "algoBlue": match.algo_blue, **extra}
 
