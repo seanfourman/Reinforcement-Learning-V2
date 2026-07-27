@@ -1,19 +1,18 @@
-"""Continuous arena - the live env for the deep rounds (4 and 5).
+"""Continuous environments for the deep rounds (4 and 5).
 
-SKELETON round (no real game yet): two agents fly across a continuous 2D arena to
-a goal. Unlike the grid rounds there are no cells: the state is continuous
-``(x, z, Vx, Vz)`` and the value function must be a function approximator (a neural
-net), which is the whole point of the deep rounds. Actions are discrete thrusts
-(8 compass directions + coast) applied as acceleration; velocity carries momentum
-with drag and a speed cap and is integrated at ``DT``. First agent into the goal
-radius wins. No obstacles, hazards, or reward shaping - a bare fly-to-goal shell
-that each round's real game will be built on top of.
+Round 4 is a two-agent survival duel on the circular Ruined Kingdom tower. Banzai
+Bills enter through the north opening, curve toward a target, and explode on a
+character or the tower rim. Agents earn reward for every moment survived and for
+missiles detonating far away; the survivor wins when the other character is hit.
+
+Round 5 retains the original continuous fly-to-goal race. Both environments use
+discrete thrust actions with continuous position and velocity, so their DQN / policy
+networks approximate functions over real-valued state rather than grid tables.
 
 ``theme`` picks which 3D scene the browser draws (ruined / tostarena / ...), so one
 arena class backs several rounds.
 
-Coords match the JS world: x = column, z = row, with the goal NORTH (small z) and
-spawns SOUTH (large z), same as the grid rounds, so the diorama drops on top.
+Coords match the JS world: x = column and z = row; north is small z.
 
 Interface mirrors env.GridWorld so the match loop can drive it:
     (obs_red, obs_blue), info = reset()
@@ -27,15 +26,26 @@ import random
 
 import numpy as np
 
-ARENA = 20.0          # square arena [0, ARENA]^2 (matches the board footprint)
+ARENA = 20.0          # default square arena used by the later continuous rounds
+ROUND4_ARENA = 10.0   # Ruined Kingdom's playable room is exactly 10 x 10 metres
 DT = 0.05             # integration timestep
 THRUST = 16.0         # acceleration magnitude applied by a thrust action
 DAMP = 0.90           # velocity retained per step (drag); momentum but not forever
 VMAX = 7.0            # speed cap (units/sec)
-GOAL = (ARENA / 2, 2.5)
 GOAL_R = 1.4          # capture radius
 AGENT_R = 0.55
 MAX_STEPS = 300       # optimal run is ~86 steps, so this is ample + cheap timeouts
+
+# Round-4 Banzai Bill survival game.
+MISSILE_R = 0.46
+MISSILE_SPAWN_Z = -2.0
+MISSILE_MIN_SPEED = 3.2
+MISSILE_MAX_SPEED = 6.8
+MISSILE_TTL_STEPS = 8
+SURVIVAL_REWARD = 0.015
+DISTANCE_REWARD = 0.12
+HIT_REWARD = 1.0
+HIT_PENALTY = -1.25
 
 # 8 compass thrust directions + coast (index 8). (dx, dz); -z = north (toward goal)
 DIRS = [
@@ -44,14 +54,17 @@ DIRS = [
     (0.0, 0.0),
 ]
 N_ACTIONS = len(DIRS)   # 9
-OBS_DIM = 6
+RACE_OBS_DIM = 6
+MISSILE_OBS_DIM = 16
+# Backwards-compatible module export used by dqn.py's standalone Round-4 test.
+OBS_DIM = MISSILE_OBS_DIM
 
 STEP_COST = 0.006
 WIN, LOSE = 1.0, -1.0
 
 
 class ContinuousArena:
-    """Two-agent continuous race to a goal. Drop-in for the GridWorld match interface."""
+    """Round-4 missile survival / Round-5 race, with one shared match interface."""
 
     objective = "arena"
 
@@ -59,6 +72,15 @@ class ContinuousArena:
                  thrust=THRUST, damp=DAMP, vmax=VMAX):
         self.round_id = round_id
         self.theme = theme
+        # Round 4 is a compact 10 m room. Keep the shared Round-5 skeleton at its
+        # original size so changing this arena cannot silently alter another game.
+        self.arena = ROUND4_ARENA if round_id == 4 else ARENA
+        self.shape = "circle" if round_id == 4 else "square"
+        self.missile_game = round_id == 4
+        # At the viewer's slow 3 decisions/sec, the original 50 ms integration
+        # produced tiny shuffles. Round 4 advances a meaningful tenth of a second
+        # per DQN action; the later shared arena keeps its original dynamics.
+        self.dt = 0.10 if round_id == 4 else DT
         self.rng = random.Random(seed)
         self.max_steps = MAX_STEPS
         # movement physics (module constants are the defaults)
@@ -66,14 +88,20 @@ class ContinuousArena:
         self.damp = float(damp)
         self.vmax = float(vmax)
         self.n_actions = N_ACTIONS          # match.py reads these off the env
-        self.obs_dim = OBS_DIM
-        self.H = self.W = int(ARENA)        # coarse grid the value field samples on
-        self.goal = np.array(GOAL, dtype=np.float32)
-        self.red_spawn = (ARENA - 3.0, ARENA - 2.5)   # red on the viewer's RIGHT
-        self.blue_spawn = (3.0, ARENA - 2.5)           # blue on the viewer's LEFT (matches the HUD)
+        self.obs_dim = MISSILE_OBS_DIM if self.missile_game else RACE_OBS_DIM
+        self.H = self.W = int(self.arena)   # coarse grid the value field samples on
+        self.goal = np.array((self.arena / 2, 2.5), dtype=np.float32)
+        self.red_spawn = (self.arena - 3.0, self.arena - 2.5)  # viewer's RIGHT
+        self.blue_spawn = (3.0, self.arena - 2.5)               # viewer's LEFT
         self.steps = 0
         self.done = False
         self.winner = None
+        self.missiles = []
+        self.explosions = []
+        self._missile_serial = 0
+        self._explosion_serial = 0
+        self._next_target = self.rng.choice(("red", "blue"))
+        self.next_missile_step = 6
         self.reset()
 
     # --------------------------------------------------------------- helpers
@@ -84,17 +112,62 @@ class ContinuousArena:
     def _dist_goal(self, pos):
         return float(np.linalg.norm(pos - self.goal))
 
-    def _observe(self, pos, vel):
+    def _observe_race(self, pos, vel):
         gx, gz = self.goal
         return np.array([
-            pos[0] / ARENA, pos[1] / ARENA,
+            pos[0] / self.arena, pos[1] / self.arena,
             vel[0] / self.vmax, vel[1] / self.vmax,
-            (gx - pos[0]) / ARENA, (gz - pos[1]) / ARENA,
+            (gx - pos[0]) / self.arena, (gz - pos[1]) / self.arena,
         ], dtype=np.float32)
 
+    def _difficulty(self):
+        """0..1 difficulty ramp over the first 24 simulated seconds."""
+        return min(1.0, self.steps / 240.0)
+
+    def _missile_observe(self, which, pos, vel):
+        centre = self.arena / 2
+        out = [
+            (float(pos[0]) - centre) / centre,
+            (float(pos[1]) - centre) / centre,
+            float(vel[0]) / self.vmax,
+            float(vel[1]) / self.vmax,
+        ]
+        # Two closest threats keep the input fixed-size while later difficulty can
+        # put several missiles in flight. Each slot: relative position, velocity,
+        # and whether this missile is explicitly homing on the observing agent.
+        threats = sorted(
+            self.missiles,
+            key=lambda m: float(np.linalg.norm(m["pos"] - pos)),
+        )[:2]
+        for slot in range(2):
+            if slot < len(threats):
+                missile = threats[slot]
+                rel = missile["pos"] - pos
+                out.extend([
+                    float(np.clip(rel[0] / self.arena, -2, 2)),
+                    float(np.clip(rel[1] / self.arena, -2, 2)),
+                    float(missile["vel"][0]) / MISSILE_MAX_SPEED,
+                    float(missile["vel"][1]) / MISSILE_MAX_SPEED,
+                    1.0 if missile["target"] == which else -1.0,
+                ])
+            else:
+                out.extend([0.0] * 5)
+        interval = max(1, self.next_missile_step - self.steps)
+        out.extend([self._difficulty(), min(1.0, interval / 20.0)])
+        return np.asarray(out, dtype=np.float32)
+
+    def _observe(self, which, pos, vel):
+        if self.missile_game:
+            return self._missile_observe(which, pos, vel)
+        return self._observe_race(pos, vel)
+
     def field_obs(self, which, x, z):
-        """Observation for a STILL probe at (x,z) - drives the value/policy field."""
-        return self._observe(np.array([x, z], dtype=np.float32), np.zeros(2, dtype=np.float32))
+        """A still-state probe used by the sampled continuous Value/Policy fields."""
+        return self._observe(
+            which,
+            np.array([x, z], dtype=np.float32),
+            np.zeros(2, dtype=np.float32),
+        )
 
     # ----------------------------------------------------------------- reset
     def reset(self, *, seed=None, options=None, regenerate=False):
@@ -107,8 +180,16 @@ class ContinuousArena:
         self.steps = 0
         self.done = False
         self.winner = None
-        return (self._observe(self.red_pos, self.red_vel),
-                self._observe(self.blue_pos, self.blue_vel)), {}
+        if self.missile_game:
+            self.missiles = []
+            self.next_missile_step = 6
+            self._next_target = self.rng.choice(("red", "blue"))
+            # Keep recent explosions through the automatic episode reset long
+            # enough for the browser to receive and animate the terminal blast.
+            if regenerate:
+                self.explosions = []
+        return (self._observe("red", self.red_pos, self.red_vel),
+                self._observe("blue", self.blue_pos, self.blue_vel)), {}
 
     def set_round(self, round_id):
         self.round_id = round_id
@@ -119,20 +200,35 @@ class ContinuousArena:
         """Apply one thrust action: accelerate, drag, cap speed, move, clamp to the
         arena walls. Returns (new_pos, new_vel)."""
         dx, dz = DIRS[action]
-        vel = vel + np.array([dx, dz], dtype=np.float32) * self.thrust * DT
+        vel = vel + np.array([dx, dz], dtype=np.float32) * self.thrust * self.dt
         vel = vel * self.damp
         sp = float(np.linalg.norm(vel))
         if sp > self.vmax:
             vel = vel * (self.vmax / sp)
-        npos = pos + vel * DT
-        # arena walls: clamp and kill the offending velocity component
-        for i in (0, 1):
-            if npos[i] < AGENT_R:
-                npos[i] = AGENT_R
-                vel[i] = 0.0
-            elif npos[i] > ARENA - AGENT_R:
-                npos[i] = ARENA - AGENT_R
-                vel[i] = 0.0
+        npos = pos + vel * self.dt
+        if self.shape == "circle":
+            # Project onto the circular tower rim and remove only outward velocity,
+            # so an agent naturally slides along the edge instead of hitting an
+            # invisible square wall.
+            centre = np.array([self.arena / 2, self.arena / 2], dtype=np.float32)
+            radial = npos - centre
+            dist = float(np.linalg.norm(radial))
+            limit = self.arena / 2 - AGENT_R
+            if dist > limit:
+                normal = radial / max(dist, 1e-6)
+                npos = centre + normal * limit
+                outward = float(np.dot(vel, normal))
+                if outward > 0:
+                    vel = vel - normal * outward
+        else:
+            # square arena walls: clamp and kill the offending velocity component
+            for i in (0, 1):
+                if npos[i] < AGENT_R:
+                    npos[i] = AGENT_R
+                    vel[i] = 0.0
+                elif npos[i] > self.arena - AGENT_R:
+                    npos[i] = self.arena - AGENT_R
+                    vel[i] = 0.0
         return npos.astype(np.float32), vel.astype(np.float32)
 
     # ------------------------------------------------------------------ step
@@ -178,7 +274,16 @@ class ContinuousArena:
             "objective": "arena",
             "roundId": self.round_id,
             "H": self.H, "W": self.W,
-            "arena": float(ARENA),
+            "arena": float(self.arena),
+            "shape": self.shape,
+            "decisionDt": self.dt,
+            # Round 4's art and camera were authored around world centre (10, 10).
+            # Its 10 m simulation is rendered there rather than moving the whole
+            # established composition to (5, 5).
+            "sceneCenter": [10.0, 10.0] if self.round_id == 4 else None,
+            # Fill the round tower's usable top (30 scene units across) while the
+            # actual continuous environment remains a 10 m diameter circle.
+            "sceneScale": 3.0 if self.round_id == 4 else 1.0,
             "goal": [float(self.goal[0]), float(self.goal[1])],
             "goalR": float(GOAL_R),
             "spawns": {"red": list(self.red_spawn), "blue": list(self.blue_spawn)},
@@ -217,7 +322,8 @@ def _greedy_to_goal(env, pos, vel):
 
 if __name__ == "__main__":
     env = ContinuousArena(seed=0)
-    print(f"Arena {ARENA}x{ARENA}, {N_ACTIONS} actions, obs dim {OBS_DIM}, goal {GOAL}")
+    print(f"Arena {env.arena}x{env.arena}, {N_ACTIONS} actions, "
+          f"obs dim {OBS_DIM}, goal {tuple(env.goal)}")
 
     # 1) random policy: episodes should terminate (win or timeout), rewards finite
     wins, lens = {"red": 0, "blue": 0, None: 0}, []

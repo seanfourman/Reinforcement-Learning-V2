@@ -34,8 +34,9 @@ export function createHeatmap(scene) {
   mesh.frustumCulled = false;
   scene.add(mesh);
 
-  // ---- CONTINUOUS-arena value field: an n x n colour grid sampled from the DQN
-  // over the arena (raw world x,z, the space the agents move in). Fed by /api/field.
+  // ---- CONTINUOUS-arena field: sampled Value/Visits colours plus Policy arrows.
+  // Samples are masked to the arena shape and transformed with the same
+  // metre-to-scene mapping as the live actors.
   const AMAX = 40 * 40;
   const amesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.6, depthWrite: false }), AMAX);
@@ -94,10 +95,47 @@ export function createHeatmap(scene) {
   }
   function setGhostArrows(list, agent) { _setTeam(agent); _placeArrows(garrows, list, 1.12); }
 
-  function setArenaField(field) {
+  const ARENA_YAW = [
+    Math.PI / 2, -Math.PI / 2, Math.PI, 0,
+    3 * Math.PI / 4, Math.PI / 4, -3 * Math.PI / 4, -Math.PI / 4,
+    null, // coast: no direction arrow
+  ];
+
+  function setArenaField(field, mode = field.mode || 'value') {
     const n = field.n, A = field.arena, val = field.value;
+    const sceneScale = Math.max(0.01, Number(field.sceneScale) || 1);
+    const centre = Array.isArray(field.sceneCenter)
+      ? field.sceneCenter
+      : [A / 2, A / 2];
+    const ox = centre[0] - (A * sceneScale) / 2;
+    const oz = centre[1] - (A * sceneScale) / 2;
     const lo = field.vmin, span = (field.vmax - field.vmin) || 1;
-    const cell = (A / n) * 0.98;
+    const cell = (A / n) * sceneScale * 0.98;
+
+    if (mode === 'policy') {
+      _setTeam(field.agent);
+      let p = 0;
+      for (let j = 0; j < n && p < PMAX; j++) {
+        for (let k = 0; k < n && p < PMAX; k++) {
+          const action = field.policy?.[j]?.[k];
+          const yaw = ARENA_YAW[action];
+          if (action == null || yaw == null) continue;
+          adummy.position.set(
+            ((k + 0.5) / n * A) * sceneScale + ox,
+            0.21,
+            ((j + 0.5) / n * A) * sceneScale + oz,
+          );
+          adummy.rotation.set(0, yaw, 0);
+          adummy.scale.setScalar(cell * 0.88);
+          adummy.updateMatrix();
+          farrows.setMatrixAt(p++, adummy.matrix);
+        }
+      }
+      farrows.count = p;
+      farrows.instanceMatrix.needsUpdate = true;
+      return;
+    }
+
     let i = 0;
     for (let j = 0; j < n && i < AMAX; j++) {
       for (let k = 0; k < n && i < AMAX; k++) {
@@ -105,7 +143,11 @@ export function createHeatmap(scene) {
         if (v == null) {
           dummy.scale.setScalar(0);
         } else {
-          dummy.position.set((k + 0.5) / n * A, 0.2, (j + 0.5) / n * A);
+          dummy.position.set(
+            ((k + 0.5) / n * A) * sceneScale + ox,
+            0.2,
+            ((j + 0.5) / n * A) * sceneScale + oz,
+          );
           dummy.rotation.set(-Math.PI / 2, 0, 0);
           dummy.scale.set(cell, cell, 1);
           amesh.setColorAt(i, ramp((v - lo) / span));
@@ -269,7 +311,13 @@ export function createHeatmap(scene) {
     showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
     showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
     showPolicy() { farrows.visible = farrows.count > 0; numPlane.visible = false; mesh.visible = false; amesh.visible = false; },
-    showArena() { amesh.visible = true; mesh.visible = false; numPlane.visible = false; farrows.visible = false; setGhostArrows([]); },
+    showArena(mode = 'value') {
+      amesh.visible = mode !== 'policy';
+      farrows.visible = mode === 'policy' && farrows.count > 0;
+      mesh.visible = false;
+      numPlane.visible = false;
+      setGhostArrows([]);
+    },
     hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
     get visible() { return mesh.visible || numPlane.visible || amesh.visible || farrows.visible; },
   };

@@ -1,29 +1,27 @@
 """Round 2 - New Donk City (Every-visit MC vs First-visit MC).
 
-THE COLLECT-3-STARS RACE. A PROCEDURALLY-GENERATED, left-right mirror-symmetric
-hedge park (regenerated from the world SEED like Round 1's castle): we build ONLY
-the LEFT half and REFLECT it, so both racers face the identical layout. Each agent
-must gather its OWN three Power Stars - one in each of three sections of the park -
-and the final goal at the top stays LOCKED until all three are held; stepping on it
-with fewer than three does nothing (see env.py's ``star_mode``). So a model cannot
-just walk to the goal: it has to plan a full collection tour.
+THE COLLECT-3-STARS RACE, played on a REGIONED MAZE. The park is a FULL-BOARD hedge
+maze (regenerated from the world SEED like Round 1's castle) that is left-right
+mirror-symmetric: we build the LEFT half and REFLECT it (mirror col = 19 - c), so both
+racers face the identical layout. The maze fills the WHOLE 20x20 board edge to edge -
+there is NO bush border frame - and is carved into FOUR STACKED REGIONS separated by
+solid hedge walls:
 
-The park is threaded by a WARP-PIPE NETWORK (6-8 pipes, mirrored). Each pipe has 2-3
-FIXED destinations with FIXED probabilities (baked into the seed, never re-rolled per
-episode), so a pipe is a STATIONARY stochastic teleport - Markov, and exactly what
-Monte-Carlo control is built to value. Pipes CHAIN (one spits you out at another's
-mouth) and LOOP (a chain can cycle back), giving fast-but-risky routes that rival the
-slow safe walk. SPIKE TRAPS and PIRANHA PLANTS (instant death) and slippery PUDDLES
-lace the risky routes. A guaranteed hazard-free SAFE CORRIDOR always exists from each
-spawn through all three of that side's stars to the goal, so the task stays learnable.
+    Region A (spawn, bottom)  ->  Region B  ->  Region C  ->  Region D (goal, top)
 
-Mechanics (see env.py):
-  * POWER STAR   - collect all 3 (per agent) to UNLOCK the goal.
-  * SPIKE TRAP   - a floor tile that kills on entry.
-  * PIRANHA PLANT- an impassable tile whose 8 neighbours (incl. diagonals) kill on entry.
-  * PUDDLE       - a slippery floor tile: a move may skid to a perpendicular tile.
-  * WARP PIPE    - stepping onto an ENTRY teleports you to one of its FIXED-probability
-                   destinations. Destinations are walkable (you pop out and keep going).
+You CANNOT walk between regions - the separator walls are unbroken. The ONLY way up is
+the WARP-PIPE NETWORK: each region holds a DIVE pipe whose FIXED-probability
+destinations are EXIT pipes in the region above - you leap into a pipe and pop OUT of a
+pipe (never into open ground). Which exit you get is the stochastic part MC must value.
+
+Each agent gathers its OWN three Power Stars - one in each of regions A/B/C - and the
+goal at the top stays LOCKED until it holds all three (see env.py's ``star_mode``).
+
+PIRANHA PLANTS (carnivorous) lurk on the hedge walls; a plant's 8 surrounding tiles
+(incl. diagonals) kill on entry (death = respawn + penalty, the race continues). There
+are NO spike traps. Slippery PUDDLES sit at TACTICAL spots right beside the plants, so a
+skid can shove you into a plant's jaws. A hazard-free ALIVE route to every star and the
+goal always exists (validated), so the task stays learnable.
 
 Coordinates are (row, col), row 0 = NORTH (goal), row 19 = SOUTH (spawns); the theme
 camera flips the view so the goal reads on top.
@@ -36,32 +34,34 @@ THEME = "city"
 ROUND_ID = 2
 TITLE = "New Donk City"
 
-AX = 9                              # mirror axis column (self-mirror); mirror(c) = 18 - c
-LANE = 5                            # the SAFE corridor column on the left (mirror -> col 13)
-ALT_L, ALT_R = 2, 7                # the two alternate/pipe lane columns on the left
-STAR_ROWS = (13, 8, 3)             # the three star heights: low / mid / high section
-GOAL = (0, AX)                     # single walkable goal cell at top-centre
+# Four stacked regions (row ranges, inclusive), goal-region first. Between every pair
+# sits a SOLID separator wall row - unbroken, so regions connect ONLY through pipes.
+REGION_D = (0, 3)                   # goal region (top)
+REGION_C = (5, 8)
+REGION_B = (10, 13)
+REGION_A = (15, 19)                # spawn region (bottom)
+SEP_ROWS = (4, 9, 14)             # solid hedge walls separating the four regions
+REGIONS = (REGION_A, REGION_B, REGION_C, REGION_D)
 
-DEF_SPIKES = 3                     # spike traps per side (mirrored)
-DEF_PLANTS = 2                     # piranha plants per side
-DEF_DESTS = 3                      # destinations per warp pipe (2..3, the gamble breadth)
-DEF_SLIP = 2                       # slippery puddles per side
+GOALS = [(0, 9), (0, 10)]         # the two mirror-symmetric goal cells (top centre)
 
-# The navigation grid uses WALL cells as collision, and the city renderer turns every
-# WALL into a hedge. Keep an open lawn band around the actual maze so generation can
-# never produce the unwanted rectangular bush outline. The right band is one column
-# wider because this layout mirrors around column 9 (``18 - c``), leaving column 19
-# outside the mirrored play area.
-HEDGE_OUTLINE = frozenset(
-    (r, c)
-    for r in range(SIZE)
-    for c in range(SIZE)
-    if r < 3 or r >= 16 or c < 2 or c >= 17
-)
+DEF_DESTS = 3                      # exit pipes per dive pipe (2..3, the gamble breadth)
+DEF_PLANTS = 2                     # piranha plants per side (mirrored)
+DEF_SLIP = 3                       # slippery puddles per side (mirrored)
+WALL_DENSITY = 0.24                # target hedge-wall fraction per region. The maze FILLS
+                                   # the whole board (the look), but the star tour stays in
+                                   # the central columns and short (so MC stays learnable).
 
 
 def _mirror(c):
-    return 18 - c                   # 1<->17, 2<->16, 5<->13, 9<->9
+    return 19 - c                   # (0,19) (1,18) ... (9,10): full-board symmetry, no orphan
+
+
+def _fold(cell):
+    """A cell's LEFT-half representative (walls/plants are placed in mirror pairs, so
+    protecting the left twin protects both)."""
+    r, c = cell
+    return (r, c) if c <= 9 else (r, _mirror(c))
 
 
 def _nbrs(cell):
@@ -73,132 +73,142 @@ def _king(cell):                    # the 8 neighbours (a plant's kill zone, inc
             for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc]
 
 
-def generate(seed=None, n_spikes=DEF_SPIKES, n_plants=DEF_PLANTS,
-             n_dests=DEF_DESTS, n_slip=DEF_SLIP, **_):
-    n_spikes = max(0, min(8, int(n_spikes)))
-    n_plants = max(0, min(4, int(n_plants)))
-    n_dests = max(2, min(3, int(n_dests)))
-    n_slip = max(0, min(6, int(n_slip)))
+def _region_of(r):
+    for (r0, r1) in REGIONS:
+        if r0 <= r <= r1:
+            return (r0, r1)
+    return None
 
-    # The static skeleton (corridors, stars, pipes, goal) is DETERMINISTIC from the
-    # geometry; only the hazard scatter is seed-random, so we re-roll just that until
-    # every safety invariant holds. A couple of hundred tries is always enough.
-    for attempt in range(200):
+
+def generate(seed=None, n_dests=DEF_DESTS, n_plants=DEF_PLANTS, n_slip=DEF_SLIP, **_):
+    """Build Round 2's regioned maze. Extra keyword args (stale hazard counts from older
+    configs, e.g. n_spikes) are accepted and ignored."""
+    n_dests = max(2, min(3, int(n_dests)))
+    n_plants = max(0, min(4, int(n_plants)))
+    n_slip = max(0, min(8, int(n_slip)))
+
+    # The static skeleton (regions, stars, pipes, goal) is FIXED; the hedge-wall scatter,
+    # the piranha plants and the puddles are seed-random, so we re-roll until an ALIVE
+    # tour is solvable for both racers.
+    for attempt in range(300):
         rng = random.Random((seed if seed is not None else 0) * 131 + attempt)
-        world = _build(rng, n_spikes, n_plants, n_dests, n_slip)
+        world = _build(rng, n_dests, n_plants, n_slip)
         if world is not None:
             validate(world)
             return world
-    # Fallback: the skeleton with NO hazards (always valid and learnable).
+    # Fallback: no plants (always solvable) + open-ish regions.
     rng = random.Random(seed)
-    world = _build(rng, 0, 0, n_dests, 0)
+    world = _build(rng, n_dests, 0, n_slip)
     validate(world)
     return world
 
 
-def _build(rng, n_spikes, n_plants, n_dests, n_slip):
+def _build(rng, n_dests, n_plants, n_slip):
     g = [[WALL] * SIZE for _ in range(SIZE)]
 
-    def carve(cells):
-        for (r, c) in cells:
-            if 0 <= r < SIZE and 0 <= c < SIZE:
+    # ---- carve every region as an OPEN band (full width); separators stay walls -------
+    for (r0, r1) in REGIONS:
+        for r in range(r0, r1 + 1):
+            for c in range(SIZE):
                 g[r][c] = FLOOR
+    for (r, c) in GOALS:
+        g[r][c] = ESCAPE
 
-    def col(c, r0, r1):
-        return [(r, c) for r in range(min(r0, r1), max(r0, r1) + 1)]
+    # ---- fixed skeleton: spawns, stars, DIVE pipes + EXIT pipes -----------------------
+    blue_spawn = (19, 6)
+    red_spawn = (19, _mirror(6))                  # (19, 13)
+    # one blue star per region A/B/C, kept in the LEFT-CENTRAL columns so the vertical
+    # climb (spawn -> star -> dive pipe -> ... -> goal) is a short central tour.
+    blue_stars = [(17, 5), (12, 5), (7, 5)]
+    red_stars = [(r, _mirror(c)) for (r, c) in blue_stars]
 
-    def row(r, c0, c1):
-        return [(r, c) for c in range(min(c0, c1), max(c0, c1) + 1)]
-
-    # ---- LEFT-half skeleton (mirrored to the right afterwards) ----------------
-    # spawn plaza (open lawn, bottom rows) - links the two lanes and both halves
-    for r in range(16, SIZE - 1):
-        carve(row(r, 1, AX))
-    spawn = (SIZE - 2, LANE)                      # (18, 5)
-
-    # the SAFE CORRIDOR: straight up column LANE, through all three stars, to the top
-    carve(col(LANE, 1, 16))
-    stars = [(sr, LANE) for sr in STAR_ROWS]      # (13,5) (8,5) (3,5)
-
-    # the two ALTERNATE / pipe lanes and the connectors that weave them into loops
-    carve(col(ALT_L, 3, 16))                      # left lane, col 2
-    carve(col(ALT_R, 5, 15))                      # right lane, col 7
-    for r in (16, 13, 10, 8, 5, 3):               # rungs -> real route choices + loops
-        carve(row(r, ALT_L, ALT_R))
-    # top link: corridor -> axis -> goal (mirror completes the right approach)
-    carve(row(1, LANE, AX))
-    carve([(1, AX), GOAL])
-    g[GOAL[0]][GOAL[1]] = ESCAPE
-
-    # ---- WARP-PIPE NETWORK (left side; mirrored) ------------------------------
-    # Chains: P1 -> P2 mouth and P1 -> P3 mouth. Loop: P2 -> (12,7) -> walk back to
-    # P1's mouth (15,7) -> re-dive. All destinations sit well below the goal, so no
-    # pipe (or chain) is ever a spawn->goal shortcut. Weights are FIXED.
+    # LEFT-half pipes: a DIVE pipe in each region, whose destinations are EXIT pipes in the
+    # region ABOVE (you always pop OUT of a pipe, never onto open ground). Every exit is in
+    # the next region + CLUSTERED near that region's star and its own dive pipe, so a dive
+    # always makes progress and the onward walk is short. The randomness is WHICH exit you
+    # get - each has a FIXED probability baked into the seed (Monte-Carlo must value it).
     raw_pipes = [
-        ((15, ALT_R), [((10, ALT_R), 0.5), ((14, ALT_L), 0.3), ((12, LANE), 0.2)]),
-        ((10, ALT_R), [((5, ALT_R), 0.5), ((12, ALT_R), 0.3), ((7, ALT_L), 0.2)]),
-        ((14, ALT_L), [((8, ALT_L), 0.5), ((3, ALT_L), 0.3), ((11, ALT_L), 0.2)]),
+        ((15, 8), [(13, 6), (13, 5), (12, 7)], [0.5, 0.3, 0.2]),   # A -> B (exits near star B + diveB)
+        ((10, 8), [(8, 6), (8, 5), (7, 7)], [0.5, 0.3, 0.2]),      # B -> C (exits near star C + diveC)
+        ((5, 8), [(3, 8), (3, 6), (2, 7)], [0.5, 0.3, 0.2]),       # C -> D (exits near the goal)
     ]
     pipes = []
-    for entry, dw in raw_pipes:
-        dw = dw[:n_dests]
-        dests = [d for d, _ in dw]
-        weights = [w for _, w in dw]
-        carve([entry] + dests)                    # a pipe's mouth + landings are floor
-        # mirror twin
+    for entry, dests, weights in raw_pipes:
+        d = dests[:n_dests]
+        w = weights[:n_dests]
+        pipes.append({"entry": entry, "dests": d, "weights": w, "exit": None})
         m_entry = (entry[0], _mirror(entry[1]))
-        m_dests = [(r, _mirror(c)) for (r, c) in dests]
-        carve([m_entry] + m_dests)
-        pipes.append({"entry": entry, "dests": dests, "weights": weights, "exit": None})
-        pipes.append({"entry": m_entry, "dests": m_dests, "weights": list(weights), "exit": None})
+        m_dests = [(r, _mirror(c)) for (r, c) in d]
+        pipes.append({"entry": m_entry, "dests": m_dests, "weights": list(w), "exit": None})
 
-    # ---- reflect the whole left skeleton onto the right -----------------------
-    for r in range(SIZE):
-        for c in range(1, AX):
-            if g[r][c] == FLOOR:
-                g[r][_mirror(c)] = FLOOR
+    # the goal APPROACH: the central 2-wide column in region D so any exit can walk to the goal
+    goal_col = [(r, c) for r in range(REGION_D[0], REGION_D[1] + 1) for c in (9, 10)]
 
-    red_spawn = (spawn[0], _mirror(spawn[1]))
-    blue_spawn = spawn
-    goals = [GOAL]
-    blue_stars = stars
-    red_stars = [(r, _mirror(c)) for (r, c) in stars]
-
-    # cells that must NEVER become a hazard: spawns, goal, the safe corridors + their
-    # top links, every star, and every pipe mouth/landing (a warp must never drop you
-    # onto death). Mirror-completed so both halves stay symmetric.
     entries = {p["entry"] for p in pipes}
     dests = {d for p in pipes for d in p["dests"]}
-    safe = set()
-    safe |= set(col(LANE, 1, 16)) | set(row(1, LANE, AX)) | {(1, AX), GOAL}
-    safe |= set(blue_stars) | {blue_spawn}
-    reserved = set(safe)
-    reserved |= entries | dests | {blue_spawn, red_spawn} | set(goals)
+    reserved = set()
+    reserved |= entries | dests
+    reserved |= {blue_spawn, red_spawn}
     reserved |= set(blue_stars) | set(red_stars)
-    reserved |= {(r, _mirror(c)) for (r, c) in reserved}
-    reserved |= HEDGE_OUTLINE
+    reserved |= set(goal_col) | set(GOALS)
+    no_wall = {_fold(cell) for cell in reserved}     # left-half representatives to protect
 
-    floor_cells = [(r, c) for r in range(SIZE) for c in range(SIZE) if g[r][c] == FLOOR]
+    # ---- carve the maze: add hedge walls (mirror pairs) inside each region, keeping the
+    # region a single connected component so every star / pipe stays reachable -----------
+    for (r0, r1) in REGIONS:
+        band = [(r, c) for r in range(r0, r1 + 1) for c in range(SIZE)]
+        seed_floor = next((cell for cell in band if cell in reserved), band[0])
+        max_removed = int(WALL_DENSITY * len(band))
+        removed = 0
 
-    def warp_edges():
-        w = {}
-        for p in pipes:
-            w.setdefault(p["entry"], []).extend(p["dests"])
-        return w
+        def band_connected():
+            seen, stack = {seed_floor}, [seed_floor]
+            while stack:
+                cur = stack.pop()
+                for nb in _nbrs(cur):
+                    if nb in seen:
+                        continue
+                    nr, nc = nb
+                    if r0 <= nr <= r1 and 0 <= nc < SIZE and g[nr][nc] != WALL:
+                        seen.add(nb)
+                        stack.append(nb)
+            floors = sum(1 for (r, c) in band if g[r][c] != WALL)
+            return len(seen) == floors
 
-    def lethal_of(spikes, plants):
-        lethal = set(spikes)
-        for (pr, pc) in plants:
-            for nb in _king((pr, pc)):
-                if 0 <= nb[0] < SIZE and 0 <= nb[1] < SIZE and g[nb[0]][nb[1]] != WALL:
+        cands = [(r, c) for r in range(r0, r1 + 1)
+                 for c in range(0, 10) if (r, c) not in no_wall]
+        rng.shuffle(cands)
+        for (r, c) in cands:
+            if removed >= max_removed:
+                break
+            pair = {(r, c), (r, _mirror(c))}
+            if any(g[pr][pc] != FLOOR for (pr, pc) in pair):   # never wall a goal / already-walled
+                continue
+            for (pr, pc) in pair:
+                g[pr][pc] = WALL
+            if band_connected():
+                removed += len(pair)
+            else:
+                for (pr, pc) in pair:                # revert: it split the region
+                    g[pr][pc] = FLOOR
+
+    # ---- warp reachability helpers (alive = never stepping into a plant's kill zone) ----
+    warp = {}
+    for p in pipes:
+        warp.setdefault(p["entry"], []).extend(p["dests"])
+
+    def lethal_of(plants):
+        lethal = set()
+        for pl in plants:
+            for nb in _king(pl):
+                r, c = nb
+                if 0 <= r < SIZE and 0 <= c < SIZE and g[r][c] != WALL:
                     lethal.add(nb)
         return lethal
 
-    def alive_reach(start, spikes, plants):
-        """Cells reachable from ``start`` walking (+ pipe warps) WITHOUT stepping on a
-        lethal tile. Pipe entries add teleport edges to every destination."""
-        lethal, warp = lethal_of(spikes, plants), warp_edges()
-        goalset = set(goals)
+    def alive_reach(start, plants):
+        lethal = lethal_of(plants)
+        goalset = set(GOALS)
         seen, stack = {start}, [start]
         while stack:
             cur = stack.pop()
@@ -212,37 +222,24 @@ def _build(rng, n_spikes, n_plants, n_dests, n_slip):
                 stack.append(nb)
         return seen
 
-    def spec_ok(spikes, plants):
-        # every star + the goal must be reachable ALIVE from each spawn...
-        for sp, sstars in ((blue_spawn, blue_stars), (red_spawn, red_stars)):
-            reach = alive_reach(sp, spikes, plants)
-            if not all(s in reach for s in sstars) or GOAL not in reach:
-                return False
-        # ...the safe corridor stays hazard-free (learnable low-variance route)...
-        if any(s in reserved for s in spikes):
+    def spec_ok(plants):
+        lethal = lethal_of(plants)
+        if any(d in lethal for d in dests):          # a pipe must never spit you onto death
             return False
-        # ...no pipe landing is lethal or a permanent TRAP (must still reach the goal)...
-        lethal = lethal_of(spikes, plants)
-        for d in dests:
-            if d in lethal or GOAL not in alive_reach(d, spikes, plants):
+        for spawn, stars in ((blue_spawn, blue_stars), (red_spawn, red_stars)):
+            reach = alive_reach(spawn, plants)
+            if not all(s in reach for s in stars) or not (reach & set(GOALS)):
+                return False
+        for d in dests:                              # no exit pipe is a sealed dead end
+            if not (alive_reach(d, plants) & set(GOALS)):
                 return False
         return True
 
-    # ---- SPIKE TRAPS: risk on the alternate lanes; sample + validate ----------
-    spikes = []
-    spike_pool = [c for c in floor_cells if c[1] < AX and c not in reserved]
-    rng.shuffle(spike_pool)
-    for cpos in spike_pool:
-        if len(spikes) >= 2 * n_spikes:
-            break
-        pair = [cpos, (cpos[0], _mirror(cpos[1]))]
-        if spec_ok(spikes + pair, []):
-            spikes.extend(pair)
-
-    # ---- PIRANHA PLANTS: impassable wall tiles hugging a corridor -------------
+    # ---- PIRANHA PLANTS: sit on hedge-wall cells (impassable); their 8-tile kill zone must
+    # avoid every reserved cell, and the ALIVE tour must survive. Placed in mirror pairs. ---
     plants = []
-    plant_pool = [(r, c) for r in range(1, SIZE - 1) for c in range(1, AX)
-                  if g[r][c] == WALL and (r, c) not in reserved
+    plant_pool = [(r, c) for r in range(SIZE) for c in range(0, 10)
+                  if g[r][c] == WALL and _region_of(r) is not None and (r, c) not in reserved
                   and any(0 <= nb[0] < SIZE and 0 <= nb[1] < SIZE and g[nb[0]][nb[1]] == FLOOR
                           for nb in _nbrs((r, c)))]
     rng.shuffle(plant_pool)
@@ -250,57 +247,62 @@ def _build(rng, n_spikes, n_plants, n_dests, n_slip):
         if len(plants) >= 2 * n_plants:
             break
         pair = [(r, c), (r, _mirror(c))]
-        if {nb for p in pair for nb in _king(p)} & reserved:      # 8-cell kill zone clear of safe cells
+        if {nb for pl in pair for nb in _king(pl)} & reserved:
             continue
-        if spec_ok(spikes, plants + pair):
+        if spec_ok(plants + pair):
             plants.extend(pair)
 
-    # a build is only accepted if BOTH racers can still complete the tour alive
-    if not spec_ok(spikes, plants):
+    if not spec_ok(plants):
         return None
 
-    # ---- SLIPPERY PUDDLES: a few scattered non-lethal floor tiles -------------
-    lethal_now = lethal_of(spikes, plants)
+    # ---- SLIPPERY PUDDLES: TACTICAL, right beside the plants - a safe floor tile that sits
+    # next to a plant's kill zone, so a skid can shove you into the jaws. Mirror pairs. -----
+    lethal_now = lethal_of(plants)
     slip = []
-    slip_pool = [c for c in floor_cells
-                 if c[1] < AX and c not in reserved and c not in lethal_now and c not in spikes]
-    rng.shuffle(slip_pool)
-    for cpos in slip_pool:
+    slip_pool = []
+    for pl in (p for p in plants if p[1] < 10):
+        for nb in _king(pl):                         # ring-2 floor around the plant
+            for nb2 in _nbrs(nb):
+                slip_pool.append(nb2)
+    for e in (p["entry"] for p in pipes if p["entry"][1] < 10):
+        slip_pool.extend(_nbrs(e))                   # fallback: on the pipe approaches
+    seen_slip, ordered = set(), []
+    for cell in slip_pool:
+        if cell not in seen_slip:
+            seen_slip.add(cell)
+            ordered.append(cell)
+    rng.shuffle(ordered)
+    for (r, c) in ordered:
         if len(slip) >= 2 * n_slip:
             break
-        if all(abs(cpos[0] - o[0]) + abs(cpos[1] - o[1]) > 2 for o in slip):
-            slip.extend([cpos, (cpos[0], _mirror(cpos[1]))])
-
-    # The outline cells are open lawn, not maze hedges. Do this after hazard
-    # placement so opening the exterior never adds traps/puddles to the new lawn.
-    # Re-apply the escape marker because the goal lives on the north edge.
-    carve(HEDGE_OUTLINE)
-    g[GOAL[0]][GOAL[1]] = ESCAPE
+        if not (0 <= r < SIZE and 0 <= c < 10) or g[r][c] == WALL:
+            continue
+        if (r, c) in reserved or (r, _mirror(c)) in reserved:
+            continue
+        if (r, c) in lethal_now or (r, c) in slip:   # a puddle you could stand on (not itself death)
+            continue
+        slip.extend([(r, c), (r, _mirror(c))])
 
     world = World(
         g, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
-        red_spawn=red_spawn, blue_spawn=blue_spawn, escape=goals, shine=goals,
-        spikes=spikes, plants=plants, pipes=pipes, slip=slip,
+        red_spawn=red_spawn, blue_spawn=blue_spawn, escape=GOALS, shine=GOALS,
+        spikes=[], plants=plants, pipes=pipes, slip=slip,
         red_stars=red_stars, blue_stars=blue_stars,
     )
-    remaining_outline = [(r, c) for (r, c) in HEDGE_OUTLINE if world.grid[r][c] == WALL]
-    if remaining_outline:
-        raise ValueError(f"city generated a hedge outline at {remaining_outline[:5]}")
     return world
 
 
 if __name__ == "__main__":
     for s in (1, 2, 3):
         w = generate(seed=s)
-        spikes, plants, slip = set(w.spikes), set(w.plants), set(w.slip)
+        slip, plants = set(w.slip), set(w.plants)
         entries = {p["entry"] for p in w.pipes}
         dests = {d for p in w.pipes for d in p["dests"]}
         rstars, bstars = set(w.red_stars), set(w.blue_stars)
         goals = {tuple(e) for e in w.escape}
         floor = sum(row.count(FLOOR) for row in w.rows())
-        sym = all(w.grid[r][c] == w.grid[r][_mirror(c)]
-                  for r in range(SIZE) for c in range(1, SIZE - 1))
-        print(f"\nseed {s}: {floor} floor, symmetric={sym}, spikes={len(spikes)} "
+        sym = all(w.grid[r][c] == w.grid[r][_mirror(c)] for r in range(SIZE) for c in range(SIZE))
+        print(f"\nseed {s}: {floor} floor, symmetric={sym}, spikes={len(w.spikes)} "
               f"plants={len(plants)} slip={len(slip)} pipes={len(w.pipes)} "
               f"dests/pipe={[len(p['dests']) for p in w.pipes]}")
         for r, rowstr in enumerate(w.rows()):
@@ -310,7 +312,6 @@ if __name__ == "__main__":
                 line += ("G" if cell in goals else "R" if cell == w.red_spawn
                          else "B" if cell == w.blue_spawn
                          else "*" if cell in rstars or cell in bstars
-                         else "P" if cell in plants else "^" if cell in spikes
-                         else "O" if cell in entries else "~" if cell in slip
-                         else "x" if cell in dests else ch)
+                         else "P" if cell in plants else "O" if cell in entries
+                         else "~" if cell in slip else "x" if cell in dests else ch)
             print(line)

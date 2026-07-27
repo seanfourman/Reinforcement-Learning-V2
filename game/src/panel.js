@@ -98,11 +98,11 @@ export const GLOBAL_PARAMS = [
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
-  // --- Round-2 game mechanics (New Donk City: spike traps + piranha plants + warp
-  // pipes). Structural: each edit regenerates the maze from the seed. ---
-  { key: 'r2Spikes', label: 'Spike traps', min: 0, max: 8, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Spike-trap tiles per side (mirrored). Stepping on one costs a life (respawn), so it only laces the risky routes, never the safe star tour.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 4, step: 1, sect: 'world', scope: 'r2', def: 2, desc: 'Piranha plants per side. Stepping within one tile of one (incl. diagonals) costs a life.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'r2Dests', label: 'Warp spread', min: 2, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Destinations per warp pipe (2-3). Each has a FIXED probability baked into the map, so a wider spread makes the pipe gamble harder to value.', fmt: (v) => `${Math.round(v)}` },
+  // --- Round-2 game mechanics (New Donk City: a regioned hedge maze linked by warp
+  // pipes + slippery puddles). Structural: each edit regenerates the maze from the seed. ---
+  { key: 'r2Dests', label: 'Warp spread', min: 2, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Exit pipes per dive pipe (2-3). Each has a FIXED probability baked into the map, so a wider spread makes the pipe gamble harder to value.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 4, step: 1, sect: 'world', scope: 'r2', def: 2, desc: 'Piranha plants per side (mirrored). Stepping within one tile of one (incl. diagonals) costs a life (respawn). A safe route around them always exists.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 8, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Slippery puddles per side (mirrored), placed beside the plants. A move on one may skid sideways into a plant’s jaws.', fmt: (v) => `${Math.round(v)}` },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -892,7 +892,7 @@ export function initPanel() {
         case 'dp': return isDP;                   // convergence + sweeps + speed: DP round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
         case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
-        case 'r2': return roundIndex === 1;       // Round-2 game mechanics (spikes/plants/pipes)
+        case 'r2': return roundIndex === 1;       // Round-2 game mechanics (regioned maze: pipes + puddles)
         default: return true;                     // 'always'
       }
     };

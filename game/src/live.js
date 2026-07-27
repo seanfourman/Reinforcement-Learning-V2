@@ -42,6 +42,10 @@ export function createLiveActors(scene, walkers) {
   const spawnFacing = { red: Math.PI, blue: Math.PI }; // restored on episode reset
   const rendered = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
   const target = { red: { x: 10, z: 18 }, blue: { x: 10, z: 18 } };
+  // The continuous simulation exposes velocity as well as position. Position
+  // snapshots can jitter around the interpolation target, whereas velocity is
+  // the stable direction the character is actually travelling.
+  const velocity = { red: { x: 0, z: 0 }, blue: { x: 0, z: 0 } };
   // Round-2 one-shot FX: a warp DIVE (shrink into the entrance pipe, pop out the exit)
   // or a hazard DEATH (impaled/eaten on the tile it died on, then respawn). Driven by
   // the env's per-frame event cells; overrides the normal target-follow while playing.
@@ -56,6 +60,8 @@ export function createLiveActors(scene, walkers) {
   let layout = null;
   let isCross = false;   // cross rounds (the hedge maze) have NO keys / gold
   let arena = false;     // continuous arena round: positions are world (x,z), no keys
+  let arenaScale = 1;    // scene units per simulated metre
+  let arenaOffset = { x: 0, z: 0 }; // sim -> established scene coordinates
   let agentScale = 1.2;  // walker scale (bigger in the open arena than in grid cells)
   let celebration = null;
   const poseAxis = new THREE.Vector3();
@@ -63,6 +69,13 @@ export function createLiveActors(scene, walkers) {
   const cw = (cell) => cellToWorld(cell.r, cell.c); // {r,c} -> {x,z}
   const cwArr = (arr) => cellToWorld(arr[0], arr[1]); // [row,col] -> {x,z}
   const arrPoint = (arr) => Array.isArray(arr) ? { x: arr[0], z: arr[1] } : null;
+  const arenaPoint = (arr) => {
+    const p = arrPoint(arr);
+    return p ? {
+      x: p.x * arenaScale + arenaOffset.x,
+      z: p.z * arenaScale + arenaOffset.z,
+    } : null;
+  };
 
   function headingTo(from, to, fallback = Math.PI) {
     if (!from || !to) return fallback;
@@ -225,14 +238,28 @@ export function createLiveActors(scene, walkers) {
     escGlow.visible = !on;
     if (!on) return;
 
+    const arenaSize = world?.arena || 20;
+    arenaScale = Math.max(0.01, Number(world?.sceneScale) || 1);
+    const sceneCenter = arrPoint(world?.sceneCenter) || {
+      x: arenaSize / 2,
+      z: arenaSize / 2,
+    };
+    arenaOffset = {
+      x: sceneCenter.x - (arenaSize * arenaScale) / 2,
+      z: sceneCenter.z - (arenaSize * arenaScale) / 2,
+    };
     const defaultSpawns = {
-      red: { x: (world?.arena || 20) - 3, z: (world?.arena || 20) - 2.5 },
-      blue: { x: 3, z: (world?.arena || 20) - 2.5 },
+      red: { x: arenaSize - 3, z: arenaSize - 2.5 },
+      blue: { x: 3, z: arenaSize - 2.5 },
     };
     for (const side of ['red', 'blue']) {
-      const sp = arrPoint(world?.spawns?.[side]) || defaultSpawns[side];
+      const simSpawn = arrPoint(world?.spawns?.[side]) || defaultSpawns[side];
+      const sp = {
+        x: simSpawn.x * arenaScale + arenaOffset.x,
+        z: simSpawn.z * arenaScale + arenaOffset.z,
+      };
       const firstTour = Array.isArray(world?.tours?.[side]) ? world.tours[side][0] : null;
-      const faceTarget = arrPoint(firstTour) || arrPoint(world?.goal);
+      const faceTarget = arenaPoint(firstTour) || arenaPoint(world?.goal);
       rendered[side] = { ...sp };
       target[side] = { ...sp };
       heading[side] = headingTo(sp, faceTarget, Math.PI);
@@ -246,8 +273,16 @@ export function createLiveActors(scene, walkers) {
     status.red = f.redStatus || 'normal';   // 'ghost' | 'frozen' | 'normal' (Round 1)
     status.blue = f.blueStatus || 'normal';
     if (arena) {
-      target.red = { x: f.red[0], z: f.red[1] };
-      target.blue = { x: f.blue[0], z: f.blue[1] };
+      target.red = {
+        x: f.red[0] * arenaScale + arenaOffset.x,
+        z: f.red[1] * arenaScale + arenaOffset.z,
+      };
+      target.blue = {
+        x: f.blue[0] * arenaScale + arenaOffset.x,
+        z: f.blue[1] * arenaScale + arenaOffset.z,
+      };
+      velocity.red = { x: f.redVel?.[0] || 0, z: f.redVel?.[1] || 0 };
+      velocity.blue = { x: f.blueVel?.[0] || 0, z: f.blueVel?.[1] || 0 };
       return;
     }
     target.red = cwArr(f.red);
@@ -285,12 +320,19 @@ export function createLiveActors(scene, walkers) {
     }
   }
 
-  function faceToward(walker, key, dx, dz) {
+  function faceToward(walker, key, dx, dz, dt) {
     if (Math.abs(dx) + Math.abs(dz) > 1e-4) {
       const t = Math.atan2(dx, dz);
       let d = t - heading[key];
       d = Math.atan2(Math.sin(d), Math.cos(d));
-      heading[key] += d * 0.35;
+      if (arena) {
+        // A real, frame-rate-independent body turn: even a 180-degree reversal
+        // takes visible time instead of completing in two or three frames.
+        const maxStep = 4.5 * Math.min(dt, 1 / 20);
+        heading[key] += THREE.MathUtils.clamp(d, -maxStep, maxStep);
+      } else {
+        heading[key] += d * 0.35;
+      }
     }
     walker.group.rotation.y = heading[key];
   }
@@ -412,7 +454,10 @@ export function createLiveActors(scene, walkers) {
       // ghost now moves ONE cell per step (even onto a wall cell), so a ghost move is
       // ~1 cell and interpolates like any move -> it walks square by square through the
       // wall. Only a big jump (episode reset goal->spawn) snaps.
-      const teleport = Math.hypot(dx, dz) > 1.5;
+      // Arena metres may be stretched into several scene units. Scale the reset
+      // threshold with that mapping so ordinary fast movement never gets mistaken
+      // for a teleport after the visual stretch.
+      const teleport = Math.hypot(dx, dz) > (arena ? 1.5 * arenaScale : 1.5);
       if (teleport) {
         r.x = tg.x; r.z = tg.z; // snap instead of sliding through walls
       } else {
@@ -429,7 +474,10 @@ export function createLiveActors(scene, walkers) {
         if (isCross || arena) heading[key] = spawnFacing[key];
         walker.group.rotation.y = heading[key];
       } else {
-        faceToward(walker, key, dx, dz);
+        const face = arena && Math.hypot(velocity[key].x, velocity[key].z) > 0.08
+          ? velocity[key]
+          : { x: dx, z: dz };
+        faceToward(walker, key, face.x, face.z, dt);
       }
       // ---- "?" power-up visuals (normal: updateWalker OWNS y - never clobber it) --
       const baseY = walker.baseY || 0;

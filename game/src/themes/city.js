@@ -506,13 +506,11 @@ export const city = {
 
     // ---- hedge maze: rounded leaf masses on every wall cell ---------------
     const mazeRows = world.rows || [];
+    // piranha plants stand on wall cells - keep the hedge off those (the plant is there)
     const plantSet = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
-    // the exit-pipe tiles are WALL cells too - keep hedges off them (a pipe stands there)
-    for (const p of world.pipes || []) if (p.exit) plantSet.add(p.exit[0] * GRID + p.exit[1]);
     const wallCells = [];
     for (let r = 0; r < GRID; r++) {
       for (let c = 0; c < GRID; c++) {
-        // hedges fill wall cells EXCEPT where a piranha plant stands (drawn below)
         if ((mazeRows[r] || '')[c] === '#' && !plantSet.has(r * GRID + c)) wallCells.push([r, c]);
       }
     }
@@ -879,43 +877,42 @@ export const city = {
     }).catch((e) => { console.warn('R2 object failed to load:', path, e); return null; });
 
     const cellX = (c) => c + 0.5, cellZ = (r) => r + 0.5;
-    let prevRed = null, prevBlue = null;   // last frame's actor cells (warp-entry detect)
 
-    // ---- SPIKE TRAPS: sunk under the lawn, SHOOT UP when an actor steps on ----
-    const spikeMat = track(new THREE.MeshStandardMaterial({
-      map: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_alb.png'),
-      normalMap: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_nrm.png', false),
-      roughnessMap: objTex(OBJ + 'Spike Trap/Textures/needletrap4x4mbody00_rgh.png', false),
-      color: 0xffffff, roughness: 0.62, metalness: 0.12,   // let the metal albedo read (no blue sheen)
+    // ---- WARP PIPES: you leap into a DIVE pipe (an entry) and pop OUT of an EXIT pipe (a
+    // destination) - BOTH stand as real green pipes, so a warp always goes pipe -> pipe,
+    // never onto open ground. Which exit you emerge from is the stochastic part.
+    const pipeMat = track(new THREE.MeshStandardMaterial({
+      map: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_alb.png'),
+      normalMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_nrm.png', false),
+      roughnessMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_rgh.png', false),
+      color: 0x46c24d, roughness: 0.55, metalness: 0.12,
+      emissive: 0x000000, emissiveIntensity: 0,           // NO glow - a plain green pipe
     }));
-    // sharp metal NEEDLES that shoot out of the trap plate on a hit (the DAE's own
-    // pop-up is a skeleton animation we stripped when deskinning, so add our own)
-    const needleMat = track(new THREE.MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.25, metalness: 0.7 }));
-    const needleGeo = track(new THREE.ConeGeometry(0.08, 0.8, 6));   // big, obvious metal spikes
-    const spikeObjs = [];                  // {r, c, box, needles, hot}
-    loadObj(OBJ + 'Spike Trap/Spike Trap.dae').then((proto) => {
+    const pipeObjs = [];                   // {r, c, wrap, flash, mat, role}
+    const pipeCells = [];
+    const pipeSeen = new Set();
+    const addPipe = (cell, role) => {
+      const key = cell[0] * GRID + cell[1];
+      if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], role }); }
+    };
+    for (const p of world.pipes || []) {
+      addPipe(p.entry, 'entrance');                       // the dive pipe
+      for (const d of p.dests || []) addPipe(d, 'exit');  // the exit pipes you pop out of
+    }
+    loadObj(OBJ + 'Warp Pipe/Warp Pipe.dae').then((proto) => {
       if (!proto) return;
-      for (const [r, c] of world.spikes || []) {
-        const box = fitObject(proto.clone(true), 0.9);
-        box.scale.y *= 0.4;                              // a LOW, flush trap plate (not a tall box)
-        setObjMat(box, spikeMat);
-        box.position.set(cellX(c), 0.02, cellZ(r));      // sits flush + VISIBLE
-        group.add(box);
-        const needles = new THREE.Group();
-        for (let i = 0; i < 9; i++) {                    // a 3x3 cluster of spikes
-          const cone = new THREE.Mesh(needleGeo, needleMat);
-          cone.position.set(((i % 3) - 1) * 0.24, 0.25, (Math.floor(i / 3) - 1) * 0.24);
-          cone.castShadow = true;
-          needles.add(cone);
-        }
-        needles.position.set(cellX(c), 0.1, cellZ(r));
-        needles.scale.y = 0.001;                          // retracted until triggered
-        group.add(needles);
-        spikeObjs.push({ r, c, box, needles, hot: 0 });
+      for (const pc of pipeCells) {
+        const wrap = fitObject(proto.clone(true), 0.95);
+        const mat = track(pipeMat.clone());
+        setObjMat(wrap, mat);
+        wrap.position.set(cellX(pc.c), 0.02, cellZ(pc.r));
+        group.add(wrap);
+        pipeObjs.push({ r: pc.r, c: pc.c, wrap, flash: 0, mat, role: pc.role });
       }
     });
 
-    // ---- PIRANHA PLANTS: stand on their tile, LUNGE + rise when they bite -----
+    // ---- PIRANHA PLANTS (carnivorous): stand on a hedge tile; their 8-cell zone kills.
+    // They LUNGE + rise when they bite (a char strays into the zone / dies there).
     const plantMat = track(new THREE.MeshStandardMaterial({
       map: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_alb.png'),
       normalMap: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_nrm.png', false),
@@ -931,38 +928,6 @@ export const city = {
         wrap.position.set(cellX(c), 0.02, cellZ(r));
         group.add(wrap);
         plantObjs.push({ r, c, wrap, baseS: wrap.scale.x, chomp: 0 });
-      }
-    });
-
-    // ---- WARP PIPES: the divable MOUTHS of the warp network (one per entry). A char
-    // leaps in and pops out at a destination (the emerge is the actor's own animation),
-    // so only the interactive entries stand as pipes - no fake, un-enterable landings.
-    const pipeMat = track(new THREE.MeshStandardMaterial({
-      map: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_alb.png'),
-      normalMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_nrm.png', false),
-      roughnessMap: objTex(OBJ + 'Warp Pipe/Textures/dokanbody_rgh.png', false),
-      color: 0x46c24d, roughness: 0.55, metalness: 0.12,
-      emissive: 0x000000, emissiveIntensity: 0,           // NO glow - a plain green pipe
-    }));
-    const pipeObjs = [];                   // {r, c, wrap, flash, mat, role}
-    const pipeCells = [];
-    const pipeSeen = new Set();
-    for (const p of world.pipes || []) {   // one divable pipe per warp ENTRANCE
-      const addPipe = (cell, role) => {
-        const key = cell[0] * GRID + cell[1];
-        if (!pipeSeen.has(key)) { pipeSeen.add(key); pipeCells.push({ r: cell[0], c: cell[1], role }); }
-      };
-      addPipe(p.entry, 'entrance');
-    }
-    loadObj(OBJ + 'Warp Pipe/Warp Pipe.dae').then((proto) => {
-      if (!proto) return;
-      for (const pc of pipeCells) {
-        const wrap = fitObject(proto.clone(true), 0.95);
-        const mat = track(pipeMat.clone());
-        setObjMat(wrap, mat);
-        wrap.position.set(cellX(pc.c), 0.02, cellZ(pc.r));
-        group.add(wrap);
-        pipeObjs.push({ r: pc.r, c: pc.c, wrap, flash: 0, mat, role: pc.role });
       }
     });
 
@@ -1091,35 +1056,18 @@ export const city = {
         tx.mesh.rotation.y = Math.atan2(x2 - x, z2 - z) + TAXI_FWD;   // face travel direction
       }
 
-      // ---- Round-2 hazards react to the live frame. A death/warp resolves in ONE
-      // sim tick (the char instantly respawns/teleports), so we can't key off the
-      // char's CURRENT tile - we key off the EVENT cells the env reports: DeadAt (the
-      // tile a char died on) and WarpFrom / Warp (the pipe dived into / popped out of).
+      // ---- PIRANHA PLANTS react to the live frame: a hard LUNGE when a char strays into
+      // (or dies in) the plant's 8-cell zone. Warp pipes stay static - the leap/emerge
+      // reads from the char's own animation (live.js).
       const rCell = frame && Array.isArray(frame.red) ? frame.red : null;
       const bCell = frame && Array.isArray(frame.blue) ? frame.blue : null;
-      const key = (cell) => cell[0] * GRID + cell[1];
       const cheby = (o, cell) => cell && Math.max(Math.abs(cell[0] - o.r), Math.abs(cell[1] - o.c)) <= 1;
-
-      const deadCells = new Set();     // tiles a char died on this frame
-      const plantDeaths = [];          // DeadAt tiles from a PLANT kill
+      const plantDeaths = [];
       if (frame) {
         for (const [d, at] of [[frame.redDead, frame.redDeadAt], [frame.blueDead, frame.blueDeadAt]]) {
-          if (at && d === 'spike') deadCells.add(key(at));
           if (at && d === 'plant') plantDeaths.push(at);
         }
       }
-
-      // SPIKES: the trap's NEEDLES shoot up on the tile a char just died on (NO char
-      // animation - the rising spikes ARE the death). Rise fast, sink slowly.
-      for (const s of spikeObjs) {
-        const hit = deadCells.has(key(s));
-        s.hot = hit ? 1 : Math.max(0, s.hot - dt * 1.4);
-        const e = s.hot * s.hot * (3 - 2 * s.hot);
-        s.needles.scale.y = 0.001 + e * 1.3;                       // spikes SHOOT UP
-        s.box.position.y = 0.02 + e * 0.06;                        // the plate jolts
-      }
-
-      // PLANTS: STATIC; a hard LUNGE when a char dies in its 8-cell zone (incl diagonal)
       for (const p of plantObjs) {
         const bite = plantDeaths.some((at) => cheby(p, at)) || cheby(p, rCell) || cheby(p, bCell);
         p.chomp = bite ? 1 : Math.max(0, p.chomp - dt * 1.4);
@@ -1128,9 +1076,6 @@ export const city = {
         p.wrap.rotation.y = lunge * 0.5;
         p.wrap.position.y = 0.02 + lunge * 0.26;
       }
-
-      // PIPES: fully STATIC (no glow, no grow) - the warp reads from the char's leap/fall.
-      if (frame) { prevRed = frame.red; prevBlue = frame.blue; }
     }
 
     function dispose() {

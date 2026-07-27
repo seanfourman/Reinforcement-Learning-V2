@@ -139,7 +139,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if route == "/api/mdp":
             return self._json(match.mdp_spec())
         if route == "/api/field":
-            return self._json(match.arena_field(q.get("agent", ["blue"])[0]))
+            return self._json(match.arena_field(
+                q.get("agent", ["blue"])[0],
+                mode=q.get("mode", ["value"])[0],
+            ))
         if route == "/api/va":
             return self._json(match.va_probe(q.get("agent", ["blue"])[0]))
         if route == "/api/reward":

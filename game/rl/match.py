@@ -125,11 +125,11 @@ class Match:
         self.block_ghost_prob = 0.5             # P(Ghost) on a Mystery Block
         self.coin_reward = COIN_REWARD          # value of an optional coin
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
-        # Round-2 game mechanics (New Donk City): hazard counts, applied at WORLD GEN
-        # (a change regenerates the maze, since they alter the layout).
-        self.r2_spikes = 3                      # spike traps per side
-        self.r2_plants = 2                      # piranha plants per side
-        self.r2_dests = 3                       # destinations per warp pipe (2-3, fixed probs)
+        # Round-2 game mechanics (New Donk City): maze knobs, applied at WORLD GEN
+        # (a change regenerates the regioned maze, since they alter the layout).
+        self.r2_dests = 3                       # exit pipes per dive pipe (2-3, fixed probs)
+        self.r2_plants = 2                      # piranha plants per side (mirrored)
+        self.r2_slip = 3                        # slippery puddles per side (mirrored)
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
@@ -179,9 +179,9 @@ class Match:
             return ContinuousArena(seed, round_id=round_id,
                                    theme=getattr(mod, "THEME", "ruined"))
         gen_cfg = {}
-        if round_id == 2:                       # New Donk City hazard counts
-            gen_cfg = {"n_spikes": self.r2_spikes, "n_plants": self.r2_plants,
-                       "n_dests": self.r2_dests}
+        if round_id == 2:                       # New Donk City maze knobs
+            gen_cfg = {"n_dests": self.r2_dests, "n_plants": self.r2_plants,
+                       "n_slip": self.r2_slip}
         return GridWorld(seed, round_id=round_id, gen_cfg=gen_cfg)
 
     def _apply_env_config(self):
@@ -288,6 +288,13 @@ class Match:
         # per-cell visit counts per side (the "where do they travel" heatmap)
         self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
         self.blue_visits = [[0] * self.env.W for _ in range(self.env.H)]
+        # Continuous rounds use a denser position histogram instead of pretending
+        # their float coordinates are board cells.
+        self.arena_visit_n = 32
+        self.arena_visits = {
+            "red": [[0] * self.arena_visit_n for _ in range(self.arena_visit_n)],
+            "blue": [[0] * self.arena_visit_n for _ in range(self.arena_visit_n)],
+        }
         # outcome breakdown: split the old "draw" bucket into a genuine dead-heat
         # vs a max-steps timeout (which used to be conflated)
         self.outcomes = {"red": 0, "blue": 0, "draw": 0, "timeout": 0}
@@ -373,13 +380,21 @@ class Match:
                 self.act_counts["red"][self.a_red] += 1
             if self.a_blue < len(self.act_counts["blue"]):
                 self.act_counts["blue"][self.a_blue] += 1
-            if self.env.objective != "arena":   # arena positions are floats, not cells
+            if self.env.objective != "arena":
                 for pos, vis in ((self.env.red_pos, self.red_visits),
                                  (self.env.blue_pos, self.blue_visits)):
                     # count FLOOR cells only; a ghosting agent can sit on a wall cell,
                     # which the travel heatmap (floor-only) never reads (skip dead writes)
                     if pos in self.env.cell_index:
                         vis[pos[0]][pos[1]] += 1
+            else:
+                A = float(getattr(self.env, "arena", 20.0))
+                n = self.arena_visit_n
+                for side, pos in (("red", self.env.red_pos),
+                                  ("blue", self.env.blue_pos)):
+                    i = max(0, min(n - 1, int(float(pos[0]) / A * n)))
+                    j = max(0, min(n - 1, int(float(pos[1]) / A * n)))
+                    self.arena_visits[side][j][i] += 1
             if len(self._frames) < FRAME_CAP:
                 self._frames.append(self._replay_snapshot())
             self.s_red, self.s_blue = ns_red, ns_blue
@@ -572,15 +587,15 @@ class Match:
                 self.block_reward = max(0.0, min(2.0, float(p["blockReward"])))
                 replan = True
 
-            # ---- GLOBAL: Round-2 hazard counts (regenerate the New Donk City maze) ----
-            if "r2Spikes" in p:
-                self.r2_spikes = max(0, min(8, int(p["r2Spikes"])))
+            # ---- GLOBAL: Round-2 maze knobs (regenerate the New Donk City maze) ----
+            if "r2Dests" in p:
+                self.r2_dests = max(2, min(3, int(p["r2Dests"])))
                 need_env_rebuild = True
             if "r2Plants" in p:
                 self.r2_plants = max(0, min(4, int(p["r2Plants"])))
                 need_env_rebuild = True
-            if "r2Dests" in p:
-                self.r2_dests = max(2, min(3, int(p["r2Dests"])))
+            if "r2Slip" in p:
+                self.r2_slip = max(0, min(8, int(p["r2Slip"])))
                 need_env_rebuild = True
 
             # ---- GLOBAL: DQN internals ----
@@ -675,9 +690,9 @@ class Match:
             "freezeLen": self.freeze_len,
             "coinReward": round(self.coin_reward, 2),
             "blockReward": round(self.block_reward, 2),
-            "r2Spikes": self.r2_spikes,
-            "r2Plants": self.r2_plants,
             "r2Dests": self.r2_dests,
+            "r2Plants": self.r2_plants,
+            "r2Slip": self.r2_slip,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -1002,9 +1017,9 @@ class Match:
                 n_stars = getattr(env, "n_stars", 0)
                 star_mode = getattr(env, "star_mode", False)
                 n_floor = getattr(env, "n_cells", None)
-                n_spikes = len(getattr(env, "spike_cells", ()))
-                n_plants = len(getattr(env, "plant_cells", ()))
                 n_pipes = len(getattr(env, "pipe_map", ()))
+                n_slip = len(getattr(env, "slip_cells", ()))
+                n_plants = len(getattr(env, "plant_cells", ()))
                 if star_mode:
                     state_desc = (f"your tile AND which of your {n_stars} Power Stars you already "
                                   f"hold - the cell index x a {n_stars}-bit star mask")
@@ -1013,24 +1028,26 @@ class Match:
                     state_desc = "your tile only: the (row, column) cell index"
                     state_size = n_floor
                 observation = (f"Each model sees its own tile and its own {n_stars}-star progress - a "
-                               "single-agent navigator. Spikes, plants and pipes are FIXED map "
+                               "single-agent navigator. The maze walls and pipes are FIXED map "
                                "features, so (tile, stars-held) stays Markov; the rival is invisible.")
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
                             "own mirror-image copy of the same star-collecting maze.")
-                dynamics = (f"Deterministic walking (walls block). {n_spikes} SPIKE tiles and "
-                            f"{n_plants} PIRANHA PLANT tiles are lethal - stepping on a spike, or "
-                            f"onto a tile within one of a plant (incl. diagonals), costs a life: you "
-                            f"take the loss penalty and RESPAWN (keeping any stars), and the race goes "
-                            f"on. {n_pipes} WARP PIPES teleport you to one of 2-3 FIXED destinations "
-                            f"with FIXED probabilities (baked into the map, never re-rolled), and they "
-                            f"CHAIN and LOOP - a fast but risky alternative to the safe walk, whose "
-                            f"EXPECTED payoff a model must learn from returns alone.")
+                dynamics = (f"Deterministic walking (hedge walls block). The maze is split into four "
+                            f"stacked REGIONS separated by solid walls, so you CANNOT walk between "
+                            f"them: the only way up is the {n_pipes} WARP PIPES - you leap into a dive "
+                            f"pipe and pop OUT of one of 2-3 EXIT pipes in the region above, each with a "
+                            f"FIXED probability baked into the map (never re-rolled). {n_plants} PIRANHA "
+                            f"PLANTS lurk on the hedges; stepping within one tile of one (incl. diagonals) "
+                            f"costs a life - you take the loss penalty and RESPAWN (keeping any stars), "
+                            f"and the race goes on. {n_slip} slippery PUDDLES sit beside the plants, so a "
+                            f"skid can shove you into the jaws. A safe route around every plant always "
+                            f"exists; the model must learn it - plus the pipe gamble - from returns alone.")
                 rewards = [["Step", -0.01], ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
-                           ["Win (all 3 stars, then the goal)", 1.0], ["Die on a hazard (respawn)", -1.0]]
-                win = (f"Gather all {n_stars} of your Power Stars, THEN reach the goal - it stays "
-                       "LOCKED until you hold every star. First to finish the tour wins; a "
-                       "simultaneous finish is a draw.")
+                           ["Win (all 3 stars, then the goal)", 1.0], ["Die on a plant (respawn)", -1.0]]
+                win = (f"Gather all {n_stars} of your Power Stars - one per region - THEN reach the "
+                       "goal at the top; it stays LOCKED until you hold every star. First to finish "
+                       "the tour wins; a simultaneous finish is a draw.")
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
@@ -1320,8 +1337,28 @@ class Match:
         """Board coverage / unique cells / visitation entropy (exploration breadth)."""
         with self.lock:
             if self.env.objective == "arena":
-                return {"agent": agent, "coverage": 0.0, "unique": 0,
-                        "entropy": 0.0, "maxVisits": 0, "floor": 0}
+                vis = self.arena_visits.get(agent, self.arena_visits["blue"])
+                n = len(vis)
+                shape = getattr(self.env, "shape", "square")
+                counts = []
+                for j, row in enumerate(vis):
+                    for i, value in enumerate(row):
+                        if shape == "circle" and math.hypot(
+                                i + 0.5 - n / 2, j + 0.5 - n / 2) > n / 2:
+                            continue
+                        counts.append(value)
+                total = sum(counts) or 1
+                uniq = sum(1 for value in counts if value > 0)
+                ent = -sum((value / total) * math.log2(value / total)
+                           for value in counts if value > 0)
+                return {
+                    "agent": agent,
+                    "coverage": round(uniq / len(counts), 3) if counts else 0.0,
+                    "unique": uniq,
+                    "entropy": round(ent, 3),
+                    "maxVisits": max(counts) if counts else 0,
+                    "floor": len(counts),
+                }
             vis = self.red_visits if agent == "red" else self.blue_visits
             floor = list(self.env.floor_cells)
             counts = [vis[r][c] for (r, c) in floor]
@@ -1356,7 +1393,7 @@ class Match:
                 grid[r][c] = round(v, 4) if v is not None else None
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
 
-    def arena_field(self, agent, n=22):
+    def arena_field(self, agent, n=22, mode="value"):
         """Value + greedy-action field for the CONTINUOUS arenas: sample the agent's
         Q over an n x n grid of still (x,z) probes. Grid rounds return unavailable
         (they use value_grid). This is what makes R4/R5 not a black box."""
@@ -1369,6 +1406,27 @@ class Match:
                 return {"available": False}
             wj = env.to_json()
             A = float(wj.get("arena", 20.0))
+            shape = wj.get("shape", "square")
+            if mode == "visits":
+                visits = self.arena_visits.get(agent, self.arena_visits["blue"])
+                vmax = max((max(row) for row in visits), default=0)
+                values = []
+                vn = len(visits)
+                for j, row in enumerate(visits):
+                    out = []
+                    for i, v in enumerate(row):
+                        x = (i + 0.5) / vn * A
+                        z = (j + 0.5) / vn * A
+                        outside = shape == "circle" and math.hypot(x - A / 2, z - A / 2) > A / 2
+                        out.append(None if outside else v)
+                    values.append(out)
+                return {
+                    "available": True, "agent": agent, "mode": "visits",
+                    "n": vn, "arena": A, "shape": shape,
+                    "sceneCenter": wj.get("sceneCenter"),
+                    "sceneScale": wj.get("sceneScale", 1.0),
+                    "value": values, "vmin": 0, "vmax": vmax or 1,
+                }
             solids = list(wj.get("obstacles", []) or [])   # solid circles (skip inside)
             vals, pols = [], []
             vmin, vmax = float("inf"), float("-inf")
@@ -1377,7 +1435,9 @@ class Match:
                 for i in range(n):
                     x = (i + 0.5) / n * A
                     z = (j + 0.5) / n * A
-                    if any((x - c[0]) ** 2 + (z - c[1]) ** 2 < (c[2] + 0.2) ** 2 for c in solids):
+                    outside = shape == "circle" and math.hypot(x - A / 2, z - A / 2) > A / 2
+                    blocked = any((x - c[0]) ** 2 + (z - c[1]) ** 2 < (c[2] + 0.2) ** 2 for c in solids)
+                    if outside or blocked:
                         vr.append(None)
                         pr.append(None)
                         continue
@@ -1389,7 +1449,10 @@ class Match:
                     pr.append(int(max(range(len(q)), key=lambda k: q[k])))
                 vals.append(vr)
                 pols.append(pr)
-            return {"available": True, "agent": agent, "n": n, "arena": A,
+            return {"available": True, "agent": agent, "mode": mode,
+                    "n": n, "arena": A, "shape": shape,
+                    "sceneCenter": wj.get("sceneCenter"),
+                    "sceneScale": wj.get("sceneScale", 1.0),
                     "value": vals, "policy": pols,
                     "vmin": round(vmin, 3) if vmin < float("inf") else 0.0,
                     "vmax": round(vmax, 3) if vmax > float("-inf") else 1.0,

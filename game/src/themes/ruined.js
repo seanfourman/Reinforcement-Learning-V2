@@ -212,7 +212,10 @@ export const ruined = {
     const fallingObjects = [];
 
     const A = world.arena || 20;
-    const C = A / 2;
+    // Preserve the original Ruined Kingdom composition at (10, 10). The 10 m
+    // gameplay bounds are mapped into this existing scene; they must not drag
+    // the platform away from its camera, towers, and hard-authored backdrop.
+    const C = world.sceneCenter?.[0] ?? A / 2;
     const obstacles = world.obstacles || [];
     const goalR = world.goalR || 1.4;
     const spawns = world.spawns || {

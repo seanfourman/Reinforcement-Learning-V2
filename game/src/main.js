@@ -566,13 +566,19 @@ async function poll() {
     if (heatAgent && pollCount % 5 === 0) {
       if (replayActive && heatMode === "policy" && replay.renderPolicy()) {
         // A replay must show the policy from its recorded sweep, not today's live model.
-      } else if (arenaMode && heatMode !== "visits") {
-        // continuous rounds have no cells: sample the DQN's value field over the arena
+      } else if (arenaMode) {
+        // Continuous rounds have no board cells. Value/Policy are sampled slices
+        // through the network; Visits is a continuous position-density field.
         const f = await (
-          await fetch(`${API}/api/field?agent=${heatAgent}`, { cache: "no-store" })
+          await fetch(`${API}/api/field?agent=${heatAgent}&mode=${heatMode}`, {
+            cache: "no-store",
+          })
         ).json();
         if (holdUI || menuIdle) return; // don't surface an overlay into the menu
-        if (f.available) { heatmap.setArenaField(f); heatmap.showArena(); }
+        if (f.available) {
+          heatmap.setArenaField(f, heatMode);
+          heatmap.showArena(heatMode);
+        }
       } else {
         const m = heatMode === "value" ? "q" : heatMode === "policy" ? "policy" : "visits";
         const v = await (
@@ -784,7 +790,7 @@ window.RL = {
     heatAgent = agent;
     heatMode = mode || "value";
     if (!agent) heatmap.hide();
-    else if (arenaMode && heatMode !== "visits") heatmap.showArena();
+    else if (arenaMode) heatmap.showArena(heatMode);
     else if (heatMode === "value") heatmap.showNumbers();
     else if (heatMode === "policy" && replayActive && replay.renderPolicy()) {}
     else if (heatMode === "policy") heatmap.showPolicy();
