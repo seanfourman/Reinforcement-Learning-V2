@@ -1024,18 +1024,6 @@ export const ruined = {
       return geometry;
     })();
 
-    const explosionCurlGeometry = (() => {
-      const path = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(-0.5, 0, -0.02),
-        new THREE.Vector3(-0.38, 0, 0.3),
-        new THREE.Vector3(-0.08, 0, 0.48),
-        new THREE.Vector3(0.28, 0, 0.4),
-        new THREE.Vector3(0.48, 0, 0.12),
-        new THREE.Vector3(0.32, 0, -0.08),
-      ]);
-      return track(new THREE.TubeGeometry(path, 12, 0.045, 5, false));
-    })();
-
     const explosionCoreTexture = (() => {
       const cv = document.createElement("canvas");
       cv.width = cv.height = 128;
@@ -1213,46 +1201,6 @@ export const ruined = {
         });
       }
 
-      const curlLayers = [];
-      for (let i = 0; i < 3; i++) {
-        const angle = (i / 3) * Math.PI * 2 + Math.random() * 0.45;
-        const material = new THREE.MeshBasicMaterial({
-          color: i === 1 ? 0xfff394 : 0xf6de4a,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          depthTest: true,
-          toneMapped: false,
-        });
-        const mesh = new THREE.Mesh(explosionCurlGeometry, material);
-        const curlRadius = 0.5 + Math.random() * 0.14;
-        const origin = new THREE.Vector3(
-          Math.cos(angle) * curlRadius,
-          0.08 + i * 0.055,
-          Math.sin(angle) * curlRadius,
-        );
-        mesh.position.copy(origin);
-        mesh.rotation.y = angle;
-        mesh.scale.setScalar(0.001);
-        mesh.renderOrder = 31;
-        blast.add(mesh);
-        curlLayers.push({
-          mesh,
-          material,
-          origin,
-          delay: 0.19 + i * 0.028,
-          life: 0.28 + Math.random() * 0.055,
-          maxScale: 0.72 + Math.random() * 0.17,
-          maxOpacity: 0.92,
-          spin: (Math.random() - 0.5) * 1.2,
-          drift: new THREE.Vector3(
-            Math.cos(angle) * (0.16 + Math.random() * 0.1),
-            0.1 + Math.random() * 0.1,
-            Math.sin(angle) * (0.16 + Math.random() * 0.1),
-          ),
-        });
-      }
-
       // Character impacts end on the fire cluster. Only a wall hit leaves the
       // brief pale debris cloud visible in the Odyssey reference.
       const dustLayers = [];
@@ -1340,7 +1288,6 @@ export const ruined = {
         Math.max(
           0.52,
           ...fireLayers.map((layer) => layer.delay + layer.life),
-          ...curlLayers.map((layer) => layer.delay + layer.life),
           ...dustLayers.map((layer) => layer.delay + layer.life),
         ) + 0.06;
       explosionFx.push({
@@ -1350,7 +1297,6 @@ export const ruined = {
         burst,
         burstMat,
         fireLayers,
-        curlLayers,
         dustLayers,
         light,
         lightPeak: isHit ? 18 : 15,
@@ -1441,25 +1387,6 @@ export const ruined = {
               (1 - THREE.MathUtils.smoothstep(local, 0.1, 0.68));
         }
 
-        for (const layer of fx.curlLayers) {
-          const local = (fx.age - layer.delay) / layer.life;
-          if (local <= 0 || local >= 1) {
-            layer.material.opacity = 0;
-            continue;
-          }
-          const appear = THREE.MathUtils.smoothstep(local, 0, 0.1);
-          const fade = 1 - THREE.MathUtils.smoothstep(local, 0.46, 1);
-          const grow = 1 - Math.pow(1 - Math.min(1, local / 0.22), 3);
-          layer.mesh.scale.setScalar(
-            Math.max(0.001, layer.maxScale * grow),
-          );
-          layer.mesh.position
-            .copy(layer.origin)
-            .addScaledVector(layer.drift, local);
-          layer.mesh.rotation.y += layer.spin * dt;
-          layer.material.opacity = appear * fade * layer.maxOpacity;
-        }
-
         for (const layer of fx.dustLayers) {
           const local = (fx.age - layer.delay) / layer.life;
           if (local <= 0 || local >= 1) {
@@ -1496,7 +1423,6 @@ export const ruined = {
       fx.coreMat.dispose();
       fx.burstMat.dispose();
       for (const layer of fx.fireLayers) layer.material.dispose();
-      for (const layer of fx.curlLayers) layer.material.dispose();
       for (const layer of fx.dustLayers) layer.material.dispose();
     }
 
