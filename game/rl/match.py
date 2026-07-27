@@ -22,7 +22,7 @@ import threading
 from collections import deque
 
 from env import (GridWorld, N_ACTIONS,
-                 COIN_REWARD, GHOST_LEN, FREEZE_LEN, SLIP_PROB)
+                 COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN, SLIP_PROB)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
@@ -75,17 +75,19 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
     return max(lo, min(hi, n))
 
 
-def red_params(tier):
-    """Map a CPU tier (1..5) to Red's learning-rate + epsilon schedule (+ DP plan speed)."""
-    t = max(1, min(5, int(tier)))
-    f = (t - 1) / 4.0                          # 0 .. 1
+def red_params(diff):
+    """Map a CPU DIFFICULTY fraction (0 = easiest / Mario .. 1 = hardest / Parabones) to
+    Red's learning-rate + epsilon schedule (+ DP plan speed). This is PER-CHARACTER (finer
+    than the 1-5 display tier), so all 10 opponents scale to distinct, progressively better
+    hyperparameters - the point being you need increasingly good play to beat them."""
+    f = max(0.0, min(1.0, float(diff)))        # 0 .. 1
     lerp = lambda a, b: a + (b - a) * f        # noqa: E731
     return {
-        "alpha": round(lerp(0.10, 0.35), 3),   # higher tier -> learns faster
-        "eps_start": round(lerp(1.00, 0.70), 3),
-        "eps_end": round(lerp(0.30, 0.02), 3), # higher tier -> ends much greedier (stronger)
-        "eps_episodes": int(lerp(6000, 800)),  # higher tier -> decays sooner
-        "plan_speed": round(lerp(0.25, 1.6), 3),  # DP (R1): higher tier converges faster
+        "alpha": round(lerp(0.08, 0.40), 3),   # harder -> learns faster (TD/MC rounds)
+        "eps_start": round(lerp(1.00, 0.60), 3),
+        "eps_end": round(lerp(0.35, 0.01), 3), # harder -> ends much greedier (stronger)
+        "eps_episodes": int(lerp(9000, 500)),  # harder -> decays sooner
+        "plan_speed": round(lerp(0.15, 2.2), 3),  # DP (R1): harder converges much faster
     }
 
 
@@ -127,8 +129,9 @@ class Match:
         # Blue epsilon schedule: linear eps_start -> eps_end over eps_episodes, then hold
         self.eps_start, self.eps_end, self.eps_episodes = 1.0, 0.05, 3000
         self.target_episodes = None            # auto-pause after N episodes (None = run forever)
-        self.red_tier = 1                      # CPU difficulty, set from the chosen character
-        self._red_from_tier()                  # derive Red's params from the tier
+        self.red_tier = 1                      # CPU display tier (1-5), from the chosen character
+        self.red_diff = 0.0                    # CPU difficulty 0..1 (per-character, finer)
+        self._red_from_tier()                  # derive Red's params from the difficulty
         # per-round algorithm overrides from the menu selection (empty = the
         # ROUND_ALGOS defaults). cpu_algos = the chosen CPU character's algorithm per
         # round (Red); player_algos = the player's card pick per round (Blue). Applied
@@ -209,9 +212,9 @@ class Match:
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
-        """(Re)derive Red's params from its tier. Manual overrides via set_red_params
-        replace these until the tier (chosen character) changes again."""
-        rp = red_params(self.red_tier)
+        """(Re)derive Red's params from its per-character DIFFICULTY. Manual overrides via
+        set_red_params replace these until the character (difficulty) changes again."""
+        rp = red_params(self.red_diff)
         self.red_alpha = rp["alpha"]
         self.red_gamma = RED_GAMMA
         self.red_eps_start = rp["eps_start"]
@@ -596,15 +599,18 @@ class Match:
             "targetEpisodes": self.target_episodes or 0,
         }
 
-    def set_cpu_tier(self, tier):
-        """Set the CPU (Red) difficulty from the chosen character's tier (1..5).
-        Rebuilds Red at the new strength and restarts the contest fresh. No-op if
-        the tier is unchanged, so the frontend can send it freely on game start."""
+    def set_cpu_tier(self, tier, diff=None):
+        """Set the CPU (Red) difficulty from the chosen character. ``tier`` (1..5) is the
+        display tier; ``diff`` (0..1) is the finer PER-CHARACTER strength that actually
+        drives the hyperparameters (defaults to the tier if not given). Rebuilds Red and
+        restarts fresh; no-op if unchanged, so the frontend can send it freely on start."""
         with self.lock:
             t = max(1, min(5, int(tier)))
-            if t == self.red_tier:
+            d = ((t - 1) / 4.0) if diff is None else max(0.0, min(1.0, float(diff)))
+            if t == self.red_tier and abs(d - self.red_diff) < 1e-6:
                 return
             self.red_tier = t
+            self.red_diff = d
             self._red_from_tier()              # a new opponent resets any manual override
             self._build_agents()
             self.finish_event = None
@@ -846,6 +852,7 @@ class Match:
                             "gamble: Ghost (phase through walls one cell at a time, ~4 moves) or "
                             "Freeze (stuck for 3 turns).")
                 rewards = [["Step", -0.01], ["Coin", round(COIN_REWARD, 2)],
+                           ["? block -> Ghost", round(BLOCK_REWARD, 2)],
                            ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
                        "simultaneous arrival is a draw.")
@@ -992,7 +999,7 @@ class Match:
                     "name": getattr(a, "name", ""),
                     "gamma": getattr(a, "gamma", None),
                     "theta": getattr(a, "theta", None),
-                    "phases": 1 if getattr(a, "cross", True) else 3,
+                    "phases": 1,   # single-goal DP round (VI/PI run one plan)
                     "sweepCount": sum(getattr(a, "sweeps", []) or []),
                     "backups": getattr(a, "backups", 0),
                     "policyChanges": list(getattr(a, "policy_changes", []) or []),
@@ -1242,8 +1249,10 @@ class Match:
 
     def policy_agreement(self):
         """Fraction of learned cells where Red's and Blue's greedy actions match.
-        On the DP round VI and PI converge to the SAME optimal policy (-> ~100%);
-        elsewhere the two learners can diverge. Grid rounds only."""
+        NOTE: VI and PI converge to the SAME optimal policy only for the SAME MDP; on
+        Round 1 Red and Blue own MIRRORED coin/block layouts, so their optimal policies
+        legitimately DIFFER (this reads well below 100%, and that is not a convergence
+        bug). Grid rounds only."""
         with self.lock:
             if self.env.objective == "arena":
                 return {"available": False}

@@ -1,9 +1,10 @@
 """Two-agent grid world - the live RL environment (Gymnasium API).
 
-SKELETON round (no real game yet): each agent heads from its spawn to the goal
-tile; first one there WINS, a simultaneous arrival is a DRAW. Deterministic moves,
-no hazards, no reward shaping - a bare navigate-to-goal shell that each round's real
-game will be built on top of.
+Each agent heads from its spawn to the goal tile; first one there WINS, a
+simultaneous arrival is a DRAW. Round 1 (Peach's Castle) layers a REAL stochastic
+MDP on top - scoring coins, slippery ICE, and "?" ghost/freeze blocks, all gated on
+``self.rich`` (see state_transition / step). The other grid rounds stay bare
+deterministic navigate-to-goal shells until their real game is built.
 
 This subclasses ``gymnasium.Env`` to "capture" the Gymnasium concept, but it is a
 two-agent env (PettingZoo-style): ``step`` takes a pair of actions and returns

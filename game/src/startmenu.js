@@ -64,6 +64,19 @@ export function getCpuTier() {
   }
 }
 
+// the CPU's finer PER-CHARACTER difficulty, 0 (Mario, easiest) .. 1 (Parabones, hardest).
+// The 1-5 tier is only the display label; THIS is what scales Red's hyperparameters so all
+// 10 opponents are distinct and progressively harder to beat.
+export function getCpuDifficulty() {
+  try {
+    const i = JSON.parse(localStorage.getItem("rl-chars") || "{}")["1"];
+    const n = CHARACTERS.length - 1;
+    return Number.isInteger(i) && n > 0 ? Math.max(0, Math.min(1, i / n)) : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
 // the CPU (Computer chair, slot "1") character's display name, for the CPU panel
 export function getCpuName() {
   try {

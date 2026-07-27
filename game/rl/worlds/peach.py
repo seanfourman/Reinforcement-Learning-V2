@@ -1,13 +1,15 @@
-"""Round 1 - Peach's Castle: the "Race to the Power Moon" maze (Every-visit vs
-First-visit MC).
+"""Round 1 - Peach's Castle: the "Race to the Power Moon" maze - the DYNAMIC-PROGRAMMING
+round (Value Iteration vs Policy Iteration).
 
 A procedurally-generated, MIRROR-SYMMETRIC marble maze on the castle floor. Both
 models spawn in the top corners and RACE through the maze to the Power Moon (Shine)
 at the bottom-centre; first one there WINS, a simultaneous arrival is a DRAW. The
 maze is regenerated from the world SEED, so every seed is a fresh-but-fair contest.
-Coins line the corridors as decoration (they do not score - a memoryless tabular
-agent can't track collection, so a free-collection game just loops; the SKILL here
-is learning the maze route to the Moon faster/better than the rival).
+It is a real stochastic MDP: each agent owns its OWN mirror set of SCORING coins
+(+0.2, tracked in the state's collected-mask) and a "?" power-up block (a 50/50
+ghost/freeze gamble), plus shared slippery ICE cells - so the DP planners must
+optimise an EXPECTED value, not just a shortest path (the SKILL is a better/faster
+plan than the rival). See ``env.py`` for the exact dynamics/rewards.
 
 Hard rules that keep every seed sensible:
   * SYMMETRY  - carve the LEFT half, mirror it to the right, connect across the

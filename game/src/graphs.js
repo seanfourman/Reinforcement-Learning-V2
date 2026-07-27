@@ -74,7 +74,10 @@ function makeChart(canvas, cfg) {
   const ctx = canvas.getContext("2d");
   let W = 0,
     H = 0,
-    lastPoints = null;
+    lastPoints = null,
+    vs = 0, // zoom viewport start / end as fractions of the points array (wheel to zoom)
+    ve = 1,
+    frame = null; // last-draw geometry, so the hover readout can map a pixel -> value
   // size the drawing BUFFER to the on-screen box x DPR so lines stay crisp
   function fit() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -96,6 +99,14 @@ function makeChart(canvas, cfg) {
     // drawn while its tab was hidden gets a 0/fallback width; shown wider, that small
     // bitmap is scaled up and the lines look blurry - refitting renders them sharp.
     if (!W || (canvas.clientWidth && canvas.clientWidth !== W)) fit();
+    frame = null;
+    // restrict to the zoom viewport (mouse wheel); full range by default
+    if (points && points.length > 2 && (vs > 0 || ve < 1)) {
+      const n0 = points.length;
+      const a = Math.max(0, Math.floor(vs * n0));
+      const b = Math.min(n0, Math.ceil(ve * n0));
+      points = points.slice(a, Math.max(a + 2, b));
+    }
     ctx.clearRect(0, 0, W, H);
     const padT = 9,
       padB = 9,
@@ -175,6 +186,7 @@ function makeChart(canvas, cfg) {
         });
         ctx.stroke();
       }
+      frame = { x0, x1, y0, y1, lo, hi, yOf, xs, n }; // for the hover readout
     }
     ctx.fillStyle = "#a2a5ac";
     ctx.font = "9px system-ui,sans-serif";
@@ -230,6 +242,85 @@ function makeChart(canvas, cfg) {
       ctx.textAlign = "left";
     }
   }
+  // ---- interaction: hover to read a value, mouse-wheel to zoom, double-click to reset
+  function drawHover(mx) {
+    if (!lastPoints) return;
+    draw(lastPoints); // redraw the base chart (respects the current zoom viewport)
+    if (!frame || frame.n < 1) return;
+    const { x0, x1, y0, y1, yOf, xs, n } = frame;
+    let f = (mx - x0) / (x1 - x0 || 1);
+    f = Math.max(0, Math.min(1, f));
+    const i = Math.max(0, Math.min(n - 1, Math.round(f * (n - 1))));
+    const px = x0 + (i / (n - 1 || 1)) * (x1 - x0);
+    const p = xs[i];
+    ctx.strokeStyle = "rgba(120,130,140,0.55)"; // crosshair
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(px) + 0.5, y0);
+    ctx.lineTo(Math.round(px) + 0.5, y1);
+    ctx.stroke();
+    const labels = [];
+    for (const s of cfg.series) {
+      const v = p[s.key];
+      if (v == null || Number.isNaN(v)) continue;
+      const py = yOf(v);
+      ctx.fillStyle = s.color; // dot on each line
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, 6.2832);
+      ctx.fill();
+      labels.push({ text: cfg.fmt(v), color: s.color });
+    }
+    if (!labels.length) return;
+    ctx.font = "700 10px system-ui,sans-serif";
+    ctx.textBaseline = "middle";
+    const lh = 13,
+      pad = 4,
+      bw = Math.max(...labels.map((l) => ctx.measureText(l.text).width)) + pad * 2,
+      bh = labels.length * lh + pad;
+    let bx = px + 8;
+    if (bx + bw > x1) bx = px - 8 - bw; // flip to the left near the right edge
+    bx = Math.max(x0, Math.min(x1 - bw, bx));
+    const by = Math.max(y0, Math.min(y1 - bh, y0 + 2));
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = "rgba(150,158,168,0.6)";
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    ctx.textAlign = "left";
+    labels.forEach((l, k) => {
+      ctx.fillStyle = l.color;
+      ctx.fillText(l.text, bx + pad, by + pad + lh / 2 + k * lh);
+    });
+    ctx.textAlign = "left";
+  }
+  canvas.style.cursor = "crosshair";
+  canvas.addEventListener("mousemove", (e) => {
+    drawHover(e.clientX - canvas.getBoundingClientRect().left);
+  });
+  canvas.addEventListener("mouseleave", () => { if (lastPoints) draw(lastPoints); });
+  canvas.addEventListener("dblclick", () => { vs = 0; ve = 1; if (lastPoints) draw(lastPoints); });
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (!lastPoints || lastPoints.length < 3) return;
+      e.preventDefault();
+      const x0 = 5,
+        x1 = (canvas.clientWidth || W) - 5;
+      let f = (e.clientX - canvas.getBoundingClientRect().left - x0) / (x1 - x0 || 1);
+      f = Math.max(0, Math.min(1, f));
+      const cur = vs + f * (ve - vs); // data-fraction under the cursor stays put
+      let span = (ve - vs) * (e.deltaY < 0 ? 0.8 : 1.25); // in / out
+      span = Math.max(0.04, Math.min(1, span));
+      vs = cur - f * span;
+      ve = cur + (1 - f) * span;
+      if (vs < 0) { ve -= vs; vs = 0; }
+      if (ve > 1) { vs -= ve - 1; ve = 1; }
+      vs = Math.max(0, vs);
+      ve = Math.min(1, ve);
+      draw(lastPoints);
+    },
+    { passive: false },
+  );
+
   // sharpen the moment the canvas gets a real size (e.g. its tab is opened), without
   // waiting for the next 1s data refresh
   if (window.ResizeObserver) {

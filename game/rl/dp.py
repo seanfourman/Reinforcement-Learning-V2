@@ -143,9 +143,16 @@ class _DPBase:
         """V projected onto the board for the propagation animation: value at each cell
         in the CANONICAL slice (no coins collected, normal status) so it stays a clean
         H x W field even though the real state space is much larger."""
-        if not self.env.rich:
-            return {cell: self.V.get((i,), 0.0) for i, cell in enumerate(self.cells)}
-        return {cell: self.V.get((i, 0, 0), 0.0) for i, cell in enumerate(self.cells)}
+        key = (lambda i: (i,)) if not self.env.rich else (lambda i: (i, 0, 0))
+        sl = {cell: self.V.get(key(i), 0.0) for i, cell in enumerate(self.cells)}
+        # the goal is terminal (V=0); paint it as the PEAK so the animation reads as
+        # value spreading OUT from the goal, not a 0-hole sitting at the source.
+        if sl:
+            peak = max(sl.values())
+            for g in self.goals:
+                if g in sl:
+                    sl[g] = peak
+        return sl
 
     def _log_sweep(self, delta):
         self.backups += len(self._model)

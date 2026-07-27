@@ -25,9 +25,9 @@ ORTHO = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 class World:
     """One round's static layout. Positions are (row, col) tuples.
 
-    ``objective`` picks the game: ``"cross"`` (reach the goal tile, skeleton) or
-    ``"coinrush"`` (collect the most value in a time limit). Coin-rush rounds carry
-    ``coins`` and ``shine`` (the Power Moon) cells instead of an ``escape`` goal.
+    ``objective`` is ``"cross"`` for every grid round (reach the goal tile). Round 1
+    additionally carries per-agent ``coins`` / ``*_blocks`` and ``slip`` cells + the
+    ``shine`` (Power Moon) marker on top of the ``escape`` goal (see env.py).
 
     Round 1's real game carries a richer static layout: PER-AGENT scoring coins and
     "?" power-up blocks (Red's + Blue's, mirror-symmetric so the race stays fair),
