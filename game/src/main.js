@@ -237,7 +237,7 @@ function rebuildWorld(worldJson) {
       sceneCache.delete(key);
     }
     // a theme that ships its own world geometry (e.g. the city) takes over
-    themeScene = theme.buildScene(scene, worldJson, { THREE, renderer });
+    themeScene = theme.buildScene(scene, worldJson, { THREE, renderer, camera });
     if (cacheable) {
       sceneCache.set(key, { themeScene, rowsKey });
       activeThemeKey = key; // resident: detach + keep on the next round change
@@ -268,7 +268,7 @@ async function prewarmRound(worldJson) {
     const holder = new THREE.Scene(); // offscreen: never passed to renderer.render()
     setCell(theme.cell || 1); // build the geometry with this theme's board scale...
     setOffset(...(theme.offset || [0, 0])); // ...and slide (baked in; reset per round anyway)
-    const ts = theme.buildScene(holder, worldJson, { THREE, renderer });
+    const ts = theme.buildScene(holder, worldJson, { THREE, renderer, camera });
     sceneCache.set(key, { themeScene: ts, rowsKey: (worldJson.rows || []).join("\n") });
     // wait for its model to finish parsing/processing, bounded so one bad asset
     // can't stall the rest of the prewarm

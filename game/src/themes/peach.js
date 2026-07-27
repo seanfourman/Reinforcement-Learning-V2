@@ -97,7 +97,7 @@ export const peach = {
   redName: "Crimson",
   blueName: "Cobalt",
 
-  buildScene(scene, world, { renderer } = {}) {
+  buildScene(scene, world, { renderer, camera } = {}) {
     const group = new THREE.Group();
     scene.add(group);
     let disposed = false;
@@ -588,6 +588,19 @@ export const peach = {
       return tx;
     })();
     const TEAM_GLOW = { red: 0xff4636, blue: 0x2f6bff };
+    const glowDir = new THREE.Vector3();
+    const syncGlow = (obj) => {
+      const spr = obj.userData.glow;
+      if (!spr) return;
+      spr.position.copy(obj.position);
+      if (obj.userData.glowBehind && camera) {
+        // Push the billboard away from the camera, behind the entire coin model.
+        // Its centre can no longer intersect the coin, so depth testing cleanly
+        // removes the halo beneath the coin silhouette.
+        glowDir.copy(obj.position).sub(camera.position).normalize();
+        spr.position.addScaledVector(glowDir, 0.35 * cell);
+      }
+    };
     // a billboarded halo added to `group` (world space) and pinned to the object each
     // frame in update(); stored on obj.userData.glow so it hides when the item is taken.
     const addGlow = (obj, size, colorHex, behindObject = false) => {
@@ -596,15 +609,10 @@ export const peach = {
         blending: THREE.AdditiveBlending, depthWrite: false,
       }));
       spr.scale.setScalar(size * 2.4);
-      spr.position.copy(obj.position);
-      if (behindObject) {
-        // Render the halo first and the opaque coin second. The depth test still
-        // respects walls, while the full coin silhouette cleanly covers the halo.
-        spr.renderOrder = 1;
-        obj.traverse((o) => { if (o.isMesh) o.renderOrder = 2; });
-      }
-      group.add(spr);
+      obj.userData.glowBehind = behindObject;
       obj.userData.glow = spr;
+      syncGlow(obj);
+      group.add(spr);
     };
 
     // COINS: their OWN normal gold texture; the owning player's colour is the GLOW around it
@@ -1020,7 +1028,7 @@ export const peach = {
         for (const s of spin) {
           if (s.spin) s.obj.rotation.y = t * 1.7;
           s.obj.position.y = s.baseY + Math.sin(t * 2 + s.obj.position.x) * 0.08;
-          if (s.obj.userData.glow) s.obj.userData.glow.position.copy(s.obj.position);
+          syncGlow(s.obj);
         }
         // hide each coin/block the live frame reports collected/used (bit i per index)
         if (frame) {

@@ -356,6 +356,14 @@ const STYLE = `
 #rl-panel .dp-status{font-weight:800;}
 #rl-panel .dp-status.ok{color:#1f7a3d;}
 #rl-panel .dp-status.limit{color:#b45b12;}
+/* Dynamic Programming plans from a known model: there is no ε exploration, TD
+   update signal, DQN loss, or growing learned-state table in this arena. Keep
+   those cards in the DOM for the learning rounds, but never show them on DP. */
+#rl-panel.is-dp #rl-training-eps,
+#rl-panel.is-dp #rl-training-q,
+#rl-panel.is-dp #rl-curve-d-eps,
+#rl-panel.is-dp #rl-curve-d-td,
+#rl-panel.is-dp #rl-explore{display:none!important;}
 
 /* segmented control (value-map mode) */
 #rl-panel .seg{display:flex;border:1px solid #d7dade;border-radius:9px;overflow:hidden;}
@@ -601,11 +609,11 @@ export function initPanel() {
     <section id="rl-sec-training" class="qk">
       <h2>Training</h2>
       <div class="stat"><span>Episode</span><b id="rl-ep">0</b></div>
-      <div class="stat"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
+      <div class="stat" id="rl-training-eps"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
       <div class="stat fullonly"><span>Total steps</span><b id="rl-steps">0</b></div>
       <div class="stat fullonly"><span>Avg episode length</span><b id="rl-len">-</b></div>
       <div class="stat fullonly"><span>Last return (B / R)</span><b id="rl-ret">-</b></div>
-      <div class="stat fullonly"><span>Learned states (B / R)</span><b id="rl-q">0 / 0</b></div>
+      <div class="stat fullonly" id="rl-training-q"><span>Learned states (B / R)</span><b id="rl-q">0 / 0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
       <h2>Value map</h2>
@@ -829,6 +837,7 @@ export function initPanel() {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
     const isPg = PG_ALGOS.has(algoBlue);
+    panel.classList.toggle('is-dp', isDP);
     const vis = (sc) => {
       switch (sc) {
         case 'learn': return !isDP;               // learning rate α: every learner (not DP)
