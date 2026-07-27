@@ -427,6 +427,12 @@ function shade(r, g, b, f) {
 // cell to the actual maze while scrubbing propagation.
 function drawVSurface(canvas, grid) {
   const ctx = canvas.getContext("2d");
+  // A canvas inside an inactive tab has no layout size. Drawing against a
+  // fallback width makes the grid's internal padding scale when the tab opens,
+  // so the map appears to jump larger on its second draw. Wait for a real size.
+  const cw = canvas.clientWidth,
+    ch = canvas.clientHeight;
+  if (!cw || !ch) return false;
   const H = grid.length,
     W = grid[0] ? grid[0].length : 0;
   let r0 = H,
@@ -447,8 +453,6 @@ function drawVSurface(canvas, grid) {
       if (v > hi) hi = v;
     }
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cw = canvas.clientWidth || 280,
-    ch = canvas.clientHeight || 280;
   canvas.width = Math.round(cw * dpr);
   canvas.height = Math.round(ch * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -478,6 +482,7 @@ function drawVSurface(canvas, grid) {
   ctx.font = "700 10px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("N", cw / 2, Math.min(ch - 5, oy + R * size + 14));
+  return true;
 }
 
 // ---- per-side learning curves ----
@@ -696,6 +701,14 @@ export function initDP(parent) {
   };
   vseek.addEventListener("input", renderV);
   window.addEventListener("resize", renderV);
+  // display:none -> visible is the important "resize" here. Draw only once the
+  // Inside tab has its final width, eliminating the first-open size snap.
+  if (window.ResizeObserver) {
+    const vro = new ResizeObserver(() => {
+      if (vcanvas.clientWidth && vcanvas.clientHeight) renderV();
+    });
+    vro.observe(vcanvas);
+  }
   async function loadSweeps() {
     try {
       const sw = await (

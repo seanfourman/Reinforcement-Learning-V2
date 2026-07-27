@@ -112,29 +112,27 @@ const STYLE = `
 #rl-panel.open{transform:translateX(0);}
 #rl-panel .rl-body{height:100%;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;
   scrollbar-width:none;-ms-overflow-style:none;padding-bottom:0;transition:padding-bottom .25s ease;}
-#rl-panel.has-dp-converged .rl-body{padding-bottom:112px;}
+#rl-panel.has-dp-converged .rl-body{padding-bottom:96px;}
 /* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
 #rl-panel .rl-body::-webkit-scrollbar{width:0;height:0;display:none;}
 
 /* Pinned post-convergence notice. The body is the panel's scroll container while
    this absolute box stays anchored to the panel; reserved body padding keeps the
    last card fully scrollable above it instead of hiding underneath. */
-#rl-panel .converged-pin{position:absolute;left:12px;right:12px;bottom:12px;z-index:12;
-  display:flex;align-items:center;gap:12px;min-height:76px;padding:12px 14px;
-  border:1px solid rgba(31,122,61,.28);border-radius:14px;
-  background:linear-gradient(135deg,rgba(244,252,246,.98),rgba(255,255,255,.98));
-  box-shadow:0 10px 30px rgba(20,50,30,.17),0 2px 6px rgba(20,50,30,.08);
-  backdrop-filter:blur(10px);animation:convergedPinIn .3s cubic-bezier(.2,.9,.25,1);}
+#rl-panel .converged-pin{position:absolute;left:0;right:0;bottom:0;z-index:12;
+  display:flex;align-items:center;gap:12px;min-height:84px;box-sizing:border-box;padding:14px 18px;
+  border:0;border-radius:0;background:#1f7a3d;color:#fff;
+  box-shadow:0 -7px 22px rgba(16,70,34,.2);
+  animation:convergedPinIn .3s cubic-bezier(.2,.9,.25,1);}
 #rl-panel .converged-pin[hidden]{display:none;}
-#rl-panel .converged-pin-icon{flex:none;width:38px;height:38px;border-radius:11px;
-  display:grid;place-items:center;background:#1f7a3d;color:#fff;
-  box-shadow:0 5px 14px rgba(31,122,61,.24);}
+#rl-panel .converged-pin-icon{flex:none;width:38px;height:38px;
+  display:grid;place-items:center;color:#fff;}
 #rl-panel .converged-pin-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;
   stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}
 #rl-panel .converged-pin-copy{min-width:0;display:flex;flex-direction:column;gap:3px;}
 #rl-panel .converged-pin-copy b{font-size:11px;line-height:1.2;letter-spacing:.65px;
-  text-transform:uppercase;color:#1f7a3d;}
-#rl-panel .converged-pin-copy span{font-size:11px;line-height:1.38;color:#525a55;}
+  text-transform:uppercase;color:#fff;}
+#rl-panel .converged-pin-copy span{font-size:11px;line-height:1.38;color:rgba(255,255,255,.88);}
 @keyframes convergedPinIn{from{opacity:0;transform:translateY(14px) scale(.98)}
   to{opacity:1;transform:translateY(0) scale(1)}}
 
