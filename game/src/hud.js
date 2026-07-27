@@ -40,12 +40,12 @@ const STYLE = `
 .fb-side.blue .fb-port{transform:scaleX(-1);} /* flip the left one to face inward */
 /* name tag (above) + meter (below), beside the character */
 .fb-col{position:relative;flex:none;display:flex;flex-direction:column;gap:0;}
-.fb-side.blue .fb-col{align-items:flex-start;}
-.fb-side.red .fb-col{align-items:flex-end;}
+.fb-side.blue .fb-col{align-items:flex-start;transform:skewX(12deg);}
+.fb-side.red .fb-col{align-items:flex-end;transform:skewX(-12deg);}
 /* slanted fighting-game name tag */
 .fb-tag{display:inline-flex;border:2.5px solid #000;border-radius:3px;overflow:hidden;box-shadow:0 3px 7px rgba(0,0,0,.55);}
-.fb-side.blue .fb-tag{transform:skewX(12deg);position:relative;z-index:3;left:-12px;}
-.fb-side.red .fb-tag{transform:skewX(-12deg);flex-direction:row-reverse;position:relative;z-index:3;left:12px;}
+.fb-side.blue .fb-tag{position:relative;z-index:3;left:-12px;}
+.fb-side.red .fb-tag{flex-direction:row-reverse;position:relative;z-index:3;left:12px;}
 .fb-px{padding:0 8px;display:flex;align-items:center;font-weight:900;font-size:11px;letter-spacing:.5px;
   line-height:1.5;color:#1a1207;background:linear-gradient(180deg,#ffe171,#ffbf17);}
 .fb-nm{padding:0 13px;display:flex;align-items:center;font-weight:900;font-size:13.5px;color:#fff;
@@ -55,8 +55,8 @@ const STYLE = `
 /* BLACK track + thick black cartoonish border + 3D shadow; blue/red glossy fill kept */
 .fb-meter{position:relative;z-index:5;width:300px;height:18px;border:3px solid #000;border-radius:5px;
   background:#0b0b0b;box-shadow:0 3px 0 #000,inset 0 2px 4px rgba(0,0,0,.7);}
-.fb-side.blue .fb-meter{transform:skewX(12deg);left:-22px;}
-.fb-side.red .fb-meter{transform:skewX(-12deg);left:22px;}
+.fb-side.blue .fb-meter{left:-22px;}
+.fb-side.red .fb-meter{left:22px;}
 .fb-fill{position:absolute;top:0;bottom:0;left:0;width:0;background-size:200% 100%;border-radius:2px;
   animation:fb-shimmer 1.4s linear infinite;}
 .fb-side.red .fb-fill{left:auto;right:0;}
