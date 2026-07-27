@@ -400,6 +400,7 @@ const STYLE = `
 /* learning-curve charts (built by graphs.js into this panel) */
 #rl-panel .chart{margin:0 0 14px;}
 #rl-panel .chart:last-child{margin-bottom:0;}
+#rl-panel .chart.zoom-focus{outline:2px solid #141518;outline-offset:3px;border-radius:10px;}
 #rl-panel .chart .ct{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
 #rl-panel .chart .ct h3{margin:0;font-size:11.5px;font-weight:700;color:#3a3b40;}
 #rl-panel .chart .ct .lg{font-size:9.5px;color:#9a9da4;display:flex;gap:10px;}

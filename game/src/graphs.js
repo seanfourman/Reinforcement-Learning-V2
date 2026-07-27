@@ -69,12 +69,25 @@ function chartBlock(c) {
     </div>`;
 }
 
+// Only one chart may own the mouse wheel at a time. Activating another chart
+// releases the previous one, so wheel scrolling never gets trapped ambiguously.
+let activeZoomRelease = null;
+document.addEventListener("pointerdown", (e) => {
+  if (activeZoomRelease && !e.target?.closest?.(".chart.zoom-focus"))
+    activeZoomRelease();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && activeZoomRelease) activeZoomRelease();
+});
+
 // a small auto-scaling line chart on a crisp (dpr-aware) canvas
 function makeChart(canvas, cfg) {
   const ctx = canvas.getContext("2d");
+  const chartEl = canvas.closest(".chart") || canvas;
   let W = 0,
     H = 0,
     lastPoints = null,
+    zoomFocused = false,
     vs = 0, // zoom viewport start / end as fractions of the points array (wheel to zoom)
     ve = 1,
     frame = null; // last-draw geometry, so the hover readout can map a pixel -> value
@@ -242,7 +255,7 @@ function makeChart(canvas, cfg) {
       ctx.textAlign = "left";
     }
   }
-  // ---- interaction: hover to read a value, mouse-wheel to zoom, double-click to reset
+  // ---- interaction: hover to read; double-click grants/releases wheel zoom focus
   function drawHover(mx) {
     if (!lastPoints) return;
     draw(lastPoints); // redraw the base chart (respects the current zoom viewport)
@@ -296,10 +309,31 @@ function makeChart(canvas, cfg) {
     drawHover(e.clientX - canvas.getBoundingClientRect().left);
   });
   canvas.addEventListener("mouseleave", () => { if (lastPoints) draw(lastPoints); });
-  canvas.addEventListener("dblclick", () => { vs = 0; ve = 1; if (lastPoints) draw(lastPoints); });
+  const releaseZoom = () => {
+    zoomFocused = false;
+    chartEl.classList.remove("zoom-focus");
+    if (activeZoomRelease === releaseZoom) activeZoomRelease = null;
+  };
+  canvas.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    if (zoomFocused) {
+      releaseZoom();
+      vs = 0;
+      ve = 1;
+      if (lastPoints) draw(lastPoints);
+      return;
+    }
+    activeZoomRelease?.();
+    zoomFocused = true;
+    chartEl.classList.add("zoom-focus");
+    activeZoomRelease = releaseZoom;
+  });
   canvas.addEventListener(
     "wheel",
     (e) => {
+      // Until the user explicitly focuses this chart, leave the wheel completely
+      // alone so the containing Control Menu continues to scroll.
+      if (!zoomFocused) return;
       if (!lastPoints || lastPoints.length < 3) return;
       e.preventDefault();
       const x0 = 5,
