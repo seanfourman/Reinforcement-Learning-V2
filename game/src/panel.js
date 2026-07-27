@@ -353,7 +353,7 @@ const STYLE = `
 #rl-panel .ctl-help{font-size:9.8px;color:#92969e;line-height:1.4;margin:6px 0 0;}
 #rl-panel .range-ends{display:flex;justify-content:space-between;margin-top:5px;color:#8a8d94;
   font-size:9px;font-weight:800;letter-spacing:.35px;text-transform:uppercase;}
-#rl-panel .dp-status{font-weight:800;}
+#rl-panel .dp-status{font-weight:800;text-align:right;}
 #rl-panel .dp-status.ok{color:#1f7a3d;}
 #rl-panel .dp-status.limit{color:#b45b12;}
 /* Dynamic Programming plans from a known model: there is no ε exploration, TD

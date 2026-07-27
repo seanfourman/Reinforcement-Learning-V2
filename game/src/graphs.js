@@ -621,7 +621,7 @@ export function initDP(parent) {
     <section id="rl-dp" hidden>
       <h2>DP convergence</h2>
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
-      <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning…</b></div>
+      <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning</b></div>
       <div class="stat"><span>State-value updates</span><b id="rl-dp-backups">-</b></div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
@@ -765,10 +765,7 @@ export function initDP(parent) {
         status.textContent = "Converged";
         status.classList.add("ok");
       } else {
-        status.textContent =
-          maxSweeps == null
-            ? `Planning… ${d.sweepCount}`
-            : `Planning… ${d.sweepCount} / ${maxSweeps}`;
+        status.textContent = "Planning";
       }
       const pts = (d.sweeps || []).map((s) => ({
         logDelta: Math.log10(Math.max(s.delta, 1e-6)),
