@@ -623,7 +623,6 @@ export function initDP(parent) {
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
       <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning</b></div>
       <div class="stat"><span>State-value updates</span><b id="rl-dp-backups">-</b></div>
-      <p id="rl-dp-done-note" class="note" hidden>Both models have converged. They are no longer updating their policies; they are now simply competing with what they learned.</p>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -766,7 +765,10 @@ export function initDP(parent) {
         !redState.hitLimit &&
         blueState.converged &&
         !blueState.hitLimit;
-      q("#rl-dp-done-note").hidden = !bothComplete;
+      const panelRoot = parent.closest("#rl-panel");
+      const convergedPin = panelRoot?.querySelector("#rl-converged-pin");
+      if (convergedPin) convergedPin.hidden = !bothComplete;
+      panelRoot?.classList.toggle("has-dp-converged", bothComplete);
       if (!d.isDP) {
         sec.hidden = true;
         return;

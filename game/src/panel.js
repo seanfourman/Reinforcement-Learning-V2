@@ -108,10 +108,35 @@ const STYLE = `
   transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1),--hue .3s ease;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   color:#1f1f21;background:#f3f4f6;box-shadow:3px 0 30px rgba(0,0,0,.24);
-  overflow-y:auto;overflow-x:hidden;scrollbar-width:none;-ms-overflow-style:none;}
+  overflow:hidden;}
 #rl-panel.open{transform:translateX(0);}
+#rl-panel .rl-body{height:100%;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:none;-ms-overflow-style:none;padding-bottom:0;transition:padding-bottom .25s ease;}
+#rl-panel.has-dp-converged .rl-body{padding-bottom:112px;}
 /* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
-#rl-panel::-webkit-scrollbar{width:0;height:0;display:none;}
+#rl-panel .rl-body::-webkit-scrollbar{width:0;height:0;display:none;}
+
+/* Pinned post-convergence notice. The body is the panel's scroll container while
+   this absolute box stays anchored to the panel; reserved body padding keeps the
+   last card fully scrollable above it instead of hiding underneath. */
+#rl-panel .converged-pin{position:absolute;left:12px;right:12px;bottom:12px;z-index:12;
+  display:flex;align-items:center;gap:12px;min-height:76px;padding:12px 14px;
+  border:1px solid rgba(31,122,61,.28);border-radius:14px;
+  background:linear-gradient(135deg,rgba(244,252,246,.98),rgba(255,255,255,.98));
+  box-shadow:0 10px 30px rgba(20,50,30,.17),0 2px 6px rgba(20,50,30,.08);
+  backdrop-filter:blur(10px);animation:convergedPinIn .3s cubic-bezier(.2,.9,.25,1);}
+#rl-panel .converged-pin[hidden]{display:none;}
+#rl-panel .converged-pin-icon{flex:none;width:38px;height:38px;border-radius:11px;
+  display:grid;place-items:center;background:#1f7a3d;color:#fff;
+  box-shadow:0 5px 14px rgba(31,122,61,.24);}
+#rl-panel .converged-pin-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;
+  stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;}
+#rl-panel .converged-pin-copy{min-width:0;display:flex;flex-direction:column;gap:3px;}
+#rl-panel .converged-pin-copy b{font-size:11px;line-height:1.2;letter-spacing:.65px;
+  text-transform:uppercase;color:#1f7a3d;}
+#rl-panel .converged-pin-copy span{font-size:11px;line-height:1.38;color:#525a55;}
+@keyframes convergedPinIn{from{opacity:0;transform:translateY(14px) scale(.98)}
+  to{opacity:1;transform:translateY(0) scale(1)}}
 
 /* sticky header with the live matchup */
 #rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 14px;background:#fff;
@@ -511,7 +536,7 @@ export function buildTabs(panel, body, groups) {
       btn.classList.toggle('active', on);
     }
     moveHl();
-    panel.scrollTop = 0;
+    body.scrollTop = 0;
   };
   tabs.forEach(({ btn }) => btn.addEventListener('click', () => activate(btn.dataset.group)));
   if (tabs.length) activate(tabs[0].g.dataset.group);
@@ -631,7 +656,16 @@ export function initPanel() {
       </div>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
     </section>
-    </div>`;
+    </div>
+    <aside id="rl-converged-pin" class="converged-pin" hidden aria-live="polite">
+      <span class="converged-pin-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg>
+      </span>
+      <span class="converged-pin-copy">
+        <b>Models converged</b>
+        <span>Planning is finished. Both models now compete using their fixed policies.</span>
+      </span>
+    </aside>`;
   document.body.appendChild(panel);
 
   // learning-curve charts + episode replay (built by graphs.js) into the same
