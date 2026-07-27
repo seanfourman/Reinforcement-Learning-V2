@@ -623,6 +623,7 @@ export function initDP(parent) {
       <div class="stat"><span id="rl-dp-name">-</span><b id="rl-dp-sweeps"></b></div>
       <div class="stat"><span>Planning status</span><b id="rl-dp-status" class="dp-status">Planning</b></div>
       <div class="stat"><span>State-value updates</span><b id="rl-dp-backups">-</b></div>
+      <p id="rl-dp-done-note" class="note" hidden>Both models have converged. They are no longer updating their policies; they are now simply competing with what they learned.</p>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Bellman residual &Delta; / sweep (log)</h3></div><canvas id="rl-ch-dp-delta"></canvas></div>
       <div class="chart"><div class="ct"><h3>Mean state value / sweep</h3></div><canvas id="rl-ch-dp-meanv"></canvas></div>
       <div class="chart" id="rl-dp-polwrap" hidden><div class="ct"><h3>Policy changes / iteration (PI)</h3></div><canvas id="rl-ch-dp-pol"></canvas></div>
@@ -715,11 +716,57 @@ export function initDP(parent) {
       anim.hidden = true;
     }
   }
+  const completionState = (d) => {
+    if (!d?.isDP) return { converged: false, hitLimit: false };
+    const isPolicyIteration =
+      d.method === "policy_iteration" || d.name === "Policy Iteration";
+    const trace = Array.isArray(d.sweeps) ? d.sweeps : [];
+    const lastSweep = trace.length ? trace[trace.length - 1] : null;
+    const toleranceReached =
+      lastSweep != null &&
+      Number.isFinite(Number(lastSweep.delta)) &&
+      Number(lastSweep.delta) < Number(d.theta);
+    const changes = Array.isArray(d.policyChanges) ? d.policyChanges : [];
+    const policyStable =
+      changes.length > 0 && Number(changes[changes.length - 1]) === 0;
+    const inferredConverged =
+      toleranceReached && (!isPolicyIteration || policyStable);
+    const converged =
+      typeof d.converged === "boolean" ? d.converged : inferredConverged;
+    const statsMax = window.RL?.getStats?.()?.params?.dpMaxIters;
+    const maxSweeps =
+      d.maxSweeps != null && Number.isFinite(Number(d.maxSweeps))
+        ? Number(d.maxSweeps)
+        : statsMax != null && Number.isFinite(Number(statsMax))
+          ? Number(statsMax)
+          : null;
+    const hitLimit =
+      typeof d.hitLimit === "boolean"
+        ? d.hitLimit
+        : !converged && maxSweeps != null && Number(d.sweepCount) >= maxSweeps;
+    return { converged, hitLimit };
+  };
   async function refresh() {
     try {
-      const d = await (
-        await fetch(`/api/dp?agent=${dpAgent}`, { cache: "no-store" })
-      ).json();
+      const [red, blue] = await Promise.all(
+        ["red", "blue"].map((agent) =>
+          fetch(`/api/dp?agent=${agent}`, { cache: "no-store" }).then((r) =>
+            r.json(),
+          ),
+        ),
+      );
+      const reports = { red, blue };
+      const d = reports[dpAgent];
+      const redState = completionState(red);
+      const blueState = completionState(blue);
+      const bothComplete =
+        red.isDP &&
+        blue.isDP &&
+        redState.converged &&
+        !redState.hitLimit &&
+        blueState.converged &&
+        !blueState.hitLimit;
+      q("#rl-dp-done-note").hidden = !bothComplete;
       if (!d.isDP) {
         sec.hidden = true;
         return;
@@ -731,33 +778,7 @@ export function initDP(parent) {
       q("#rl-dp-backups").textContent = (d.backups || 0).toLocaleString();
       const status = q("#rl-dp-status");
       status.className = "dp-status";
-      // New servers report completion explicitly. For an older still-running
-      // backend, derive the same result from the convergence trace instead of
-      // showing a permanent and unhelpful "restart server" warning.
-      const isPolicyIteration =
-        d.method === "policy_iteration" || d.name === "Policy Iteration";
-      const trace = Array.isArray(d.sweeps) ? d.sweeps : [];
-      const lastSweep = trace.length ? trace[trace.length - 1] : null;
-      const toleranceReached =
-        lastSweep != null &&
-        Number.isFinite(Number(lastSweep.delta)) &&
-        Number(lastSweep.delta) < Number(d.theta);
-      const changes = Array.isArray(d.policyChanges) ? d.policyChanges : [];
-      const policyStable = changes.length > 0 && Number(changes[changes.length - 1]) === 0;
-      const inferredConverged =
-        toleranceReached && (!isPolicyIteration || policyStable);
-      const converged =
-        typeof d.converged === "boolean" ? d.converged : inferredConverged;
-      const statsMax = window.RL?.getStats?.()?.params?.dpMaxIters;
-      const maxSweeps = d.maxSweeps != null && Number.isFinite(Number(d.maxSweeps))
-        ? Number(d.maxSweeps)
-        : statsMax != null && Number.isFinite(Number(statsMax))
-          ? Number(statsMax)
-          : null;
-      const hitLimit =
-        typeof d.hitLimit === "boolean"
-          ? d.hitLimit
-          : !converged && maxSweeps != null && Number(d.sweepCount) >= maxSweeps;
+      const { converged, hitLimit } = completionState(d);
       if (hitLimit) {
         status.textContent = "Stopped at sweep limit — not converged";
         status.classList.add("limit");

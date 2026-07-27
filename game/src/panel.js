@@ -269,8 +269,6 @@ const STYLE = `
 #rl-panel .tbtn:hover{background:#f0f1f3;border-color:#c4c8ce;}
 #rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#141518;color:#fff;}
 #rl-panel .tplay:hover{background:#2a2b30;}
-#rl-panel .tplay:disabled,#rl-panel .tplay:disabled:hover{background:#c7cad0;color:#eef0f3;
-  cursor:default;opacity:.72;}
 #rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
 #rl-panel .tplay svg{width:21px;height:21px;}
 /* sliders (speed + every hyperparameter) */
@@ -708,13 +706,14 @@ export function initPanel() {
   });
   document.addEventListener('click', (e) => {
     const controlsTrigger = e.target?.closest?.('#rl-keys [data-act="controls"]');
-    if (panel.classList.contains('open') && !panel.contains(e.target) && !controlsTrigger)
+    const path = e.composedPath?.() || [];
+    const insidePanel = panel.contains(e.target) || path.includes(panel) || path.includes(lockBtn);
+    if (panel.classList.contains('open') && !insidePanel && !controlsTrigger)
       panel.classList.remove('open');
   });
 
   // ---- playback ----
   let paused = false;
-  let convergencePaused = false;
   // arena nav (prev/next round) must fire ONCE per press, not once PER CLICK -
   // spamming next used to advance a round on every click. A shared lock silently
   // swallows the extra clicks for ~one transition (no visual disable).
@@ -745,11 +744,6 @@ export function initPanel() {
   // play/pause is DUAL-MODE: drives the loaded replay when there is one, else the live game
   const playBtn = $('#rl-play');
   const setLiveIcon = () => { playBtn.innerHTML = paused ? SVG.play : SVG.pause; };
-  const updatePlayAvailability = () => {
-    const replayOn = !!window.RL.replay?.active?.();
-    playBtn.disabled = !replayOn && convergencePaused;
-    playBtn.title = playBtn.disabled ? 'Both models have converged' : '';
-  };
   playBtn.addEventListener('click', () => {
     if (window.RL.replay?.active?.()) window.RL.replay.toggle(); // icon updates via rl-replay-state
     else {
@@ -789,7 +783,6 @@ export function initPanel() {
     } else {
       setLiveIcon(); // back to live: restore the live play/pause icon
     }
-    updatePlayAvailability();
     lastReplayActive = on;
   });
 
@@ -922,7 +915,15 @@ export function initPanel() {
     lockBtn.title = cpuLocked ? "Unlock to edit the CPU's values" : "Lock the CPU's values";
   };
   updateLockUI();
-  lockBtn.addEventListener('click', () => { cpuLocked = !cpuLocked; updateLockUI(); applyLock(); });
+  // The lock visually sits over the sticky header. Consume its pointer/click events
+  // so no edge of the circular hit target can leak into the outside-click closer.
+  lockBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  lockBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    cpuLocked = !cpuLocked;
+    updateLockUI();
+    applyLock();
+  });
 
   // ---- value-map mode ----
   // ONE value map, shared by both views: it targets whichever model is selected (Blue =
@@ -956,9 +957,7 @@ export function initPanel() {
     const s = e.detail.stats;
     if (!s) return;
     if (typeof s.paused === 'boolean') paused = s.paused;
-    convergencePaused = !!s.convergencePaused;
     if (!window.RL.replay?.active?.()) setLiveIcon();
-    updatePlayAvailability();
     // cache both models' params; seed the sliders from the backend once
     if (s.params) lastParams = s.params;
     if (s.redParams) lastRedParams = s.redParams;
