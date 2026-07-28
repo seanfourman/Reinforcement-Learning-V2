@@ -387,6 +387,59 @@ const STYLE = `
 #rl-panel #rl-brief .so-sq.no{background:#f3eaea;color:#b0555a;}
 #rl-panel #rl-brief .so-sq.yes{background:#e7f0ff;color:#1f5fd0;}
 #rl-panel #rl-brief .so-opp-txt{font-size:11.5px;color:#4b4d53;line-height:1.5;}
+/* State FACTORS - a discrete |S| shown as multiplied chips (grid rounds) */
+#rl-panel #rl-brief .sf-chips{display:flex;align-items:stretch;flex-wrap:wrap;gap:6px;margin:6px 0 2px;}
+#rl-panel #rl-brief .sf-x{display:flex;align-items:center;color:#b7bac1;font-weight:800;font-size:15px;}
+#rl-panel #rl-brief .sf-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-width:52px;padding:7px 11px;border-radius:11px;border:1px solid #e2e5ea;background:#f6f7f9;}
+#rl-panel #rl-brief .sf-chip b{font-size:16px;font-weight:800;color:var(--fc);line-height:1;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .sf-chip span{font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6b7280;margin-top:4px;}
+#rl-panel #rl-brief .sf-total{font-size:11.5px;color:#5a5d63;margin:9px 0 2px;}
+#rl-panel #rl-brief .sf-total b{font-size:14px;font-weight:800;color:#1f1f21;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .sf-legend{display:flex;flex-direction:column;gap:5px;margin-top:7px;}
+#rl-panel #rl-brief .sf-li{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;column-gap:8px;}
+#rl-panel #rl-brief .sf-dot{width:9px;height:9px;border-radius:3px;align-self:center;}
+#rl-panel #rl-brief .sf-lk{font-size:11px;font-weight:800;color:#2a2c31;}
+#rl-panel #rl-brief .sf-ld{font-size:10.5px;color:#7a7d84;line-height:1.4;}
+/* Actions - compass arrow chips (4-way) or one wide label chip (arenas) */
+#rl-panel #rl-brief .act-chips{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 4px;}
+#rl-panel #rl-brief .act-chip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:52px;
+  padding:8px 12px;border:1px solid #e2e5ea;border-radius:11px;background:#f6f7f9;
+  font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6b7280;}
+#rl-panel #rl-brief .act-chip b{font-size:19px;font-weight:800;color:#2a2c31;line-height:1;}
+#rl-panel #rl-brief .act-chip.wide{flex-direction:row;text-transform:none;letter-spacing:.2px;font-size:12px;
+  color:#2a2c31;font-weight:700;padding:11px 13px;}
+/* Reward structure - signed proportional bars. The bar + value are FIXED-width on
+   the right and the label flexes, so every bar lines up in the same column no matter
+   how long the number is. */
+#rl-panel #rl-brief .rw-row{display:flex;align-items:center;gap:10px;
+  font-size:11.5px;padding:6px 0;border-bottom:1px solid #f0f1f3;}
+#rl-panel #rl-brief .rw-row:last-child{border-bottom:0;}
+#rl-panel #rl-brief .rw-k{flex:1 1 auto;min-width:0;color:#4b4d53;line-height:1.35;}
+#rl-panel #rl-brief .rw-track{flex:0 0 96px;height:7px;background:#eceef1;border-radius:4px;overflow:hidden;}
+#rl-panel #rl-brief .rw-fill{display:block;height:100%;border-radius:4px;}
+#rl-panel #rl-brief .rw-fill.pos{background:#1f9d63;}
+#rl-panel #rl-brief .rw-fill.neg{background:#d9534f;}
+#rl-panel #rl-brief .rw-val{flex:0 0 46px;text-align:right;font-weight:800;
+  font-variant-numeric:tabular-nums;color:#4b4d53;white-space:nowrap;}
+#rl-panel #rl-brief .rw-val.pos{color:#1f7a3d;}
+#rl-panel #rl-brief .rw-val.neg{color:#c0392b;}
+/* string-valued rewards (rates): no bar; the value wraps on the right, never overflows */
+#rl-panel #rl-brief .rw-row.str .rw-val{flex:0 1 auto;max-width:52%;white-space:normal;
+  text-align:right;color:#5a5d63;font-weight:700;font-size:11px;line-height:1.3;}
+/* Hyperparameters - Blue vs Red mini-columns */
+#rl-panel #rl-brief .lh-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:4px 0 2px;}
+#rl-panel #rl-brief .lh-col{border:1px solid #e4e7ec;border-radius:12px;padding:11px 12px;background:#fbfbfc;}
+#rl-panel #rl-brief .lh-who{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;}
+#rl-panel #rl-brief .lh-algo{font-size:11px;font-weight:700;color:#5a5d63;margin:1px 0 7px;}
+#rl-panel #rl-brief .lh-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;font-size:11px;color:#7a7d84;}
+#rl-panel #rl-brief .lh-row b{color:#1f1f21;font-weight:800;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .lh-note{font-size:10px;color:#9a9da4;line-height:1.4;margin-top:4px;}
+/* Dynamics - two compact fact chips (no wall of text) */
+#rl-panel #rl-brief .dyn-chips{display:flex;flex-wrap:wrap;gap:7px;}
+#rl-panel #rl-brief .dyn-chip{display:flex;align-items:baseline;gap:6px;padding:7px 11px;border:1px solid #e2e5ea;
+  border-radius:9px;background:#f6f7f9;font-size:10.5px;font-weight:700;color:#6b7280;}
+#rl-panel #rl-brief .dyn-chip b{font-size:14px;font-weight:800;color:#2a2c31;font-variant-numeric:tabular-nums;}
 #rl-panel .cmp-head{display:flex;align-items:center;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#a2a5ac;padding:0 0 6px;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-head span{flex:1;}
 #rl-panel .cmp-head .cr,#rl-panel .cmp-head .cb{flex:none;width:100px;text-align:center;white-space:nowrap;}

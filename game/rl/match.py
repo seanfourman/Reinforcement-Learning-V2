@@ -1715,6 +1715,10 @@ class Match:
             slip_prob = 0.0
             observation_tuple = "(state)"
             state_groups = None   # optional VISUAL breakdown of a continuous obs vector
+            # optional VISUAL breakdown of a DISCRETE (tabular) state as MULTIPLIED
+            # factors: |S| = n1 x n2 x ... - one chip per factor, so the grid rounds
+            # get the same at-a-glance state teaching the continuous rounds do.
+            state_factors = None
             reward_note = (
                 "Only the listed rewards are used; there is no hidden "
                 "closer-to-goal bonus."
@@ -1732,6 +1736,16 @@ class Match:
                 gp = env.block_ghost_prob
                 sp = env.slip_prob
                 state_size = ((n_floor * (gl + fl + 1) + n_wall * gl) * (1 << nbits))
+                state_factors = [
+                    {"label": "Your tile", "n": n_floor + n_wall,
+                     "detail": "the (row, col) cell you stand on", "color": "#3f7fe0"},
+                    {"label": "Collected", "n": 1 << nbits,
+                     "detail": f"{nbits}-bit mask of coins / Mystery Blocks claimed",
+                     "color": "#8b5cf6"},
+                    {"label": "Status", "n": gl + fl + 1,
+                     "detail": "ghost or freeze countdown (0 = normal)",
+                     "color": "#22a39f"},
+                ]
                 state_desc = ("your tile, which of your own coins/Mystery Blocks you have claimed, "
                               "and your power-up / frozen countdown")
                 observation = ("Each model sees its own tile, its collected coins/Mystery Blocks, and "
@@ -1766,9 +1780,22 @@ class Match:
                     state_desc = (f"your tile AND which of your {n_stars} tomatoes you already "
                                   f"hold - the cell index x a {n_stars}-bit tomato mask")
                     state_size = (n_floor * (1 << n_stars)) if n_floor else None
+                    if n_floor:
+                        state_factors = [
+                            {"label": "Your tile", "n": n_floor,
+                             "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                            {"label": "Tomatoes held", "n": 1 << n_stars,
+                             "detail": f"{n_stars}-bit mask (2^{n_stars} = {1 << n_stars} combos)",
+                             "color": "#e0563f"},
+                        ]
                 else:
                     state_desc = "your tile only: the (row, column) cell index"
                     state_size = n_floor
+                    if n_floor:
+                        state_factors = [
+                            {"label": "Your tile", "n": n_floor,
+                             "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                        ]
                 observation = (f"Each model sees its own tile and its own {n_stars}-tomato progress - a "
                                "single-agent navigator. The maze walls and pipes are FIXED map "
                                "features, so (tile, tomatoes-held) stays Markov; the rival is invisible.")
@@ -1848,7 +1875,20 @@ class Match:
                     "compact RIVAL flag (ahead / level / behind, plus whether the rival is "
                     "holding the single-file bridge)"
                 )
-                state_size = None
+                n_cells_r3 = getattr(env, "n_cells", 0)
+                phase_period = int(getattr(env, "_phase_period", 1))
+                state_size = (n_cells_r3 * phase_period * 6) or None
+                if n_cells_r3:
+                    state_factors = [
+                        {"label": "Your tile", "n": n_cells_r3,
+                         "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                        {"label": "Patrol phase", "n": phase_period,
+                         "detail": f"steps mod {phase_period} (times the Goombas)",
+                         "color": "#e0563f"},
+                        {"label": "Rival flag", "n": 6,
+                         "detail": "ahead / level / behind x bridge-held",
+                         "color": "#8b5cf6"},
+                    ]
                 observation = (
                     "Its own tile, the patrol phase (so it can TIME the moving Goombas), and "
                     "where the rival is relative to it and to the bridge."
@@ -1879,6 +1919,11 @@ class Match:
                 actions = ["North", "South", "West", "East"]
                 state_desc = "your tile only: the (row, column) cell index"
                 state_size = getattr(env, "n_cells", None)
+                if state_size:
+                    state_factors = [
+                        {"label": "Your tile", "n": state_size,
+                         "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                    ]
                 observation = ("Each model sees ONLY its own tile. It learns as a single-agent "
                                "navigator: the maze is shared, but neither model perceives the other.")
                 observation_tuple = "(cell)"
@@ -1970,6 +2015,26 @@ class Match:
                 win = "First to reach the goal region wins; a tie is a draw."
             g, gr = self.gamma, self.red_gamma
             horizon = lambda x: (round(1.0 / (1.0 - x), 1) if x < 1 else None)
+            # is the factor product the EXACT |S|? true only when every factor is
+            # independent (R2 cell x mask); R1's wall cells carry fewer statuses and
+            # R3's phase/rival flags are not all jointly reachable, so those are "~".
+            factor_product = 1
+            for f in (state_factors or []):
+                factor_product *= f["n"]
+            state_factors_exact = bool(
+                state_factors and state_size and factor_product == state_size
+            )
+            learning = {
+                "blue": {"alpha": round(self.alpha, 3), "gamma": round(g, 3),
+                         "epsStart": round(self.eps_start, 2), "epsEnd": round(self.eps_end, 2),
+                         "epsEpisodes": self._effective_blue_eps_episodes(),
+                         "algo": meta["labelBlue"]},
+                "red": {"alpha": round(self.red_alpha, 3), "gamma": round(gr, 3),
+                        "epsStart": round(self.red_eps_start, 2), "epsEnd": round(self.red_eps_end, 2),
+                        "epsEpisodes": self._effective_red_eps_episodes(),
+                        "algo": meta["labelRed"]},
+                "planning": bool(is_dp(self.algo_blue)),
+            }
             return {
                 "round": self.round_id, "title": meta["title"], "theme": meta["theme"],
                 "objective": env.objective,
@@ -1978,6 +2043,8 @@ class Match:
                 "matchup": meta["matchup"], "labelRed": meta["labelRed"], "labelBlue": meta["labelBlue"],
                 "family": self._family(),
                 "stateDesc": state_desc, "stateSize": state_size, "stateGroups": state_groups,
+                "stateFactors": state_factors, "stateFactorsExact": state_factors_exact,
+                "learning": learning,
                 "observation": observation, "observationTuple": observation_tuple,
                 "seesOpponent": sees_opp, "opponentInfo": opp_info,
                 "dynamics": dynamics,
@@ -2201,6 +2268,9 @@ class Match:
     def _action_labels(self, full=False):
         if self.env.n_actions == 9 and getattr(self.env, "objective", "") == "arena":
             return self._ARENA_LABELS_FULL if full else self._ARENA_LABELS
+        if self.env.n_actions == 5:     # Round 3: the 4 moves + a STAY (wait out a Goomba)
+            return (["North", "South", "West", "East", "Wait"] if full
+                    else ["N", "S", "W", "E", "Wait"])
         if self.env.n_actions != 4:
             return [str(i) for i in range(self.env.n_actions)]
         # Peach's camera views the board from the opposite side. Keep the learner's

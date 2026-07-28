@@ -1121,12 +1121,71 @@ export function initBriefing(parent) {
       const specKey = JSON.stringify(s);
       if (specKey === lastSpecKey) return updateLive(s.gammaBlue, s.gammaRed);
       lastSpecKey = specKey;
-      const rewards = (s.rewards || [])
-        .map(
-          ([k, v]) =>
-            `<div class="stat"><span>${k}</span><b class="${v > 0 ? "rw-pos" : v < 0 ? "rw-neg" : ""}">${v > 0 ? "+" : ""}${v}</b></div>`,
-        )
+      // reward structure as signed proportional BARS (green = gain, red = cost);
+      // string-valued rewards (e.g. "+0.2 / second") show as text with no bar.
+      const rvals = s.rewards || [];
+      const maxMag = Math.max(
+        0.001,
+        ...rvals.map(([, v]) => (typeof v === "number" ? Math.abs(v) : 0)),
+      );
+      const rewards = rvals
+        .map(([k, v]) => {
+          const isNum = typeof v === "number";
+          if (!isNum) {
+            // a rate/description (e.g. "+0.2 / second"): no proportional bar - just
+            // the label with the value wrapping on the right, so it never overflows.
+            return (
+              `<div class="rw-row str"><span class="rw-k">${k}</span>` +
+              `<b class="rw-val str">${v}</b></div>`
+            );
+          }
+          const cls = v >= 0 ? "pos" : "neg";
+          const w = Math.max(6, (Math.abs(v) / maxMag) * 100);
+          // fixed-width bar + value columns (label flexes), so every bar starts at
+          // the SAME x across rows regardless of how long the number is.
+          return (
+            `<div class="rw-row"><span class="rw-k">${k}</span>` +
+            `<span class="rw-track"><span class="rw-fill ${cls}" style="width:${w}%"></span></span>` +
+            `<b class="rw-val ${cls}">${v > 0 ? "+" : ""}${v}</b></div>`
+          );
+        })
         .join("");
+      // Actions: 4-way grid rounds render as compass ARROW chips; anything else
+      // (the 9-way arenas) shows its label as one wide chip.
+      const arrow = { North: "↑", South: "↓", West: "←", East: "→" };
+      const actionsVisual =
+        s.nActions === 4 && (s.actions || []).every((a) => arrow[a])
+          ? `<div class="act-chips">` +
+            s.actions
+              .map(
+                (a) =>
+                  `<span class="act-chip"><b>${arrow[a]}</b><span>${a}</span></span>`,
+              )
+              .join("") +
+            `</div>`
+          : `<div class="act-chips"><span class="act-chip wide">${(s.actions || []).join(" · ")}</span></div>`;
+      // Hyperparameters: Blue vs Red mini-columns (α, γ, ε schedule). A planning
+      // round (DP) has no α/ε - it solves the MDP directly - so only γ is shown.
+      const L = s.learning || null;
+      const lcol = (who, d, color) =>
+        `<div class="lh-col"><div class="lh-who" style="color:${color}">${who}</div>` +
+        `<div class="lh-algo">${d.algo}</div>` +
+        (L.planning
+          ? `<div class="lh-row"><span>γ discount</span><b>${d.gamma}</b></div>` +
+            `<div class="lh-note">Plans directly — no α / ε.</div>`
+          : `<div class="lh-row"><span>α learn rate</span><b>${d.alpha}</b></div>` +
+            `<div class="lh-row"><span>γ discount</span><b>${d.gamma}</b></div>` +
+            `<div class="lh-row"><span>ε explore</span><b>${d.epsStart} → ${d.epsEnd}</b></div>` +
+            `<div class="lh-row"><span>ε decay</span><b>${(d.epsEpisodes || 0).toLocaleString()} eps</b></div>`) +
+        `</div>`;
+      const learnBlock = L
+        ? `<h3 class="brief-sub">Hyperparameters</h3>` +
+          `<div class="lh-grid">` +
+          lcol("Blue", L.blue, "#1f5fd0") +
+          lcol("Red", L.red, "#e60012") +
+          `</div>` +
+          `<p class="note">Effective horizon &asymp; 1/(1-γ) &asymp; ${horizon(s.gammaBlue)} steps - roughly how far ahead a reward still sways a choice.</p>`
+        : "";
       let heroBig, heroUnit;
       if (s.stateSize) {
         heroBig = s.stateSize.toLocaleString();
@@ -1153,6 +1212,7 @@ export function initBriefing(parent) {
       // a structured obs vector renders as a stacked bar + legend; otherwise fall back
       // to the plain sentence (grid rounds, simple race).
       const groups = s.stateGroups || null;
+      const factors = s.stateFactors || null;
       const gTotal = groups ? groups.reduce((a, g) => a + g.dim, 0) || 1 : 1;
       const stateRow = groups
         ? `<div class="so-row"><span class="so-k">State (S) - ${gTotal} dimensions</span>` +
@@ -1175,7 +1235,32 @@ export function initBriefing(parent) {
             )
             .join("") +
           `</div></div>`
-        : `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>`;
+        : factors
+          ? // a DISCRETE tabular state: show its factors MULTIPLIED into |S|
+            `<div class="so-row"><span class="so-k">State (S) = ${factors.length} factor${factors.length > 1 ? "s" : ""}</span>` +
+            `<div class="sf-chips">` +
+            factors
+              .map(
+                (f, i) =>
+                  `${i ? `<span class="sf-x">&times;</span>` : ""}` +
+                  `<span class="sf-chip" style="--fc:${f.color || "#3f7fe0"};background:${f.color || "#3f7fe0"}14;border-color:${f.color || "#3f7fe0"}55">` +
+                  `<b>${(f.n || 0).toLocaleString()}</b><span>${f.label}</span></span>`,
+              )
+              .join("") +
+            `</div>` +
+            (s.stateSize
+              ? `<div class="sf-total">${s.stateFactorsExact ? "=" : "&asymp;"} <b>${(+s.stateSize).toLocaleString()}</b> possible states</div>`
+              : "") +
+            `<div class="sf-legend">` +
+            factors
+              .map(
+                (f) =>
+                  `<div class="sf-li"><span class="sf-dot" style="background:${f.color || "#3f7fe0"}"></span>` +
+                  `<span class="sf-lk">${f.label}</span><span class="sf-ld">${f.detail}</span></div>`,
+              )
+              .join("") +
+            `</div></div>`
+          : `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>`;
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
@@ -1191,23 +1276,21 @@ export function initBriefing(parent) {
         `<span class="so-opp-txt">${s.opponentInfo}</span></div></div>` +
         `</div>` +
 
-        `<h3 class="brief-sub">Actions</h3>` +
-        `<div class="stat"><span>Actions (${s.nActions})</span><b>${s.actions.join(", ")}</b></div>` +
+        `<h3 class="brief-sub">Actions (A) - ${s.nActions}</h3>` +
+        actionsVisual +
 
-        `<h3 class="brief-sub">Transition dynamics</h3>` +
+        `<h3 class="brief-sub">Reward structure (R)</h3>${rewards}` +
+        (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "") +
+
+        learnBlock +
+
+        `<h3 class="brief-sub">Dynamics</h3>` +
+        `<div class="dyn-chips">` +
         (s.slipProb
-          ? `<div class="stat"><span>Slip probability</span><b>${Math.round(100 * s.slipProb)}%</b></div>`
+          ? `<span class="dyn-chip"><b>${Math.round(100 * s.slipProb)}%</b>slip chance</span>`
           : "") +
-        `<div class="stat"><span>Max steps / episode</span><b>${s.maxSteps}</b></div>` +
-        `<p class="note">${s.dynamics}</p>` +
-
-        `<h3 class="brief-sub">Discount &amp; horizon</h3>` +
-        `<div class="stat"><span>Discount γ - Blue / Red</span><b id="rl-brief-gamma">${(+s.gammaBlue).toFixed(2)}  /  ${(+s.gammaRed).toFixed(2)}</b></div>` +
-        `<div class="stat"><span>Effective horizon - B / R</span><b id="rl-brief-horizon">${horizon(s.gammaBlue)}  /  ${horizon(s.gammaRed)} steps</b></div>` +
-        `<p class="note">γ sets how much a future reward is worth versus an immediate one. The effective horizon &asymp; 1/(1-γ) is roughly how many steps ahead still sway a decision - a higher γ makes the agent more far-sighted.</p>` +
-
-        `<h3 class="brief-sub">Reward structure</h3>${rewards}` +
-        (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
+        `<span class="dyn-chip"><b>${s.maxSteps}</b>max steps / episode</span>` +
+        `</div>`;
     } catch (e) {
       /* warming up */
     }

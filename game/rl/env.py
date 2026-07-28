@@ -27,6 +27,10 @@ from worldgen import WALL
 ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 N_ACTIONS = len(ACTIONS)
 MOVE_ACTIONS = (0, 1, 2, 3)
+# Round 3 (the Goomba timing round) adds a 5th action: STAY. It is NOT in
+# MOVE_ACTIONS, so every resolver already treats it as "hold position" - it just
+# lets an agent wait a tick for a patrol to clear. Only exposed when goomba_mode is on.
+STAY = N_ACTIONS                 # action index 4
 # the two PERPENDICULAR actions an intended move can slip to on ice (N/S slip
 # sideways to W/E, W/E slip to N/S) - used to build the stochastic ice transition.
 PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
@@ -202,6 +206,11 @@ class GridWorld(gym.Env):
                         for gb in getattr(world, "goombas", [])]
         self.bridge = {tuple(b) for b in getattr(world, "bridge", [])}
         self.goomba_mode = bool(self.goombas)
+        # Round 3 exposes the extra STAY action so agents can wait out a patrol; every
+        # other round keeps the 4 pure moves. Set here (after the world is known) so a
+        # round switch resizes the action space correctly.
+        self.n_actions = N_ACTIONS + (1 if self.goomba_mode else 0)
+        self.action_space = spaces.Discrete(self.n_actions)
         if self.goomba_mode:
             self.hazardous = True                       # borrow the R2 death/finish path
 
@@ -379,7 +388,10 @@ class GridWorld(gym.Env):
 
     def _resolve(self, agent, pos, direction, passable=None):
         """Landing cell for one move DIRECTION (0..3) from pos. ``passable`` defaults
-        to the live rule; a planner may pass ``_static_passable``."""
+        to the live rule; a planner may pass ``_static_passable``. A non-move (STAY)
+        holds position."""
+        if direction not in MOVE_ACTIONS:
+            return pos
         passable = passable or self.passable
         dr, dc = ACTIONS[direction]
         nr, nc = pos[0] + dr, pos[1] + dc
@@ -432,6 +444,8 @@ class GridWorld(gym.Env):
                 if land != pos:
                     mask[a] = True
                     break
+        if getattr(self, "goomba_mode", False):
+            mask[STAY] = True          # waiting is always a real choice on the timing round
         if not any(mask):
             mask = [True] * self.n_actions
         return mask

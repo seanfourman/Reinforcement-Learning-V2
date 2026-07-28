@@ -1,15 +1,17 @@
 """Round 3 - Fossil Falls / Cascade Kingdom (SARSA vs Q-Learning).
 
-A RANDOM PERFECT MAZE filling the whole 19x19 arena. Walls are exactly ONE cell
-thick: the classic odd-coordinate maze - passage cells sit on the odd (row, col),
-the even rows/cols are 1-thick wall spines opened only where the carver stepped
-across. A recursive-backtracker carve links every cell by a single winding path,
-so there are no open plazas and never two rock rows side by side.
+A RANDOM PERFECT MAZE filling the whole 19x19 arena, EDGE TO EDGE. There is NO rock
+border ring - the corridors run right up to the arena boundary and the board edge
+(off the board = impassable) IS the outer wall. Passage cells sit on the EVEN
+(row, col) - including 0 and 18, so every edge is playable - and the odd rows/cols
+are 1-thick wall spines opened only where the carve stepped across. A recursive-
+backtracker links every cell by a single winding path: no open plazas, never two
+rock rows side by side.
 
 Both racers start at the BOTTOM corners (bottom-left / bottom-right) and hunt for
-the one EXIT at the top centre. A few Goombas patrol straight corridors as moving
-hazards (stepping onto one is death). The maze is FIXED for a round and reshuffles
-only on "New World", so tabular SARSA / Q-Learning learn the fixed layout.
+the one EXIT on the top edge, dead centre. A few Goombas patrol straight corridors
+as moving hazards (stepping onto one is death). The maze is FIXED for a round and
+reshuffles only on "New World", so tabular SARSA / Q-Learning learn the fixed layout.
 
 Coordinates are (row, col), row 0 = NORTH (exit), row H-1 = SOUTH (spawns).
 """
@@ -26,25 +28,30 @@ ROUND_ID = 3
 TITLE = "Fossil Falls"
 
 H = W = 19
-EXIT = (1, W // 2)                # top-centre goal (row 1, col 9)
-BLUE_SPAWN_POS = (H - 2, 1)       # bottom-LEFT corner cell  (17, 1)
-RED_SPAWN_POS = (H - 2, W - 2)    # bottom-RIGHT corner cell (17, 17)
-N_GOOMBAS = 3                     # moving hazards on straight corridors
+EXIT = (0, W // 2)                # top-EDGE goal, centre column (0, 9)
+BLUE_SPAWN_POS = (H - 1, 0)       # bottom-LEFT corner  (18, 0)
+RED_SPAWN_POS = (H - 1, W - 1)    # bottom-RIGHT corner (18, 18)
+N_GOOMBA_PAIRS = 2                # mirror pairs of Goombas (up to 2*this total) on the paths
 PATROL_LEN = 3                    # cells per Goomba patrol (a passage-wall-passage run)
 
 
+MID = W // 2                     # 9: the left-right mirror axis (a wall column)
+
+
 def _carve_maze(rng):
-    """Recursive-backtracker perfect maze. Passage cells sit on odd (r, c); the
-    even rows/cols are 1-thick wall spines, opened only where the carve stepped
-    across. The outer border stays solid. Returns the grid of tiles."""
+    """MIRROR-SYMMETRIC recursive-backtracker maze. We carve a perfect maze over the
+    LEFT half only (even cells in cols 0..MID-1, reaching every left/top/bottom edge)
+    then reflect it onto the right (col -> W-1-col). The centre column MID stays wall
+    except where ``generate`` opens the shared top-edge exit, so the two halves are
+    exact mirror images and the two corner racers face identical path lengths."""
     grid = [[WALL] * W for _ in range(H)]
-    grid[1][1] = FLOOR
-    stack = [(1, 1)]
+    grid[0][0] = FLOOR
+    stack = [(0, 0)]
     while stack:
         r, c = stack[-1]
         nbrs = [(r + dr, c + dc, dr, dc)
                 for dr, dc in ((-2, 0), (2, 0), (0, -2), (0, 2))
-                if 1 <= r + dr < H - 1 and 1 <= c + dc < W - 1
+                if 0 <= r + dr < H and 0 <= c + dc < MID   # stay strictly LEFT of the axis
                 and grid[r + dr][c + dc] == WALL]
         if not nbrs:
             stack.pop()
@@ -53,51 +60,83 @@ def _carve_maze(rng):
         grid[r + dr // 2][c + dc // 2] = FLOOR   # knock out the wall between the two cells
         grid[nr][nc] = FLOOR
         stack.append((nr, nc))
+    for r in range(H):                           # reflect the left half onto the right
+        for c in range(MID):
+            grid[r][W - 1 - c] = grid[r][c]
     return grid
 
 
-def _open_neighbors(grid, cell):
-    r, c = cell
-    return [(r + dr, c + dc) for dr, dc in ORTHO
-            if 0 <= r + dr < H and 0 <= c + dc < W and grid[r + dr][c + dc] != WALL]
-
-
-def _straight_segments(grid, length):
-    """Every maximal horizontal/vertical run of open cells, sliced into windows of
-    exactly ``length`` consecutive cells (candidate Goomba patrols)."""
-    windows = []
-
-    def scan(cells):
-        run = []
-        for cell in cells + [None]:
-            if cell is not None and grid[cell[0]][cell[1]] != WALL:
-                run.append(cell)
-            else:
-                for i in range(len(run) - length + 1):
-                    windows.append(run[i:i + length])
-                run = []
-
-    for r in range(H):
-        scan([(r, c) for c in range(W)])
-    for c in range(W):
-        scan([(r, c) for r in range(H)])
-    return windows
-
-
-def _place_goombas(grid, rng, avoid, n, length):
-    """Drop ``n`` Goombas on distinct, non-overlapping straight corridors, keeping
-    clear of the spawns / exit / goal funnel (``avoid``)."""
-    windows = _straight_segments(grid, length)
-    rng.shuffle(windows)
-    used, goombas = set(avoid), []
-    for win in windows:
-        if len(goombas) >= n:
+def _path(grid, start, goal):
+    """Shortest passable path start->goal (BFS). In a perfect maze it's THE unique route."""
+    from collections import deque
+    prev = {tuple(start): None}
+    q = deque([tuple(start)])
+    while q:
+        cur = q.popleft()
+        if cur == tuple(goal):
             break
-        if any(cell in used for cell in win):
+        for dr, dc in ORTHO:
+            nb = (cur[0] + dr, cur[1] + dc)
+            if (0 <= nb[0] < H and 0 <= nb[1] < W
+                    and grid[nb[0]][nb[1]] != WALL and nb not in prev):
+                prev[nb] = cur
+                q.append(nb)
+    if tuple(goal) not in prev:
+        return []
+    out, cur = [], tuple(goal)
+    while cur is not None:
+        out.append(cur)
+        cur = prev[cur]
+    return out[::-1]
+
+
+def _open(grid, cell):
+    r, c = cell
+    return 0 <= r < H and 0 <= c < W and grid[r][c] != WALL
+
+
+def _open_neighbors(grid, cell):
+    return [n for n in ((cell[0] + dr, cell[1] + dc) for dr, dc in ORTHO) if _open(grid, n)]
+
+
+def _place_goombas(grid, rng, avoid, n_pairs, max_len):
+    """Place each Goomba as a SENTRY that guards ONE cell of the racer's route from an
+    off-route SIDE BRANCH: its patrol is [P, B, (B2)] where P is on the path and B/B2
+    poke into a dead branch. The Goomba oscillates in and out, so P (the cell the agent
+    MUST pass) is clear part of every cycle - with a STAY action the agent waits for the
+    gap and steps through in one tick, never a swap (P's path-neighbours aren't patrolled).
+
+    A patrol placed straight ALONG the corridor instead would sweep the whole run and be
+    an uncrossable death-trap, so we deliberately branch OFF the path. Each left-half
+    sentry is MIRRORED onto the right so both racers face an identical, fair puzzle."""
+    path = _path(grid, BLUE_SPAWN_POS, EXIT)
+    pathset = set(path)
+    cands = []
+    for P in path[3:-3]:                             # skip cells hugging the spawn / exit
+        if P[1] >= MID or P in avoid:
             continue
-        period = 2 * (length - 1)
-        goombas.append({"cells": win, "phase0": rng.randrange(period)})
-        used.update(win)
+        for dr, dc in ORTHO:
+            B = (P[0] + dr, P[1] + dc)               # a branch cell OFF the path
+            if not _open(grid, B) or B in pathset or B[1] >= MID:
+                continue
+            patrol = [P, B]
+            B2 = (B[0] + dr, B[1] + dc)              # extend the branch one more (gentler timing)
+            if len(patrol) < max_len and _open(grid, B2) and B2 not in pathset and B2[1] < MID:
+                patrol.append(B2)
+            cands.append(patrol)
+    rng.shuffle(cands)
+    used, goombas = set(avoid), []
+    for patrol in cands:
+        if len(goombas) >= 2 * n_pairs:
+            break
+        mirror = [(r, W - 1 - c) for (r, c) in patrol]
+        if any(cell in used for cell in patrol + mirror):
+            continue
+        phase = rng.randrange(2 * (len(patrol) - 1))
+        goombas.append({"cells": patrol, "phase0": phase})
+        goombas.append({"cells": mirror, "phase0": phase})
+        used.update(patrol)
+        used.update(mirror)
     return goombas
 
 
@@ -105,6 +144,8 @@ def generate(seed=None, **_):
     rng = random.Random(seed)
     grid = _carve_maze(rng)
 
+    # EXIT sits on an ODD (wall-spine) column of the top edge; stamping it ESCAPE opens
+    # it, joining its two even neighbours so it's a centred, fair goal for both corners.
     grid[EXIT[0]][EXIT[1]] = ESCAPE
     grid[BLUE_SPAWN_POS[0]][BLUE_SPAWN_POS[1]] = BLUE_SPAWN
     grid[RED_SPAWN_POS[0]][RED_SPAWN_POS[1]] = RED_SPAWN
@@ -112,7 +153,7 @@ def generate(seed=None, **_):
     # the open cells feeding the goal are the single-file funnel the live rival can block
     bridge = _open_neighbors(grid, EXIT)
     avoid = {EXIT, BLUE_SPAWN_POS, RED_SPAWN_POS, *bridge}
-    goombas = _place_goombas(grid, rng, avoid, N_GOOMBAS, PATROL_LEN)
+    goombas = _place_goombas(grid, rng, avoid, N_GOOMBA_PAIRS, PATROL_LEN)
 
     world = World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
