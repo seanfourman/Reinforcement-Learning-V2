@@ -41,7 +41,8 @@ class World:
                  red_blocks=None, blue_blocks=None, slip=None,
                  spikes=None, plants=None, pipes=None,
                  red_stars=None, blue_stars=None,
-                 hedge_cells=None, goombas=None, bridge=None):
+                 hedge_cells=None, goombas=None, bridge=None,
+                 red_cage=None, blue_cage=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -89,6 +90,11 @@ class World:
                          "phase0": int(gb.get("phase0", 0))}
                         for gb in (goombas or [])]
         self.bridge = [tuple(b) for b in (bridge or [])]
+        # Round-3 CAGE pickups (per-agent, mirror pair). Stepping on YOUR cage cell
+        # drops a cage on the RIVAL, freezing it for a few steps. Off the main path, so
+        # taking it is a deliberate detour. Empty on every other round.
+        self.red_cage = [tuple(c) for c in (red_cage or [])]
+        self.blue_cage = [tuple(c) for c in (blue_cage or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -128,6 +134,9 @@ class World:
             "goombas": [{"cells": [list(c) for c in gb["cells"]], "phase0": gb["phase0"]}
                         for gb in self.goombas],
             "bridge": [list(b) for b in self.bridge],
+            # Round-3 cage pickups (per agent), rendered as freeze-coin icons.
+            "redCage": [list(c) for c in self.red_cage],
+            "blueCage": [list(c) for c in self.blue_cage],
         }
 
 

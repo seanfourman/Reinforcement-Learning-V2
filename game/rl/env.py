@@ -51,6 +51,10 @@ BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble w
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
 STAR_REWARD = 0.35     # Round-2: reward for collecting a required tomato
                        # (shaping that keeps the multi-room hunt learnable for Monte-Carlo)
+CAGE_LEN = 6           # Round-3: steps the RIVAL is frozen after you grab your cage pickup
+CAGE_REWARD = 0.2      # Round-3: shaping bonus for grabbing your cage (keeps the OFF-path
+                       # detour learnable for tabular TD; the win/lose signal + rival-position
+                       # state then teach WHEN it is worth leaving the route)
 
 
 class GridWorld(gym.Env):
@@ -74,6 +78,7 @@ class GridWorld(gym.Env):
         self.coin_reward = COIN_REWARD     # value of an optional coin
         self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
         self.star_reward = STAR_REWARD     # Round-2: value of one of the 3 required tomatoes
+        self.cage_reward = CAGE_REWARD     # Round-3: bonus for grabbing your cage pickup
         self._resolved_action = {"red": None, "blue": None}
         self._slipped = {"red": False, "blue": False}
         self.world = None
@@ -205,6 +210,11 @@ class GridWorld(gym.Env):
                          "phase0": int(gb.get("phase0", 0))}
                         for gb in getattr(world, "goombas", [])]
         self.bridge = {tuple(b) for b in getattr(world, "bridge", [])}
+        # Round-3 cage pickups: each agent's OWN cell (grabbing it cages the RIVAL).
+        rc = getattr(world, "red_cage", []) or []
+        bc = getattr(world, "blue_cage", []) or []
+        self.cage_cell = {"red": tuple(rc[0]) if rc else None,
+                          "blue": tuple(bc[0]) if bc else None}
         self.goomba_mode = bool(self.goombas)
         # Round 3 exposes the extra STAY action so agents can wait out a patrol; every
         # other round keeps the 4 pure moves. Set here (after the world is known) so a
@@ -303,6 +313,10 @@ class GridWorld(gym.Env):
         # Stays 0 on the skeleton rounds (self.rich False), so the state is just (cell,).
         self.collect = {"red": 0, "blue": 0}
         self.status = {"red": 0, "blue": 0}
+        # Round-3 cages: has each agent still got its pickup to grab, and how many more
+        # steps each is frozen inside a dropped cage (0 = free). Reset every episode.
+        self.cage_taken = {"red": False, "blue": False}
+        self.caged = {"red": 0, "blue": 0}
         # per-episode reward decomposition (terminal / shaping / other) per agent.
         # "shape" now carries collected-coin reward (0 on the skeleton rounds).
         self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
@@ -367,20 +381,15 @@ class GridWorld(gym.Env):
         return (idx,)
 
     def _rival_flag(self, agent, cell):
-        """Compact rival summary for the tabular Round-3 state (0..5): whether the rival
-        is ahead / level / behind toward the goal (row as a progress proxy), plus whether
-        the LIVE rival is on-or-next-to the bridge (about to block my funnel)."""
+        """Compact Round-3 state factor (0..5) = rival PROGRESS x my CAGE readiness.
+        Progress: is the rival ahead / level / behind me toward the goal (row proxy).
+        Cage: is my cage pickup still available to grab. Together they let the agent
+        learn to detour for the cage when it is behind, and rush once it is ahead."""
         rival = "blue" if agent == "red" else "red"
-        rpos = self._pos(rival)
-        my_row, rv_row = cell[0], rpos[0]
-        ahead = 2 if rv_row < my_row else (0 if rv_row > my_row else 1)  # lower row = closer
-        near_bridge = 0
-        if not self._agent_done.get(rival, False):
-            for b in self.bridge:
-                if abs(rpos[0] - b[0]) + abs(rpos[1] - b[1]) <= 1:
-                    near_bridge = 1
-                    break
-        return ahead * 2 + near_bridge
+        rv_row = self._pos(rival)[0]
+        ahead = 2 if rv_row < cell[0] else (0 if rv_row > cell[0] else 1)  # lower row = closer
+        cage_ready = 0 if self.cage_taken.get(agent, True) else 1
+        return ahead * 2 + cage_ready
 
     # ------------------------------------------------------------------- step
     def _pos(self, agent):
@@ -654,13 +663,25 @@ class GridWorld(gym.Env):
                 shape[agent] = bonus
             elif self.goomba_mode:
                 old = self._pos(agent)
-                nxt = self._resolve(agent, old, act)   # walls block
                 rival = "blue" if agent == "red" else "red"
-                if not self._agent_done.get(rival, False) and nxt == self._pos(rival):
-                    nxt = old                          # can't enter the live rival's cell (bridge block)
+                frozen = self.caged[agent] > 0         # locked in a dropped cage this tick
+                if frozen:
+                    nxt = old                          # cannot move while caged
+                else:
+                    nxt = self._resolve(agent, old, act)   # walls block
+                    if not self._agent_done.get(rival, False) and nxt == self._pos(rival):
+                        nxt = old                      # can't enter the live rival's cell (bridge block)
                 self._set_pos(agent, nxt)
-                die = nxt in g_now
-                if not die:
+                # grab YOUR OWN cage pickup on entry -> drop a cage on the rival
+                if (not frozen and nxt == self.cage_cell.get(agent)
+                        and not self.cage_taken[agent]):
+                    self.cage_taken[agent] = True
+                    self.caged[rival] = CAGE_LEN
+                    reward[agent] += self.cage_reward   # shaping: makes the detour learnable
+                    shape[agent] += self.cage_reward
+                # Goomba death - but a caged agent is SHIELDED (the cage protects it)
+                die = (not frozen) and (nxt in g_now)
+                if not die and not frozen:
                     for gi, gp in enumerate(g_prev):   # swapped straight through a Goomba
                         if gp is not None and nxt == gp and old == g_now_list[gi]:
                             die = True
@@ -668,6 +689,8 @@ class GridWorld(gym.Env):
                 dead[agent] = "goomba" if die else None
                 if die:
                     dead_at[agent] = nxt
+                if frozen:
+                    self.caged[agent] -= 1             # count the cage down
             elif self.hazardous:
                 nxt, death, warp, entry = self._r2_resolve(agent, act)
                 self._set_pos(agent, nxt)
@@ -850,6 +873,12 @@ class GridWorld(gym.Env):
             snap["goombas"] = [list(p) for p in self._goomba_positions(self.steps)
                                if p is not None]
             snap["bridge"] = [list(b) for b in self.bridge]
+            # Cage pickups still on the board (drop out once grabbed), and who is caged
+            # right now + for how many more ticks (drives the cage-drop FX + freeze hold).
+            for a in ("red", "blue"):
+                cell = self.cage_cell.get(a)
+                snap[a + "Cage"] = ([list(cell)] if cell and not self.cage_taken[a] else [])
+            snap["caged"] = {"red": int(self.caged["red"]), "blue": int(self.caged["blue"])}
         return snap
 
 

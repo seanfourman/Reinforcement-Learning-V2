@@ -3,9 +3,19 @@
 from collections import deque
 from math import gcd
 
-from rl.env import GridWorld, STAY
+from rl.env import GridWorld, STAY, CAGE_LEN
 from rl.worlds import fossilfalls
 from rl.worlds.grid import WALL
+
+
+def _approach(e, target):
+    """Return (from_cell, action) that steps onto `target` from an open neighbour."""
+    act = {(-1, 0): 0, (1, 0): 1, (0, -1): 2, (0, 1): 3}
+    for (dr, dc), a in act.items():
+        nb = (target[0] - dr, target[1] - dc)
+        if 0 <= nb[0] < e.H and 0 <= nb[1] < e.W and e.world.grid[nb[0]][nb[1]] != WALL:
+            return nb, a
+    raise AssertionError("target has no open neighbour")
 
 
 def _world(seed=0):
@@ -17,8 +27,7 @@ def test_generation_shape_and_pieces():
     assert w.H == 19 and w.W == 19
     assert w.escape == [(0, 9)]                              # shared exit, top EDGE centre
     assert w.blue_spawn == (18, 0) and w.red_spawn == (18, 18)   # bottom-left / bottom-right corners
-    assert len(w.goombas) % 2 == 0                           # Goombas come in mirror pairs
-    assert 0 < len(w.goombas) <= 2 * fossilfalls.N_GOOMBA_PAIRS
+    assert len(w.goombas) == 2 * fossilfalls.N_GOOMBA_PAIRS  # 3 per side -> 6, in mirror pairs
 
 
 def test_walls_are_one_cell_thick():
@@ -188,3 +197,56 @@ def test_stay_action_holds_position():
     before = e.blue_pos
     (_, _), _, _, _, info = e.step(STAY, STAY)               # both wait a tick
     assert e.blue_pos == before and "blue" not in info["died"]
+
+
+def test_cage_pickups_are_off_path_and_symmetric():
+    for seed in (0, 1, 2, 7):
+        w = fossilfalls.generate(seed)
+        b, r = w.blue_cage[0], w.red_cage[0]
+        assert r == (b[0], 18 - b[1])                        # mirror pair
+        path = set(fossilfalls._path(w.grid, w.blue_spawn, w.escape[0]))
+        assert b not in path                                 # a deliberate DETOUR, not on the route
+        gcells = {c for gb in w.goombas for c in gb["cells"]}
+        assert b not in gcells and r not in gcells           # clear of goomba patrols
+
+
+def test_grabbing_your_cage_freezes_the_rival():
+    e = GridWorld(seed=0, round_id=3)
+    e.reset()
+    e.red_pos = e.world.red_spawn
+    frm, act = _approach(e, e.cage_cell["blue"])
+    e.blue_pos = frm
+    e.step(STAY, act)                                        # blue steps onto its own cage
+    assert e.cage_taken["blue"] and e.caged["red"] >= CAGE_LEN - 1
+    # the rival is now stuck for several ticks no matter what it tries
+    rp = e.red_pos
+    for _ in range(CAGE_LEN - 2):
+        e.step(0, STAY)                                      # red tries to move North, blue waits
+        assert e.red_pos == rp                               # frozen in the cage
+
+
+def test_caged_agent_is_shielded_from_goombas():
+    e = GridWorld(seed=5, round_id=3)
+    e.reset()
+    gcell = e.goombas[0]["cells"][0]
+    e.caged["blue"] = CAGE_LEN                               # pretend blue is caged
+    e.blue_pos = gcell                                       # sitting where a goomba patrols
+    e.red_pos = e.world.red_spawn
+    died = False
+    for _ in range(2 * len(e.goombas[0]["cells"])):
+        (_, _), _, _, _, info = e.step(STAY, STAY)
+        if "blue" in info["died"]:
+            died = True
+            break
+    assert not died                                          # the cage protects it from the patrol
+
+
+def test_cage_ready_bit_clears_after_grab():
+    e = GridWorld(seed=0, round_id=3)
+    (_, sb), _ = e.reset()
+    assert sb[2] % 2 == 1                                    # cage-ready bit set at the start
+    frm, act = _approach(e, e.cage_cell["blue"])
+    e.blue_pos = frm
+    e.red_pos = e.world.red_spawn
+    (_, sb2), _, _, _, _ = e.step(STAY, act)
+    assert sb2[2] % 2 == 0                                   # ...and clears once the cage is taken

@@ -812,12 +812,12 @@ export const fossilfalls = {
     // BOTH tapered flanks (no separate islets), and the great skull juts from
     // the south face, watching the camera. Bases are sunk into the rock so the
     // bones read as part of the island.
-    place("WaterfallWorldHomeBone001.dae", -3.5, 10.0, {
+    place("WaterfallWorldHomeBone001.dae", -4.5, 10.0, {
       baseY: -9.8,
       footprint: 15.0,
       ry: -1.5, // west flank (tuned by eye)
     });
-    place("WaterfallWorldHomeBone001.dae", 23.5, 10.0, {
+    place("WaterfallWorldHomeBone001.dae", 23.0, 10.0, {
       baseY: -9.8,
       footprint: 15.0,
       ry: -1.5 + Math.PI, // east flank (mirrored)
@@ -1310,6 +1310,108 @@ export const fossilfalls = {
       }).catch((e) => console.warn("Goomba failed to load", e));
     }
 
+    // ---- Round-3 CAGE mechanic: a freeze-coin PICKUP per side (grab it to cage the
+    // rival) + the Moon-Cage that DROPS from off-screen onto a caged agent. Both are
+    // Z-up skinned DAEs, so deskin them (like the Goomba) then hand-skin from textures.
+    const OBJ = "./assets/objects/";
+    const objTex = (url, srgb) => {
+      const tex = textureAt(encodeURI(url), 1, 1, srgb);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    };
+    const deskinObj = (root) => {
+      const sk = [];
+      root.traverse((o) => o.isSkinnedMesh && sk.push(o));
+      for (const sm of sk) {
+        const m = new THREE.Mesh(sm.geometry, sm.material);
+        m.name = sm.name;
+        m.position.copy(sm.position);
+        m.quaternion.copy(sm.quaternion);
+        m.scale.copy(sm.scale);
+        if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+      }
+      return root;
+    };
+    const fitObj = (root, size, byHeight) => {
+      root.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(root);
+      const d = box.getSize(new THREE.Vector3());
+      const c = box.getCenter(new THREE.Vector3());
+      root.position.set(-c.x, -box.min.y, -c.z);
+      const wrap = new THREE.Group();
+      wrap.add(root);
+      wrap.scale.setScalar(size / ((byHeight ? d.y : Math.max(d.x, d.z)) || 1));
+      return wrap;
+    };
+
+    // -- freeze-coin pickups at each side's cage cell -------------------------
+    const cagePickups = [];
+    const pickupSpec = [
+      ...(world.blueCage || []).map((c) => ({ cell: c, side: "blue" })),
+      ...(world.redCage || []).map((c) => ({ cell: c, side: "red" })),
+    ];
+    if (pickupSpec.length) {
+      const coinMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(OBJ + "Regional Coins/CoinCollectC_alb.png", true),
+        normalMap: objTex(OBJ + "Regional Coins/CoinCollectC_nrm.png", false),
+        roughnessMap: objTex(OBJ + "Regional Coins/CoinCollectC_rgh.png", false),
+        roughness: 0.5, metalness: 0.2, emissive: 0x6fd6ff, emissiveIntensity: 0.3,
+      }));
+      collada.loadAsync(encodeURI(OBJ + "Regional Coins/CoinCollectCFreeze.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        root.traverse((o) => { if (o.isMesh) { o.material = coinMat; o.castShadow = true; track(o.geometry); } });
+        const proto = fitObj(root, 0.55, false);
+        for (const p of pickupSpec) {
+          const m = proto.clone();
+          m.position.set(p.cell[1] + 0.5, 0.4, p.cell[0] + 0.5);
+          group.add(m);
+          cagePickups.push({ mesh: m, r: p.cell[0], c: p.cell[1] });
+        }
+      }).catch((e) => console.warn("Cage pickup failed to load", e));
+    }
+
+    // -- the drop cage (one per side, hidden until that agent is caged) -------
+    const cageDrops = { red: null, blue: null };
+    {
+      const cageSkin = (key) => track(
+        key === "glass" ? new THREE.MeshStandardMaterial({
+          map: objTex(OBJ + "Moon Cage/CageSineGlass_alb.png", true), transparent: true,
+          opacity: 0.32, roughness: 0.1, metalness: 0.1, side: THREE.DoubleSide, depthWrite: false,
+        }) : key === "lamp" ? new THREE.MeshStandardMaterial({
+          map: objTex(OBJ + "Moon Cage/CageSineLamp_alb.png", true),
+          emissiveMap: objTex(OBJ + "Moon Cage/CageSineLamp_emm.png", true),
+          emissive: 0xffffff, emissiveIntensity: 1.0, roughness: 0.6,
+        }) : key === "window" ? new THREE.MeshStandardMaterial({
+          map: objTex(OBJ + "Moon Cage/CageSineWindow_alb.png", true),
+          normalMap: objTex(OBJ + "Moon Cage/CageSineWindow_nrm.png", false), roughness: 0.7, metalness: 0.3,
+        }) : new THREE.MeshStandardMaterial({
+          map: objTex(OBJ + "Moon Cage/CageSineBody_alb.png", true),
+          normalMap: objTex(OBJ + "Moon Cage/CageSineBody_nrm.png", false),
+          roughnessMap: objTex(OBJ + "Moon Cage/CageSineBody_rgh.png", false), roughness: 0.6, metalness: 0.4,
+        }));
+      collada.loadAsync(encodeURI(OBJ + "Moon Cage/CageShine.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        const cache = {};
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          const n = (o.material?.name || "").toLowerCase();
+          const k = n.includes("glass") ? "glass" : n.includes("lamp") ? "lamp"
+            : n.includes("window") ? "window" : "body";
+          o.material = (cache[k] ||= cageSkin(k));
+          track(o.geometry);
+        });
+        const proto = fitObj(root, 2.0, true);       // tall enough to loom over the caged agent
+        for (const side of ["red", "blue"]) {
+          const m = proto.clone();
+          m.visible = false;
+          group.add(m);
+          cageDrops[side] = { mesh: m, y: 8, has: false };
+        }
+      }).catch((e) => console.warn("Cage failed to load", e));
+    }
+
     function update(t, dt, frame) {
       if (pondNrm) {
         pondNrm.offset.x = Math.sin(t * 0.18) * 0.4 + t * 0.013; // gentle swirling ripples
@@ -1383,6 +1485,43 @@ export const fossilfalls = {
         gm.g.visible = true;
         gm.g.position.set(gm.x, Math.abs(Math.sin(t * 6 + i)) * 0.06, gm.z);
         gm.g.rotation.z = Math.sin(t * 6 + i) * 0.13; // waddle
+      }
+      // Round-3 cage pickups: spin + bob; hide the instant a side grabs it (it drops
+      // out of frame.blueCage / frame.redCage, which list only the pickups still there).
+      if (cagePickups.length) {
+        const remain = new Set([
+          ...(((frame && frame.blueCage) || [])).map((c) => c[0] + "," + c[1]),
+          ...(((frame && frame.redCage) || [])).map((c) => c[0] + "," + c[1]),
+        ]);
+        for (const p of cagePickups) {
+          const alive = !frame || remain.has(p.r + "," + p.c);
+          p.mesh.visible = alive;
+          if (alive) {
+            p.mesh.rotation.y = t * 2.2;
+            p.mesh.position.y = 0.4 + Math.sin(t * 3 + p.c) * 0.07;
+          }
+        }
+      }
+      // Round-3 cage drops: while frame.caged[side] > 0, a cage falls from off-screen onto
+      // that agent's cell and holds; when the freeze ends it lifts back up and hides.
+      const caged = (frame && frame.caged) || {};
+      for (const side of ["red", "blue"]) {
+        const cd = cageDrops[side];
+        if (!cd) continue;
+        const cell = frame && frame[side];
+        if ((caged[side] || 0) > 0 && cell) {
+          if (!cd.has) { cd.y = 8; cd.has = true; }
+          cd.y += (0 - cd.y) * Math.min(1, dt * 7);        // ease DOWN onto the agent
+          cd.mesh.visible = true;
+          cd.mesh.position.set(cell[1] + 0.5, cd.y, cell[0] + 0.5);
+          cd.mesh.rotation.y = Math.sin(t * 2) * 0.05;
+        } else if (cd.has) {
+          cd.y += (9 - cd.y) * Math.min(1, dt * 6);        // lift back OFF-screen, then hide
+          cd.mesh.position.y = cd.y;
+          if (cd.y > 7.5) { cd.mesh.visible = false; cd.has = false; }
+        } else {
+          cd.mesh.visible = false;
+        }
       }
     }
 

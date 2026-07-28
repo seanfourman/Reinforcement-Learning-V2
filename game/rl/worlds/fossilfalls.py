@@ -31,7 +31,7 @@ H = W = 19
 EXIT = (0, W // 2)                # top-EDGE goal, centre column (0, 9)
 BLUE_SPAWN_POS = (H - 1, 0)       # bottom-LEFT corner  (18, 0)
 RED_SPAWN_POS = (H - 1, W - 1)    # bottom-RIGHT corner (18, 18)
-N_GOOMBA_PAIRS = 2                # mirror pairs of Goombas (up to 2*this total) on the paths
+N_GOOMBA_PAIRS = 3                # mirror pairs of Goombas (3 per side -> 6 total) on the paths
 PATROL_LEN = 3                    # cells per Goomba patrol (a passage-wall-passage run)
 
 
@@ -111,33 +111,83 @@ def _place_goombas(grid, rng, avoid, n_pairs, max_len):
     sentry is MIRRORED onto the right so both racers face an identical, fair puzzle."""
     path = _path(grid, BLUE_SPAWN_POS, EXIT)
     pathset = set(path)
-    cands = []
-    for P in path[3:-3]:                             # skip cells hugging the spawn / exit
-        if P[1] >= MID or P in avoid:
-            continue
-        for dr, dc in ORTHO:
-            B = (P[0] + dr, P[1] + dc)               # a branch cell OFF the path
-            if not _open(grid, B) or B in pathset or B[1] >= MID:
+    used, goombas = set(avoid), []
+
+    def branch_patrol(P):
+        """A patrol [P, B, (B2)] whose guard cell P sits at the given cell and whose
+        tail pokes into an OFF-path branch (left half). None if P has no such branch."""
+        for dr, dc in rng.sample(ORTHO, len(ORTHO)):
+            B = (P[0] + dr, P[1] + dc)
+            if not _open(grid, B) or B in pathset or B[1] >= MID or B in used:
                 continue
             patrol = [P, B]
             B2 = (B[0] + dr, B[1] + dc)              # extend the branch one more (gentler timing)
             if len(patrol) < max_len and _open(grid, B2) and B2 not in pathset and B2[1] < MID:
                 patrol.append(B2)
-            cands.append(patrol)
-    rng.shuffle(cands)
-    used, goombas = set(avoid), []
-    for patrol in cands:
-        if len(goombas) >= 2 * n_pairs:
-            break
+            return patrol
+        return None
+
+    def try_place(P):
+        if P in used or P[1] >= MID:
+            return
+        patrol = branch_patrol(P)
+        if patrol is None:
+            return
         mirror = [(r, W - 1 - c) for (r, c) in patrol]
         if any(cell in used for cell in patrol + mirror):
-            continue
+            return
         phase = rng.randrange(2 * (len(patrol) - 1))
         goombas.append({"cells": patrol, "phase0": phase})
         goombas.append({"cells": mirror, "phase0": phase})
         used.update(patrol)
         used.update(mirror)
+
+    # Phase 1: SENTRIES on the racer's actual path (skip cells hugging the spawn / exit).
+    on_path = path[3:-3]
+    rng.shuffle(on_path)
+    for P in on_path:
+        if len(goombas) >= 2 * n_pairs:
+            break
+        try_place(P)
+    # Phase 2: if the path lacked enough junctions, top up from OFF-path branch cells so
+    # we always hit 3 per side. Off-path patrols never touch the unique route -> the maze
+    # stays solvable; they're just extra hazards for the exploring learner.
+    if len(goombas) < 2 * n_pairs:
+        off_path = [(r, c) for r in range(H) for c in range(MID)
+                    if _open(grid, (r, c)) and (r, c) not in pathset]
+        rng.shuffle(off_path)
+        for P in off_path:
+            if len(goombas) >= 2 * n_pairs:
+                break
+            try_place(P)
     return goombas
+
+
+def _place_cage(grid, rng, path, occupied):
+    """Blue's cage pickup: the CLOSEST off-route cell to Blue's path (usually one cell
+    off), preferring the mid stretch of the route. A short step-off-and-back detour is a
+    real choice yet close enough that a tabular learner is regularly beside it and can
+    DISCOVER + reinforce grabbing it - a cage buried deep in the maze is never reached by
+    exploration, so the mechanic would never be learned. Red's is the mirror."""
+    from collections import deque
+    pathset = set(path)
+    dist = {c: 0 for c in path if c[1] < MID}
+    q = deque(dist)
+    while q:                                                     # BFS distance from the route
+        cur = q.popleft()
+        for dr, dc in ORTHO:
+            nb = (cur[0] + dr, cur[1] + dc)
+            if 0 <= nb[0] < H and 0 <= nb[1] < MID and grid[nb[0]][nb[1]] != WALL and nb not in dist:
+                dist[nb] = dist[cur] + 1
+                q.append(nb)
+    cands = [c for c, d in dist.items() if d >= 1 and c not in pathset and c not in occupied]
+    if not cands:
+        return None, None
+    mid_row = path[len(path) // 2][0] if path else H // 2
+    rng.shuffle(cands)                                           # random tie-break within a rank
+    cands.sort(key=lambda c: (dist[c], abs(c[0] - mid_row)))     # closest to the route, mid-height
+    blue = cands[0]
+    return blue, (blue[0], W - 1 - blue[1])
 
 
 def generate(seed=None, **_):
@@ -155,10 +205,18 @@ def generate(seed=None, **_):
     avoid = {EXIT, BLUE_SPAWN_POS, RED_SPAWN_POS, *bridge}
     goombas = _place_goombas(grid, rng, avoid, N_GOOMBA_PAIRS, PATROL_LEN)
 
+    # Cage pickups: OFF-path detours (per-agent, mirror-symmetric). Grabbing YOUR cage
+    # drops it on the RIVAL. Placed clear of goomba patrols + the funnel.
+    gcells = {c for gb in goombas for c in gb["cells"]}
+    blue_path = _path(grid, BLUE_SPAWN_POS, EXIT)
+    blue_cage, red_cage = _place_cage(grid, rng, blue_path, avoid | gcells)
+
     world = World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS, escape=[EXIT],
         goombas=goombas, bridge=bridge,
+        blue_cage=[blue_cage] if blue_cage else None,
+        red_cage=[red_cage] if red_cage else None,
     )
     validate(world)                              # the maze is connected: both spawns reach the exit
     return world

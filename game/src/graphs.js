@@ -1150,20 +1150,22 @@ export function initBriefing(parent) {
           );
         })
         .join("");
-      // Actions: 4-way grid rounds render as compass ARROW chips; anything else
-      // (the 9-way arenas) shows its label as one wide chip.
-      const arrow = { North: "↑", South: "↓", West: "←", East: "→" };
+      // Actions: grid rounds render as chips - a compass arrow per move, plus a
+      // "stay" dot on the Goomba-timing round (5 actions). Anything unrecognized
+      // (the 9-way arenas, given as one label string) shows as one wide chip.
+      const glyph = { North: "↑", South: "↓", West: "←", East: "→", Stay: "•" };
+      const acts = s.actions || [];
       const actionsVisual =
-        s.nActions === 4 && (s.actions || []).every((a) => arrow[a])
+        acts.length && acts.every((a) => glyph[a])
           ? `<div class="act-chips">` +
-            s.actions
+            acts
               .map(
                 (a) =>
-                  `<span class="act-chip"><b>${arrow[a]}</b><span>${a}</span></span>`,
+                  `<span class="act-chip"><b>${glyph[a]}</b><span>${a}</span></span>`,
               )
               .join("") +
             `</div>`
-          : `<div class="act-chips"><span class="act-chip wide">${(s.actions || []).join(" · ")}</span></div>`;
+          : `<div class="act-chips"><span class="act-chip wide">${acts.join(" · ")}</span></div>`;
       // Hyperparameters: Blue vs Red mini-columns (α, γ, ε schedule). A planning
       // round (DP) has no α/ε - it solves the MDP directly - so only γ is shown.
       const L = s.learning || null;

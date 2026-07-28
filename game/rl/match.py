@@ -1867,13 +1867,14 @@ class Match:
                         "eliminates that racer until the next episode while the rival continues."
                     )
             elif getattr(env, "goomba_mode", False):
-                # Round 3 (Fossil Falls): the CLIFF-WALKING race - a Goomba-patrolled fast
-                # lane (the cliff) vs safe outer lanes, funnelling into a single-file bridge.
-                actions = ["North", "South", "West", "East"]
+                # Round 3 (Fossil Falls): a MIRROR-SYMMETRIC maze race. Both racers start in
+                # opposite bottom corners and hunt the shared top-centre exit; 6 Goombas patrol
+                # as sentries. A 5th action, STAY, lets a racer wait a beat to time the Goombas.
+                actions = ["North", "South", "West", "East", "Stay"]
                 state_desc = (
-                    f"your tile, the Goomba patrol PHASE (steps mod {env._phase_period}), and a "
-                    "compact RIVAL flag (ahead / level / behind, plus whether the rival is "
-                    "holding the single-file bridge)"
+                    f"your tile, the Goomba patrol PHASE (steps mod {env._phase_period}: the "
+                    "shared cycle on which every Goomba's position repeats), and a compact RIVAL "
+                    "flag (ahead / level / behind, plus whether YOUR cage pickup is still ready)"
                 )
                 n_cells_r3 = getattr(env, "n_cells", 0)
                 phase_period = int(getattr(env, "_phase_period", 1))
@@ -1883,36 +1884,40 @@ class Match:
                         {"label": "Your tile", "n": n_cells_r3,
                          "detail": "the floor cell you stand on", "color": "#3f7fe0"},
                         {"label": "Patrol phase", "n": phase_period,
-                         "detail": f"steps mod {phase_period} (times the Goombas)",
+                         "detail": f"steps mod {phase_period}: all {len(env.goombas)} Goombas share this cycle",
                          "color": "#e0563f"},
                         {"label": "Rival flag", "n": 6,
-                         "detail": "ahead / level / behind x bridge-held",
+                         "detail": "ahead / level / behind x cage-ready",
                          "color": "#8b5cf6"},
                     ]
                 observation = (
-                    "Its own tile, the patrol phase (so it can TIME the moving Goombas), and "
-                    "where the rival is relative to it and to the bridge."
+                    "Its own tile, the patrol phase (so it can TIME the moving Goombas), where the "
+                    "rival is, and whether its own cage pickup is still there to grab."
                 )
                 observation_tuple = "(cell, phase, rival_flag)"
                 sees_opp = True
                 opp_info = (
-                    "The rival's RELATIVE position is in the state (ahead / level / behind + "
-                    "bridge-blocking), so the agent can decide whether to rush the single-file "
-                    "bridge first (to block and delay the rival) or take the safe lane."
+                    "The rival's RELATIVE position is in the state (ahead / level / behind), and a "
+                    "bit for whether your CAGE pickup is still available - so a racer can learn to "
+                    "detour for the cage and freeze the rival, especially when it is falling behind."
                 )
                 dynamics = (
-                    "Deterministic 4-way moves; walls block. GOOMBAS patrol the fast central "
-                    "lane on fixed loops - a Goomba on your cell = DEATH. The two sides funnel "
-                    "into a single-file BRIDGE just below the shared goal; whoever reaches it "
-                    "first holds it and blocks the rival."
+                    "Deterministic 4-way moves PLUS a STAY (wait); walls block and the board edge "
+                    "is the outer wall. Six GOOMBAS patrol as sentries, each guarding one maze cell "
+                    "from a side branch - a Goomba on your cell = DEATH, so wait for the gap and "
+                    "slip through. An OFF-route CAGE pickup per side: grab yours to drop a cage on "
+                    "the rival, freezing it for several steps (a comeback tool). The maze is "
+                    "MIRROR-SYMMETRIC: both racers face an identical route to the shared top exit."
                 )
                 rewards = [["Step", -0.01], ["Reach the goal first (win)", 1.0],
+                           ["Grab your cage (freeze the rival)", round(getattr(env, "cage_reward", 0.2), 2)],
                            ["Caught by a Goomba (death)", -1.0],
                            ["Rival reaches the goal first (lose)", -1.0]]
                 win = (
-                    "First to the shared Power Moon at top-centre wins. The FAST central lane "
-                    "is short but Goomba-risky (Q-Learning's optimal path); the SAFE outer lanes "
-                    "are longer (SARSA's safer path) - this round IS Cliff Walking."
+                    "First to the shared exit at top-centre wins; a dead heat draws. The maze is "
+                    "MIRROR-SYMMETRIC, so both racers run an identical route from their bottom "
+                    "corner - the edge comes from TIMING the Goomba sentries (wait for the gap, "
+                    "slip through) and detouring to grab your CAGE pickup to freeze the rival."
                 )
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
