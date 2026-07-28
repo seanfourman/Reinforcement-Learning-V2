@@ -238,6 +238,7 @@ class Match:
         self.r4_missile_homing = None
         self.r4_hearts = None
         self.r4_hit_penalty = None
+        self.r4_action_repeat = None       # None = the arena's own default (4)
         # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
         # Red each train fully independently (different brain AND different training
         # regime). batch/warmup/target-sync apply live; buffer/width/depth rebuild.
@@ -314,6 +315,8 @@ class Match:
             setm(missile_speed=self.r4_missile_speed,
                  missile_turn=self.r4_missile_homing,
                  hearts=self.r4_hearts, hit_penalty=self.r4_hit_penalty)
+        if self.r4_action_repeat is not None and getattr(self.env, "missile_game", False):
+            self.env.action_repeat = self.r4_action_repeat
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
@@ -637,6 +640,10 @@ class Match:
         (self.s_red, self.s_blue), _ = self.env.reset()
         self._full_course_episode = True
         self._curriculum_stage = 0
+        # action-repeat (R4) macro-step accumulators; reset each episode in lockstep with
+        # the env's own commit window so decision boundaries stay aligned.
+        self._ar_pending = {"red": None, "blue": None}
+        self._ar_count = {"red": 0, "blue": 0}
         if self.round_id == 2 and getattr(self.env, "star_mode", False):
             # Exploring starts are the standard way to make long-horizon Monte
             # Carlo control visit later state/action pairs. Collecting a tomato
@@ -772,29 +779,38 @@ class Match:
             # real win/lose/draw (done and not truncated) cuts the bootstrap.
             terminated = done and not truncated
             hazardous = bool(getattr(self.env, "hazardous", False))
-            # ACTION-REPEAT (R4): the env may hold a committed direction across steps, so
-            # learn on the action actually EXECUTED this step, not the one just picked.
+            # ACTION-REPEAT (R4 only): the env holds a committed direction for
+            # `action_repeat` steps (smooth execution, no per-step flip-flop), AND we learn
+            # COARSELY - one macro-transition per decision (accumulated reward, start->end
+            # state). That gives the value backup a 4x-longer horizon, which is what makes
+            # survival actually learn. Every other round keeps plain per-step learning.
+            ar = getattr(self.env, "action_repeat", 1) if getattr(self.env, "missile_game", False) else 1
             _exec = getattr(self.env, "_executed", None) if getattr(self.env, "missile_game", False) else None
             xa_red = _exec["red"] if _exec else self.a_red
             xa_blue = _exec["blue"] if _exec else self.a_blue
-            if active_before.get("red", True):
-                red_terminal = (
-                    bool(agent_terminated.get("red", False))
-                    if hazardous else terminated
-                )
-                self.red.learn_step(
-                    self.s_red, xa_red, reward["red"], ns_red, na_red,
-                    red_terminal, nmask_red
-                )
-            if active_before.get("blue", True):
-                blue_terminal = (
-                    bool(agent_terminated.get("blue", False))
-                    if hazardous else terminated
-                )
-                self.blue.learn_step(
-                    self.s_blue, xa_blue, reward["blue"], ns_blue, na_blue,
-                    blue_terminal, nmask_blue
-                )
+            red_terminal = bool(agent_terminated.get("red", False)) if hazardous else terminated
+            blue_terminal = bool(agent_terminated.get("blue", False)) if hazardous else terminated
+
+            def _learn(side, agent, s, xa, r, ns, na, nmask, active, term):
+                if not active:
+                    return
+                if ar <= 1:
+                    agent.learn_step(s, xa, r, ns, na, term, nmask)
+                    return
+                pend = self._ar_pending[side]
+                if pend is None:
+                    pend = self._ar_pending[side] = [s, xa, 0.0]
+                pend[2] += r
+                self._ar_count[side] += 1
+                if self._ar_count[side] >= ar or term or done:
+                    agent.learn_step(pend[0], pend[1], pend[2], ns, na, term, nmask)
+                    self._ar_pending[side] = None
+                    self._ar_count[side] = 0
+
+            _learn("red", self.red, self.s_red, xa_red, reward["red"], ns_red, na_red,
+                   nmask_red, active_before.get("red", True), red_terminal)
+            _learn("blue", self.blue, self.s_blue, xa_blue, reward["blue"], ns_blue, na_blue,
+                   nmask_blue, active_before.get("blue", True), blue_terminal)
 
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
@@ -1210,6 +1226,10 @@ class Match:
                 self.r4_hearts = max(1, min(9, int(p["r4Hearts"])))
                 r4_dyn = True
                 r4_hearts_reset = True
+            if "r4ActionRepeat" in p:
+                self.r4_action_repeat = max(1, min(8, int(p["r4ActionRepeat"])))
+                if getattr(self.env, "missile_game", False):
+                    self.env.action_repeat = self.r4_action_repeat
 
             # ---- BLUE's DQN internals (per-side; Red's are in set_red_params) ----
             if "dqnBatch" in p:
@@ -1329,6 +1349,7 @@ class Match:
             "r4MissileHoming": round(getattr(self.env, "missile_turn", 0.5), 2),
             "r4Hearts": int(getattr(self.env, "hearts_max", 3)),
             "r4HitPenalty": round(getattr(self.env, "hit_penalty", -2.0), 2),
+            "r4ActionRepeat": int(getattr(self.env, "action_repeat", 4)),
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
@@ -1849,14 +1870,19 @@ class Match:
                     "survives its own share of the shared missiles; a targets-me flag "
                     "tells it which Bills are currently hunting it."
                 )
+                repeat = int(getattr(env, "action_repeat", 4))
+                hearts = int(getattr(env, "hearts_max", 3))
                 dynamics = (
-                    "Continuous thrust and momentum inside a circular tower. Banzai Bills "
-                    "enter from the north and home in, exploding on a character or the rim. "
-                    "The barrage escalates with survival time: 1 Bill at the start, 2 from "
-                    "100 steps, 3 from 200 (capped at 3). Each character has 3 HEARTS - a "
-                    "hit costs a heart and grants a brief mercy-invulnerability in place "
-                    "(no respawn); the round ends only when a character loses all 3. "
-                    "Pickups can speed you up, shield you, slow you or briefly freeze you."
+                    "Movement follows the project spec: DISCRETE velocity (each axis -1/0/1) "
+                    "chosen every 0.02 s, with NO momentum. The chosen direction is HELD for "
+                    f"{repeat} steps (action-repeat) so the policy commits to a heading instead "
+                    "of flip-flopping. Inside a circular tower, Banzai Bills enter from the "
+                    "north and home in, exploding on a character or the rim. The barrage "
+                    "escalates with survival time: 1 Bill at the start, 2 from 100 steps, 3 "
+                    f"from 200 (capped at 3). Each character has {hearts} HEARTS - a hit costs "
+                    "a heart and grants a brief mercy-invulnerability in place (no respawn); "
+                    "the round ends only when a character loses them all. Pickups can speed "
+                    "you up, shield you, slow you or briefly freeze you."
                 )
                 rewards = [
                     ["Stay alive", "+0.2 / second"],
