@@ -150,18 +150,38 @@ BLUE_MODEL = {
 }
 
 
+# Arena 4 (Ruined Kingdom, DQN survival) CPU ladder: a stronger character plays closer
+# to optimal (lower final epsilon => it DODGES instead of wandering into a Bill), learns
+# faster (fewer decay episodes), and looks a little further ahead (higher gamma). dt=0.02
+# discrete velocity + action-repeat make these learnable. Index = character level 0..9.
+R4_LADDER = [
+    {"alpha": .20, "gamma": .980, "eps_start": 1.00, "eps_end": .30, "eps_episodes": 4000},  # 0 Mario
+    {"alpha": .22, "gamma": .980, "eps_start": 1.00, "eps_end": .26, "eps_episodes": 3600},  # 1 Luigi
+    {"alpha": .24, "gamma": .982, "eps_start": 1.00, "eps_end": .22, "eps_episodes": 3200},  # 2 Yoshi
+    {"alpha": .26, "gamma": .984, "eps_start": .98, "eps_end": .18, "eps_episodes": 2800},   # 3 Toadette
+    {"alpha": .28, "gamma": .986, "eps_start": .96, "eps_end": .15, "eps_episodes": 2400},   # 4 Pauline
+    {"alpha": .30, "gamma": .988, "eps_start": .94, "eps_end": .12, "eps_episodes": 2000},   # 5 Koopa
+    {"alpha": .32, "gamma": .990, "eps_start": .92, "eps_end": .09, "eps_episodes": 1600},   # 6 Bowser
+    {"alpha": .34, "gamma": .992, "eps_start": .90, "eps_end": .07, "eps_episodes": 1200},   # 7 Peach
+    {"alpha": .36, "gamma": .994, "eps_start": .88, "eps_end": .05, "eps_episodes": 900},    # 8 Toad
+    {"alpha": .38, "gamma": .995, "eps_start": .85, "eps_end": .03, "eps_episodes": 600},    # 9 Parabones
+]
+BLUE_R4 = {"alpha": .30, "gamma": .99, "eps_start": 1.00, "eps_end": .05, "eps_episodes": 2500}
+
+
 def red_params(level, round_id=None):
     """Resolved CPU profile for a character and arena.
 
     Arena-specific values override the generic learning profile without leaking
     into the other rounds.
     """
-    raw = RED_MODELS[
-        max(0, min(len(RED_MODELS) - 1, int(round(level))))
-    ]
+    idx = max(0, min(len(RED_MODELS) - 1, int(round(level))))
+    raw = RED_MODELS[idx]
     resolved = {k: v for k, v in raw.items() if k != "r2"}
     if round_id == 2:
         resolved.update(raw["r2"])
+    elif round_id == 4:
+        resolved.update(R4_LADDER[idx])
     return resolved
 
 
@@ -170,6 +190,8 @@ def blue_params(round_id=None):
     resolved = {k: v for k, v in BLUE_MODEL.items() if k != "r2"}
     if round_id == 2:
         resolved.update(BLUE_MODEL["r2"])
+    elif round_id == 4:
+        resolved.update(BLUE_R4)
     return resolved
 
 
@@ -750,13 +772,18 @@ class Match:
             # real win/lose/draw (done and not truncated) cuts the bootstrap.
             terminated = done and not truncated
             hazardous = bool(getattr(self.env, "hazardous", False))
+            # ACTION-REPEAT (R4): the env may hold a committed direction across steps, so
+            # learn on the action actually EXECUTED this step, not the one just picked.
+            _exec = getattr(self.env, "_executed", None) if getattr(self.env, "missile_game", False) else None
+            xa_red = _exec["red"] if _exec else self.a_red
+            xa_blue = _exec["blue"] if _exec else self.a_blue
             if active_before.get("red", True):
                 red_terminal = (
                     bool(agent_terminated.get("red", False))
                     if hazardous else terminated
                 )
                 self.red.learn_step(
-                    self.s_red, self.a_red, reward["red"], ns_red, na_red,
+                    self.s_red, xa_red, reward["red"], ns_red, na_red,
                     red_terminal, nmask_red
                 )
             if active_before.get("blue", True):
@@ -765,17 +792,17 @@ class Match:
                     if hazardous else terminated
                 )
                 self.blue.learn_step(
-                    self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue,
+                    self.s_blue, xa_blue, reward["blue"], ns_blue, na_blue,
                     blue_terminal, nmask_blue
                 )
 
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
             self.total_steps += 1
-            if active_before.get("red", True) and self.a_red < len(self.act_counts["red"]):
-                self.act_counts["red"][self.a_red] += 1
-            if active_before.get("blue", True) and self.a_blue < len(self.act_counts["blue"]):
-                self.act_counts["blue"][self.a_blue] += 1
+            if active_before.get("red", True) and xa_red < len(self.act_counts["red"]):
+                self.act_counts["red"][xa_red] += 1
+            if active_before.get("blue", True) and xa_blue < len(self.act_counts["blue"]):
+                self.act_counts["blue"][xa_blue] += 1
             if self.env.objective != "arena":
                 warp_from = getattr(self.env, "_warp_from", {}) or {}
                 for side, pos, vis in (

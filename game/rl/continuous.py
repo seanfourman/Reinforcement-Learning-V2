@@ -158,7 +158,15 @@ class ContinuousArena:
         # 0.05 s step. All Round-4 schedules below are time-based, so the fine dt does
         # not change how the game feels.
         self.dt = 0.02 if round_id == 4 else DT
-        self.momentum = True   # both continuous rounds accumulate velocity (inertia)
+        # Round 4 follows the spec literally: DIRECT discrete velocity {-1,0,1} (no
+        # momentum). Stable learning comes from ACTION-REPEAT instead - the chosen
+        # direction is committed for `action_repeat` decision steps, which stops the
+        # greedy policy from flip-flopping every 0.02 s step. Round 5 keeps momentum.
+        self.momentum = not self.missile_game
+        self.action_repeat = 4 if self.missile_game else 1
+        self._committed = {"red": N_ACTIONS - 1, "blue": N_ACTIONS - 1}  # default: stay
+        self._commit_left = {"red": 0, "blue": 0}
+        self._executed = {"red": N_ACTIONS - 1, "blue": N_ACTIONS - 1}
         self.rng = random.Random(seed)
         self.max_steps = SURVIVAL_MAX_STEPS if self.missile_game else MAX_STEPS
         # movement physics (module constants are the defaults)
@@ -382,6 +390,9 @@ class ContinuousArena:
         self.steps = 0
         self.done = False
         self.winner = None
+        self._commit_left = {"red": 0, "blue": 0}          # fresh action-repeat window
+        self._committed = {"red": N_ACTIONS - 1, "blue": N_ACTIONS - 1}
+        self._executed = {"red": N_ACTIONS - 1, "blue": N_ACTIONS - 1}
         if self.missile_game:
             self.missiles = []
             self.next_missile_step = self._seconds_to_steps(0.6)
@@ -1125,12 +1136,26 @@ class ContinuousArena:
             },
         }
 
+    def _commit_action(self, side, a):
+        """Action-repeat: hold the chosen direction for `action_repeat` steps, so the
+        EXECUTED motion commits instead of flip-flopping every 0.02 s. Returns (and
+        records in self._executed) the action actually applied this step, so the learner
+        trains on the real transition, not a picked action that never took effect."""
+        if self._commit_left[side] <= 0:
+            self._committed[side] = a
+            self._commit_left[side] = self.action_repeat
+        self._commit_left[side] -= 1
+        self._executed[side] = self._committed[side]
+        return self._committed[side]
+
     # ------------------------------------------------------------------ step
     def step(self, a_red, a_blue):
         if self.done:
             raise RuntimeError("step() on a finished episode")
         self.steps += 1
         if self.missile_game:
+            a_red = self._commit_action("red", a_red)
+            a_blue = self._commit_action("blue", a_blue)
             return self._step_missile_game(a_red, a_blue)
 
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
