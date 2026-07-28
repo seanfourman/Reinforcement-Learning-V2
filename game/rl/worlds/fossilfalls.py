@@ -32,7 +32,10 @@ EXIT = (0, W // 2)                # top-EDGE goal, centre column (0, 9)
 BLUE_SPAWN_POS = (H - 1, 0)       # bottom-LEFT corner  (18, 0)
 RED_SPAWN_POS = (H - 1, W - 1)    # bottom-RIGHT corner (18, 18)
 N_GOOMBA_PAIRS = 3                # mirror pairs of Goombas (3 per side -> 6 total) on the paths
-PATROL_LEN = 3                    # cells per Goomba patrol (a passage-wall-passage run)
+PATROL_LEN = 3                    # cells per Goomba patrol - UNIFORM 3 (every guard the same
+                                  # length -> one period -> a CONSTANT phase factor). Only
+                                  # NATURAL 2-deep branches qualify (a carved pocket can't go
+                                  # 2 deep without looping), so some sparse mazes get < 6.
 
 
 MID = W // 2                     # 9: the left-right mirror axis (a wall column)
@@ -114,17 +117,29 @@ def _place_goombas(grid, rng, avoid, n_pairs, max_len):
     used, goombas = set(avoid), []
 
     def branch_patrol(P):
-        """A patrol [P, B, (B2)] whose guard cell P sits at the given cell and whose
-        tail pokes into an OFF-path branch (left half). None if P has no such branch."""
+        """A UNIFORM length-``max_len`` patrol [P, B, B2] whose guard cell P sits on the
+        route and whose tail pokes into an existing OFF-path branch (straight or bent). All
+        guards share one length -> one period, so the state's phase factor is CONSTANT. Only
+        NATURAL branches: a 1-thick maze can't hold a CARVED 2-deep pocket without a loop the
+        agent would use to slip around the guard. None if P has no free 2-deep branch."""
         for dr, dc in rng.sample(ORTHO, len(ORTHO)):
             B = (P[0] + dr, P[1] + dc)
             if not _open(grid, B) or B in pathset or B[1] >= MID or B in used:
                 continue
             patrol = [P, B]
-            B2 = (B[0] + dr, B[1] + dc)              # extend the branch one more (gentler timing)
-            if len(patrol) < max_len and _open(grid, B2) and B2 not in pathset and B2[1] < MID:
-                patrol.append(B2)
-            return patrol
+            while len(patrol) < max_len:                    # grow the tail into free off-path cells
+                tip = patrol[-1]
+                nxt = next(((tip[0] + a, tip[1] + b) for a, b in rng.sample(ORTHO, len(ORTHO))
+                            if _open(grid, (tip[0] + a, tip[1] + b))
+                            and (tip[0] + a, tip[1] + b) not in pathset
+                            and (tip[0] + a, tip[1] + b)[1] < MID
+                            and (tip[0] + a, tip[1] + b) not in used
+                            and (tip[0] + a, tip[1] + b) not in patrol), None)
+                if nxt is None:
+                    break
+                patrol.append(nxt)
+            if len(patrol) == max_len:                      # only accept the FULL length
+                return patrol
         return None
 
     def try_place(P):
@@ -142,51 +157,80 @@ def _place_goombas(grid, rng, avoid, n_pairs, max_len):
         used.update(patrol)
         used.update(mirror)
 
-    # Phase 1: SENTRIES on the racer's actual path (skip cells hugging the spawn / exit).
-    on_path = path[3:-3]
+    # Goombas ONLY guard real JUNCTIONS on the racer's route (a path cell with an off-path
+    # branch to duck into) - never off-route corridors the agent never visits, which would
+    # just be pointless hazards. Place up to n_pairs per side on whatever junctions the
+    # route offers; only fall short of 3 when the maze genuinely has fewer junctions.
+    on_path = path[3:-3]                                  # skip cells hugging the spawn / exit
     rng.shuffle(on_path)
     for P in on_path:
         if len(goombas) >= 2 * n_pairs:
             break
         try_place(P)
-    # Phase 2: if the path lacked enough junctions, top up from OFF-path branch cells so
-    # we always hit 3 per side. Off-path patrols never touch the unique route -> the maze
-    # stays solvable; they're just extra hazards for the exploring learner.
-    if len(goombas) < 2 * n_pairs:
-        off_path = [(r, c) for r in range(H) for c in range(MID)
-                    if _open(grid, (r, c)) and (r, c) not in pathset]
-        rng.shuffle(off_path)
-        for P in off_path:
-            if len(goombas) >= 2 * n_pairs:
-                break
-            try_place(P)
     return goombas
 
 
 def _place_cage(grid, rng, path, occupied):
-    """Blue's cage pickup: the CLOSEST off-route cell to Blue's path (usually one cell
-    off), preferring the mid stretch of the route. A short step-off-and-back detour is a
-    real choice yet close enough that a tabular learner is regularly beside it and can
-    DISCOVER + reinforce grabbing it - a cage buried deep in the maze is never reached by
-    exploration, so the mechanic would never be learned. Red's is the mirror."""
+    """Blue's cage pickup + Red's mirror. It must be a real DETOUR well past the spawn (not
+    a spawn-side freebie) yet still learnable by tabular TD - which means a ONE-cell step-off
+    the route (2+ cells off is never explored). To get one at a chosen spot we CARVE a tiny
+    dead-end NOOK off a MID-route path cell (and its mirror): a single cell walled on its
+    other three sides, so it adds only the pickup pocket - the unique route and the 1-thick
+    walls are untouched. A carved dead-end is a strong exploration target, so the agents learn
+    the detour even DEEP in the maze (verified 200/200 at spawn-dist 14-22). Mutates ``grid``."""
     from collections import deque
     pathset = set(path)
-    dist = {c: 0 for c in path if c[1] < MID}
-    q = deque(dist)
-    while q:                                                     # BFS distance from the route
-        cur = q.popleft()
-        for dr, dc in ORTHO:
-            nb = (cur[0] + dr, cur[1] + dc)
-            if 0 <= nb[0] < H and 0 <= nb[1] < MID and grid[nb[0]][nb[1]] != WALL and nb not in dist:
-                dist[nb] = dist[cur] + 1
-                q.append(nb)
-    cands = [c for c, d in dist.items() if d >= 1 and c not in pathset and c not in occupied]
-    if not cands:
+
+    def bfs(seeds):
+        dist = {c: 0 for c in seeds}
+        q = deque(seeds)
+        while q:
+            cur = q.popleft()
+            for dr, dc in ORTHO:
+                nb = (cur[0] + dr, cur[1] + dc)
+                if 0 <= nb[0] < H and 0 <= nb[1] < MID and grid[nb[0]][nb[1]] != WALL and nb not in dist:
+                    dist[nb] = dist[cur] + 1
+                    q.append(nb)
+        return dist
+
+    d_spawn = bfs([BLUE_SPAWN_POS])
+    plen = len(path) or 1
+
+    def is_wall(c):
+        return 0 <= c[0] < H and 0 <= c[1] < W and grid[c[0]][c[1]] == WALL
+
+    def nook_off(P):
+        # a wall neighbour B of P (interior, left half) whose OTHER three neighbours are all
+        # walls: carving it opens a pure dead-end alcove - no loop, route + walls unchanged.
+        for dr, dc in rng.sample(ORTHO, len(ORTHO)):
+            B = (P[0] + dr, P[1] + dc)
+            if not is_wall(B) or not (0 < B[1] < MID) or B in occupied:
+                continue
+            if all(is_wall((B[0] + a, B[1] + b)) for a, b in ORTHO if (B[0] + a, B[1] + b) != P):
+                return B
+        return None
+
+    # Prefer a nook in the FIRST HALF of the route (reads as a mid-race detour); else take the
+    # earliest one anywhere past a small spawn gap - always better than a spawn-side freebie.
+    for lo_hi in ((4, max(6, plen // 2)), (4, plen - 3)):
+        mids = [P for P in path if lo_hi[0] <= d_spawn.get(P, 10 ** 9) <= lo_hi[1] and 0 < P[1] < MID]
+        rng.shuffle(mids)
+        mids.sort(key=lambda P: d_spawn.get(P, 0))
+        for P in mids:
+            B = nook_off(P)
+            if B:
+                grid[B[0]][B[1]] = FLOOR                         # carve the nook + its mirror
+                grid[B[0]][W - 1 - B[1]] = FLOOR
+                return B, (B[0], W - 1 - B[1])
+    # fallback (rare, no nook anywhere): an existing 1-off cell past a small gap, else nearest.
+    d_path = bfs([Q for Q in path if Q[1] < MID])
+    off = [(c, d_spawn.get(c, 10 ** 9)) for c, dp in d_path.items()
+           if dp == 1 and c not in pathset and c not in occupied and d_spawn.get(c, 10 ** 9) <= plen - 3]
+    if not off:
         return None, None
-    mid_row = path[len(path) // 2][0] if path else H // 2
-    rng.shuffle(cands)                                           # random tie-break within a rank
-    cands.sort(key=lambda c: (dist[c], abs(c[0] - mid_row)))     # closest to the route, mid-height
-    blue = cands[0]
+    rng.shuffle(off)
+    off.sort(key=lambda x: (0 if x[1] >= 3 else 1, abs(x[1] - 5)))
+    blue = off[0][0]
     return blue, (blue[0], W - 1 - blue[1])
 
 

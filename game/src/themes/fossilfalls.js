@@ -1352,12 +1352,13 @@ export const fossilfalls = {
     ];
     if (pickupSpec.length) {
       const coinMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(OBJ + "Regional Coins/CoinCollectC_alb.png", true),
-        normalMap: objTex(OBJ + "Regional Coins/CoinCollectC_nrm.png", false),
-        roughnessMap: objTex(OBJ + "Regional Coins/CoinCollectC_rgh.png", false),
-        roughness: 0.5, metalness: 0.2, emissive: 0x6fd6ff, emissiveIntensity: 0.3,
+        map: objTex(OBJ + "Regional Coins/CoinCollectA_alb.png", true),
+        normalMap: objTex(OBJ + "Regional Coins/CoinCollectA_nrm.png", false),
+        roughnessMap: objTex(OBJ + "Regional Coins/CoinCollectA_rgh.png", false),
+        metalnessMap: objTex(OBJ + "Regional Coins/CoinCollectA_mtl.png", false),
+        roughness: 0.6, metalness: 0.5,
       }));
-      collada.loadAsync(encodeURI(OBJ + "Regional Coins/CoinCollectCFreeze.dae")).then((asset) => {
+      collada.loadAsync(encodeURI(OBJ + "Regional Coins/CoinCollectA.dae")).then((asset) => {
         if (disposed) return;
         const root = deskinObj(asset.scene);
         root.traverse((o) => { if (o.isMesh) { o.material = coinMat; o.castShadow = true; track(o.geometry); } });

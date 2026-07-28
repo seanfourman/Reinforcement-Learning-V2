@@ -402,28 +402,37 @@ if __name__ == "__main__":
     from collections import deque
     from continuous import ContinuousArena, N_ACTIONS
 
+    # Round-5 Moon Heist smoke test: can this PG variant learn the CARRY LOOP at all?
+    # Blue COASTS (never contests), so Red only has to grab the moon and haul it to its
+    # base three times. A learner should climb to banking every episode; the full
+    # opponent-aware self-play (both sides learning to steal/evade) is what happens in
+    # the live tournament, this is just the single-agent learnability check.
     which = sys.argv[1] if len(sys.argv) > 1 else "ppo"
     env = ContinuousArena(seed=0, round_id=5, theme="tostarena")
-    agent = make_pg(which, env.obs_dim, N_ACTIONS, alpha=0.2, gamma=0.98, seed=0)
-    print(f"training {agent.name} on the continuous arena ...")
+    agent = make_pg(which, env.obs_dim, N_ACTIONS, alpha=0.2, gamma=0.99, seed=0)
+    print(f"training {agent.name} on Moon Heist (Red learns, Blue coasts) ...")
 
     EPISODES = 1500
     recent = deque(maxlen=100)
+    recent_banks = deque(maxlen=100)
     for ep in range(EPISODES):
         (s, _), _ = env.reset(seed=10_000 + ep)
         a = agent.policy_action(s)
         done = False
         info = {"winner": None}
         while not done:
-            (ns, _), rew, done, trunc, info = env.step(a, 8)     # blue coasts
+            (ns, _), rew, done, trunc, info = env.step(a, 8)     # blue coasts (action 8)
             na = agent.policy_action(ns) if not done else 0
             agent.learn_step(s, a, rew["red"], ns, na, done and not trunc)
             s, a = ns, na
         agent.end_episode()
         recent.append(1 if info["winner"] == "red" else 0)
+        recent_banks.append(env.banks["red"])
         if (ep + 1) % 100 == 0:
             d = agent.diag()
             print(f"ep {ep + 1:4d}  winrate(last100) {sum(recent) / len(recent):.2f}  "
+                  f"banks/ep {sum(recent_banks) / len(recent_banks):.2f}  "
                   f"ploss {d['policyLoss']:+.4f}  vloss {d['valueLoss']:.4f}  ent {d['entropy']:.3f}")
-    final = sum(recent) / len(recent)
-    print(f"FINAL winrate (last 100): {final:.2f}  ->  {'OK' if final >= 0.6 else 'WARN: weak'}")
+    final = sum(recent_banks) / len(recent_banks)
+    print(f"FINAL banks/ep (last 100): {final:.2f}  ->  "
+          f"{'OK' if final >= 2.0 else 'WARN: weak carry loop'}")

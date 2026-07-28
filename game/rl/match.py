@@ -2004,6 +2004,67 @@ class Match:
                     "a character runs OUT of hearts - the survivor wins (both emptied on "
                     "the same instant is a draw)."
                 )
+            elif getattr(env, "heist_game", False):
+                actions = ["8 compass thrusts + coast (9)"]
+                state_size = None
+                sees_opp = True
+                state_desc = (
+                    f"continuous {env.obs_dim}-vector = "
+                    "4 own kinematics (position x/z, velocity x/z) + "
+                    "4 opponent terms (rival relative position x/z, velocity x/z) + "
+                    "5 moon terms (relative x/z, and 3 flags: free / you-carry / "
+                    "rival-carries) + 4 base vectors (to your base, to the rival's base) + "
+                    "4 status terms (carrying flag, your + rival stun timers, bank lead)"
+                )
+                # segmented breakdown (dims sum to obs_dim = 21) for the stacked bar
+                state_groups = [
+                    {"label": "Self", "dim": 4, "color": "#3f7fe0",
+                     "detail": "your position x/z and velocity x/z"},
+                    {"label": "Opponent", "dim": 4, "color": "#e0563f",
+                     "detail": "the RIVAL's relative position x/z and velocity x/z"},
+                    {"label": "Moon", "dim": 5, "color": "#f5c542",
+                     "detail": "moon relative x/z + who holds it (free / you / rival)"},
+                    {"label": "Bases", "dim": 4, "color": "#22a39f",
+                     "detail": "vector to YOUR base and to the rival's base"},
+                    {"label": "Status", "dim": 4, "color": "#8b5cf6",
+                     "detail": "carrying flag, your + rival stun timers, bank lead"},
+                ]
+                observation = (
+                    "Each agent sees ITSELF AND ITS RIVAL: its own position/velocity, the "
+                    "rival's relative position/velocity, where the Power Moon is and who "
+                    "holds it, the direction to its own base and to the rival's base, and "
+                    "the status terms (carrying flag, the two stun timers, and who leads "
+                    "on banks)."
+                )
+                observation_tuple = "(self, opponent, moon + holder, bases, status)"
+                opp_info = (
+                    "FULLY VISIBLE - this is the whole point of the round. The rival's "
+                    "relative position and velocity are in every observation, so a good "
+                    "policy learns to INTERCEPT the carrier when chasing and to JUKE away "
+                    "from the chaser when carrying (and the best juke is unpredictable - "
+                    "why a stochastic policy-gradient policy shines here)."
+                )
+                dynamics = (
+                    "Continuous physics WITH momentum: a thrust accelerates the flyer (with "
+                    "drag) up to a speed cap. One Power Moon spawns at centre. GRAB it to "
+                    "become the CARRIER (you move ~0.72x speed while carrying); the other is "
+                    "the CHASER. Tag the carrier to INSTANTLY STEAL the moon - the robbed "
+                    "carrier is briefly stunned so it cannot re-steal at once. Deliver the "
+                    "moon to your own corner base to BANK it; it then respawns at centre."
+                )
+                rewards = [
+                    ["Grab the loose moon", 0.15],
+                    ["Steal it (tag the enemy carrier)", 0.40],
+                    ["Lose it to a tag", -0.40],
+                    ["Bank a moon at your base", 1.0],
+                    ["The rival banks one", -0.30],
+                    ["Win the round (first to 3 banks)", 2.0],
+                    ["Step", -0.002],
+                ]
+                win = (
+                    "First to BANK 3 Power Moons wins the round. If time runs out first, "
+                    "whoever has banked more moons wins (equal banks is a draw)."
+                )
             else:
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None

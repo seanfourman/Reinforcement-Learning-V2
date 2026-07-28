@@ -1,11 +1,12 @@
-// Round 5 — Tostarena (Sand Kingdom): the SEQUENTIAL continuous arena.
+// Round 5 — Tostarena (Sand Kingdom): the MOON HEIST continuous arena.
 //
 // A STREET-LEVEL town square, composed like the city round (round 2), not the
 // floating-island rounds: the arena is Tostarena's sandy plaza, the town's
 // adobe buildings RING it on every side at ground level, and the desert runs
-// to the fog. There is no grid: the round is a checkpoint rally across a clean
-// sand plaza. The Inverted Pyramid hovers tip-down beyond the north edge as the
-// finish monument.
+// to the fog. There is no grid: the two racers fight over a single Power Moon
+// spawned dead-centre, each hauling it to its own corner base while the other
+// chases to steal it (see continuous.ContinuousArena._step_heist_game). The
+// Inverted Pyramid hovers tip-down beyond the north edge as the town monument.
 //
 // Nothing may cover the y=0 arena surface above ~0.16 (the racers' feet).
 // Models come from the vendored Sand Kingdom OBJ/MTL pack in
@@ -26,7 +27,7 @@ function hash(a, b) {
 export const tostarena = {
   name: "tostarena",
   title: "Dry Dry Desert",
-  subtitle: "Desert Sunset Rally",
+  subtitle: "Moon Heist",
   // GOLDEN HOUR: a dusk-indigo zenith burning down into a low orange sun and a
   // gold horizon, the whole desert bathed warm
   sky: ["#1e2f60", "#d9743f", "#ffcf82"],
@@ -693,8 +694,312 @@ export const tostarena = {
       group.add(sp);
     }
 
+    // ======================================================================
+    // MOON HEIST game props (Round 5): the contested Power Moon, the two corner
+    // bases (with in-world score pips), the carrier's foot-ring, and one-shot
+    // grab / steal / bank bursts. All driven per-frame from the live snapshot in
+    // updateHeist(), the same way ruined.js drives its Banzai Bills.
+    // ======================================================================
+    const heist = world.heist || {};
+    const bankR = heist.bankRadius || 1.5;
+    const moonR = heist.moonRadius || 0.75;
+    const banksToWin = heist.banksToWin || 3;
+    const bases = {
+      red: heist.bases?.red || [A - 2.5, A - 2.5],
+      blue: heist.bases?.blue || [2.5, 2.5],
+    };
+    const RED = 0xff5a4d;
+    const BLUE = 0x4da0ff;
+
+    // a soft additive radial-gradient glow sprite in any colour
+    function makeGlowSprite(hex, scale = 3) {
+      const S = 128;
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      const c = new THREE.Color(hex);
+      const r = Math.round(c.r * 255),
+        g = Math.round(c.g * 255),
+        b = Math.round(c.b * 255);
+      const grd = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      grd.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
+      grd.addColorStop(0.4, `rgba(${r},${g},${b},0.35)`);
+      grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, S, S);
+      const tex = trackTexture(new THREE.CanvasTexture(cv));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = track(
+        new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          fog: false,
+        }),
+      );
+      const sp = new THREE.Sprite(mat);
+      sp.scale.set(scale, scale, 1);
+      return sp;
+    }
+
+    // ---- the Power Moon ----------------------------------------------------
+    const moon = (() => {
+      const g = new THREE.Group();
+      g.position.set(C, 1, C);
+      const coreMat = track(
+        new THREE.MeshStandardMaterial({
+          color: 0xfff2a8,
+          emissive: 0xffcf4d,
+          emissiveIntensity: 1.6,
+          roughness: 0.35,
+          metalness: 0.1,
+        }),
+      );
+      const core = new THREE.Mesh(
+        track(new THREE.IcosahedronGeometry(moonR, 1)),
+        coreMat,
+      );
+      g.add(core);
+      const ringMat = track(
+        new THREE.MeshBasicMaterial({
+          color: 0xffe9a8,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      const ring = new THREE.Mesh(
+        track(new THREE.TorusGeometry(moonR * 1.7, 0.05, 8, 40)),
+        ringMat,
+      );
+      ring.rotation.x = Math.PI / 2;
+      g.add(ring);
+      g.add(makeGlowSprite(0xffe08a, moonR * 4.2));
+      const light = new THREE.PointLight(0xffd24d, 1.6, 10, 2);
+      g.add(light);
+      group.add(g);
+      return { g, core, ring, light };
+    })();
+
+    // ---- the two corner bases (glow ring + beacon + score pips) ------------
+    function makeBase(pos, color) {
+      const bg = new THREE.Group();
+      bg.position.set(pos[0], 0, pos[1]);
+      const ringMat = track(
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.5,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      const ring = new THREE.Mesh(
+        track(new THREE.RingGeometry(bankR * 0.82, bankR, 48)),
+        ringMat,
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.06;
+      bg.add(ring);
+      const discMat = track(
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      const disc = new THREE.Mesh(
+        track(new THREE.CircleGeometry(bankR, 48)),
+        discMat,
+      );
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.04;
+      bg.add(disc);
+      const beacon = new THREE.PointLight(color, 1.3, 8, 2);
+      beacon.position.set(0, 1.6, 0);
+      bg.add(beacon);
+      // score pips: one small moon per required bank, revealed as banks land
+      const pips = [];
+      for (let i = 0; i < banksToWin; i++) {
+        const pm = new THREE.Mesh(
+          track(new THREE.IcosahedronGeometry(0.22, 0)),
+          track(
+            new THREE.MeshStandardMaterial({
+              color: 0xfff2a8,
+              emissive: 0xffcf4d,
+              emissiveIntensity: 1.2,
+              roughness: 0.4,
+            }),
+          ),
+        );
+        pm.position.set((i - (banksToWin - 1) / 2) * 0.55, 1.9, 0);
+        pm.visible = false;
+        bg.add(pm);
+        pips.push(pm);
+      }
+      group.add(bg);
+      return { ringMat, beacon, pips };
+    }
+    const baseVis = {
+      red: makeBase(bases.red, RED),
+      blue: makeBase(bases.blue, BLUE),
+    };
+
+    // ---- carrier foot-ring (shows WHO is carrying) -------------------------
+    const carryRing = {};
+    for (const [side, color] of [["red", RED], ["blue", BLUE]]) {
+      const m = track(
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      const r = new THREE.Mesh(track(new THREE.RingGeometry(0.72, 0.98, 40)), m);
+      r.rotation.x = -Math.PI / 2;
+      r.position.y = 0.09;
+      r.visible = false;
+      group.add(r);
+      carryRing[side] = r;
+    }
+
+    // ---- one-shot grab / steal / bank bursts -------------------------------
+    const seenEvents = new Set();
+    const seenOrder = [];
+    const bursts = [];
+    function rememberEvent(id) {
+      if (seenEvents.has(id)) return false;
+      seenEvents.add(id);
+      seenOrder.push(id);
+      if (seenOrder.length > 256) seenEvents.delete(seenOrder.shift());
+      return true;
+    }
+    function spawnBurst(ev) {
+      const color =
+        ev.type === "bank"
+          ? ev.side === "red"
+            ? 0xff7a4d
+            : 0x4db0ff
+          : ev.type === "steal"
+            ? 0xffd24d
+            : 0xfff0b0;
+      const big = ev.type === "bank";
+      const bg = new THREE.Group();
+      bg.position.set(ev.pos[0], 0.5, ev.pos[1]);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.42, 40), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      bg.add(ring);
+      const light = new THREE.PointLight(color, big ? 3.5 : 2.2, 8, 2);
+      bg.add(light);
+      group.add(bg);
+      bursts.push({ bg, ring, ringMat, light, t: 0, dur: big ? 0.9 : 0.55, big });
+    }
+    function disposeBurst(b) {
+      group.remove(b.bg);
+      b.ringMat.dispose();
+      b.ring.geometry.dispose();
+    }
+    function updateBursts(dt) {
+      for (let i = bursts.length - 1; i >= 0; i--) {
+        const b = bursts[i];
+        b.t += dt;
+        const u = b.t / b.dur;
+        b.ring.scale.setScalar(1 + u * (b.big ? 9 : 5));
+        b.ringMat.opacity = Math.max(0, 0.9 * (1 - u));
+        b.light.intensity = (b.big ? 3.5 : 2.2) * (1 - u);
+        b.bg.position.y = 0.5 + u * (b.big ? 1.6 : 0.8);
+        if (u >= 1) {
+          disposeBurst(b);
+          bursts.splice(i, 1);
+        }
+      }
+    }
+
+    function updateHeist(t, dt, frame) {
+      const m = frame?.moon;
+      const holder = m?.holder ?? frame?.moonHolder ?? null;
+      const held = holder === "red" || holder === "blue";
+      const tx = m?.pos ? m.pos[0] : C;
+      const tz = m?.pos ? m.pos[1] : C;
+      const ty = held
+        ? 2.7 + Math.sin(t * 4) * 0.12
+        : 1.0 + Math.sin(t * 2.2) * 0.18;
+      const k = 1 - Math.exp(-dt * 14);
+      moon.g.position.x += (tx - moon.g.position.x) * k;
+      moon.g.position.z += (tz - moon.g.position.z) * k;
+      moon.g.position.y += (ty - moon.g.position.y) * (held ? k : 0.12);
+      moon.g.rotation.y += dt * 1.4;
+      moon.ring.rotation.z += dt * 1.0;
+      moon.light.intensity = 1.6 + Math.sin(t * 6) * 0.3;
+
+      for (const side of ["red", "blue"]) {
+        const on = holder === side;
+        const r = carryRing[side];
+        r.visible = on;
+        if (on) {
+          const p = frame?.[side];
+          if (p) {
+            r.position.x = p[0];
+            r.position.z = p[1];
+          }
+          r.rotation.z += dt * 2;
+          r.scale.setScalar(1 + Math.sin(t * 8) * 0.06);
+        }
+      }
+
+      const banks = frame?.banks || { red: 0, blue: 0 };
+      for (const side of ["red", "blue"]) {
+        const bv = baseVis[side];
+        bv.ringMat.opacity =
+          0.45 + Math.sin(t * 3 + (side === "red" ? 0 : 1.5)) * 0.12;
+        bv.beacon.intensity = 1.1 + Math.sin(t * 3) * 0.4;
+        const n = banks[side] || 0;
+        for (let i = 0; i < bv.pips.length; i++) {
+          const pm = bv.pips[i];
+          pm.visible = i < n;
+          if (pm.visible) {
+            pm.rotation.y += dt * 1.5;
+            pm.position.y = 1.9 + Math.sin(t * 3 + i) * 0.06;
+          }
+        }
+      }
+
+      for (const ev of frame?.heistEvents || []) {
+        if (rememberEvent(ev.id)) spawnBurst(ev);
+      }
+      updateBursts(dt);
+    }
+
+    function resetEffects(frameToSuppress = null) {
+      seenEvents.clear();
+      seenOrder.length = 0;
+      for (const b of bursts) disposeBurst(b);
+      bursts.length = 0;
+      // absorb the events already present in a restored frame so they don't
+      // re-fire when returning from a replay or after a reset
+      for (const ev of frameToSuppress?.heistEvents || []) rememberEvent(ev.id);
+    }
+
     // ---- animation + teardown ---------------------------------------------
-    function update(t, dt) {
+    function update(t, dt, frame) {
       // the Inverted Pyramid hovers + turns
       if (pyramid) {
         pyramid.w.position.y = pyramid.y + Math.sin(t * 0.5) * 0.35;
@@ -736,14 +1041,19 @@ export const tostarena = {
       } else {
         tumble.visible = false;
       }
+
+      // the Moon Heist props (moon / bases / carrier ring / event bursts)
+      updateHeist(t, dt, frame);
     }
 
     function dispose() {
       disposed = true;
+      for (const b of bursts) disposeBurst(b);
+      bursts.length = 0;
       scene.remove(group);
       for (const o of trash) o.dispose?.();
     }
 
-    return { group, update, dispose };
+    return { group, update, resetEffects, dispose };
   },
 };
