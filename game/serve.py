@@ -276,6 +276,7 @@ class Server(http.server.ThreadingHTTPServer):
 
 
 def main():
+    global _alive
     httpd = None
     for port in range(8008, 8028):          # 8000-8007 are left for other apps
         try:
@@ -299,6 +300,11 @@ def main():
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped.")
+    finally:
+        _alive = False
+        match.save_checkpoint(force=True)
+        httpd.server_close()
+        t.join(timeout=2.0)
 
 
 if __name__ == "__main__":

@@ -30,9 +30,12 @@ export const TILE = {
   RED_SPAWN: 'R', BLUE_SPAWN: 'B',
 };
 
-export function parseLayout(rows) {
+export function parseLayout(rows, world = null) {
   const H = rows.length;
   const W = rows[0].length;
+  const explicit = (cell) => Array.isArray(cell) && cell.length >= 2
+    ? { r: Number(cell[0]), c: Number(cell[1]) }
+    : null;
   const find = (ch) => {
     for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (rows[r][c] === ch) return { r, c };
     return null;
@@ -44,8 +47,10 @@ export function parseLayout(rows) {
   };
   return {
     rows, H, W,
-    redSpawn: find(TILE.RED_SPAWN),
-    blueSpawn: find(TILE.BLUE_SPAWN),
+    // Procedural worlds keep spawn markers as metadata rather than burning R/B
+    // into the floor rows. Prefer those exact cells for the initial actor frame.
+    redSpawn: explicit(world?.redSpawn) || find(TILE.RED_SPAWN),
+    blueSpawn: explicit(world?.blueSpawn) || find(TILE.BLUE_SPAWN),
     escape: findAll(TILE.ESCAPE),
   };
 }

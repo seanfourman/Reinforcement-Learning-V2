@@ -67,6 +67,7 @@ export function createLiveActors(scene, walkers) {
   let arenaScale = 1;    // scene units per simulated metre
   let arenaOffset = { x: 0, z: 0 }; // sim -> established scene coordinates
   let agentScale = 1.2;  // walker scale (bigger in the open arena than in grid cells)
+  const BLINK_HALF = 0.055; // post-hit flicker half-period (s): ~55ms shown / ~55ms hidden
   let celebration = null;
   const poseAxis = new THREE.Vector3();
 
@@ -293,6 +294,10 @@ export function createLiveActors(scene, walkers) {
       // several snapshots. Play the hit once, holding the victim at the blast
       // before the newly reset spawn is allowed to take over.
       for (const blast of f.explosions || []) {
+        // Only a FATAL blast (took the last heart) plays the death / victory pose.
+        // A non-fatal hit just shows its explosion (drawn by the theme) while the
+        // victim stays put and blinks - handled in update() via effects.hitFlash.
+        if (!blast.fatal) continue;
         const victims =
           blast.hit === 'both'
             ? ['red', 'blue']
@@ -587,6 +592,12 @@ export function createLiveActors(scene, walkers) {
         }
       }
       updateIce(key, walker, st === 'frozen', t);
+      // post-hit BLINK: flicker the character on/off while its mercy-invulnerability
+      // lasts (classic invincibility flash). Only the missile arena sends hitFlash;
+      // elsewhere it's 0 so the walker stays solidly visible.
+      const hitFlash = arena ? frame?.effects?.[key]?.hitFlash || 0 : 0;
+      walker.group.visible =
+        hitFlash <= 0 || Math.floor(t / BLINK_HALF) % 2 === 0;
     }
 
     if (!frame) return;

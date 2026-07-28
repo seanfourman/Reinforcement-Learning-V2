@@ -40,7 +40,8 @@ class World:
                  red_coins=None, blue_coins=None,
                  red_blocks=None, blue_blocks=None, slip=None,
                  spikes=None, plants=None, pipes=None,
-                 red_stars=None, blue_stars=None):
+                 red_stars=None, blue_stars=None,
+                 hedge_cells=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -57,9 +58,8 @@ class World:
         self.red_blocks = [tuple(b) for b in (red_blocks or [])]
         self.blue_blocks = [tuple(b) for b in (blue_blocks or [])]
         self.slip = [tuple(s) for s in (slip or [])]
-        # Round-2 game layout (New Donk City): shared hazards. ``spikes`` are floor
-        # cells that KILL on entry; ``plants`` are impassable piranha cells whose
-        # orthogonal floor neighbours kill on entry; ``pipes`` are stochastic warps,
+        # Round-2 game layout (New Donk City): shared hazards. ``spikes`` kill
+        # on entry; a ``plant`` attacks its eight surrounding cells. ``pipes`` are warps,
         # each ``{"entry": (r,c), "dests": [(r,c), ...]}`` (entering warps to a
         # uniformly-random dest). Empty on every other round.
         self.spikes = [tuple(s) for s in (spikes or [])]
@@ -67,12 +67,20 @@ class World:
         self.pipes = [{"entry": tuple(p["entry"]),
                        "dests": [tuple(d) for d in p["dests"]],
                        "weights": [float(w) for w in p["weights"]] if p.get("weights") else None,
-                       "exit": tuple(p["exit"]) if p.get("exit") else None}
+                       "exit": tuple(p["exit"]) if p.get("exit") else None,
+                       # Optional Round-2 progression lock: bit index of the
+                       # tomato that must be held before this pipe activates.
+                       "requiresStar": int(p["requiresStar"])
+                       if p.get("requiresStar") is not None else None}
                       for p in (pipes or [])]
         # Round-2 PER-AGENT Power Stars (mirror pairs): 3 collectibles each; the goal
         # is locked until an agent holds all 3.
         self.red_stars = [tuple(s) for s in (red_stars or [])]
         self.blue_stars = [tuple(s) for s in (blue_stars or [])]
+        # Optional theme hints used by New Donk City. They only control which
+        # impassable cells receive shrub geometry; collision still comes
+        # exclusively from ``grid``.
+        self.hedge_cells = [tuple(c) for c in (hedge_cells or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -101,11 +109,13 @@ class World:
             "pipes": [{"entry": list(p["entry"]),
                        "dests": [list(d) for d in p["dests"]],
                        "weights": list(p["weights"]) if p.get("weights") else None,
-                       "exit": list(p["exit"]) if p.get("exit") else None}
+                       "exit": list(p["exit"]) if p.get("exit") else None,
+                       "requiresStar": p.get("requiresStar")}
                       for p in self.pipes],
             # Round-2 PER-AGENT Power Stars (mirror pairs) - the collect-3-then-goal game.
             "redStars": [list(s) for s in self.red_stars],
             "blueStars": [list(s) for s in self.blue_stars],
+            "hedgeCells": [list(c) for c in self.hedge_cells],
         }
 
 
@@ -118,21 +128,24 @@ def validate(world):
     goals = {tuple(e) for e in world.escape}
     spikes = set(world.spikes)
     plants = set(world.plants)
-    # cells that kill on entry: spike tiles + every floor tile orthogonally next to a plant
-    lethal = set(spikes)
-    for (pr, pc) in plants:                       # a plant kills its 8 neighbours (incl diagonals)
-        for dr in (-1, 0, 1):
-            for dc in (-1, 0, 1):
-                nr, nc = pr + dr, pc + dc
-                if (dr or dc) and 0 <= nr < H and 0 <= nc < W and g[nr][nc] != WALL:
-                    lethal.add((nr, nc))
+    # A Piranha Plant attacks all eight surrounding cells, not its own cell.
+    plant_zone = {
+        (r + dr, c + dc)
+        for r, c in plants
+        for dr in (-1, 0, 1)
+        for dc in (-1, 0, 1)
+        if (dr or dc)
+        and 0 <= r + dr < H
+        and 0 <= c + dc < W
+    }
+    lethal = set(spikes) | plant_zone
     # pipe teleport edges: entry -> each destination (entering a pipe is always safe)
     warp = {}
     for p in world.pipes:
         warp.setdefault(tuple(p["entry"]), []).extend(tuple(d) for d in p["dests"])
 
     def passable(r, c):
-        return 0 <= r < H and 0 <= c < W and g[r][c] != WALL and (r, c) not in plants
+        return 0 <= r < H and 0 <= c < W and g[r][c] != WALL
 
     def reach(start):
         seen, stack = {tuple(start)}, [tuple(start)]

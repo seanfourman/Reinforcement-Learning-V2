@@ -456,6 +456,7 @@ export const city = {
         }
       }
     }
+
     const CORNER = 0.6;                        // just a slight corner round
     ground(80, -0.30, apronMat);              // far district floor (below the road)
     ground(50, ROAD_Y, asphaltMat);           // road base (shows in the road ring)
@@ -504,16 +505,31 @@ export const city = {
     crosswalk(CTR - RMID, CTR, false);  // west
     crosswalk(CTR + RMID, CTR, false);  // east
 
-    // ---- hedge maze: rounded leaf masses on every wall cell ---------------
+    // ---- sparse route hedges ----------------------------------------------
     const mazeRows = world.rows || [];
-    // piranha plants AND solid exit pipes stand on wall cells - keep the hedge off those
-    // (the plant / pipe object is drawn there instead).
+    // Piranha plants and solid exit pipes draw their own object; never place a
+    // hedge on the same cell.
     const noHedge = new Set((world.plants || []).map(([r, c]) => r * GRID + c));
     for (const p of world.pipes || []) if (p.exit) noHedge.add(p.exit[0] * GRID + p.exit[1]);
+    const explicitHedges = Array.isArray(world.hedgeCells)
+      ? world.hedgeCells
+      : null;
     const wallCells = [];
-    for (let r = 0; r < GRID; r++) {
-      for (let c = 0; c < GRID; c++) {
-        if ((mazeRows[r] || '')[c] === '#' && !noHedge.has(r * GRID + c)) wallCells.push([r, c]);
+    if (explicitHedges) {
+      for (const [r, c] of explicitHedges) {
+        if ((mazeRows[r] || '')[c] === '#' && !noHedge.has(r * GRID + c)) {
+          wallCells.push([r, c]);
+        }
+      }
+    } else {
+      // Legacy worlds without art metadata keep their historical wall=hedge
+      // behaviour; the open Arena-2 generator always supplies the sparse list.
+      for (let r = 0; r < GRID; r++) {
+        for (let c = 0; c < GRID; c++) {
+          if ((mazeRows[r] || '')[c] === '#' && !noHedge.has(r * GRID + c)) {
+            wallCells.push([r, c]);
+          }
+        }
       }
     }
     function addShrubMaze(cells) {
@@ -967,48 +983,9 @@ export const city = {
       }
     });
 
-    // ---- progress tags: a per-side apple tally that climbs 0/3 -> 3/3. These live
-    // IN the scene group (billboard sprites), NOT the DOM: the city scene is prebuilt
-    // offscreen during the menu and kept warm in a cache (never dispose()'d on a round
-    // switch), so a DOM overlay would leak onto every screen. A group sprite is added
-    // and removed with the group, so it only ever shows while Round 2 is on screen.
+    // Progress is presented by the shared top HUD using the exact same three
+    // hearts as Arena 4. Keep only the popcount helper here for the goal lock.
     const popcount = (n) => { let k = 0; while (n) { k += n & 1; n >>>= 1; } return k; };
-    function makeTag(name, css) {
-      const cvs = document.createElement('canvas');
-      cvs.width = 320; cvs.height = 110;
-      const tex = trackTexture(new THREE.CanvasTexture(cvs));
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const spr = new THREE.Sprite(track(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })));
-      spr.renderOrder = 20;
-      const draw = (count) => {
-        const g = cvs.getContext('2d');
-        g.clearRect(0, 0, 320, 110);
-        g.fillStyle = 'rgba(10,14,26,0.82)';
-        g.strokeStyle = css; g.lineWidth = 6;
-        const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
-        rr(6, 6, 308, 98, 40); g.fill(); g.stroke();
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.font = "bold 34px 'Trebuchet MS',system-ui,sans-serif";
-        g.fillStyle = css; g.fillText(name, 160, 38);
-        g.font = "bold 46px 'Trebuchet MS',system-ui,sans-serif";
-        g.fillStyle = '#fff'; g.fillText(`🍅 ${count}/${nStars}`, 160, 76);
-        tex.needsUpdate = true;
-      };
-      return { spr, draw, last: -1 };
-    }
-    let tagBlue = null, tagRed = null;
-    if (nStars > 0 && typeof document !== 'undefined') {
-      tagBlue = makeTag(city.blueName, '#7ea6ff');
-      tagRed = makeTag(city.redName, '#ff7e7e');
-      tagBlue.spr.scale.set(3.2, 1.1, 1); tagRed.spr.scale.set(3.2, 1.1, 1);
-      // float each tally above its own spawn corner (the camera side), so it reads
-      // as that racer's progress
-      const bs = world.blueSpawn || [SIZE - 2, 5], rs = world.redSpawn || [SIZE - 2, 13];
-      tagBlue.spr.position.set(cellX(bs[1]), 3.4, cellZ(bs[0]) - 0.5);
-      tagRed.spr.position.set(cellX(rs[1]), 3.4, cellZ(rs[0]) - 0.5);
-      tagBlue.draw(0); tagRed.draw(0);
-      group.add(tagBlue.spr); group.add(tagRed.spr);
-    }
 
     // ---- animation + teardown -------------------------------------------
     function update(t, dt, frame) {
@@ -1039,11 +1016,6 @@ export const city = {
           a.wrap.rotation.y = t * 1.4;
           a.wrap.position.y = a.baseY + Math.sin(t * 2.2 + a.idx * 1.3) * 0.1;
         }
-      }
-      for (const [tag, bits] of [[tagBlue, blueBits], [tagRed, redBits]]) {
-        if (!tag) continue;
-        const n = popcount(bits);
-        if (n !== tag.last) { tag.draw(n); tag.last = n; }     // redraw only on a change
       }
       if (star) {                                                                // power star spins, bobs + breathes
         // the goal prize is LOCKED until an agent holds all 3 apples: dim + grey while

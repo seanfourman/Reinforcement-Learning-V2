@@ -9,3 +9,7 @@
 __pycache__/
 *.py[cod]
 /.claude/
+
+# Runtime-trained Round 4 models (local learning state, potentially large).
+/checkpoints/*.pt
+/checkpoints/.*.tmp

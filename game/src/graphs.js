@@ -1054,7 +1054,9 @@ export function initBriefing(parent) {
             : "(cell)"
           : s.objective === "race"
             ? "(cell, key, gold, opp-region, adjacent, trap)"
-            : seq
+            : s.missileGame
+              ? "(self + rival, missiles x3, effects, pickups x2)"
+              : seq
               ? "(x, z, vx, vz, →cp x, →cp y, leg, →storm x, →storm y)"
               : "(x, z, vx, vz, →goal x, →goal y)";
       const sqCls = s.seesOpponent ? "yes" : "no";

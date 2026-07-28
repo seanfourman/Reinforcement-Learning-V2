@@ -177,10 +177,26 @@ THREE.Cache.enabled = true;
 // (round 4 -> round 1 -> ...), so instead of disposing + rebuilding a theme's
 // heavy model every time we revisit it, we build it ONCE and keep it in memory,
 // just detaching / re-attaching its group. Revisiting a level is then instant -
-// no reload, no re-parse, no shader recompile. `rowsKey` guards against a level
-// whose layout regenerated differently (rebuild fresh in that case).
+// no reload, no re-parse, no shader recompile. `worldKey` guards against a level
+// whose layout OR object metadata regenerated differently (rebuild fresh in that
+// case). Arena 2 can move puddles/pipes/stars without changing a wall row.
 const sceneCache = new Map(); // theme name -> { themeScene, rowsKey }
 let activeThemeKey = null; // theme name of the themed scene currently attached
+
+function gridWorldKey(worldJson) {
+  return JSON.stringify({
+    rows: worldJson.rows || [],
+    redSpawn: worldJson.redSpawn || null,
+    blueSpawn: worldJson.blueSpawn || null,
+    escape: worldJson.escape || [],
+    slipCells: worldJson.slipCells || [],
+    plants: worldJson.plants || [],
+    pipes: worldJson.pipes || [],
+    redStars: worldJson.redStars || [],
+    blueStars: worldJson.blueStars || [],
+    hedgeCells: worldJson.hedgeCells || [],
+  });
+}
 
 // detach the live world: a resident themed scene is kept warm in the cache;
 // anything else is disposed.
@@ -205,7 +221,7 @@ function rebuildWorld(worldJson) {
   window.RL?.replay?.stop?.(); // a new arena invalidates any loaded replay -> back to live
   lastWorldJson = worldJson;
   const key = worldJson.theme;
-  const rowsKey = (worldJson.rows || []).join("\n"); // arena rounds have no rows
+  const rowsKey = gridWorldKey(worldJson); // arena rounds have no rows
   const theme = getTheme(key);
 
   detachActiveWorld(); // stash the current world (themed -> keep resident)
@@ -256,7 +272,7 @@ function rebuildWorld(worldJson) {
   actors.setHidden(false);
   actors.setArena(arenaMode, worldJson); // arena round drives the chosen characters as the racers
   if (!arenaMode)
-    actors.setWorld(parseLayout(rows), worldJson.objective === "cross");
+    actors.setWorld(parseLayout(rows, worldJson), worldJson.objective === "cross");
 }
 
 // ---- prewarm: build EVERY round's arena UP FRONT (in the background, while the
@@ -279,7 +295,7 @@ async function prewarmRound(worldJson) {
     setCell(theme.cell || 1); // build the geometry with this theme's board scale...
     setOffset(...(theme.offset || [0, 0])); // ...and slide (baked in; reset per round anyway)
     const ts = theme.buildScene(holder, worldJson, { THREE, renderer, camera });
-    sceneCache.set(key, { themeScene: ts, rowsKey: (worldJson.rows || []).join("\n") });
+    sceneCache.set(key, { themeScene: ts, rowsKey: gridWorldKey(worldJson) });
     // wait for its model to finish parsing/processing, bounded so one bad asset
     // can't stall the rest of the prewarm
     await Promise.race([

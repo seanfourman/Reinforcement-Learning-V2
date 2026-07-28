@@ -1051,6 +1051,869 @@ export const ruined = {
     const FIRE_CORAL = new THREE.Color(0xdd8265);
     const FIRE_BURNT = new THREE.Color(0xac4b40);
 
+    // ---- Round-4 pickups -------------------------------------------------
+    // Gameplay is owned by ContinuousArena; this is deliberately a compact,
+    // reusable visual layer. Pickup models share all geometry/materials, while
+    // their roots are reconciled by the stable IDs sent in frame.pickups.
+    const PICKUP_TYPES = new Set([
+      "speed",
+      "invincible",
+      "slow",
+      "freeze",
+    ]);
+    const PICKUP_COLORS = {
+      speed: 0x49e7ff,
+      invincible: 0xffd83d,
+      slow: 0xff4234,   // red ground glow, matching the mushroom's red cap
+      freeze: 0x75dcff,
+    };
+    const MAX_PICKUP_VISUALS = 10;
+    const MAX_PICKUP_COLLECT_FX = 12;
+    const pickupVisuals = new Map();
+    const pickupCollectFx = [];
+    const seenPickupEventIds = new Set();
+    const seenPickupEventOrder = [];
+
+    const pickupMaterial = (
+      color,
+      emissive = color,
+      emissiveIntensity = 0.35,
+      extra = {},
+    ) =>
+      track(
+        new THREE.MeshStandardMaterial({
+          color,
+          emissive,
+          emissiveIntensity,
+          roughness: 0.3,
+          metalness: 0.08,
+          ...extra,
+        }),
+      );
+    const pickupBasicMaterial = (color, extra = {}) =>
+      track(
+        new THREE.MeshBasicMaterial({
+          color,
+          toneMapped: false,
+          ...extra,
+        }),
+      );
+
+    const pickupGlowTexture = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 96;
+      const g = cv.getContext("2d");
+      const grad = g.createRadialGradient(48, 48, 3, 48, 48, 47);
+      grad.addColorStop(0, "rgba(255,255,255,.95)");
+      grad.addColorStop(0.25, "rgba(255,255,255,.52)");
+      grad.addColorStop(0.64, "rgba(255,255,255,.16)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 96, 96);
+      const tx = trackTexture(new THREE.CanvasTexture(cv));
+      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.anisotropy = maxAniso;
+      return tx;
+    })();
+
+    const pickupGlowGeometry = track(new THREE.PlaneGeometry(1.65, 1.65));
+    const pickupGlowMaterials = Object.fromEntries(
+      Object.entries(PICKUP_COLORS).map(([type, color]) => [
+        type,
+        pickupBasicMaterial(color, {
+          map: pickupGlowTexture,
+          transparent: true,
+          opacity: type === "slow" ? 0.66 : 0.76,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      ]),
+    );
+
+    const makeStarShape = (outer = 0.58, inner = 0.28) => {
+      const shape = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const radius = i % 2 ? inner : outer;
+        const angle = Math.PI / 2 + (i * Math.PI) / 5;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        if (i === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      return shape;
+    };
+    const pickupStarGeometry = track(
+      new THREE.ExtrudeGeometry(makeStarShape(), {
+        depth: 0.17,
+        bevelEnabled: true,
+        bevelSegments: 2,
+        bevelSize: 0.055,
+        bevelThickness: 0.045,
+        curveSegments: 2,
+      }).center(),
+    );
+    const pickupSparkGeometry = track(
+      new THREE.OctahedronGeometry(0.105, 0),
+    );
+
+    const makePickupRoot = (type) => {
+      const root = new THREE.Group();
+      const glow = new THREE.Mesh(
+        pickupGlowGeometry,
+        pickupGlowMaterials[type],
+      );
+      glow.name = "pickupGlow";
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.y = 0.045;
+      glow.renderOrder = 2;
+      root.add(glow);
+
+      const icon = new THREE.Group();
+      icon.name = "pickupIcon";
+      root.add(icon);
+      return { root, icon };
+    };
+
+    const pickupPrototypes = (() => {
+      const prototypes = {};
+
+      // SPEED: a chunky golden lightning badge with little cyan wind feathers.
+      {
+        const { root, icon } = makePickupRoot("speed");
+        const bolt = new THREE.Shape();
+        bolt.moveTo(0.08, 0.66);
+        bolt.lineTo(-0.35, 0.08);
+        bolt.lineTo(-0.06, 0.08);
+        bolt.lineTo(-0.25, -0.64);
+        bolt.lineTo(0.39, -0.01);
+        bolt.lineTo(0.09, -0.01);
+        bolt.closePath();
+        const boltGeometry = track(
+          new THREE.ExtrudeGeometry(bolt, {
+            depth: 0.19,
+            bevelEnabled: true,
+            bevelSegments: 2,
+            bevelSize: 0.045,
+            bevelThickness: 0.04,
+          }).center(),
+        );
+        const boltMesh = new THREE.Mesh(
+          boltGeometry,
+          pickupMaterial(0xffdf3f, 0xff8a18, 0.55, {
+            roughness: 0.24,
+          }),
+        );
+        boltMesh.scale.setScalar(1.08);
+        icon.add(boltMesh);
+
+        const streakGeometry = track(
+          new THREE.CapsuleGeometry(0.045, 0.38, 3, 8),
+        );
+        const streakMaterial = pickupBasicMaterial(0xa9f7ff, {
+          transparent: true,
+          opacity: 0.92,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        for (let i = 0; i < 3; i++) {
+          const streak = new THREE.Mesh(streakGeometry, streakMaterial);
+          streak.rotation.z = Math.PI / 2;
+          streak.position.set(-0.5 - i * 0.08, 0.25 - i * 0.25, -0.02);
+          streak.scale.setScalar(1 - i * 0.16);
+          icon.add(streak);
+        }
+        prototypes.speed = root;
+      }
+
+      // INVINCIBLE: a bright, bevelled Mario-like star with tiny face details.
+      {
+        const { root, icon } = makePickupRoot("invincible");
+        const star = new THREE.Mesh(
+          pickupStarGeometry,
+          pickupMaterial(0xffd52e, 0xff9d18, 0.72, {
+            roughness: 0.22,
+            metalness: 0.12,
+          }),
+        );
+        icon.add(star);
+        const front = new THREE.Mesh(
+          pickupStarGeometry,
+          pickupMaterial(0xffef76, 0xffd52e, 0.7, {
+            roughness: 0.2,
+          }),
+        );
+        front.scale.set(0.78, 0.78, 0.22);
+        front.position.z = 0.12;
+        icon.add(front);
+        const eyeGeometry = track(new THREE.SphereGeometry(0.047, 10, 8));
+        const eyeMaterial = pickupBasicMaterial(0x372921);
+        for (const x of [-0.13, 0.13]) {
+          const eye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+          eye.scale.y = 1.65;
+          eye.position.set(x, 0.055, 0.195);
+          icon.add(eye);
+        }
+        prototypes.invincible = root;
+      }
+
+      // SLOW: a classic saturated red/white mushroom. Its red ground glow and the
+      // orbiting red orbs on the slowed character both match the cap.
+      {
+        const { root, icon } = makePickupRoot("slow");
+        const stem = new THREE.Mesh(
+          track(new THREE.CapsuleGeometry(0.22, 0.36, 5, 16)),
+          pickupMaterial(0xffe7bd, 0x6b3519, 0.12, {
+            roughness: 0.44,
+          }),
+        );
+        stem.position.y = -0.24;
+        icon.add(stem);
+        const capMaterial = pickupMaterial(0xe5231f, 0x7d0b08, 0.3, {
+          roughness: 0.3,
+        });
+        const capRim = new THREE.Mesh(
+          track(new THREE.CylinderGeometry(0.51, 0.46, 0.13, 28)),
+          capMaterial,
+        );
+        capRim.position.y = 0.075;
+        icon.add(capRim);
+        const cap = new THREE.Mesh(
+          track(
+            new THREE.SphereGeometry(
+              0.56,
+              28,
+              14,
+              0,
+              Math.PI * 2,
+              0,
+              Math.PI / 2,
+            ),
+          ),
+          capMaterial,
+        );
+        cap.position.y = 0.1;
+        cap.scale.set(1.0, 0.9, 1.0); // circular footprint + taller dome (was a flat oval)
+        icon.add(cap);
+        // Flat tangent patches sit flush with the ellipsoid instead of reading
+        // as white balls glued onto it. Nine placements cover the crown, a
+        // middle ring and a lower ring near the brim in every direction.
+        const spotGeometry = track(new THREE.CircleGeometry(1, 24));
+        const spotMaterial = pickupMaterial(0xfffbec, 0xffd9a2, 0.18, {
+          roughness: 0.34,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        });
+        const capRadii = new THREE.Vector3(
+          0.56 * cap.scale.x,
+          0.56 * cap.scale.y,
+          0.56 * cap.scale.z,
+        );
+        const spots = [
+          // polar angle from the crown, azimuth around world Y, patch radius
+          [0.04, 0, 0.15],
+          [0.62, Math.PI / 4, 0.13],
+          [0.65, (Math.PI * 3) / 4, 0.125],
+          [0.65, (Math.PI * 5) / 4, 0.12],
+          [0.62, (Math.PI * 7) / 4, 0.125],
+          [1.1, 0, 0.095],
+          [1.16, Math.PI / 2, 0.1],
+          [1.1, Math.PI, 0.095],
+          [1.14, (Math.PI * 3) / 2, 0.09],
+        ];
+        const patchForward = new THREE.Vector3(0, 0, 1);
+        for (const [polar, azimuth, radius] of spots) {
+          const sinPolar = Math.sin(polar);
+          const local = new THREE.Vector3(
+            capRadii.x * sinPolar * Math.cos(azimuth),
+            capRadii.y * Math.cos(polar),
+            capRadii.z * sinPolar * Math.sin(azimuth),
+          );
+          // Ellipsoid surface normal = gradient of x^2/a^2+y^2/b^2+z^2/c^2.
+          const normal = new THREE.Vector3(
+            local.x / (capRadii.x * capRadii.x),
+            local.y / (capRadii.y * capRadii.y),
+            local.z / (capRadii.z * capRadii.z),
+          ).normalize();
+          const spot = new THREE.Mesh(spotGeometry, spotMaterial);
+          spot.position
+            .copy(local)
+            .add(new THREE.Vector3(0, cap.position.y, 0))
+            .addScaledVector(normal, 0.008);
+          spot.quaternion.setFromUnitVectors(patchForward, normal);
+          spot.scale.setScalar(radius);
+          icon.add(spot);
+        }
+        const faceGeometry = track(new THREE.SphereGeometry(0.043, 10, 8));
+        const faceMaterial = pickupBasicMaterial(0x241b18);
+        for (const x of [-0.095, 0.095]) {
+          const eye = new THREE.Mesh(faceGeometry, faceMaterial);
+          eye.scale.set(0.8, 1.9, 0.5);
+          eye.position.set(x, -0.22, 0.235);
+          icon.add(eye);
+        }
+        const mouth = new THREE.Mesh(faceGeometry, faceMaterial);
+        mouth.position.set(0, -0.355, 0.235);
+        mouth.scale.set(0.9, 0.28, 0.4);
+        icon.add(mouth);
+        prototypes.slow = root;
+      }
+
+      // FREEZE: a thick crystalline snowflake with a translucent blue core.
+      {
+        const { root, icon } = makePickupRoot("freeze");
+        const iceMaterial = pickupMaterial(0xbef5ff, 0x43cfff, 0.66, {
+          roughness: 0.17,
+          metalness: 0.15,
+        });
+        const armGeometry = track(new THREE.BoxGeometry(0.095, 1.12, 0.13));
+        const twigGeometry = track(new THREE.BoxGeometry(0.075, 0.3, 0.1));
+        for (let i = 0; i < 3; i++) {
+          const arm = new THREE.Mesh(armGeometry, iceMaterial);
+          arm.rotation.z = (i * Math.PI) / 3;
+          icon.add(arm);
+          for (const side of [-1, 1]) {
+            for (const fork of [-1, 1]) {
+              const twig = new THREE.Mesh(twigGeometry, iceMaterial);
+              twig.position.y = side * 0.37;
+              twig.rotation.z = fork * 0.72;
+              const branch = new THREE.Group();
+              branch.rotation.z = (i * Math.PI) / 3;
+              branch.add(twig);
+              icon.add(branch);
+            }
+          }
+        }
+        const gem = new THREE.Mesh(
+          track(new THREE.OctahedronGeometry(0.3, 0)),
+          pickupMaterial(0x6ee7ff, 0x1aaee8, 0.72, {
+            transparent: true,
+            opacity: 0.9,
+            roughness: 0.08,
+          }),
+        );
+        gem.scale.z = 0.75;
+        icon.add(gem);
+        prototypes.freeze = root;
+      }
+      return prototypes;
+    })();
+
+    // These four rigs follow frame.red/frame.blue and make the active status
+    // readable directly on the character: no extra HUD is needed.
+    const stateShared = (() => {
+      const shieldMaterial = pickupMaterial(0x67edff, 0x16cde8, 0.55, {
+        transparent: true,
+        opacity: 0.2,
+        depthWrite: false,
+        roughness: 0.08,
+        side: THREE.DoubleSide,
+      });
+      const shieldWireMaterial = pickupBasicMaterial(0xffdf58, {
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        wireframe: true,
+      });
+      const iceShellMaterial = pickupMaterial(0xa6edff, 0x29b6f1, 0.5, {
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false,
+        roughness: 0.1,
+        side: THREE.DoubleSide,
+      });
+      const speedMaterial = pickupBasicMaterial(0x6ceeff, {
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const slowMaterial = pickupBasicMaterial(0xff4234, {
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      return {
+        shieldGeometry: track(new THREE.SphereGeometry(1.02, 20, 14)),
+        shieldWireGeometry: track(new THREE.IcosahedronGeometry(1.06, 2)),
+        shieldMaterial,
+        shieldWireMaterial,
+        iceShellGeometry: track(new THREE.IcosahedronGeometry(0.94, 1)),
+        iceShellMaterial,
+        speedGeometry: track(new THREE.CapsuleGeometry(0.035, 0.52, 3, 8)),
+        speedMaterial,
+        slowGeometry: track(new THREE.SphereGeometry(0.105, 10, 8)),
+        slowMaterial,
+      };
+    })();
+
+    const createAgentEffectRig = (side) => {
+      const root = new THREE.Group();
+      root.name = `pickupEffects-${side}`;
+
+      const speed = new THREE.Group();
+      speed.name = "speed";
+      for (let i = 0; i < 7; i++) {
+        const streak = new THREE.Mesh(
+          stateShared.speedGeometry,
+          stateShared.speedMaterial,
+        );
+        streak.rotation.x = Math.PI / 2;
+        streak.position.set(
+          ((i % 3) - 1) * 0.28,
+          0.3 + (i % 3) * 0.34,
+          -0.48 - Math.floor(i / 3) * 0.28,
+        );
+        streak.scale.setScalar(0.75 + (i % 3) * 0.13);
+        speed.add(streak);
+      }
+      root.add(speed);
+
+      const invincible = new THREE.Group();
+      invincible.name = "invincible";
+      invincible.position.y = 1.03;
+      invincible.add(
+        new THREE.Mesh(
+          stateShared.shieldGeometry,
+          stateShared.shieldMaterial,
+        ),
+        new THREE.Mesh(
+          stateShared.shieldWireGeometry,
+          stateShared.shieldWireMaterial,
+        ),
+      );
+      const orbitStarMaterial = pickupBasicMaterial(0xffeb69, {
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      for (let i = 0; i < 5; i++) {
+        const star = new THREE.Mesh(pickupSparkGeometry, orbitStarMaterial);
+        star.userData.phase = (i / 5) * Math.PI * 2;
+        invincible.add(star);
+      }
+      root.add(invincible);
+
+      const slow = new THREE.Group();
+      slow.name = "slow";
+      for (let i = 0; i < 7; i++) {
+        const orb = new THREE.Mesh(
+          stateShared.slowGeometry,
+          stateShared.slowMaterial,
+        );
+        orb.userData.phase = (i / 7) * Math.PI * 2;
+        slow.add(orb);
+      }
+      root.add(slow);
+
+      const freeze = new THREE.Group();
+      freeze.name = "freeze";
+      freeze.position.y = 1.0;
+      const shell = new THREE.Mesh(
+        stateShared.iceShellGeometry,
+        stateShared.iceShellMaterial,
+      );
+      shell.scale.y = 1.2;
+      freeze.add(shell);
+      const shardMaterial = pickupBasicMaterial(0xc5f7ff, {
+        transparent: true,
+        opacity: 0.82,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      for (let i = 0; i < 6; i++) {
+        const shard = new THREE.Mesh(pickupSparkGeometry, shardMaterial);
+        const angle = (i / 6) * Math.PI * 2;
+        shard.position.set(
+          Math.cos(angle) * 0.84,
+          (i % 2 ? 0.5 : -0.42),
+          Math.sin(angle) * 0.84,
+        );
+        shard.scale.set(0.6, 1.65, 0.6);
+        freeze.add(shard);
+      }
+      root.add(freeze);
+
+      for (const layer of [speed, invincible, slow, freeze]) {
+        layer.visible = false;
+      }
+      group.add(root);
+      return {
+        root,
+        speed,
+        invincible,
+        slow,
+        freeze,
+        blend: { speed: 0, invincible: 0, slow: 0, freeze: 0 },
+        positionReady: false,
+        yaw: Math.PI,
+      };
+    };
+    const agentEffectRigs = {
+      red: createAgentEffectRig("red"),
+      blue: createAgentEffectRig("blue"),
+    };
+
+    const pickupIdKey = (id) => String(id ?? "");
+    const pickupPhase = (id) => {
+      const text = pickupIdKey(id);
+      let hash = 2166136261;
+      for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return ((hash >>> 0) % 1000) / 1000;
+    };
+
+    function removePickupVisual(key) {
+      const visual = pickupVisuals.get(key);
+      if (!visual) return;
+      group.remove(visual.model);
+      pickupVisuals.delete(key);
+    }
+
+    function createPickupVisual(pickup) {
+      const type = PICKUP_TYPES.has(pickup.type) ? pickup.type : null;
+      if (!type) return null;
+      while (pickupVisuals.size >= MAX_PICKUP_VISUALS) {
+        removePickupVisual(pickupVisuals.keys().next().value);
+      }
+      const key = pickupIdKey(pickup.id);
+      const model = pickupPrototypes[type].clone(true);
+      model.name = `pickupVisual:${type}:${key}`;
+      const icon = model.getObjectByName("pickupIcon");
+      const p = simToScene(pickup.pos || [0, 0]);
+      const radius = Number(pickup.radius) || 0.42;
+      const baseScale = THREE.MathUtils.clamp(
+        (radius * sceneScale) / 1.25,
+        0.72,
+        1.24,
+      );
+      model.position.set(p.x, 0, p.z);
+      model.scale.setScalar(0.001);
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = !o.material?.transparent;
+        o.receiveShadow = false;
+      });
+      group.add(model);
+      const visual = {
+        key,
+        id: pickup.id,
+        type,
+        model,
+        icon,
+        target: new THREE.Vector3(p.x, 0, p.z),
+        phase: pickupPhase(pickup.id) * Math.PI * 2,
+        baseScale,
+        age: 0,
+        removeAge: 0,
+        state: "spawn",
+      };
+      pickupVisuals.set(key, visual);
+      return visual;
+    }
+
+    function rememberPickupEvent(id) {
+      const key = pickupIdKey(id);
+      seenPickupEventIds.add(key);
+      seenPickupEventOrder.push(key);
+      while (seenPickupEventOrder.length > 256) {
+        seenPickupEventIds.delete(seenPickupEventOrder.shift());
+      }
+    }
+
+    function disposePickupCollectFx(fx) {
+      group.remove(fx.group);
+      fx.sparkMaterial.dispose();
+      fx.flashMaterial.dispose();
+    }
+
+    function spawnPickupCollectFx(event) {
+      while (pickupCollectFx.length >= MAX_PICKUP_COLLECT_FX) {
+        disposePickupCollectFx(pickupCollectFx.shift());
+      }
+      const type = PICKUP_TYPES.has(event.type) ? event.type : "speed";
+      const color = PICKUP_COLORS[type];
+      const p = simToScene(event.pos || [0, 0]);
+      const burst = new THREE.Group();
+      burst.name = `pickupCollectFx:${type}`;
+      burst.position.set(p.x, 0.85, p.z);
+      group.add(burst);
+
+      const flashMaterial = new THREE.SpriteMaterial({
+        map: pickupGlowTexture,
+        color,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const flash = new THREE.Sprite(flashMaterial);
+      flash.scale.setScalar(0.3);
+      burst.add(flash);
+
+      const sparkMaterial = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const sparks = [];
+      const phase = pickupPhase(event.id) * Math.PI * 2;
+      for (let i = 0; i < 9; i++) {
+        const angle = phase + (i / 9) * Math.PI * 2;
+        const spark = new THREE.Mesh(pickupSparkGeometry, sparkMaterial);
+        spark.position.set(0, 0, 0);
+        spark.rotation.set(angle, angle * 0.6, -angle);
+        burst.add(spark);
+        sparks.push({
+          mesh: spark,
+          velocity: new THREE.Vector3(
+            Math.cos(angle) * (1.5 + (i % 3) * 0.32),
+            1.1 + (i % 4) * 0.32,
+            Math.sin(angle) * (1.5 + (i % 3) * 0.32),
+          ),
+        });
+      }
+      pickupCollectFx.push({
+        group: burst,
+        flash,
+        flashMaterial,
+        sparkMaterial,
+        sparks,
+        age: 0,
+        duration: 0.48,
+      });
+    }
+
+    function updatePickupCollectFx(dt) {
+      for (let i = pickupCollectFx.length - 1; i >= 0; i--) {
+        const fx = pickupCollectFx[i];
+        fx.age += dt;
+        const u = Math.min(1, fx.age / fx.duration);
+        const pop = Math.sin(Math.min(1, u * 1.2) * Math.PI);
+        fx.flash.scale.setScalar(0.35 + pop * 1.9);
+        fx.flashMaterial.opacity =
+          1 - THREE.MathUtils.smoothstep(u, 0.14, 0.88);
+        fx.sparkMaterial.opacity =
+          1 - THREE.MathUtils.smoothstep(u, 0.48, 1);
+        for (const spark of fx.sparks) {
+          spark.mesh.position.addScaledVector(spark.velocity, dt);
+          spark.velocity.y -= dt * 3.8;
+          spark.mesh.rotation.x += dt * 8;
+          spark.mesh.rotation.y += dt * 6;
+          spark.mesh.scale.setScalar(Math.max(0.001, 1 - u));
+        }
+        if (u >= 1) {
+          disposePickupCollectFx(fx);
+          pickupCollectFx.splice(i, 1);
+        }
+      }
+    }
+
+    function updatePickups(t, dt, frame) {
+      const active = new Set();
+      for (const pickup of frame?.pickups || []) {
+        if (!PICKUP_TYPES.has(pickup.type) || !Array.isArray(pickup.pos)) {
+          continue;
+        }
+        const key = pickupIdKey(pickup.id);
+        active.add(key);
+        let visual = pickupVisuals.get(key);
+        if (visual && visual.type !== pickup.type) {
+          removePickupVisual(key);
+          visual = null;
+        }
+        if (!visual) visual = createPickupVisual(pickup);
+        if (!visual) continue;
+        const p = simToScene(pickup.pos);
+        visual.target.set(p.x, 0, p.z);
+        if (visual.state === "despawn") {
+          visual.state = "spawn";
+          visual.age = 0.12;
+          visual.removeAge = 0;
+        }
+      }
+
+      for (const event of frame?.pickupEvents || []) {
+        const eventKey = pickupIdKey(event.id);
+        if (seenPickupEventIds.has(eventKey)) continue;
+        rememberPickupEvent(event.id);
+        spawnPickupCollectFx(event);
+        const visual = pickupVisuals.get(pickupIdKey(event.pickupId));
+        if (visual) {
+          visual.state = "collect";
+          visual.removeAge = 0;
+          if (Array.isArray(event.pos)) {
+            const p = simToScene(event.pos);
+            visual.target.set(p.x, 0, p.z);
+          }
+        }
+      }
+
+      for (const [key, visual] of pickupVisuals) {
+        if (!active.has(key) && visual.state !== "collect") {
+          visual.state = "despawn";
+        }
+        visual.age += dt;
+        const follow = 1 - Math.exp(-dt * 16);
+        visual.model.position.lerp(visual.target, follow);
+        if (visual.icon) {
+          visual.icon.position.y =
+            0.86 + Math.sin(t * 3.2 + visual.phase) * 0.13;
+          visual.icon.rotation.y +=
+            dt * (visual.type === "speed" ? 2.55 : 1.65);
+          visual.icon.rotation.z =
+            Math.sin(t * 2.1 + visual.phase) * 0.055;
+        }
+
+        let scale = visual.baseScale;
+        if (visual.state === "spawn") {
+          const u = Math.min(1, visual.age / 0.28);
+          // a tiny overshoot gives the pickup a Mario-style item-box pop.
+          const back = 1 + 2.70158 * Math.pow(u - 1, 3) +
+            1.70158 * Math.pow(u - 1, 2);
+          scale *= Math.max(0.001, back);
+          if (u >= 1) visual.state = "active";
+        } else if (
+          visual.state === "collect" ||
+          visual.state === "despawn"
+        ) {
+          visual.removeAge += dt;
+          const life = visual.state === "collect" ? 0.18 : 0.24;
+          const u = Math.min(1, visual.removeAge / life);
+          const punch =
+            visual.state === "collect"
+              ? 1 + Math.sin(Math.min(1, u * 1.5) * Math.PI) * 0.35
+              : 1;
+          scale *= Math.max(0.001, (1 - u * u) * punch);
+          if (u >= 1) {
+            removePickupVisual(key);
+            continue;
+          }
+        }
+        visual.model.scale.setScalar(scale);
+      }
+      updatePickupCollectFx(dt);
+    }
+
+    const effectRemaining = (effects, type) => {
+      if (!effects) return 0;
+      if (type === "freeze") {
+        return Math.max(
+          0,
+          Number(effects.frozen ?? effects.freeze) || 0,
+        );
+      }
+      return Math.max(0, Number(effects[type]) || 0);
+    };
+
+    function updateAgentPickupEffects(t, dt, frame) {
+      for (const side of ["red", "blue"]) {
+        const rig = agentEffectRigs[side];
+        const position = frame?.[side];
+        if (Array.isArray(position)) {
+          const p = simToScene(position);
+          if (!rig.positionReady) {
+            rig.root.position.set(p.x, 0, p.z);
+            rig.positionReady = true;
+          } else {
+            const follow = 1 - Math.exp(-dt * 12);
+            rig.root.position.x += (p.x - rig.root.position.x) * follow;
+            rig.root.position.y += (0 - rig.root.position.y) * follow;
+            rig.root.position.z += (p.z - rig.root.position.z) * follow;
+          }
+        }
+
+        const velocity = frame?.[`${side}Vel`];
+        if (
+          Array.isArray(velocity) &&
+          Math.hypot(velocity[0] || 0, velocity[1] || 0) > 0.04
+        ) {
+          const targetYaw = Math.atan2(velocity[0], velocity[1]);
+          const delta = Math.atan2(
+            Math.sin(targetYaw - rig.yaw),
+            Math.cos(targetYaw - rig.yaw),
+          );
+          rig.yaw += delta * (1 - Math.exp(-dt * 10));
+        }
+        rig.speed.rotation.y = rig.yaw;
+
+        const effects = frame?.effects?.[side];
+        for (const type of ["speed", "invincible", "slow", "freeze"]) {
+          const active = effectRemaining(effects, type) > 0;
+          rig.blend[type] = THREE.MathUtils.clamp(
+            rig.blend[type] + dt * (active ? 8 : -9),
+            0,
+            1,
+          );
+          const layer = rig[type];
+          layer.visible = rig.blend[type] > 0.01;
+          const eased = THREE.MathUtils.smoothstep(
+            rig.blend[type],
+            0,
+            1,
+          );
+          layer.scale.setScalar(Math.max(0.001, eased));
+        }
+
+        rig.speed.children.forEach((streak, i) => {
+          streak.position.z =
+            -0.42 - Math.floor(i / 3) * 0.28 -
+            ((t * 2.8 + i * 0.17) % 0.28);
+        });
+        rig.invincible.rotation.y += dt * 1.75;
+        rig.invincible.children.slice(2).forEach((star, i) => {
+          const angle = t * 3.1 + star.userData.phase;
+          star.position.set(
+            Math.cos(angle) * 1.14,
+            Math.sin(t * 4.2 + i) * 0.42,
+            Math.sin(angle) * 1.14,
+          );
+          star.rotation.x += dt * 5;
+          star.rotation.y += dt * 7;
+        });
+        rig.slow.children.forEach((orb, i) => {
+          const angle = t * 0.72 + orb.userData.phase;
+          orb.position.set(
+            Math.cos(angle) * (0.78 + (i % 2) * 0.16),
+            0.26 + (i % 3) * 0.36 +
+              Math.sin(t * 1.8 + i) * 0.08,
+            Math.sin(angle) * (0.78 + (i % 2) * 0.16),
+          );
+        });
+        rig.freeze.rotation.y = Math.sin(t * 0.8) * 0.12;
+      }
+    }
+
+    function resetPickupEffects(frameToSuppress = null) {
+      for (const key of [...pickupVisuals.keys()]) removePickupVisual(key);
+      for (const fx of pickupCollectFx) disposePickupCollectFx(fx);
+      pickupCollectFx.length = 0;
+      seenPickupEventIds.clear();
+      seenPickupEventOrder.length = 0;
+      for (const event of frameToSuppress?.pickupEvents || []) {
+        rememberPickupEvent(event.id);
+      }
+      for (const rig of Object.values(agentEffectRigs)) {
+        rig.positionReady = false;
+        for (const type of ["speed", "invincible", "slow", "freeze"]) {
+          rig.blend[type] = 0;
+          rig[type].visible = false;
+        }
+      }
+    }
+
     function missileVisual(missile) {
       let visual = missileVisuals.get(missile.id);
       if (visual || !missilePrototype) return visual;
@@ -1498,6 +2361,7 @@ export const ruined = {
       for (const event of frameToSuppress?.explosions || []) {
         rememberExplosion(event.id);
       }
+      resetPickupEffects(frameToSuppress);
     }
 
     // ---- animation + teardown -------------------------------------------
@@ -1525,6 +2389,8 @@ export const ruined = {
         obj.wrap.rotation.y = (obj.rot?.[1] ?? 0) + t * (obj.spin?.[1] ?? 0);
         obj.wrap.rotation.z = (obj.rot?.[2] ?? 0) + t * (obj.spin?.[2] ?? 0);
       }
+      updatePickups(t, dt, frame);
+      updateAgentPickupEffects(t, dt, frame);
       updateMissiles(frame, dt);
     }
 

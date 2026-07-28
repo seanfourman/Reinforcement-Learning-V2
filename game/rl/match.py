@@ -18,11 +18,13 @@ scores and can never double-count. Round wins accumulate into the tournament
 
 import copy
 import math
+import os
 import threading
 from collections import deque
 
 from env import (GridWorld, N_ACTIONS,
-                 COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN, SLIP_PROB)
+                 COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
+                 SLIP_PROB, R2_SLIP_PROB)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
@@ -48,10 +50,20 @@ def is_pg(algo):
 def is_deep(algo):
     return is_dqn(algo) or is_pg(algo)
 
-FRAME_CAP = 801            # max frames recorded for one replayable episode
-                           # (800 steps + the seeded frame-0 spawn snapshot)
+FRAME_CAP = 10001          # record the WHOLE episode: R4 survival is bounded by the
+                           # env's own 10,000-step ceiling, so this never truncates a
+                           # replay. Memory scales with ACTUAL survival, not this cap.
 HISTORY_CAP = 4000         # max learning-curve points kept per round
 TOP_N = 30                 # best replays kept per model (fastest or longest by game)
+DQN_CHECKPOINT_SCHEMA = 2
+DQN_CHECKPOINT_INTERVAL = 25
+DQN_CHECKPOINT_NAME = "round4_dqn.pt"
+# This revision tracks the meaning of Round 4's experience, independently of the
+# on-disk container format. Revision 6 adds ENDLESS ESCALATION (missiles + pickups
+# grow with survival time, no 3-cap) and a wider observation (6 nearest missiles +
+# 3 nearest pickups + the mercy-invuln timer). The observation dimension changed, so
+# an older checkpoint is rejected on both counts and agents retrain from scratch.
+ROUND4_TRAINING_REVISION = 7
 
 # Red (the CPU) is NOT tunable from the panel; its strength comes from the chosen
 # CPU character's tier (1 = easiest .. 5 = hardest). Stage 1 reads ONLY plan_speed.
@@ -104,10 +116,20 @@ def red_params(level):
 
 
 class Match:
-    def __init__(self, seed=None, round_id=1):
+    def __init__(self, seed=None, round_id=1, checkpoint_dir=None):
         self.lock = threading.RLock()
         self.seed = seed
         self.round_id = round_id
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        self.checkpoint_dir = os.path.abspath(
+            checkpoint_dir if checkpoint_dir is not None
+            else os.path.join(project_root, "checkpoints")
+        )
+        self.checkpoint_path = os.path.join(self.checkpoint_dir, DQN_CHECKPOINT_NAME)
+        self.checkpoint_status = "not-checked"
+        self.checkpoint_error = None
+        self.checkpoint_episode = 0
+        self._last_checkpoint_episode = -1
         # ---- panel-driven GLOBAL config (apply to BOTH agents / the env) -------
         # These are structural: the algorithms' internals and the world dynamics,
         # as opposed to the per-side learning knobs (alpha/gamma/epsilon) below.
@@ -125,16 +147,24 @@ class Match:
         self.block_ghost_prob = 0.5             # P(Ghost) on a Mystery Block
         self.coin_reward = COIN_REWARD          # value of an optional coin
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
-        # Round-2 game mechanics (New Donk City): maze knobs, applied at WORLD GEN
-        # (a change regenerates the regioned maze, since they alter the layout).
-        self.r2_plants = 2                      # piranha plants per side (mirrored)
+        # Round-2 game mechanics (New Donk City): three hedge-maze hazards,
+        # applied at WORLD GEN.
+        self.r2_plants = 3                      # one piranha shortcut trap in each stage
         self.r2_slip = 3                        # slippery puddles per side (mirrored)
+        self.r2_slip_prob = R2_SLIP_PROB        # independent of Round-1 ice
         # DQN learners (continuous rounds 4-5)
         self.dqn_batch = 64
         self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
-        self.dqn_warmup = 1_000                 # steps before learning starts
+        self.dqn_warmup = 1_000                 # non-R4 DQN fallback
+        self.r4_dqn_warmup = 500                # missile arena learns after 500 samples
         self.dqn_target_sync = 500              # target-net copy interval
-        self.dqn_hidden = 128                   # hidden width     (rebuild on change)
+        # The NETWORK (width + depth) is PER-SIDE: Blue and Red can each have a
+        # different brain, so you can pit a big/deep net against a small/shallow one.
+        # (The replay/batch/warmup/sync internals below stay shared.)
+        self.dqn_hidden = 128                   # Blue hidden width  (rebuild on change)
+        self.dqn_layers = 2                     # Blue hidden layers (rebuild on change)
+        self.red_dqn_hidden = 128               # Red hidden width   (rebuild on change)
+        self.red_dqn_layers = 2                 # Red hidden layers  (rebuild on change)
         # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
         self._apply_env_config()
@@ -152,6 +182,8 @@ class Match:
         self.gamma = 0.98                      # Blue discount factor (TD/MC)
         # Blue epsilon schedule: linear eps_start -> eps_end over eps_episodes, then hold
         self.eps_start, self.eps_end, self.eps_episodes = 1.0, 0.05, 3000
+        self.r4_eps_episodes = None             # explicit panel override, else cap at 1,000
+        self.r4_red_eps_episodes = None         # same for a manual CPU override
         self.target_episodes = None            # auto-pause after N episodes (None = run forever)
         self.red_tier = 1                      # CPU display tier (1-5), from the chosen character
         self.red_level = 0                     # CPU hyperparameter model 0..9 (per-character)
@@ -165,6 +197,7 @@ class Match:
         self.algo_red, self.algo_blue = self._round_matchup(round_id)
         self._build_agents()
         self._reset_stats()
+        self._load_checkpoint()
         self._new_episode()
 
     # ------------------------------------------------------------------ setup
@@ -191,6 +224,7 @@ class Match:
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
+                        r2_slip_prob=self.r2_slip_prob,
                         freeze_len=self.freeze_len, block_ghost_prob=self.block_ghost_prob,
                         coin_reward=self.coin_reward, block_reward=self.block_reward)
         return False
@@ -227,6 +261,30 @@ class Match:
         return [{"roundId": rid, "world": self.world_for_round(rid)}
                 for rid in worlds.ROUNDS]
 
+    def _is_round4_missile(self):
+        return self.round_id == 4 and bool(getattr(self.env, "missile_game", False))
+
+    def _effective_dqn_warmup(self):
+        return self.r4_dqn_warmup if self._is_round4_missile() else self.dqn_warmup
+
+    def _effective_blue_eps_episodes(self):
+        if not self._is_round4_missile():
+            return self.eps_episodes
+        return (
+            self.r4_eps_episodes
+            if self.r4_eps_episodes is not None
+            else min(self.eps_episodes, 1_000)
+        )
+
+    def _effective_red_eps_episodes(self):
+        if not self._is_round4_missile():
+            return self.red_eps_episodes
+        return (
+            self.r4_red_eps_episodes
+            if self.r4_red_eps_episodes is not None
+            else min(self.red_eps_episodes, 1_000)
+        )
+
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
             speed = self.red_plan_speed if color == "red" else self.dp_plan_speed
@@ -235,11 +293,15 @@ class Match:
                            plan_speed=speed)
         if is_dqn(algo):
             from dqn import make_dqn   # lazy: only the deep rounds need PyTorch
+            # PER-SIDE network: Red and Blue can each carry a different width/depth.
+            hidden = self.red_dqn_hidden if color == "red" else self.dqn_hidden
+            layers = self.red_dqn_layers if color == "red" else self.dqn_layers
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
                             seed=seed, alpha=alpha, gamma=gamma,
                             buffer=self.dqn_buffer, batch=self.dqn_batch,
-                            warmup=self.dqn_warmup, target_sync=self.dqn_target_sync,
-                            hidden=self.dqn_hidden)
+                            warmup=self._effective_dqn_warmup(),
+                            target_sync=self.dqn_target_sync,
+                            hidden=hidden, layers=layers)
         if is_pg(algo):
             from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
             return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
@@ -255,6 +317,7 @@ class Match:
         self.red_eps_start = rp["eps_start"]
         self.red_eps_end = rp["eps_end"]
         self.red_eps_episodes = rp["eps_episodes"]
+        self.r4_red_eps_episodes = None
         self.red_epsilon = rp["eps_start"]
         self.red_plan_speed = rp["plan_speed"]    # DP (R1): Red's sweeps per tick
 
@@ -267,6 +330,129 @@ class Match:
                                   alpha=self.red_alpha, gamma=self.red_gamma)
         self.blue = self._make_one(self.algo_blue, "blue", seed=2 + off,
                                    alpha=self.alpha, gamma=self.gamma)
+
+    # ---------------------------------------------------------- DQN checkpoint
+    def _checkpoint_eligible(self):
+        return (
+            self._is_round4_missile()
+            and is_dqn(self.algo_red)
+            and is_dqn(self.algo_blue)
+            and hasattr(self.red, "checkpoint_state")
+            and hasattr(self.blue, "checkpoint_state")
+        )
+
+    def _checkpoint_payload(self):
+        return {
+            "schemaVersion": DQN_CHECKPOINT_SCHEMA,
+            "trainingRevision": ROUND4_TRAINING_REVISION,
+            "roundId": 4,
+            "obsDim": int(self.env.obs_dim),
+            "nActions": int(self.env.n_actions),
+            "algorithms": {"red": self.algo_red, "blue": self.algo_blue},
+            "episode": int(self.episode),
+            "totalSteps": int(self.total_steps),
+            "agents": {
+                "red": self.red.checkpoint_state(),
+                "blue": self.blue.checkpoint_state(),
+            },
+        }
+
+    def save_checkpoint(self, force=True):
+        """Persist Round-4 DQN learning; return True only when a file was written."""
+        with self.lock:
+            if not self._checkpoint_eligible():
+                self.checkpoint_status = "not-applicable"
+                return False
+            if not force and (
+                self.episode <= 0
+                or self.episode % DQN_CHECKPOINT_INTERVAL
+                or self.episode == self._last_checkpoint_episode
+            ):
+                return False
+            try:
+                from dqn import save_checkpoint_file
+                save_checkpoint_file(self.checkpoint_path, self._checkpoint_payload())
+            except Exception as exc:
+                self.checkpoint_status = "save-error"
+                self.checkpoint_error = f"{type(exc).__name__}: {exc}"
+                return False
+            self._last_checkpoint_episode = int(self.episode)
+            self.checkpoint_episode = int(self.episode)
+            self.checkpoint_status = "saved"
+            self.checkpoint_error = None
+            return True
+
+    def _load_checkpoint(self):
+        """Load one compatible Round-4 checkpoint, leaving fresh agents on error."""
+        if not self._checkpoint_eligible():
+            self.checkpoint_status = "not-applicable"
+            self.checkpoint_error = None
+            return False
+
+        from dqn import load_checkpoint_file
+        payload, error = load_checkpoint_file(self.checkpoint_path)
+        if error is not None:
+            self.checkpoint_status = "missing" if error == "missing" else "corrupt"
+            self.checkpoint_error = None if error == "missing" else error
+            return False
+
+        try:
+            if int(payload.get("schemaVersion", -1)) != DQN_CHECKPOINT_SCHEMA:
+                raise ValueError(
+                    f"schemaVersion mismatch (expected {DQN_CHECKPOINT_SCHEMA})")
+            if int(payload.get("trainingRevision", -1)) != ROUND4_TRAINING_REVISION:
+                raise ValueError(
+                    "trainingRevision mismatch "
+                    f"(expected {ROUND4_TRAINING_REVISION})")
+            if int(payload.get("roundId", -1)) != 4:
+                raise ValueError("roundId mismatch")
+            if int(payload.get("obsDim", -1)) != int(self.env.obs_dim):
+                raise ValueError("obsDim mismatch")
+            if int(payload.get("nActions", -1)) != int(self.env.n_actions):
+                raise ValueError("nActions mismatch")
+            expected_algos = {"red": self.algo_red, "blue": self.algo_blue}
+            if payload.get("algorithms") != expected_algos:
+                raise ValueError("algorithms mismatch")
+            episode = int(payload["episode"])
+            total_steps = int(payload.get("totalSteps", 0))
+            if episode < 0 or total_steps < 0:
+                raise ValueError("negative progress counter")
+            agents = payload["agents"]
+            if not isinstance(agents, dict):
+                raise ValueError("agents is not a dict")
+            # Prepare both sides before mutating either one.
+            red_state = self.red.prepare_checkpoint_state(agents["red"])
+            blue_state = self.blue.prepare_checkpoint_state(agents["blue"])
+        except Exception as exc:
+            self.checkpoint_status = "incompatible"
+            self.checkpoint_error = f"{type(exc).__name__}: {exc}"
+            return False
+
+        self.red.apply_checkpoint_state(red_state)
+        self.blue.apply_checkpoint_state(blue_state)
+        self.episode = episode
+        self.total_steps = total_steps
+        self._last_checkpoint_episode = episode
+        self.checkpoint_episode = episode
+        self.checkpoint_status = "loaded"
+        self.checkpoint_error = None
+        return True
+
+    def delete_checkpoint(self):
+        """Delete saved Round-4 learning for an explicit wipe-learning control."""
+        with self.lock:
+            try:
+                if os.path.exists(self.checkpoint_path):
+                    os.remove(self.checkpoint_path)
+            except OSError as exc:
+                self.checkpoint_status = "delete-error"
+                self.checkpoint_error = f"{type(exc).__name__}: {exc}"
+                return False
+            self._last_checkpoint_episode = -1
+            self.checkpoint_episode = 0
+            self.checkpoint_status = "deleted"
+            self.checkpoint_error = None
+            return True
 
     def _reset_stats(self):
         if getattr(self.env, "missile_game", False):
@@ -318,10 +504,10 @@ class Match:
         # each side follows its own schedule, but a DP planner ignores epsilon and
         # plays optimally, so we read each agent's ACTUAL epsilon back for display:
         # 0.0 on DP rounds (it does not explore), the scheduled value for TD/MC.
-        fb = min(1.0, self.episode / self.eps_episodes)
+        fb = min(1.0, self.episode / self._effective_blue_eps_episodes())
         self.blue.set_epsilon(self.eps_start + (self.eps_end - self.eps_start) * fb)
         self.epsilon = self.blue.epsilon
-        fr = min(1.0, self.episode / self.red_eps_episodes)
+        fr = min(1.0, self.episode / self._effective_red_eps_episodes())
         self.red.set_epsilon(self.red_eps_start + (self.red_eps_end - self.red_eps_start) * fr)
         self.red_epsilon = self.red.epsilon
 
@@ -334,6 +520,14 @@ class Match:
 
     def _new_episode(self):
         self._apply_epsilon()
+        # Round 4 learns against an episode curriculum rather than immediately
+        # facing the final missile dynamics.  Push the restored/current training
+        # episode before reset so the very first observation and every launch in
+        # this episode use the same curriculum stage.
+        set_curriculum_episode = getattr(
+            self.env, "set_curriculum_episode", None)
+        if self._is_round4_missile() and set_curriculum_episode is not None:
+            set_curriculum_episode(self.episode)
         (self.s_red, self.s_blue), _ = self.env.reset()
         self.a_red = self.red.policy_action(self.s_red, self._amask("red"))
         self.a_blue = self.blue.policy_action(self.s_blue, self._amask("blue"))
@@ -429,6 +623,7 @@ class Match:
                 self.ret_hist["blue"].append(self.ep_return["blue"])
                 self.episode += 1
                 self._finish_episode(w, truncated=truncated)
+                self.save_checkpoint(force=False)
                 self._new_episode()
             return done
 
@@ -516,8 +711,27 @@ class Match:
 
     # --------------------------------------------------------------- controls
     def regenerate(self, seed=None):
-        """Re-install the current round's world + wipe both models (what R does)."""
+        """Install a newly-seeded world and wipe both models (what R does).
+
+        With no explicit seed, advance the current training seed so repeated
+        ``New World`` clicks produce different but reproducible layouts.  An
+        explicit seed remains an exact replay mechanism.
+        """
         with self.lock:
+            if seed is None:
+                seed = 1 if self.train_seed is None else int(self.train_seed) + 1
+            else:
+                seed = int(seed)
+            self.train_seed = seed
+            if self._is_round4_missile():
+                self.delete_checkpoint()
+                # Regeneration is also an explicit learning wipe.  This reset only
+                # reseeds/clears the live arena before _new_episode resets it again,
+                # so it must not briefly reuse the discarded model's curriculum.
+                set_curriculum_episode = getattr(
+                    self.env, "set_curriculum_episode", None)
+                if set_curriculum_episode is not None:
+                    set_curriculum_episode(0)
             self.env.reset(seed=seed, regenerate=True)
             self.world_version += 1
             self._build_agents()
@@ -528,6 +742,8 @@ class Match:
     def reset_models(self):
         """Wipe learning, KEEP the current world."""
         with self.lock:
+            if self._is_round4_missile():
+                self.delete_checkpoint()
             self._build_agents()
             self.finish_event = None
             self._reset_stats()
@@ -564,7 +780,11 @@ class Match:
             if "epsEnd" in p:
                 self.eps_end = max(0.0, min(1.0, float(p["epsEnd"])))
             if "epsEpisodes" in p:
-                self.eps_episodes = max(1, int(p["epsEpisodes"]))
+                eps_episodes = max(1, int(p["epsEpisodes"]))
+                if self._is_round4_missile():
+                    self.r4_eps_episodes = eps_episodes
+                else:
+                    self.eps_episodes = eps_episodes
             if "targetEpisodes" in p:
                 t = int(p["targetEpisodes"])
                 self.target_episodes = t if t > 0 else None
@@ -612,17 +832,21 @@ class Match:
 
             # ---- GLOBAL: Round-2 maze knobs (regenerate the New Donk City maze) ----
             if "r2Plants" in p:
-                self.r2_plants = max(0, min(4, int(p["r2Plants"])))
+                self.r2_plants = max(0, min(3, int(p["r2Plants"])))
                 need_env_rebuild = True
             if "r2Slip" in p:
-                self.r2_slip = max(0, min(8, int(p["r2Slip"])))
+                self.r2_slip = max(0, min(3, int(p["r2Slip"])))
                 need_env_rebuild = True
 
             # ---- GLOBAL: DQN internals ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
             if "dqnWarmup" in p:
-                self.dqn_warmup = max(0, int(p["dqnWarmup"]))
+                warmup = max(0, int(p["dqnWarmup"]))
+                if self._is_round4_missile():
+                    self.r4_dqn_warmup = warmup
+                else:
+                    self.dqn_warmup = warmup
             if "dqnTargetSync" in p:
                 self.dqn_target_sync = max(1, int(p["dqnTargetSync"]))
             if "dqnBuffer" in p:
@@ -630,6 +854,9 @@ class Match:
                 need_agent_rebuild = True
             if "dqnHidden" in p:
                 self.dqn_hidden = max(16, min(1024, int(p["dqnHidden"])))
+                need_agent_rebuild = True
+            if "dqnLayers" in p:
+                self.dqn_layers = max(1, min(6, int(p["dqnLayers"])))
                 need_agent_rebuild = True
 
             # ---- GLOBAL: structural world (rebuild the scene) ----
@@ -649,7 +876,7 @@ class Match:
                 if hasattr(ag, "batch"):
                     ag.batch = self.dqn_batch
                 if hasattr(ag, "warmup"):
-                    ag.warmup = self.dqn_warmup
+                    ag.warmup = self._effective_dqn_warmup()
                 if hasattr(ag, "target_sync"):
                     ag.target_sync = self.dqn_target_sync
 
@@ -696,7 +923,7 @@ class Match:
             "gamma": round(self.gamma, 4),
             "epsStart": round(self.eps_start, 3),
             "epsEnd": round(self.eps_end, 3),
-            "epsEpisodes": self.eps_episodes,
+            "epsEpisodes": self._effective_blue_eps_episodes(),
             "maxSteps": self.env.max_steps,
             "targetEpisodes": self.target_episodes or 0,
             # global algorithm internals
@@ -714,9 +941,10 @@ class Match:
             "r2Slip": self.r2_slip,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
-            "dqnWarmup": self.dqn_warmup,
+            "dqnWarmup": self._effective_dqn_warmup(),
             "dqnTargetSync": self.dqn_target_sync,
             "dqnHidden": self.dqn_hidden,
+            "dqnLayers": self.dqn_layers,
             # reproducibility
             "trainSeed": self.train_seed if self.train_seed is not None else -1,
         }
@@ -737,7 +965,25 @@ class Match:
             if "epsEnd" in p:
                 self.red_eps_end = max(0.0, min(1.0, float(p["epsEnd"])))
             if "epsEpisodes" in p:
-                self.red_eps_episodes = max(1, int(p["epsEpisodes"]))
+                eps_episodes = max(1, int(p["epsEpisodes"]))
+                if self._is_round4_missile():
+                    self.r4_red_eps_episodes = eps_episodes
+                else:
+                    self.red_eps_episodes = eps_episodes
+            red_net_change = False
+            if "dqnHidden" in p:
+                self.red_dqn_hidden = max(16, min(1024, int(p["dqnHidden"])))
+                red_net_change = True
+            if "dqnLayers" in p:
+                self.red_dqn_layers = max(1, min(6, int(p["dqnLayers"])))
+                red_net_change = True
+            if red_net_change:
+                # a new architecture needs fresh weights: rebuild both sides and
+                # restart the contest (mirrors set_params' width/buffer rebuild).
+                self._build_agents()
+                self._reset_stats()
+                self._new_episode()
+                return self.red_view()
             if "dpPlanning" in p:
                 self.red_plan_speed = max(0.0, min(10.0, float(p["dpPlanning"])))
                 if hasattr(self.red, "plan_speed"):
@@ -760,8 +1006,10 @@ class Match:
             "gamma": round(self.red_gamma, 4),
             "epsStart": round(self.red_eps_start, 3),
             "epsEnd": round(self.red_eps_end, 3),
-            "epsEpisodes": self.red_eps_episodes,
+            "epsEpisodes": self._effective_red_eps_episodes(),
             "dpPlanning": round(self.red_plan_speed, 3),
+            "dqnHidden": self.red_dqn_hidden,
+            "dqnLayers": self.red_dqn_layers,
             "maxSteps": self.env.max_steps,
             "targetEpisodes": self.target_episodes or 0,
         }
@@ -843,6 +1091,8 @@ class Match:
         """Switch to a round: install its world + its matchup + reset learning.
         Tournament score is preserved unless told otherwise."""
         with self.lock:
+            # Preserve the model being left before replacing its env/agents.
+            self.save_checkpoint(force=True)
             self.round_id = round_id
             self.env = self._make_env(round_id)   # rebuild: round may switch env class
             self._apply_env_config()              # carry dynamics/slip/step-cap across
@@ -856,6 +1106,7 @@ class Match:
             self.finish_event = None
             self._build_agents()
             self._reset_stats()
+            self._load_checkpoint()
             self._new_episode()
 
     def prev_round(self):
@@ -990,8 +1241,7 @@ class Match:
 
     def mdp_spec(self):
         """The round's MDP tuple (S, A, R, gamma) + win condition, for the BRIEFING
-        card. SKELETON: bare navigate/fly-to-goal, no hazards or shaping. Reward
-        constants mirror env.py / continuous.py."""
+        card. Reward constants mirror env.py / continuous.py."""
         with self.lock:
             env = self.env
             arena = env.objective == "arena"
@@ -1052,20 +1302,42 @@ class Match:
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
                             "own mirror-image copy of the same star-collecting maze.")
-                dynamics = (f"Deterministic walking (hedge walls block). The maze is split into four "
-                            f"stacked REGIONS separated by solid walls, so you CANNOT walk between "
-                            f"them: the only way up is the {n_pipes} WARP PIPES - you leap into a dive "
-                            f"pipe and pop OUT of its ONE fixed EXIT pipe in the region above (a pipe-to-"
-                            f"pipe pair). {n_plants} PIRANHA PLANTS lurk on the hedges; stepping within "
-                            f"one tile of one (incl. diagonals) costs a life - you take the loss penalty "
-                            f"and RESPAWN (keeping any stars), and the race goes on. {n_slip} slippery "
-                            f"PUDDLES sit beside the plants, so a skid can shove you into the jaws. A safe "
-                            f"route around every plant always exists; the model must learn it from returns.")
-                rewards = [["Step", -0.01], ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
-                           ["Win (all 3 stars, then the goal)", 1.0], ["Die on a plant (respawn)", -1.0]]
-                win = (f"Gather all {n_stars} of your Power Stars - one per region - THEN reach the "
-                       "goal at the top; it stays LOCKED until you hold every star. First to finish "
-                       "the tour wins; a simultaneous finish is a draw.")
+                stage_pipes = n_pipes // 2
+                skid = getattr(env, "r2_slip_prob", R2_SLIP_PROB)
+                if star_mode:
+                    dynamics = (
+                        f"Each racer owns a separate mirror-image course with THREE hedge-maze "
+                        f"parts. Every part forks into a SHORT lane containing a slippery puddle "
+                        f"beside a PIRANHA PLANT, and a longer route with no puddles or lethal cells. "
+                        f"While standing on a puddle, a move skids perpendicular with probability "
+                        f"{round(skid * 100)}% total. After {stage_pipes} deterministic WARP PIPE "
+                        f"transfers, the final maze leads to the exit. Entering any of the eight "
+                        f"cells around a plant ends the episode immediately."
+                    )
+                    rewards = [
+                        ["Step", -0.01],
+                        ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
+                        ["Win (all 3 stars, then the goal)", 1.0],
+                        ["Die in a plant attack zone", -1.0],
+                    ]
+                    win = (f"Gather all {n_stars} Power Stars and reach the top goal first. "
+                           "A plant death ends the episode; a simultaneous finish is a draw.")
+                else:
+                    observation = ("Each model sees only its own tile. The seeded bush maze, "
+                                   "puddle, plant attack zone, and Pipe are fixed map features.")
+                    opp_info = ("Nothing. Both models receive exact mirrored copies of the same "
+                                "bottom-section decision room.")
+                    dynamics = (
+                        f"The bottom section forks into a SHORT slippery route and a LONG safe "
+                        f"route to a deterministic Pipe. On the puddle, movement skids sideways "
+                        f"with probability {round(skid * 100)}% total; one skid enters one of the "
+                        f"eight lethal cells surrounding the Piranha Plant. Death ends the episode "
+                        f"immediately, and the racer respawns only when the next episode begins."
+                    )
+                    rewards = [["Step", -0.01], ["Opponent dies", 1.0],
+                               ["Die in a plant attack zone", -1.0]]
+                    win = ("This construction stage tests the bottom decision room. A plant death "
+                           "ends the current race; the remaining two sections will be added next.")
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
@@ -1085,14 +1357,17 @@ class Match:
                 state_size = None
                 sees_opp = True
                 state_desc = (
-                    "continuous 40-vector: both characters' motion, three stable "
-                    "Banzai Bill slots, homing state, arena clearance and timing"
+                    f"continuous {env.obs_dim}-vector: both characters' motion, "
+                    "three stable Banzai Bill slots, active effects, and two "
+                    "stable pickup slots"
                 )
                 observation = (
                     "Each model sees its own motion, the rival's relative motion, rim "
                     "clearance, elapsed difficulty and the next launch. Three fixed "
                     "missile slots expose position, velocity, target, age and whether "
-                    "the missile has entered the tower."
+                    "the missile has entered the tower. It also sees both characters' "
+                    "effect timers, time to the next pickup, and the type, relative "
+                    "position and lifetime of each active pickup."
                 )
                 opp_info = (
                     "Relative position and velocity. This is required because a Banzai "
@@ -1100,19 +1375,34 @@ class Match:
                 )
                 dynamics = (
                     "Continuous thrust and momentum inside a circular tower. Banzai Bills "
-                    "enter through the north opening, turn with a capped homing rate, and "
-                    "explode on a character or the curved rim. Speed, homing, launch rate "
-                    "and concurrent missile count rise with survival time."
+                    "enter through the north opening and explode on a character or the "
+                    "curved rim. During the first 1,000 training episodes an episode-based "
+                    "curriculum begins with one slow, straight missile, then "
+                    "progressively unlocks stronger homing, higher speed, a faster launch "
+                    "rate and additional concurrent missiles. Within each unlocked stage "
+                    "the pressure can still rise with survival time. Pickups can boost "
+                    "speed, block missile hits, slow movement or briefly freeze the "
+                    "collector."
                 )
                 rewards = [
                     ["Survive one decision", 0.015],
+                    ["Improve a closing missile's projected miss distance",
+                     "up to +0.025 / decision"],
+                    ["Worsen a closing missile's projected miss distance",
+                     "down to -0.025 / decision"],
                     ["Safe explosion", "up to +0.12 by distance"],
+                    ["Collect speed pickup", 0.035],
+                    ["Collect invincibility pickup", 0.045],
+                    ["Collect slow pickup", -0.035],
+                    ["Collect freeze pickup", -0.05],
+                    ["Redirected missile hits opponent", 0.25],
                     ["Opponent is hit", 1.0],
                     ["Hit by Banzai Bill", -1.25],
                 ]
                 win = (
                     "A missile hit eliminates that character; the surviving character "
-                    "wins the episode. A simultaneous blast is a draw."
+                    "wins the episode. Invincibility destroys the missile instead, and "
+                    "a simultaneous lethal blast is a draw."
                 )
             else:
                 actions = ["8 compass thrusts + coast (9)"]
@@ -1133,6 +1423,7 @@ class Match:
                 "round": self.round_id, "title": meta["title"], "theme": meta["theme"],
                 "objective": env.objective,
                 "kind": "arena" if arena else env.objective,
+                "missileGame": bool(getattr(env, "missile_game", False)),
                 "matchup": meta["matchup"], "labelRed": meta["labelRed"], "labelBlue": meta["labelBlue"],
                 "family": self._family(),
                 "stateDesc": state_desc, "stateSize": state_size,
@@ -1555,7 +1846,12 @@ class Match:
         idx = ci[tuple(sp)]
         # probe the spawn value in the CANONICAL slice (no coins, normal status) so the
         # "start-state value climbs as it learns a path" curve stays a clean scalar.
-        state = (idx, 0, 0) if getattr(self.env, "rich", False) else (idx,)
+        if getattr(self.env, "rich", False):
+            state = (idx, 0, 0)
+        elif getattr(self.env, "star_mode", False):
+            state = (idx, 0)
+        else:
+            state = (idx,)
         pt = {"ep": self.episode}
         for side in ("red", "blue"):
             a = self._agent(side)

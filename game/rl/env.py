@@ -3,8 +3,8 @@
 Each agent heads from its spawn to the goal tile; first one there WINS, a
 simultaneous arrival is a DRAW. Round 1 (Peach's Castle) layers a REAL stochastic
 MDP on top - scoring coins, slippery ICE, and "?" ghost/freeze blocks, all gated on
-``self.rich`` (see state_transition / step). The other grid rounds stay bare
-deterministic navigate-to-goal shells until their real game is built.
+``self.rich`` (see state_transition / step). Round 2 currently uses the plain
+grid dynamics while its seeded three-section city layout is established.
 
 This subclasses ``gymnasium.Env`` to "capture" the Gymnasium concept, but it is a
 two-agent env (PettingZoo-style): ``step`` takes a pair of actions and returns
@@ -42,6 +42,7 @@ COIN_REWARD = 0.2      # value of an optional coin (a detour trade-off vs step c
 GHOST_LEN = 4          # steps of wall-phasing granted by a "?" ghost roll
 FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
 SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
+R2_SLIP_PROB = 0.12    # risky-shortcut skid chance (0.06 toward each perpendicular)
 BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble worth taking so the
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
 STAR_REWARD = 0.35     # Round-2: reward for collecting one of the 3 required Power Stars
@@ -62,6 +63,7 @@ class GridWorld(gym.Env):
         # constants - so the shared model (state_transition / _land) reads the CURRENT values
         # and the DP planners re-enumerate when a length changes. Defaults = module constants.
         self.slip_prob = SLIP_PROB         # total chance an ice move slips (half each side)
+        self.r2_slip_prob = R2_SLIP_PROB   # Round-2 shortcut risk, independent of Round-1 ice
         self.ghost_len = GHOST_LEN         # floor tiles reachable while wall-phasing
         self.freeze_len = FREEZE_LEN       # turns stuck after a freeze roll
         self.block_ghost_prob = 0.5        # P(Ghost) on a Mystery Block; P(Freeze) = 1 - this
@@ -69,7 +71,7 @@ class GridWorld(gym.Env):
         self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
         self.star_reward = STAR_REWARD     # Round-2: value of one of the 3 required Power Stars
         self.world = None
-        self.rng = random.Random(seed)   # kept for interface parity (moves are deterministic)
+        self.rng = random.Random(seed)   # samples ice, puddles, blocks and pipe outcomes
         self.action_space = spaces.Discrete(N_ACTIONS)
         self.n_actions = N_ACTIONS        # match.py reads this off the env
         self._install(worldgen.generate(seed, round_id, **self.gen_cfg))
@@ -127,27 +129,35 @@ class GridWorld(gym.Env):
 
         # ---- Round-2 hazards (New Donk City): spike traps, piranha plants, warp
         # pipes. Empty on every other round -> self.hazardous stays False and the
-        # env is the plain deterministic navigate-to-goal skeleton. The STATE is
-        # still just (cell,) (no mask/timer): death is terminal and a pipe is a
-        # stochastic teleport, so the (cell,) MDP stays Markov for Monte-Carlo. ----
+        # env is the plain deterministic navigate-to-goal skeleton. Round 2 adds
+        # the collected-tomato mask below so progression locks remain Markov. ----
         self.spike_cells = {tuple(s) for s in getattr(world, "spikes", [])}
         self.plant_cells = {tuple(p) for p in getattr(world, "plants", [])}
-        # every FLOOR tile within 1 of a plant - INCLUDING DIAGONALS (the 8 neighbours) -
-        # kills on entry: the plant lunges and eats anyone who gets that close.
-        self.plant_lethal = set()
-        for (pr, pc) in self.plant_cells:
-            for dr in (-1, 0, 1):
-                for dc in (-1, 0, 1):
-                    if dr == 0 and dc == 0:
-                        continue
-                    nr, nc = pr + dr, pc + dc
-                    if 0 <= nr < self.H and 0 <= nc < self.W and g[nr][nc] != WALL:
-                        self.plant_lethal.add((nr, nc))
+        # A Piranha Plant occupies its own cell; its ATTACK ZONE is the eight
+        # surrounding cells. Entering one of those neighbours kills the racer.
+        # The plant cell itself is deliberately not lethal (future generators
+        # should make it a wall so an actor cannot stand inside the model).
+        self.plant_lethal = {
+            (r + dr, c + dc)
+            for r, c in self.plant_cells
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+            if (dr or dc)
+            and 0 <= r + dr < self.H
+            and 0 <= c + dc < self.W
+        }
         # pipe ENTRY cell -> its destinations, and the FIXED probability of each. The
         # weights are baked into the map at generation time (``p["weights"]``) and NEVER
         # regenerate per episode, so a pipe is a stationary stochastic teleport (Markov).
         self.pipe_map = {tuple(p["entry"]): [tuple(d) for d in p["dests"]]
                          for p in getattr(world, "pipes", [])}
+        self.pipe_req = {
+            tuple(p["entry"]): (
+                int(p["requiresStar"])
+                if p.get("requiresStar") is not None else None
+            )
+            for p in getattr(world, "pipes", [])
+        }
         self.pipe_wt = {}
         for p in getattr(world, "pipes", []):
             entry = tuple(p["entry"])
@@ -168,6 +178,12 @@ class GridWorld(gym.Env):
                          for a in ("red", "blue")}
         self.star_full = (1 << self.n_stars) - 1
         self.star_mode = self.hazardous and self.n_stars > 0
+        # Keep Gym's declaration aligned with the tuple the tabular agents really
+        # receive.  Round 2 observes (cell index, collected-tomato bitmask).
+        if self.star_mode:
+            self.observation_space = spaces.MultiDiscrete(
+                [self.n_cells, max(1, 1 << self.n_stars)]
+            )
 
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
@@ -193,7 +209,8 @@ class GridWorld(gym.Env):
         return nxt if nxt in self.pos_index else cell
 
     # -------------------------------------------------------- tunable dynamics
-    def set_dynamics(self, *, slip_prob=None, ghost_len=None, freeze_len=None,
+    def set_dynamics(self, *, slip_prob=None, r2_slip_prob=None,
+                     ghost_len=None, freeze_len=None,
                      block_ghost_prob=None, coin_reward=None, block_reward=None):
         """Update the Round-1 mechanic params live from the panel. A None (or negative)
         value KEEPS the current one. Returns True iff a change moved the DP STATE SPACE
@@ -203,6 +220,7 @@ class GridWorld(gym.Env):
             return cur if (new is None or new < 0) else max(lo, min(hi, new))
         old_gl, old_fl = self.ghost_len, self.freeze_len
         self.slip_prob = pick(self.slip_prob, slip_prob, 0.0, 0.9)
+        self.r2_slip_prob = pick(self.r2_slip_prob, r2_slip_prob, 0.0, 0.9)
         self.ghost_len = int(pick(self.ghost_len, ghost_len, 1, 8))
         self.freeze_len = int(pick(self.freeze_len, freeze_len, 1, 8))
         self.block_ghost_prob = pick(self.block_ghost_prob, block_ghost_prob, 0.0, 1.0)
@@ -308,6 +326,11 @@ class GridWorld(gym.Env):
         mask = [False] * self.n_actions
         for a in MOVE_ACTIONS:
             land = self._ghost_step(pos, a) if status > 0 else self._resolve(agent, pos, a)
+            # A Round-2 pipe is a real progression gate.  Until this room's
+            # tomato is held, treat its entrance like a wall for exploration
+            # and greedy action masking as well as for the live transition.
+            if land in self.pipe_map and not self._pipe_unlocked(agent, land):
+                land = pos
             if land != pos:
                 mask[a] = True
         if not any(mask):
@@ -325,6 +348,14 @@ class GridWorld(gym.Env):
             self.red_pos = pos
         else:
             self.blue_pos = pos
+
+    def _pipe_unlocked(self, agent, entry):
+        """Whether ``agent`` has the tomato required by this pipe, if any."""
+        required = self.pipe_req.get(entry)
+        if required is None:
+            return True
+        held = getattr(self, "stars_collected", {}).get(agent, 0)
+        return bool(held & (1 << required))
 
     # ------------------------------------------------- the shared KNOWN model
     def state_transition(self, agent, state, action):
@@ -419,23 +450,32 @@ class GridWorld(gym.Env):
         """Round-2 move: walk one tile (walls block), then apply hazards. Returns
         ``(final_cell, death, warp_dest)`` - ``death`` is "spike"/"plant"/None and
         ``warp_dest`` is the tile a pipe teleported the agent onto (else None).
-        Stepping INTO a pipe entry warps to a uniformly-random destination (the
-        gamble); landing on a spike, or on a tile next to a plant, is death."""
+        Stepping INTO a pipe entry applies its fixed destination distribution;
+        a spike or any of the eight cells around a plant is lethal."""
         cur = self._pos(agent)
         move = action
         # SLIP: on a puddle a move may skid to a perpendicular tile (like Round-1 ice).
         if action in MOVE_ACTIONS and cur in self.slip_cells:
             r = self.rng.random()
-            if r < self.slip_prob:
+            if r < self.r2_slip_prob:
                 p1, p2 = PERP[action]
-                move = p1 if r < self.slip_prob * 0.5 else p2
+                move = p1 if r < self.r2_slip_prob * 0.5 else p2
         landed = self._move(agent, cur, move)          # the tile stepped onto (walls block)
         entry, warp = None, None
         if landed != cur and landed in self.pipe_map:  # stepped INTO a pipe -> warp
-            entry = landed                              # the pipe ENTRANCE (dive point)
-            dests = self.pipe_map[landed]               # sample by the pipe's FIXED weights
-            warp = self.rng.choices(dests, weights=self.pipe_wt.get(landed))[0]
-            nxt = warp
+            if not self._pipe_unlocked(agent, landed):
+                # Locked entries behave exactly like a wall.  This is mostly a
+                # robustness guard—the generated course also merges through its
+                # tomato—but it prevents any future open-plaza variant from
+                # skipping a stage collectible.
+                nxt = cur
+            else:
+                entry = landed                          # the pipe ENTRANCE (dive point)
+                dests = self.pipe_map[landed]           # sample fixed map weights
+                warp = self.rng.choices(
+                    dests, weights=self.pipe_wt.get(landed)
+                )[0]
+                nxt = warp
         else:
             nxt = landed
         death = None
@@ -451,8 +491,8 @@ class GridWorld(gym.Env):
 
     def step(self, a_red, a_blue):
         """One step: both agents move; first onto a goal cell wins, a simultaneous
-        arrival is a draw. On Round 1 each move is sampled from the shared model
-        (ice slip, coin pickup, "?" block), so movement is stochastic."""
+        arrival is a draw. Round 1 samples ice and Mystery Blocks; Round 2
+        samples risky-route puddle skids before applying hazards and pipes."""
         if self.done:
             raise RuntimeError("step() on a finished episode")
         self.steps += 1
@@ -475,7 +515,7 @@ class GridWorld(gym.Env):
                 warped[agent] = warp
                 warp_from[agent] = entry
                 if death:
-                    dead_at[agent] = nxt               # remember WHERE it died for the FX
+                    dead_at[agent] = nxt               # stays here until the episode resets
                 elif self.star_mode and nxt in self.star_bit[agent]:
                     bit = self.star_bit[agent][nxt]    # collect a Power Star on entry
                     if not (self.stars_collected[agent] >> bit) & 1:
@@ -489,28 +529,39 @@ class GridWorld(gym.Env):
 
         terminal = {"red": 0.0, "blue": 0.0}
         if self.hazardous:
-            # Round 2: a DEATH is a per-agent setback, NOT the end of the race. The dead
-            # agent takes the LOSE penalty and RESPAWNS at its spawn, and keeps going;
-            # the OTHER agent's run is untouched. The episode ends only when someone
-            # reaches the goal (that agent wins) or on the max-steps timeout.
-            spawns = {"red": self.world.red_spawn, "blue": self.world.blue_spawn}
-            for a in ("red", "blue"):
-                if dead[a]:
-                    reward[a] += LOSE
-                    terminal[a] += LOSE
-                    self._set_pos(a, spawns[a])            # respawn (stars kept), race continues
-            # the goal is LOCKED until all 3 stars are held: reaching it early does nothing
-            if self.star_mode:
-                reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set
-                           and self.stars_collected[a] == self.star_full]
-            else:
-                reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
-            if reached:
+            # Round 2: death ends the whole race immediately.  The dead racer
+            # remains on the lethal cell for the final frame and returns to its
+            # spawn only when the next episode resets the environment.
+            died = [a for a in ("red", "blue") if dead[a]]
+            if died:
                 self.done = True
-                self.winner = None if len(reached) == 2 else reached[0]
-                for a in reached:                          # only the finisher(s) score
-                    terminal[a] += WIN
-                    reward[a] += WIN
+                if len(died) == 2:
+                    self.winner = None
+                    for a in died:
+                        terminal[a] += LOSE
+                        reward[a] += LOSE
+                else:
+                    loser = died[0]
+                    winner = "blue" if loser == "red" else "red"
+                    self.winner = winner
+                    terminal[loser] += LOSE
+                    terminal[winner] += WIN
+                    reward[loser] += LOSE
+                    reward[winner] += WIN
+            else:
+                # With tomatoes restored later, the goal will remain locked
+                # until its progress mask is complete.
+                if self.star_mode:
+                    reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set
+                               and self.stars_collected[a] == self.star_full]
+                else:
+                    reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
+                if reached:
+                    self.done = True
+                    self.winner = None if len(reached) == 2 else reached[0]
+                    for a in reached:
+                        terminal[a] += WIN
+                        reward[a] += WIN
         else:
             # Round 1 / skeleton: first ONTO the goal wins, the other loses, a tie draws
             # (rank goal(2) > alive(1) > dead(0); there are no deaths off Round 2).

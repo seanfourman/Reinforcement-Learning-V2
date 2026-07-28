@@ -133,6 +133,20 @@ const STYLE = `
 #rl-hud-warn .hw-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
   background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
   color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
+/* Arena-4 lives / Arena-2 tomato progress: the SAME row and position on the
+   OUTER side of each portrait. Arena 4 draws hearts; Arena 2 draws tomatoes. */
+.fb-hearts{display:none;gap:6px;margin:0 13px;}
+.fb-side.red .fb-hearts{flex-direction:row-reverse;}
+.fb-heart{width:31px;height:28px;flex:none;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45));}
+.fb-tomato{width:40px;height:37px;flex:none;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45));}
+.fb-heart path{stroke:#000;stroke-width:1.7;stroke-linejoin:round;transition:fill .18s,opacity .18s;}
+.fb-heart.lost path{fill:#101010;opacity:.5;}
+.fb-side.blue .fb-heart.alive path{fill:#5aa6ff;}
+.fb-side.red .fb-heart.alive path{fill:#ff6a5d;}
+.fb-tomato path{fill:#101010;stroke:#000;stroke-width:1.7;stroke-linejoin:round;
+  opacity:.5;transition:fill .18s,opacity .18s;}
+.fb-side.blue .fb-tomato.alive path{fill:#4c9dff;opacity:1;}
+.fb-side.red .fb-tomato.alive path{fill:#f04b43;opacity:1;}
 `;
 
 export function initHud() {
@@ -144,6 +158,7 @@ export function initHud() {
   hud.id = "rl-hud";
   const sideHTML = (side, px) =>
     `<div class="fb-side ${side}">
+      <div class="fb-hearts" id="fb-hearts-${side}"></div>
       <img class="fb-port" id="fb-port-${side}" alt="" />
       <div class="fb-col">
         <div class="fb-tag"><span class="fb-px">${px}</span><span class="fb-nm" id="fb-algo-${side}">-</span></div>
@@ -327,6 +342,39 @@ export function initHud() {
   };
   requestAnimationFrame(tickBars);
 
+  // ---- shared Arena-2 / Arena-4 progress row -----------------------------
+  // Arena 4 fills hearts for remaining lives. Arena 2 uses the same sizing and
+  // portrait-relative position, but fills proper red tomato icons.
+  const HEART_SVG =
+    '<svg class="fb-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="' +
+    "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 " +
+    "3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 " +
+    '3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+  const TOMATO_SVG =
+    '<svg class="fb-tomato" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 6.2c5.55-1.45 9.15 1.7 8.75 6.65-.42 5.2-4.12 8.15-8.75 8.15s-8.33-2.95-8.75-8.15C2.85 7.9 6.45 4.75 12 6.2z M12 7.65 9.55 5.5 6.35 6.1 8.2 3.45 7.6 1.4 11 3.25 13.75 1.2 13.45 4.05 17.65 4.65 14.3 6.05z"/>' +
+    "</svg>";
+  const heartBox = { blue: $("#fb-hearts-blue"), red: $("#fb-hearts-red") };
+  function setProgressPips(side, filled, max, kind) {
+    const box = heartBox[side];
+    if (!box) return;
+    if (filled == null || !max) {
+      box.style.display = "none";
+      return;
+    }
+    box.style.display = "flex";
+    const svg = kind === "tomato" ? TOMATO_SVG : HEART_SVG;
+    if (box.childElementCount !== max || box.dataset.kind !== kind) {
+      box.innerHTML = svg.repeat(max);
+      box.dataset.kind = kind;
+    }
+    box.querySelectorAll(".fb-heart,.fb-tomato").forEach((pip, i) => {
+      const on = i < filled;
+      pip.classList.toggle("alive", on);
+      pip.classList.toggle("lost", !on);
+    });
+  }
+
   window.addEventListener("rl-snapshot", (e) => {
     const s = e.detail.stats;
     if (!s) return;
@@ -350,6 +398,28 @@ export function initHud() {
     $("#fb-dots-red")
       .querySelectorAll("i")
       .forEach((d, i) => d.classList.toggle("on", i < sr));
+
+    // Arena 4: remaining lives. Arena 2: collected-tomato bit count. Any other
+    // round hides the same shared heart row.
+    const frame = e.detail.frame;
+    const hearts =
+      frame && frame.gameMode === "missileSurvival" ? frame.hearts : null;
+    if (hearts) {
+      const maxHearts = frame.maxHearts || 3;
+      setProgressPips("blue", hearts.blue, maxHearts, "heart");
+      setProgressPips("red", hearts.red, maxHearts, "heart");
+    } else if (frame && frame.nStars) {
+      const bitCount = (bits) => {
+        let count = 0;
+        for (let n = Number(bits) >>> 0; n; n >>>= 1) count += n & 1;
+        return count;
+      };
+      setProgressPips("blue", bitCount(frame.blueStars), frame.nStars, "tomato");
+      setProgressPips("red", bitCount(frame.redStars), frame.nStars, "tomato");
+    } else {
+      setProgressPips("blue", null, null, "heart");
+      setProgressPips("red", null, null, "heart");
+    }
 
     const finishKey = document.getElementById("rl-finish-key");
     const finishTxt = document.getElementById("rl-finish-txt");

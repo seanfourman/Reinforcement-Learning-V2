@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>mushroom preview</title>
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three/three.module.js" } }
+    </script>
+    <style>html,body{margin:0;height:100%;background:#1b2431;overflow:hidden;}</style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "three";
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      document.body.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1b2431);
+      scene.add(new THREE.HemisphereLight(0xbfd3ff, 0x30323a, 1.1));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.7);
+      sun.position.set(2.5, 5, 3); scene.add(sun);
+
+      // ground
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(6, 6),
+        new THREE.MeshStandardMaterial({ color: 0x2a3340, roughness: 0.9 }));
+      ground.rotation.x = -Math.PI / 2; scene.add(ground);
+
+      // ---- red ground glow (matches PICKUP_COLORS.slow = 0xff4234) ----
+      const cv = document.createElement("canvas"); cv.width = cv.height = 96;
+      const g = cv.getContext("2d");
+      const grad = g.createRadialGradient(48, 48, 3, 48, 48, 47);
+      grad.addColorStop(0, "rgba(255,255,255,.95)");
+      grad.addColorStop(0.25, "rgba(255,255,255,.52)");
+      grad.addColorStop(0.64, "rgba(255,255,255,.16)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grad; g.fillRect(0, 0, 96, 96);
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.65, 1.65),
+        new THREE.MeshBasicMaterial({ color: 0xff4234, map: new THREE.CanvasTexture(cv),
+          transparent: true, opacity: 0.66, blending: THREE.AdditiveBlending,
+          depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      glow.rotation.x = -Math.PI / 2; glow.position.y = 0.045; scene.add(glow);
+
+      // ---- mushroom (same construction + NEW scale values) ----
+      const icon = new THREE.Group(); icon.position.y = 0.5; scene.add(icon);
+      const stem = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.22, 0.36, 5, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffe7bd, roughness: 0.44 }));
+      stem.position.y = -0.24; icon.add(stem);
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xe5231f, roughness: 0.3 });
+      const capRim = new THREE.Mesh(new THREE.CylinderGeometry(0.51, 0.46, 0.13, 28), capMat);
+      capRim.position.y = 0.075; icon.add(capRim);           // brim: no z-squish now
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.56, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
+      cap.position.y = 0.1; cap.scale.set(1.0, 0.9, 1.0);     // NEW: round dome, was (1.08,0.72,0.94)
+      icon.add(cap);
+      // a few white spots
+      const spotMat = new THREE.MeshStandardMaterial({ color: 0xfffbec, roughness: 0.34, side: THREE.DoubleSide });
+      for (const [px, pz] of [[0, 0], [0.28, 0.18], [-0.26, 0.2], [0.02, -0.32]]) {
+        const s = new THREE.Mesh(new THREE.CircleGeometry(0.12, 20), spotMat);
+        const r = 0.56 * 0.9;
+        s.position.set(px, 0.1 + Math.sqrt(Math.max(0, r*r - px*px - pz*pz)) * 0.98, pz);
+        s.lookAt(px * 3, 6, pz * 3); icon.add(s);
+      }
+
+      const cam = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 100);
+      cam.position.set(1.7, 2.0, 2.4); cam.lookAt(0, 0.45, 0);
+      renderer.render(scene, cam);
+    </script>
+  </body>
+</html>

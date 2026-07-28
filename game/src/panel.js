@@ -55,7 +55,7 @@ const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 
 // "Red's params") and route through setParams.
 export const PARAMS = [
   { key: 'targetEpisodes', label: 'Stop after (episodes)', min: 0, max: 20000, step: 100, color: C_GLOBAL, scope: 'always', desc: 'Stops new training episodes at this count. 0 keeps running.', fmt: (v) => (v <= 0 ? 'no limit' : (+v).toLocaleString()) },
-  { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 1000, step: 10, color: C_GLOBAL, scope: 'always', desc: 'Ends an episode as a timeout if nobody reaches the goal in time.', fmt: (v) => (+v).toLocaleString() },
+  { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 10000, step: 50, color: C_GLOBAL, scope: 'always', desc: 'Caps episode length (timeout). Race rounds end here if nobody reaches the goal; the survival round runs to this many steps if the models keep their lives.', fmt: (v) => (+v).toLocaleString() },
   { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', desc: 'How strongly one new experience changes this model. Dynamic Programming does not use α.', fmt: (v) => (+v).toFixed(2) },
   { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', desc: 'How much future rewards matter. Higher values make the model plan farther ahead.', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Chance of a random action at the start of training.', fmt: (v) => (+v).toFixed(2) },
@@ -88,7 +88,8 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, fmt: fLoc },
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 1000, fmt: fLoc },
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, fmt: fLoc },
-  { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, fmt: fLoc },
+  { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, color: C_OURS, fmt: fLoc },
+  { key: 'dqnLayers', label: 'Hidden layers', min: 1, max: 5, step: 1, sect: 'algo', scope: 'dqn', def: 2, color: C_OURS, fmt: fLoc },
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
   // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
   // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
@@ -98,10 +99,10 @@ export const GLOBAL_PARAMS = [
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
-  // --- Round-2 game mechanics (New Donk City: a regioned hedge maze linked by warp
-  // pipes + slippery puddles). Structural: each edit regenerates the maze from the seed. ---
-  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 4, step: 1, sect: 'world', scope: 'r2', def: 2, desc: 'Piranha plants per side (mirrored). Stepping within one tile of one (incl. diagonals) costs a life (respawn). A safe route around them always exists.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 8, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Slippery puddles per side (mirrored), placed beside the plants. A move on one may skid sideways into a plant’s jaws.', fmt: (v) => `${Math.round(v)}` },
+  // --- Round-2 game mechanics (New Donk City: three safe-vs-risky hedge
+  // mazes with two Warp-Pipe transfers). Structural edits regenerate it. ---
+  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Shortcut traps per side. The default puts one Piranha Plant in each of the three decision rooms; death retries that room from its Pipe checkpoint.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Risky-route puddles per side. The default puts one in every shortcut; moving from one has a 12% total chance to skid sideways, potentially into the nearby plant.', fmt: (v) => `${Math.round(v)}` },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
