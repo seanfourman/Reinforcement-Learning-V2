@@ -47,14 +47,16 @@ GHOST_LEN = 4          # steps of wall-phasing granted by a "?" ghost roll
 FREEZE_LEN = 3         # steps stuck in place from a "?" freeze roll
 SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each way)
 R2_SLIP_PROB = 0.12    # risky-shortcut skid chance (0.06 toward each perpendicular)
+R3_SLIP_PROB = 0.20    # Round-3 WET-cell skid chance (variance so one racer falls behind)
 BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble worth taking so the
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
 STAR_REWARD = 0.35     # Round-2: reward for collecting a required tomato
                        # (shaping that keeps the multi-room hunt learnable for Monte-Carlo)
 CAGE_LEN = 6           # Round-3: steps the RIVAL is frozen after you grab your cage pickup
-CAGE_REWARD = 0.2      # Round-3: shaping bonus for grabbing your cage (keeps the OFF-path
-                       # detour learnable for tabular TD; the win/lose signal + rival-position
-                       # state then teach WHEN it is worth leaving the route)
+CAGE_REWARD = 0.2      # Round-3: shaping bonus for grabbing your cage, ONLY paid when you are
+                       # BEHIND (rival closer to the goal). Position-gating the reward is what
+                       # makes the agent learn the CONDITIONAL policy - detour for the cage to
+                       # catch up when behind, skip it when ahead - instead of always grabbing.
 
 
 class GridWorld(gym.Env):
@@ -72,6 +74,7 @@ class GridWorld(gym.Env):
         # and the DP planners re-enumerate when a length changes. Defaults = module constants.
         self.slip_prob = SLIP_PROB         # total chance an ice move slips (half each side)
         self.r2_slip_prob = R2_SLIP_PROB   # Round-2 shortcut risk, independent of Round-1 ice
+        self.r3_slip_prob = R3_SLIP_PROB   # Round-3 wet-cell skid chance (tunable from the panel)
         self.ghost_len = GHOST_LEN         # floor tiles reachable while wall-phasing
         self.freeze_len = FREEZE_LEN       # turns stuck after a freeze roll
         self.block_ghost_prob = 0.5        # P(Ghost) on a Mystery Block; P(Freeze) = 1 - this
@@ -275,7 +278,7 @@ class GridWorld(gym.Env):
         return nxt if nxt in self.pos_index else cell
 
     # -------------------------------------------------------- tunable dynamics
-    def set_dynamics(self, *, slip_prob=None, r2_slip_prob=None,
+    def set_dynamics(self, *, slip_prob=None, r2_slip_prob=None, r3_slip_prob=None,
                      ghost_len=None, freeze_len=None,
                      block_ghost_prob=None, coin_reward=None, block_reward=None,
                      star_reward=None):
@@ -288,6 +291,7 @@ class GridWorld(gym.Env):
         old_gl, old_fl = self.ghost_len, self.freeze_len
         self.slip_prob = pick(self.slip_prob, slip_prob, 0.0, 0.9)
         self.r2_slip_prob = pick(self.r2_slip_prob, r2_slip_prob, 0.0, 0.9)
+        self.r3_slip_prob = pick(self.r3_slip_prob, r3_slip_prob, 0.0, 0.9)
         self.ghost_len = int(pick(self.ghost_len, ghost_len, 1, 8))
         self.freeze_len = int(pick(self.freeze_len, freeze_len, 1, 8))
         self.block_ghost_prob = pick(self.block_ghost_prob, block_ghost_prob, 0.0, 1.0)
@@ -665,10 +669,20 @@ class GridWorld(gym.Env):
                 old = self._pos(agent)
                 rival = "blue" if agent == "red" else "red"
                 frozen = self.caged[agent] > 0         # locked in a dropped cage this tick
+                self._slipped[agent] = False
                 if frozen:
                     nxt = old                          # cannot move while caged
                 else:
-                    nxt = self._resolve(agent, old, act)   # walls block
+                    move = act
+                    # WET cell: a move may SKID to a perpendicular tile (like R1 ice / R2
+                    # puddles). This is the ROUND-3 variance that lets one racer fall behind.
+                    if act in MOVE_ACTIONS and old in self.slip_cells:
+                        r = self.rng.random()
+                        if r < self.r3_slip_prob:
+                            p1, p2 = PERP[act]
+                            move = p1 if r < self.r3_slip_prob * 0.5 else p2
+                            self._slipped[agent] = True
+                    nxt = self._resolve(agent, old, move)  # walls block
                     if not self._agent_done.get(rival, False) and nxt == self._pos(rival):
                         nxt = old                      # can't enter the live rival's cell (bridge block)
                 self._set_pos(agent, nxt)
@@ -677,8 +691,12 @@ class GridWorld(gym.Env):
                         and not self.cage_taken[agent]):
                     self.cage_taken[agent] = True
                     self.caged[rival] = CAGE_LEN
-                    reward[agent] += self.cage_reward   # shaping: makes the detour learnable
-                    shape[agent] += self.cage_reward
+                    # OPTION B: pay the shaping bonus ONLY when you are BEHIND (rival closer to
+                    # the exit = lower row), so the detour is learned as a CATCH-UP move, not an
+                    # always-grab. Grabbing while ahead earns nothing (and wastes steps).
+                    if self._pos(rival)[0] < nxt[0]:
+                        reward[agent] += self.cage_reward
+                        shape[agent] += self.cage_reward
                 # Goomba death - but a caged agent is SHIELDED (the cage protects it)
                 die = (not frozen) and (nxt in g_now)
                 if not die and not frozen:

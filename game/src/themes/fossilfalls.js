@@ -306,7 +306,53 @@ export const fossilfalls = {
     // special slab tops: pale gold at the goal, a darker wet sheen on the
     // slippery cells; spawn cells are plain field slabs like everything else
     const goalSlabMat = slabMat(0xffe9ad, { roughness: 0.75 });
-    const wetSlabMat = slabMat(0x8e9490, { roughness: 0.32, metalness: 0.05 });
+    // slippery cells get the SAME 3D cartoon-water PUDDLE as the city arena: a procedural
+    // turquoise ripple texture on a wobbly extruded blob standing out of the floor; the
+    // ripples scroll in update(). (Ported from themes/city.js.)
+    function _waterCanvas() {
+      const S = 256, cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d"), img = ctx.createImageData(S, S), d = img.data;
+      const lo = [24, 78, 140], hi = [58, 128, 190];
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const u = x / S, v = y / S;
+        let n = 0.5 + 0.30 * Math.sin(2 * Math.PI * (u + v)) + 0.20 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
+        n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
+        const i = (y * S + x) * 4;
+        d[i] = lo[0] + (hi[0] - lo[0]) * n;
+        d[i + 1] = lo[1] + (hi[1] - lo[1]) * n;
+        d[i + 2] = lo[2] + (hi[2] - lo[2]) * n;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    }
+    const puddleTex = trackTexture(new THREE.CanvasTexture(_waterCanvas()));
+    puddleTex.colorSpace = THREE.SRGBColorSpace;
+    puddleTex.wrapS = puddleTex.wrapT = THREE.RepeatWrapping;
+    puddleTex.repeat.set(1.6, 1.6);
+    puddleTex.anisotropy = maxAnisotropy;
+    const puddleMat = track(new THREE.MeshStandardMaterial({
+      color: 0xffffff, map: puddleTex, transparent: true, opacity: 0.92,
+      roughness: 0.3, metalness: 0.1, emissive: 0x123a66, emissiveIntensity: 0.06,
+      normalMap: assetTexture("Water00_nrm.png", 2.2, 2.2, false),
+      normalScale: new THREE.Vector2(0.14, 0.14), depthWrite: false,
+    }));
+    function puddleShape(seed) {
+      const s = new THREE.Shape();
+      const rnd = (salt) => hashFloat(seed, salt, 211);
+      const ph1 = rnd(1) * 6.283, ph2 = rnd(2) * 6.283;
+      const radius = 0.34 + rnd(4) * 0.03;
+      const rx = radius * (1.02 + (rnd(5) - 0.5) * 0.08);
+      const ry = radius * (0.98 + (rnd(6) - 0.5) * 0.08);
+      for (let i = 0, n = 80; i <= n; i++) {
+        const th = (i / n) * Math.PI * 2;
+        const w = 1 + 0.06 * Math.sin(th * 3 + ph1) + 0.035 * Math.sin(th * 5 + ph2);
+        const x = Math.cos(th) * rx * w, y = Math.sin(th) * ry * w;
+        if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+      }
+      return s;
+    }
     const islandGrassTex = textureAt(ISLAND_GRASS, 1, 1);
     const islandGrassMat = track(
       new THREE.MeshStandardMaterial({
@@ -557,9 +603,8 @@ export const fossilfalls = {
     );
     const goalSet = new Set((world.escape || []).map(([r, c]) => `${r},${c}`));
     function slabTopMat(r, c) {
-      if (goalSet.has(`${r},${c}`)) return goalSlabMat;
-      if (slipSet.has(`${r},${c}`)) return wetSlabMat;
-      const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;
+      if (goalSet.has(`${r},${c}`)) return goalSlabMat;   // slip cells keep a normal stone slab;
+      const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;  // the water PUDDLE sits on top
       return fam[hash(r * 19 + 11, c * 23 + 5) % fam.length];
     }
     for (let r = 0; r < GRID; r++) {
@@ -598,6 +643,20 @@ export const fossilfalls = {
         mesh.receiveShadow = true;
         group.add(mesh);
       }
+    }
+
+    // ---- slippery WET cells: a real 3D cartoon-water puddle blob per cell (same look as
+    // the city arena), sitting on the stone slab. Ripples scroll in update().
+    for (const [r, c] of world.slipCells || []) {
+      const geo = track(new THREE.ExtrudeGeometry(puddleShape(hash(r * 17 + 3, c * 29 + 7) >>> 0), {
+        depth: 0.015, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.045, bevelSegments: 4,
+      }));
+      geo.rotateX(-Math.PI / 2);
+      const water = new THREE.Mesh(geo, puddleMat);
+      water.position.set(c + 0.5, SLAB_TOP + 0.02, r + 0.5);
+      water.renderOrder = 3;
+      water.receiveShadow = true;
+      group.add(water);
     }
 
     // a few half-buried boulders on the bare apron ring around the grid
@@ -1418,6 +1477,9 @@ export const fossilfalls = {
         pondNrm.offset.x = Math.sin(t * 0.18) * 0.4 + t * 0.013; // gentle swirling ripples
         pondNrm.offset.y = Math.cos(t * 0.15) * 0.4 + t * 0.009;
       }
+      // slippery-cell puddles: scroll the water ripples
+      puddleTex.offset.x = Math.sin(t * 0.2) * 0.05 + t * 0.012;
+      puddleTex.offset.y = Math.cos(t * 0.15) * 0.05 + t * 0.009;
       if (moon) {
         moon.mesh.rotation.y = t * 0.9;
         moon.mesh.position.y = moon.baseY + Math.sin(t * 1.8) * 0.12;

@@ -402,19 +402,20 @@ if __name__ == "__main__":
     from collections import deque
     from continuous import ContinuousArena, N_ACTIONS
 
-    # Round-5 Moon Heist smoke test: can this PG variant learn the CARRY LOOP at all?
-    # Blue COASTS (never contests), so Red only has to grab the moon and haul it to its
-    # base three times. A learner should climb to banking every episode; the full
-    # opponent-aware self-play (both sides learning to steal/evade) is what happens in
-    # the live tournament, this is just the single-agent learnability check.
+    # Round-5 Capture-the-Flag smoke test: can this PG variant learn the CARRY LOOP at
+    # all? Blue COASTS (never contests), so Red only has to grab the flag and haul it to
+    # its base three times (crates + power-ups are optional bonuses). A learner should
+    # climb to capturing every episode; the full opponent-aware self-play (both sides
+    # learning to steal/evade/use crates) is what happens in the live tournament - this
+    # is just the single-agent learnability check.
     which = sys.argv[1] if len(sys.argv) > 1 else "ppo"
     env = ContinuousArena(seed=0, round_id=5, theme="tostarena")
     agent = make_pg(which, env.obs_dim, N_ACTIONS, alpha=0.2, gamma=0.99, seed=0)
-    print(f"training {agent.name} on Moon Heist (Red learns, Blue coasts) ...")
+    print(f"training {agent.name} on Capture the Flag (Red learns, Blue coasts) ...")
 
     EPISODES = 1500
     recent = deque(maxlen=100)
-    recent_banks = deque(maxlen=100)
+    recent_caps = deque(maxlen=100)
     for ep in range(EPISODES):
         (s, _), _ = env.reset(seed=10_000 + ep)
         a = agent.policy_action(s)
@@ -427,12 +428,12 @@ if __name__ == "__main__":
             s, a = ns, na
         agent.end_episode()
         recent.append(1 if info["winner"] == "red" else 0)
-        recent_banks.append(env.banks["red"])
+        recent_caps.append(env.captures["red"])
         if (ep + 1) % 100 == 0:
             d = agent.diag()
             print(f"ep {ep + 1:4d}  winrate(last100) {sum(recent) / len(recent):.2f}  "
-                  f"banks/ep {sum(recent_banks) / len(recent_banks):.2f}  "
+                  f"captures/ep {sum(recent_caps) / len(recent_caps):.2f}  "
                   f"ploss {d['policyLoss']:+.4f}  vloss {d['valueLoss']:.4f}  ent {d['entropy']:.3f}")
-    final = sum(recent_banks) / len(recent_banks)
-    print(f"FINAL banks/ep (last 100): {final:.2f}  ->  "
+    final = sum(recent_caps) / len(recent_caps)
+    print(f"FINAL captures/ep (last 100): {final:.2f}  ->  "
           f"{'OK' if final >= 2.0 else 'WARN: weak carry loop'}")

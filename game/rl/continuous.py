@@ -137,37 +137,56 @@ OBS_DIM = MISSILE_OBS_DIM
 STEP_COST = 0.006
 WIN, LOSE = 1.0, -1.0
 
-# ---------------------------------------------------------- Round-5 Moon Heist
-# A contested-carry duel: one Power Moon, both agents see each other. Grab it ->
-# you are the CARRIER (haul it to your own base); the other is the CHASER (tag the
-# carrier to STEAL it). Banking at your base scores; first to 3 banks wins (a
-# timeout awards whoever banked more). This is the POLICY round's showcase: the
-# same agent must learn to EVADE while carrying and PURSUE while chasing, and the
-# best evasion is unpredictable - exactly where a stochastic (policy-gradient)
-# policy beats a deterministic one.
-HEIST_MAX_STEPS = 900       # first-to-3-banks needs room for several carry cycles
-MOON_R = 0.75               # reach for grabbing the FREE moon
+# ------------------------------------------------------- Round-5 Capture the Flag
+# A contested-carry CTF duel; both agents SEE each other. One flag sits on a pole at
+# CENTRE. GRAB it -> you are the CARRIER (haul it to your own corner base, moving
+# slower); the other is the CHASER (tag the carrier to INSTANTLY STEAL it - the
+# robbed carrier is briefly stunned). Delivering the flag to your base CAPTURES it
+# (+1); first to 3 captures wins (a timeout awards whoever captured more). Breakable
+# CRATES litter the board: touch one to smash it for a random POWER-UP (speed /
+# chain-pull-stun / shield / flag-bomb). This is the POLICY round's showcase: the
+# same agent must EVADE while carrying and PURSUE while chasing, and time its crate
+# detours - and the best evasion is unpredictable, exactly where a stochastic
+# (policy-gradient) policy beats a deterministic one.
+CTF_MAX_STEPS = 900         # first-to-3-captures needs room for several carry cycles
+FLAG_R = 0.75               # reach for grabbing the FREE flag at the pole
 TAG_R = 0.95                # chaser's tag reach vs the carrier (the steal)
-BANK_R = 1.5                # distance to your own base that banks the moon
+HOME_R = 1.5                # distance to your own base that CAPTURES (scores) the flag
 CARRY_SLOW = 0.72           # the carrier is slowed, so a chase can actually resolve
 STUN_SECONDS = 0.5          # a robbed carrier is briefly frozen (stops ping-pong steals)
-BANKS_TO_WIN = 3
-HEIST_EVENT_HOLD_SECONDS = 0.9
+CAPTURES_TO_WIN = 3
+CTF_EVENT_HOLD_SECONDS = 0.9
 # per-side reward structure (event rewards fire once; shaping telescopes)
-HEIST_STEP_COST = 0.002     # gentle nudge to finish rather than stall
-GRAB_REWARD = 0.15          # first touch of the loose moon
-STEAL_REWARD = 0.40         # tagging the enemy carrier and taking the moon
-TAGGED_PENALTY = -0.40      # losing the moon to a tag
-BANK_REWARD = 1.00          # delivering a moon to your base
-CONCEDE_PENALTY = -0.30     # the rival banked one
-HEIST_WIN, HEIST_LOSE = 2.0, -2.0
-# potential-based shaping toward the CURRENT relevant target (moon / base / carrier).
-# PBRS (difference of potentials) telescopes over a segment, so it cannot be farmed
-# by oscillating back and forth.
-HEIST_SHAPE_COEF = 0.02
-# own kin (4) + opp rel-pos/vel (4) + moon rel (2) + moon flags free/mine/theirs (3)
-# + my-base rel (2) + opp-base rel (2) + carrying (1) + my/opp stun (2) + bank diff (1)
-HEIST_OBS_DIM = 21
+CTF_STEP_COST = 0.002       # gentle nudge to finish rather than stall
+GRAB_REWARD = 0.15          # first touch of the loose flag
+STEAL_REWARD = 0.40         # tagging the enemy carrier and taking the flag
+TAGGED_PENALTY = -0.40      # losing the flag to a tag
+CAPTURE_REWARD = 1.00       # delivering a flag to your base
+CONCEDE_PENALTY = -0.30     # the rival captured one
+CRATE_REWARD = 0.10         # smashing a crate (earning a power-up)
+BOMB_STRIP_REWARD = 0.20    # a flag-bomb that knocks the flag off the enemy carrier
+CHAIN_HIT_REWARD = 0.05     # landing a chain-pull on the rival
+CTF_WIN, CTF_LOSE = 2.0, -2.0
+# potential-based shaping toward the CURRENT relevant target (flag / base / carrier).
+# PBRS (difference of potentials) telescopes over a segment, so it cannot be farmed.
+CTF_SHAPE_COEF = 0.02
+
+# ---- breakable crates + the four power-ups ----
+CRATE_R = 0.55                          # crate half-extent; smashed on contact
+CRATE_MAX_ACTIVE = 3
+CRATE_FIRST_SECONDS = 2.0
+CRATE_INTERVAL_SECONDS = (3.0, 5.0)     # gap between crate spawns
+POWERUPS = ("speed", "chain", "shield", "bomb")
+SPEED_MULT = 1.6                        # speed-boost multiplier
+SPEED_SECONDS = 3.0
+SHIELD_SECONDS = 3.0                    # immune to steal / stun / chain / bomb
+CHAIN_STUN_SECONDS = 1.0                # the chain-pull stuns the rival this long
+CHAIN_PULL_DIST = 1.3                   # rival is yanked to this range from you
+# obs: self kin 4 + opp rel pos/vel 4 + flag rel 2 + flag flags 3 + base vecs 4
+# + carrying 1 + my/opp stun 2 + capture diff 1 + 2 nearest crates x(present,rel x/z) 6
+# + my speed/shield 2 + opp speed/shield 2
+OBS_CRATE_SLOTS = 2
+CTF_OBS_DIM = 4 + 4 + 2 + 3 + 4 + 1 + 2 + 1 + OBS_CRATE_SLOTS * 3 + 2 + 2   # 31
 
 
 class ContinuousArena:
@@ -184,7 +203,7 @@ class ContinuousArena:
         self.arena = ROUND4_ARENA if round_id == 4 else ARENA
         self.shape = "circle" if round_id == 4 else "square"
         self.missile_game = round_id == 4
-        self.heist_game = round_id == 5      # Round-5 Moon Heist (contested carry)
+        self.ctf_game = round_id == 5        # Round-5 Capture the Flag (crates + power-ups)
         # Round 4 uses the spec's 0.02 s decision step, but WITH momentum (thrust +
         # drag): velocity is a genuine state variable (Vx,Vy) - which is what makes the
         # problem learnable (direct discrete velocity flip-flops). Round 5 keeps its
@@ -202,7 +221,7 @@ class ContinuousArena:
         self._executed = {"red": N_ACTIONS - 1, "blue": N_ACTIONS - 1}
         self.rng = random.Random(seed)
         self.max_steps = (SURVIVAL_MAX_STEPS if self.missile_game
-                          else HEIST_MAX_STEPS if self.heist_game else MAX_STEPS)
+                          else CTF_MAX_STEPS if self.ctf_game else MAX_STEPS)
         # movement physics (module constants are the defaults)
         self.thrust = float(thrust)
         self.damp = float(damp)
@@ -214,26 +233,33 @@ class ContinuousArena:
         self.hit_penalty = HIT_PENALTY
         self.n_actions = N_ACTIONS          # match.py reads these off the env
         self.obs_dim = (MISSILE_OBS_DIM if self.missile_game
-                        else HEIST_OBS_DIM if self.heist_game else RACE_OBS_DIM)
+                        else CTF_OBS_DIM if self.ctf_game else RACE_OBS_DIM)
         self.H = self.W = int(self.arena)   # coarse grid the value field samples on
         self.goal = np.array((self.arena / 2, 2.5), dtype=np.float32)
         self.red_spawn = (self.arena - 3.0, self.arena - 2.5)  # viewer's RIGHT
         self.blue_spawn = (3.0, self.arena - 2.5)               # viewer's LEFT
-        # Round-5 Moon Heist: bases at OPPOSITE corners (a diagonal contest); each
-        # agent spawns on its own base and the moon spawns dead centre.
-        if self.heist_game:
+        # Round-5 Capture the Flag: bases at OPPOSITE corners (a diagonal contest);
+        # each agent spawns on its own base and the flag spawns dead centre.
+        if self.ctf_game:
             self.red_base = np.array(
                 [self.arena - 2.5, self.arena - 2.5], dtype=np.float32)   # bottom-right
             self.blue_base = np.array([2.5, 2.5], dtype=np.float32)       # top-left
             self.red_spawn = (float(self.red_base[0]), float(self.red_base[1]))
             self.blue_spawn = (float(self.blue_base[0]), float(self.blue_base[1]))
-            self.moon_pos = np.array(
+            self.flag_pos = np.array(
                 [self.arena / 2, self.arena / 2], dtype=np.float32)
-            self.moon_holder = None
-            self.banks = {"red": 0, "blue": 0}
+            self.flag_holder = None
+            self.captures = {"red": 0, "blue": 0}
             self.stun = {"red": 0, "blue": 0}
-            self.heist_events = []
-            self._heist_event_serial = 0
+            # durational power-up effect timers (steps); chain/bomb are instantaneous
+            self.ctf_effects = {
+                side: {"speed": 0, "shield": 0} for side in ("red", "blue")
+            }
+            self.crates = []
+            self.ctf_events = []
+            self._crate_serial = 0
+            self._ctf_event_serial = 0
+            self.next_crate_step = self._seconds_to_steps(CRATE_FIRST_SECONDS)
         self.steps = 0
         self.done = False
         self.winner = None
@@ -280,48 +306,64 @@ class ContinuousArena:
             (gx - pos[0]) / self.arena, (gz - pos[1]) / self.arena,
         ], dtype=np.float32)
 
-    # ---------------------------------------------------------- Moon Heist (R5)
+    # ------------------------------------------------------ Capture the Flag (R5)
     def _game_mode(self):
         if self.missile_game:
             return "missileSurvival"
-        if self.heist_game:
-            return "moonHeist"
+        if self.ctf_game:
+            return "captureFlag"
         return "race"
 
     def _base(self, which):
         return self.red_base if which == "red" else self.blue_base
 
-    def _moon_world_pos(self):
-        """Where the moon physically IS: on its carrier, else on the ground."""
-        if self.moon_holder == "red":
+    def _flag_world_pos(self):
+        """Where the flag physically IS: on its carrier, else at the pole."""
+        if self.flag_holder == "red":
             return self.red_pos
-        if self.moon_holder == "blue":
+        if self.flag_holder == "blue":
             return self.blue_pos
-        return self.moon_pos
+        return self.flag_pos
 
-    def _observe_heist(self, which, pos, vel):
-        """Egocentric, opponent-aware observation. Every quantity the policy needs to
-        decide 'race for it / carry it home / chase the thief' is exposed directly."""
+    def _shielded(self, side):
+        return self.ctf_effects[side]["shield"] > 0
+
+    def _movement_mult(self, side):
+        """Speed multiplier + frozen flag for one side: carrying slows you, a speed
+        power-up quickens you, a stun freezes you in place."""
+        mult = 1.0
+        if self.flag_holder == side:
+            mult *= CARRY_SLOW
+        if self.ctf_effects[side]["speed"] > 0:
+            mult *= SPEED_MULT
+        return mult, self.stun[side] > 0
+
+    def _observe_ctf(self, which, pos, vel):
+        """Egocentric, opponent-aware observation. Everything the policy needs to
+        decide 'grab it / carry it home / chase the thief / detour to a crate' is
+        exposed directly, including the nearest crates and both sides' power-up timers."""
         A = self.arena
         opp = "blue" if which == "red" else "red"
         opp_pos = self.blue_pos if opp == "blue" else self.red_pos
         opp_vel = self.blue_vel if opp == "blue" else self.red_vel
-        moon = self._moon_world_pos()
+        flag = self._flag_world_pos()
         my_base = self._base(which)
         opp_base = self._base(opp)
-        free = 1.0 if self.moon_holder is None else 0.0
-        mine = 1.0 if self.moon_holder == which else 0.0
-        theirs = 1.0 if self.moon_holder == opp else 0.0
+        free = 1.0 if self.flag_holder is None else 0.0
+        mine = 1.0 if self.flag_holder == which else 0.0
+        theirs = 1.0 if self.flag_holder == opp else 0.0
         stun_ref = max(1, self._seconds_to_steps(STUN_SECONDS))
-        banks_diff = (self.banks[which] - self.banks[opp]) / float(BANKS_TO_WIN)
+        speed_ref = max(1, self._seconds_to_steps(SPEED_SECONDS))
+        shield_ref = max(1, self._seconds_to_steps(SHIELD_SECONDS))
+        cap_diff = (self.captures[which] - self.captures[opp]) / float(CAPTURES_TO_WIN)
         out = [
             float(pos[0]) / A, float(pos[1]) / A,
             float(vel[0]) / self.vmax, float(vel[1]) / self.vmax,
             (float(opp_pos[0]) - float(pos[0])) / A,
             (float(opp_pos[1]) - float(pos[1])) / A,
             float(opp_vel[0]) / self.vmax, float(opp_vel[1]) / self.vmax,
-            (float(moon[0]) - float(pos[0])) / A,
-            (float(moon[1]) - float(pos[1])) / A,
+            (float(flag[0]) - float(pos[0])) / A,
+            (float(flag[1]) - float(pos[1])) / A,
             free, mine, theirs,
             (float(my_base[0]) - float(pos[0])) / A,
             (float(my_base[1]) - float(pos[1])) / A,
@@ -330,38 +372,99 @@ class ContinuousArena:
             mine,                                     # explicit "am I carrying?"
             min(1.0, self.stun[which] / stun_ref),
             min(1.0, self.stun[opp] / stun_ref),
-            float(np.clip(banks_diff, -1.0, 1.0)),
+            float(np.clip(cap_diff, -1.0, 1.0)),
         ]
-        assert len(out) == HEIST_OBS_DIM
+        # the OBS_CRATE_SLOTS nearest crates (present, relative x/z)
+        near = sorted(self.crates,
+                      key=lambda c: float(np.linalg.norm(c["pos"] - pos)))
+        for i in range(OBS_CRATE_SLOTS):
+            if i < len(near):
+                rel = near[i]["pos"] - pos
+                out.extend([1.0,
+                            float(np.clip(rel[0] / A, -1, 1)),
+                            float(np.clip(rel[1] / A, -1, 1))])
+            else:
+                out.extend([0.0, 0.0, 0.0])
+        # my + rival durational power-up timers (speed, shield); chain/bomb are instant
+        out.extend([
+            min(1.0, self.ctf_effects[which]["speed"] / speed_ref),
+            min(1.0, self.ctf_effects[which]["shield"] / shield_ref),
+            min(1.0, self.ctf_effects[opp]["speed"] / speed_ref),
+            min(1.0, self.ctf_effects[opp]["shield"] / shield_ref),
+        ])
+        assert len(out) == CTF_OBS_DIM
         return np.asarray(out, dtype=np.float32)
 
-    def _heist_potential(self, side, posmap, holder0, moon0):
+    def _ctf_potential(self, side, posmap, holder0, flag0):
         """PBRS potential = -distance to this side's relevant target, evaluated with
         the possession state as it was at the START of the step (holder0) so a step
         that CHANGES possession does not create a spurious shaping spike."""
         if holder0 == side:
             target = self._base(side)                     # deliver it home
         elif holder0 is None:
-            target = moon0                                # race for the loose moon
+            target = flag0                                # race for the loose flag
         else:
             target = posmap[holder0]                      # chase the enemy carrier
         return -float(np.linalg.norm(posmap[side] - target))
 
-    def _add_heist_event(self, kind, side, pos):
-        self._heist_event_serial += 1
-        self.heist_events.append({
-            "id": self._heist_event_serial,
-            "type": kind,                                 # grab | steal | bank
+    # ---- breakable crates -------------------------------------------------
+    def _crate_pos_valid(self, pos):
+        A = self.arena
+        if pos[0] < 2.0 or pos[0] > A - 2.0 or pos[1] < 2.0 or pos[1] > A - 2.0:
+            return False
+        if float(np.linalg.norm(pos - np.array([A / 2, A / 2],
+                                               dtype=np.float32))) < 1.8:
+            return False                                  # keep the pole clear
+        for base in (self.red_base, self.blue_base):
+            if float(np.linalg.norm(pos - base)) < 3.0:
+                return False                              # keep the home bases clear
+        for ap in (self.red_pos, self.blue_pos):
+            if float(np.linalg.norm(pos - ap)) < 1.5:
+                return False
+        for c in self.crates:
+            if float(np.linalg.norm(pos - c["pos"])) < 2.2:
+                return False
+        return True
+
+    def _spawn_crate(self):
+        A = self.arena
+        for _ in range(40):
+            pos = np.array([self.rng.uniform(2.0, A - 2.0),
+                            self.rng.uniform(2.0, A - 2.0)], dtype=np.float32)
+            if self._crate_pos_valid(pos):
+                self._crate_serial += 1
+                self.crates.append({"id": self._crate_serial, "pos": pos})
+                return True
+        return False
+
+    def _advance_crate_spawns(self):
+        if len(self.crates) >= CRATE_MAX_ACTIVE or self.steps < self.next_crate_step:
+            return
+        if self._spawn_crate():
+            lo = self._seconds_to_steps(CRATE_INTERVAL_SECONDS[0])
+            hi = self._seconds_to_steps(CRATE_INTERVAL_SECONDS[1])
+            self.next_crate_step = self.steps + self.rng.randint(lo, hi)
+        else:
+            self.next_crate_step = self.steps + self._seconds_to_steps(1.0)
+
+    def _add_ctf_event(self, kind, side, pos, extra=None):
+        self._ctf_event_serial += 1
+        event = {
+            "id": self._ctf_event_serial,
+            "type": kind,                                 # grab|steal|capture|crate|chain|bomb
             "side": side,
             "pos": np.asarray(pos, dtype=np.float32).copy(),
-            "expiresAt": time.monotonic() + HEIST_EVENT_HOLD_SECONDS,
-        })
-        self.heist_events = self.heist_events[-16:]
+            "expiresAt": time.monotonic() + CTF_EVENT_HOLD_SECONDS,
+        }
+        if extra:
+            event.update(extra)
+        self.ctf_events.append(event)
+        self.ctf_events = self.ctf_events[-16:]
 
-    def _age_heist_events(self):
+    def _age_ctf_events(self):
         now = time.monotonic()
-        self.heist_events = [
-            e for e in self.heist_events if e.get("expiresAt", 0.0) > now
+        self.ctf_events = [
+            e for e in self.ctf_events if e.get("expiresAt", 0.0) > now
         ]
 
     def set_curriculum_episode(self, episode):
@@ -503,8 +606,8 @@ class ContinuousArena:
     def _observe(self, which, pos, vel):
         if self.missile_game:
             return self._missile_observe(which, pos, vel)
-        if self.heist_game:
-            return self._observe_heist(which, pos, vel)
+        if self.ctf_game:
+            return self._observe_ctf(which, pos, vel)
         return self._observe_race(pos, vel)
 
     def field_obs(self, which, x, z):
@@ -549,13 +652,18 @@ class ContinuousArena:
             else:
                 for event in self.explosions:
                     event["carryover"] = True
-        elif self.heist_game:
-            self.moon_pos = np.array(
+        elif self.ctf_game:
+            self.flag_pos = np.array(
                 [self.arena / 2, self.arena / 2], dtype=np.float32)
-            self.moon_holder = None
-            self.banks = {"red": 0, "blue": 0}
+            self.flag_holder = None
+            self.captures = {"red": 0, "blue": 0}
             self.stun = {"red": 0, "blue": 0}
-            self.heist_events = []
+            self.ctf_effects = {
+                side: {"speed": 0, "shield": 0} for side in ("red", "blue")
+            }
+            self.crates = []
+            self.ctf_events = []
+            self.next_crate_step = self._seconds_to_steps(CRATE_FIRST_SECONDS)
         return (self._observe("red", self.red_pos, self.red_vel),
                 self._observe("blue", self.blue_pos, self.blue_vel)), {}
 
@@ -1279,43 +1387,48 @@ class ContinuousArena:
             },
         }
 
-    # -------------------------------------------------------- Round-5 Moon Heist
-    def _step_heist_game(self, a_red, a_blue):
-        """One Moon Heist decision step for both agents. Order: age timers -> move
-        (carrier slowed, stunned frozen) -> resolve grab/bank/steal -> shape -> check
-        win/timeout. Instant-steal + first-to-3-banks."""
-        self._age_heist_events()
+    # ---------------------------------------------------- Round-5 Capture the Flag
+    def _step_ctf_game(self, a_red, a_blue):
+        """One CTF decision step for both agents. Order: age timers -> spawn crates ->
+        move (carrier slowed / speed boost / stunned frozen) -> resolve grab/capture/
+        steal -> smash crates + apply power-ups -> shape -> check win/timeout.
+        Instant-steal + first-to-3-captures."""
+        self._age_ctf_events()
         for side in ("red", "blue"):
             self.stun[side] = max(0, self.stun[side] - 1)
-        reward = {"red": -HEIST_STEP_COST, "blue": -HEIST_STEP_COST}
+            for kind in ("speed", "shield"):
+                self.ctf_effects[side][kind] = max(
+                    0, self.ctf_effects[side][kind] - 1)
+        self._advance_crate_spawns()
+        reward = {"red": -CTF_STEP_COST, "blue": -CTF_STEP_COST}
 
-        # possession + free-moon position as they were at the START of the step, so
+        # possession + free-flag position as they were at the START of the step, so
         # PBRS shaping uses one consistent target basis across the move.
-        holder0 = self.moon_holder
-        moon0 = self.moon_pos.copy()
+        holder0 = self.flag_holder
+        flag0 = self.flag_pos.copy()
         old = {"red": self.red_pos.copy(), "blue": self.blue_pos.copy()}
         old_pot = {
-            side: self._heist_potential(side, old, holder0, moon0)
+            side: self._ctf_potential(side, old, holder0, flag0)
             for side in ("red", "blue")
         }
 
-        # integrate: the carrier is slowed; a stunned agent cannot move (frozen)
-        red_mult = CARRY_SLOW if self.moon_holder == "red" else 1.0
-        blue_mult = CARRY_SLOW if self.moon_holder == "blue" else 1.0
+        # integrate: carrier slowed, speed boost quickens, a stunned agent is frozen
+        red_mult, red_frozen = self._movement_mult("red")
+        blue_mult, blue_frozen = self._movement_mult("blue")
         self.red_pos, self.red_vel = self._integrate(
-            self.red_pos, self.red_vel, a_red, red_mult, self.stun["red"] > 0)
+            self.red_pos, self.red_vel, a_red, red_mult, red_frozen)
         self.blue_pos, self.blue_vel = self._integrate(
-            self.blue_pos, self.blue_vel, a_blue, blue_mult, self.stun["blue"] > 0)
+            self.blue_pos, self.blue_vel, a_blue, blue_mult, blue_frozen)
 
         winner_side = None
-        if self.moon_holder is None:
-            # GRAB: the nearer agent within reach of the loose moon takes it.
+        if self.flag_holder is None:
+            # GRAB: the nearer un-stunned agent within reach of the loose flag takes it.
             contenders = []
             for side, p in (("red", self.red_pos), ("blue", self.blue_pos)):
                 if self.stun[side] > 0:
                     continue
-                d = float(np.linalg.norm(p - self.moon_pos))
-                if d <= MOON_R + AGENT_R:
+                d = float(np.linalg.norm(p - self.flag_pos))
+                if d <= FLAG_R + AGENT_R:
                     contenders.append((d, side))
             if contenders:
                 contenders.sort()
@@ -1324,60 +1437,64 @@ class ContinuousArena:
                     grabber = self.rng.choice([c[1] for c in contenders])
                 else:
                     grabber = contenders[0][1]
-                self.moon_holder = grabber
+                self.flag_holder = grabber
                 reward[grabber] += GRAB_REWARD
-                self._add_heist_event("grab", grabber, self.moon_pos)
+                self._add_ctf_event("grab", grabber, self.flag_pos)
         else:
-            holder = self.moon_holder
+            holder = self.flag_holder
             other = "blue" if holder == "red" else "red"
             holder_pos = self.red_pos if holder == "red" else self.blue_pos
             other_pos = self.red_pos if other == "red" else self.blue_pos
-            # BANK has priority: reaching your own base scores and respawns the moon.
-            if float(np.linalg.norm(holder_pos - self._base(holder))) <= BANK_R:
-                self.banks[holder] += 1
-                reward[holder] += BANK_REWARD
+            # CAPTURE has priority: reaching your own base scores + respawns the flag.
+            if float(np.linalg.norm(holder_pos - self._base(holder))) <= HOME_R:
+                self.captures[holder] += 1
+                reward[holder] += CAPTURE_REWARD
                 reward[other] += CONCEDE_PENALTY
-                self._add_heist_event("bank", holder, holder_pos)
-                self.moon_holder = None
-                self.moon_pos = np.array(
+                self._add_ctf_event("capture", holder, holder_pos)
+                self.flag_holder = None
+                self.flag_pos = np.array(
                     [self.arena / 2, self.arena / 2], dtype=np.float32)
-                if self.banks[holder] >= BANKS_TO_WIN:
+                if self.captures[holder] >= CAPTURES_TO_WIN:
                     winner_side = holder
-            elif (self.stun[other] <= 0
+            elif (self.stun[other] <= 0 and not self._shielded(holder)
                     and float(np.linalg.norm(other_pos - holder_pos))
                     <= TAG_R + AGENT_R):
-                # INSTANT STEAL: the chaser tags the carrier and takes the moon; the
+                # INSTANT STEAL: the chaser tags the carrier and takes the flag; the
                 # robbed carrier is briefly stunned so it cannot instantly re-steal.
-                self.moon_holder = other
+                # A SHIELDED carrier cannot be robbed.
+                self.flag_holder = other
                 self.stun[holder] = self._seconds_to_steps(STUN_SECONDS)
                 reward[other] += STEAL_REWARD
                 reward[holder] += TAGGED_PENALTY
-                self._add_heist_event("steal", other, holder_pos)
+                self._add_ctf_event("steal", other, holder_pos)
+
+        # SMASH any crate an agent reached this step -> a random power-up
+        self._resolve_crates(reward)
 
         # dense potential-based shaping toward the step-start target (telescopes)
         new = {"red": self.red_pos, "blue": self.blue_pos}
         for side in ("red", "blue"):
-            new_pot = self._heist_potential(side, new, holder0, moon0)
-            reward[side] += HEIST_SHAPE_COEF * (new_pot - old_pot[side])
+            new_pot = self._ctf_potential(side, new, holder0, flag0)
+            reward[side] += CTF_SHAPE_COEF * (new_pot - old_pot[side])
 
         truncated = False
         if winner_side is not None:
             self.done = True
             self.winner = winner_side
             loser = "blue" if winner_side == "red" else "red"
-            reward[winner_side] += HEIST_WIN
-            reward[loser] += HEIST_LOSE
+            reward[winner_side] += CTF_WIN
+            reward[loser] += CTF_LOSE
         elif self.steps >= self.max_steps:
             self.done = True
             truncated = True
-            if self.banks["red"] > self.banks["blue"]:
+            if self.captures["red"] > self.captures["blue"]:
                 self.winner = "red"
-                reward["red"] += HEIST_WIN
-                reward["blue"] += HEIST_LOSE
-            elif self.banks["blue"] > self.banks["red"]:
+                reward["red"] += CTF_WIN
+                reward["blue"] += CTF_LOSE
+            elif self.captures["blue"] > self.captures["red"]:
                 self.winner = "blue"
-                reward["blue"] += HEIST_WIN
-                reward["red"] += HEIST_LOSE
+                reward["blue"] += CTF_WIN
+                reward["red"] += CTF_LOSE
             else:
                 self.winner = None
 
@@ -1385,9 +1502,74 @@ class ContinuousArena:
                self._observe("blue", self.blue_pos, self.blue_vel))
         return obs, reward, self.done, truncated, {
             "winner": self.winner,
-            "banks": dict(self.banks),
-            "moonHolder": self.moon_holder,
+            "captures": dict(self.captures),
+            "flagHolder": self.flag_holder,
         }
+
+    def _resolve_crates(self, reward):
+        """Each crate an agent reaches this step is SMASHED for one random power-up,
+        applied immediately to the breaker (both in reach -> the nearer one; a stunned
+        agent cannot break one)."""
+        if not self.crates:
+            return
+        reach = CRATE_R + AGENT_R
+        smashed = set()
+        for crate in sorted(self.crates, key=lambda c: c["id"]):
+            contenders = []
+            for side, p in (("red", self.red_pos), ("blue", self.blue_pos)):
+                if self.stun[side] > 0:
+                    continue
+                d = float(np.linalg.norm(p - crate["pos"]))
+                if d <= reach:
+                    contenders.append((d, side))
+            if not contenders:
+                continue
+            contenders.sort()
+            breaker = contenders[0][1]
+            kind = self.rng.choice(POWERUPS)
+            reward[breaker] += CRATE_REWARD
+            self._apply_powerup(breaker, kind, reward)
+            self._add_ctf_event("crate", breaker, crate["pos"], {"powerup": kind})
+            smashed.add(crate["id"])
+        if smashed:
+            self.crates = [c for c in self.crates if c["id"] not in smashed]
+
+    def _apply_powerup(self, side, kind, reward):
+        """Auto-apply a smashed crate's power-up to `side` (there is no separate 'use'
+        action, so the effect fires on pickup). Chain / bomb are instantaneous; speed /
+        shield are durational."""
+        opp = "blue" if side == "red" else "red"
+        if kind == "speed":
+            self.ctf_effects[side]["speed"] = self._seconds_to_steps(SPEED_SECONDS)
+        elif kind == "shield":
+            self.ctf_effects[side]["shield"] = self._seconds_to_steps(SHIELD_SECONDS)
+        elif kind == "chain":
+            # the Chain Chomp yank: pull the rival to you + stun it (unless shielded)
+            if not self._shielded(opp):
+                me = self.red_pos if side == "red" else self.blue_pos
+                other = self.red_pos if opp == "red" else self.blue_pos
+                d = other - me
+                dist = float(np.linalg.norm(d))
+                direction = (d / dist if dist > 1e-6
+                             else np.array([1.0, 0.0], dtype=np.float32))
+                pulled = np.clip(me + direction * CHAIN_PULL_DIST,
+                                 AGENT_R, self.arena - AGENT_R).astype(np.float32)
+                if opp == "red":
+                    self.red_pos, self.red_vel = pulled, np.zeros(2, dtype=np.float32)
+                else:
+                    self.blue_pos, self.blue_vel = pulled, np.zeros(2, dtype=np.float32)
+                self.stun[opp] = max(self.stun[opp],
+                                     self._seconds_to_steps(CHAIN_STUN_SECONDS))
+                reward[side] += CHAIN_HIT_REWARD
+                self._add_ctf_event("chain", side, me, {"target": opp})
+        elif kind == "bomb":
+            # flag-bomb: knock the flag off the enemy carrier (it returns to the pole)
+            if self.flag_holder == opp and not self._shielded(opp):
+                self.flag_holder = None
+                self.flag_pos = np.array(
+                    [self.arena / 2, self.arena / 2], dtype=np.float32)
+                reward[side] += BOMB_STRIP_REWARD
+                self._add_ctf_event("bomb", side, self.flag_pos)
 
     def _commit_action(self, side, a):
         """Action-repeat: hold the chosen direction for `action_repeat` steps, so the
@@ -1410,8 +1592,8 @@ class ContinuousArena:
             a_red = self._commit_action("red", a_red)
             a_blue = self._commit_action("blue", a_blue)
             return self._step_missile_game(a_red, a_blue)
-        if self.heist_game:
-            return self._step_heist_game(a_red, a_blue)
+        if self.ctf_game:
+            return self._step_ctf_game(a_red, a_blue)
 
         reward = {"red": -STEP_COST, "blue": -STEP_COST}
 
@@ -1462,9 +1644,9 @@ class ContinuousArena:
             # Fill the round tower's usable top (30 scene units across) while the
             # actual continuous environment remains a 10 m diameter circle.
             "sceneScale": 3.0 if self.round_id == 4 else 1.0,
-            "goal": (None if (self.missile_game or self.heist_game)
+            "goal": (None if (self.missile_game or self.ctf_game)
                      else [float(self.goal[0]), float(self.goal[1])]),
-            "goalR": None if (self.missile_game or self.heist_game) else float(GOAL_R),
+            "goalR": None if (self.missile_game or self.ctf_game) else float(GOAL_R),
             "spawns": {"red": list(self.red_spawn), "blue": list(self.blue_spawn)},
             # no hazards on the skeleton; kept for arena-generic frontend code
             "obstacles": [],
@@ -1493,15 +1675,17 @@ class ContinuousArena:
                 "speedMultiplier": SPEED_MULTIPLIER,
                 "slowMultiplier": SLOW_MULTIPLIER,
             }
-        if self.heist_game:
-            out["heist"] = {
-                "banksToWin": BANKS_TO_WIN,
-                "moonRadius": MOON_R,
+        if self.ctf_game:
+            out["ctf"] = {
+                "capturesToWin": CAPTURES_TO_WIN,
+                "flagRadius": FLAG_R,
                 "tagRadius": TAG_R,
-                "bankRadius": BANK_R,
+                "homeRadius": HOME_R,
                 "carrySlow": CARRY_SLOW,
                 "stunSeconds": STUN_SECONDS,
-                "moonSpawn": [self.arena / 2, self.arena / 2],
+                "flagSpawn": [self.arena / 2, self.arena / 2],
+                "crateRadius": CRATE_R,
+                "powerups": list(POWERUPS),
                 "bases": {
                     "red": [float(self.red_base[0]), float(self.red_base[1])],
                     "blue": [float(self.blue_base[0]), float(self.blue_base[1])],
@@ -1516,37 +1700,54 @@ class ContinuousArena:
         if self.missile_game:
             self._age_explosions()
             self._age_pickup_events(advance=False)
-        elif self.heist_game:
-            self._age_heist_events()
+        elif self.ctf_game:
+            self._age_ctf_events()
         rd = lambda v: [round(float(v[0]), 3), round(float(v[1]), 3)]  # noqa: E731
         out = {
             "continuous": True,
             "gameMode": self._game_mode(),
             "red": rd(self.red_pos), "blue": rd(self.blue_pos),
             "redVel": rd(self.red_vel), "blueVel": rd(self.blue_vel),
-            "goal": None if (self.missile_game or self.heist_game) else rd(self.goal),
+            "goal": None if (self.missile_game or self.ctf_game) else rd(self.goal),
             "obstacles": [],
             "steps": self.steps, "winner": self.winner,
         }
-        if self.heist_game:
+        if self.ctf_game:
+            eff_ref = {
+                "speed": max(1, self._seconds_to_steps(SPEED_SECONDS)),
+                "shield": max(1, self._seconds_to_steps(SHIELD_SECONDS)),
+            }
             out.update({
-                "banks": dict(self.banks),
-                "banksToWin": BANKS_TO_WIN,
-                "moon": {
-                    "pos": rd(self._moon_world_pos()),
-                    "holder": self.moon_holder,
-                    "radius": MOON_R,
+                "captures": dict(self.captures),
+                "capturesToWin": CAPTURES_TO_WIN,
+                "flag": {
+                    "pos": rd(self._flag_world_pos()),
+                    "holder": self.flag_holder,
+                    "radius": FLAG_R,
                 },
                 "bases": {"red": rd(self.red_base), "blue": rd(self.blue_base)},
-                "bankR": BANK_R,
+                "homeR": HOME_R,
                 "stun": {
                     side: round(self.stun[side] * self.dt, 2)
                     for side in ("red", "blue")
                 },
-                "heistEvents": [
-                    {"id": e["id"], "type": e["type"],
-                     "side": e["side"], "pos": rd(e["pos"])}
-                    for e in self.heist_events
+                "effects": {
+                    side: {
+                        "speed": round(self.ctf_effects[side]["speed"] * self.dt, 2),
+                        "shield": round(self.ctf_effects[side]["shield"] * self.dt, 2),
+                    }
+                    for side in ("red", "blue")
+                },
+                "crates": [
+                    {"id": c["id"], "pos": rd(c["pos"]), "radius": CRATE_R}
+                    for c in sorted(self.crates, key=lambda c: c["id"])
+                ],
+                "ctfEvents": [
+                    {"id": e["id"], "type": e["type"], "side": e["side"],
+                     "pos": rd(e["pos"]),
+                     **({"powerup": e["powerup"]} if "powerup" in e else {}),
+                     **({"target": e["target"]} if "target" in e else {})}
+                    for e in self.ctf_events
                 ],
             })
         if self.missile_game:

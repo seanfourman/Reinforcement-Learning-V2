@@ -24,7 +24,7 @@ from collections import deque
 
 from env import (GridWorld, N_ACTIONS,
                  COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
-                 SLIP_PROB, R2_SLIP_PROB, STAR_REWARD)
+                 SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
@@ -231,6 +231,7 @@ class Match:
         # of the validated seeded course; only their stochastic risk and shaping
         # reward are live controls.
         self.r2_slip_prob = R2_SLIP_PROB
+        self.r3_slip_prob = R3_SLIP_PROB        # Round-3 wet-cell skid chance (live control)
         self.r2_tomato_reward = STAR_REWARD
         # Round-4 game-feel overrides (None = the arena's own default), applied to
         # the env after any (re)build and live from the panel's World card.
@@ -320,7 +321,7 @@ class Match:
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
-                        r2_slip_prob=self.r2_slip_prob,
+                        r2_slip_prob=self.r2_slip_prob, r3_slip_prob=self.r3_slip_prob,
                         freeze_len=self.freeze_len, block_ghost_prob=self.block_ghost_prob,
                         coin_reward=self.coin_reward, block_reward=self.block_reward,
                         star_reward=self.r2_tomato_reward)
@@ -1229,6 +1230,9 @@ class Match:
                 value = max(0.0, min(0.9, float(p["r2SlipProb"])))
                 r2_mdp_reset |= value != self.r2_slip_prob
                 self.r2_slip_prob = value
+            if "r3SlipProb" in p:                # Round-3 wet-cell skid chance
+                self.r3_slip_prob = max(0.0, min(0.9, float(p["r3SlipProb"])))
+                self._apply_env_config()
             if "r2TomatoReward" in p:
                 value = max(0.0, min(2.0, float(p["r2TomatoReward"])))
                 r2_mdp_reset |= value != self.r2_tomato_reward
@@ -1365,6 +1369,7 @@ class Match:
             "coinReward": round(self.coin_reward, 2),
             "blockReward": round(self.block_reward, 2),
             "r2SlipProb": round(self.r2_slip_prob, 2),
+            "r3SlipProb": round(self.r3_slip_prob, 2),
             "r2TomatoReward": round(self.r2_tomato_reward, 2),
             # round-4 game feel (only shown on R4; safe defaults on other rounds)
             "r4MissileSpeed": round(getattr(self.env, "missile_max_speed", 5.4), 2),
@@ -1902,12 +1907,13 @@ class Match:
                     "detour for the cage and freeze the rival, especially when it is falling behind."
                 )
                 dynamics = (
-                    "Deterministic 4-way moves PLUS a STAY (wait); walls block and the board edge "
-                    "is the outer wall. Six GOOMBAS patrol as sentries, each guarding one maze cell "
-                    "from a side branch - a Goomba on your cell = DEATH, so wait for the gap and "
-                    "slip through. An OFF-route CAGE pickup per side: grab yours to drop a cage on "
-                    "the rival, freezing it for several steps (a comeback tool). The maze is "
-                    "MIRROR-SYMMETRIC: both racers face an identical route to the shared top exit."
+                    "4-way moves PLUS a STAY (wait); walls block and the board edge is the outer "
+                    "wall. Six GOOMBAS patrol as sentries, each guarding one route cell from a side "
+                    "branch - a Goomba on your cell = DEATH, so wait for the gap and slip through. "
+                    "WET puddles on the route can SKID your move sideways (the luck that lets one "
+                    "racer fall behind). An OFF-route CAGE pickup per side: grab yours (worth it "
+                    "when you're behind) to freeze the rival for several steps and catch up. The "
+                    "maze is MIRROR-SYMMETRIC: both racers face an identical route to the top exit."
                 )
                 rewards = [["Step", -0.01], ["Reach the goal first (win)", 1.0],
                            ["Grab your cage (freeze the rival)", round(getattr(env, "cage_reward", 0.2), 2)],
@@ -2004,7 +2010,7 @@ class Match:
                     "a character runs OUT of hearts - the survivor wins (both emptied on "
                     "the same instant is a draw)."
                 )
-            elif getattr(env, "heist_game", False):
+            elif getattr(env, "ctf_game", False):
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None
                 sees_opp = True
@@ -2012,31 +2018,38 @@ class Match:
                     f"continuous {env.obs_dim}-vector = "
                     "4 own kinematics (position x/z, velocity x/z) + "
                     "4 opponent terms (rival relative position x/z, velocity x/z) + "
-                    "5 moon terms (relative x/z, and 3 flags: free / you-carry / "
+                    "5 flag terms (relative x/z, and 3 flags: free / you-carry / "
                     "rival-carries) + 4 base vectors (to your base, to the rival's base) + "
-                    "4 status terms (carrying flag, your + rival stun timers, bank lead)"
+                    "4 status terms (carrying, your + rival stun timers, capture lead) + "
+                    "6 crate terms (2 nearest crates: present, relative x/z) + "
+                    "4 power-up timers (your + rival speed and shield)"
                 )
-                # segmented breakdown (dims sum to obs_dim = 21) for the stacked bar
+                # segmented breakdown (dims sum to obs_dim = 31) for the stacked bar
                 state_groups = [
                     {"label": "Self", "dim": 4, "color": "#3f7fe0",
                      "detail": "your position x/z and velocity x/z"},
                     {"label": "Opponent", "dim": 4, "color": "#e0563f",
                      "detail": "the RIVAL's relative position x/z and velocity x/z"},
-                    {"label": "Moon", "dim": 5, "color": "#f5c542",
-                     "detail": "moon relative x/z + who holds it (free / you / rival)"},
+                    {"label": "Flag", "dim": 5, "color": "#f5c542",
+                     "detail": "flag relative x/z + who holds it (free / you / rival)"},
                     {"label": "Bases", "dim": 4, "color": "#22a39f",
                      "detail": "vector to YOUR base and to the rival's base"},
                     {"label": "Status", "dim": 4, "color": "#8b5cf6",
-                     "detail": "carrying flag, your + rival stun timers, bank lead"},
+                     "detail": "carrying, your + rival stun timers, capture lead"},
+                    {"label": "Crates", "dim": 6, "count": 2, "each": 3, "color": "#c98a3a",
+                     "detail": "2 nearest crates (present, relative x/z)"},
+                    {"label": "Power-ups", "dim": 4, "color": "#22a39f",
+                     "detail": "your + rival speed and shield timers"},
                 ]
                 observation = (
                     "Each agent sees ITSELF AND ITS RIVAL: its own position/velocity, the "
-                    "rival's relative position/velocity, where the Power Moon is and who "
-                    "holds it, the direction to its own base and to the rival's base, and "
-                    "the status terms (carrying flag, the two stun timers, and who leads "
-                    "on banks)."
+                    "rival's relative position/velocity, where the flag is and who holds "
+                    "it, the direction to both bases, the status terms (carrying, the two "
+                    "stun timers, capture lead), the two nearest crates, and both sides' "
+                    "power-up timers."
                 )
-                observation_tuple = "(self, opponent, moon + holder, bases, status)"
+                observation_tuple = (
+                    "(self, opponent, flag + holder, bases, status, crates, power-ups)")
                 opp_info = (
                     "FULLY VISIBLE - this is the whole point of the round. The rival's "
                     "relative position and velocity are in every observation, so a good "
@@ -2046,24 +2059,29 @@ class Match:
                 )
                 dynamics = (
                     "Continuous physics WITH momentum: a thrust accelerates the flyer (with "
-                    "drag) up to a speed cap. One Power Moon spawns at centre. GRAB it to "
-                    "become the CARRIER (you move ~0.72x speed while carrying); the other is "
-                    "the CHASER. Tag the carrier to INSTANTLY STEAL the moon - the robbed "
-                    "carrier is briefly stunned so it cannot re-steal at once. Deliver the "
-                    "moon to your own corner base to BANK it; it then respawns at centre."
+                    "drag) up to a speed cap. One flag sits on the centre pole. GRAB it to "
+                    "become the CARRIER (you move ~0.72x speed while carrying); the other "
+                    "is the CHASER. Tag the carrier to INSTANTLY STEAL the flag - the "
+                    "robbed carrier is briefly stunned. Deliver the flag to your own corner "
+                    "base to CAPTURE it (+1); it then respawns on the pole. Breakable "
+                    "CRATES spawn around the board: touch one to smash it for a random "
+                    "POWER-UP - speed boost, chain-pull (yank + stun the rival), shield "
+                    "(immune to steal/stun), or flag-bomb (knock the flag off the carrier)."
                 )
                 rewards = [
-                    ["Grab the loose moon", 0.15],
+                    ["Grab the loose flag", 0.15],
                     ["Steal it (tag the enemy carrier)", 0.40],
                     ["Lose it to a tag", -0.40],
-                    ["Bank a moon at your base", 1.0],
-                    ["The rival banks one", -0.30],
-                    ["Win the round (first to 3 banks)", 2.0],
+                    ["Capture at your base", 1.0],
+                    ["The rival captures one", -0.30],
+                    ["Smash a crate (earn a power-up)", 0.10],
+                    ["Flag-bomb strips the enemy carrier", 0.20],
+                    ["Win the round (first to 3 captures)", 2.0],
                     ["Step", -0.002],
                 ]
                 win = (
-                    "First to BANK 3 Power Moons wins the round. If time runs out first, "
-                    "whoever has banked more moons wins (equal banks is a draw)."
+                    "First to CAPTURE 3 flags wins the round. If time runs out first, "
+                    "whoever has captured more wins (equal captures is a draw)."
                 )
             else:
                 actions = ["8 compass thrusts + coast (9)"]

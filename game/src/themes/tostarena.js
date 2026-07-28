@@ -1,12 +1,13 @@
-// Round 5 — Tostarena (Sand Kingdom): the MOON HEIST continuous arena.
+// Round 5 — Tostarena (Sand Kingdom): the CAPTURE THE FLAG continuous arena.
 //
 // A STREET-LEVEL town square, composed like the city round (round 2), not the
 // floating-island rounds: the arena is Tostarena's sandy plaza, the town's
 // adobe buildings RING it on every side at ground level, and the desert runs
-// to the fog. There is no grid: the two racers fight over a single Power Moon
-// spawned dead-centre, each hauling it to its own corner base while the other
-// chases to steal it (see continuous.ContinuousArena._step_heist_game). The
-// Inverted Pyramid hovers tip-down beyond the north edge as the town monument.
+// to the fog. There is no grid: the two racers fight over a single flag on the
+// centre pole, each hauling it to its own corner base while the other chases to
+// steal it, smashing crates for power-ups along the way (see
+// continuous.ContinuousArena._step_ctf_game). The Inverted Pyramid hovers
+// tip-down beyond the north edge as the town monument.
 //
 // Nothing may cover the y=0 arena surface above ~0.16 (the racers' feet).
 // Models come from the vendored Sand Kingdom OBJ/MTL pack in
@@ -15,6 +16,7 @@
 import * as THREE from "three";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 
 const ASSETS = "./assets/models/tostarena/";
 
@@ -695,21 +697,28 @@ export const tostarena = {
     }
 
     // ======================================================================
-    // MOON HEIST game props (Round 5): the contested Power Moon, the two corner
-    // bases (with in-world score pips), the carrier's foot-ring, and one-shot
-    // grab / steal / bank bursts. All driven per-frame from the live snapshot in
-    // updateHeist(), the same way ruined.js drives its Banzai Bills.
+    // CAPTURE THE FLAG game props (Round 5): the centre flag-pole, breakable
+    // crates (the real FrailBox model), the two corner bases with score pips,
+    // the carrier's foot-ring, power-up auras (shield / speed) + stun stars, a
+    // Chain-Chomp yank, and one-shot grab/steal/capture/crate/chain/bomb bursts.
+    // All driven per-frame from the live snapshot in updateCTF(), the same way
+    // ruined.js drives its Banzai Bills.
     // ======================================================================
-    const heist = world.heist || {};
-    const bankR = heist.bankRadius || 1.5;
-    const moonR = heist.moonRadius || 0.75;
-    const banksToWin = heist.banksToWin || 3;
+    const ctf = world.ctf || {};
+    const homeR = ctf.homeRadius || 1.5;
+    const flagR = ctf.flagRadius || 0.75;
+    const capturesToWin = ctf.capturesToWin || 3;
+    const crateR = ctf.crateRadius || 0.55;
     const bases = {
-      red: heist.bases?.red || [A - 2.5, A - 2.5],
-      blue: heist.bases?.blue || [2.5, 2.5],
+      red: ctf.bases?.red || [A - 2.5, A - 2.5],
+      blue: ctf.bases?.blue || [2.5, 2.5],
     };
     const RED = 0xff5a4d;
     const BLUE = 0x4da0ff;
+    const POWER_COLOR = {
+      speed: 0x66ffcc, chain: 0xffb347, shield: 0x8fd0ff, bomb: 0xff6a4d,
+    };
+    const CRATE_PATH = "./assets/objects/Crate/";
 
     // a soft additive radial-gradient glow sprite in any colour
     function makeGlowSprite(hex, scale = 3) {
@@ -743,45 +752,42 @@ export const tostarena = {
       return sp;
     }
 
-    // ---- the Power Moon ----------------------------------------------------
-    const moon = (() => {
-      const g = new THREE.Group();
-      g.position.set(C, 1, C);
-      const coreMat = track(
-        new THREE.MeshStandardMaterial({
-          color: 0xfff2a8,
-          emissive: 0xffcf4d,
-          emissiveIntensity: 1.6,
-          roughness: 0.35,
-          metalness: 0.1,
-        }),
-      );
-      const core = new THREE.Mesh(
-        track(new THREE.IcosahedronGeometry(moonR, 1)),
-        coreMat,
-      );
-      g.add(core);
-      const ringMat = track(
-        new THREE.MeshBasicMaterial({
-          color: 0xffe9a8,
-          transparent: true,
-          opacity: 0.7,
-          side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      const ring = new THREE.Mesh(
-        track(new THREE.TorusGeometry(moonR * 1.7, 0.05, 8, 40)),
-        ringMat,
-      );
-      ring.rotation.x = Math.PI / 2;
-      g.add(ring);
-      g.add(makeGlowSprite(0xffe08a, moonR * 4.2));
-      const light = new THREE.PointLight(0xffd24d, 1.6, 10, 2);
-      g.add(light);
-      group.add(g);
-      return { g, core, ring, light };
+    // ---- the centre flag-pole + the neutral flag ---------------------------
+    // The mast + knob stay planted at the pole; the flag CLOTH (group `fg`) rides
+    // up to float above whoever is carrying it, and returns to the mast when free.
+    const flag = (() => {
+      const mastMat = track(new THREE.MeshStandardMaterial({
+        color: 0x6b4a2a, roughness: 0.8, metalness: 0.1,
+      }));
+      const mast = new THREE.Mesh(
+        track(new THREE.CylinderGeometry(0.08, 0.11, 3.2, 10)), mastMat);
+      mast.position.set(C, 1.6, C);
+      mast.castShadow = true;
+      group.add(mast);
+      const knob = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.16, 12, 12)),
+        track(new THREE.MeshStandardMaterial({
+          color: 0xffd24d, emissive: 0xffcf4d, emissiveIntensity: 0.6,
+          roughness: 0.4,
+        })));
+      knob.position.set(C, 3.28, C);
+      group.add(knob);
+      const fg = new THREE.Group();
+      fg.position.set(C, 2.9, C);
+      const clothMat = track(new THREE.MeshStandardMaterial({
+        color: 0xfff2d0, emissive: 0xffe08a, emissiveIntensity: 0.5,
+        roughness: 0.6, metalness: 0, side: THREE.DoubleSide,
+      }));
+      const cloth = new THREE.Mesh(
+        track(new THREE.PlaneGeometry(0.95, 0.62, 8, 4)), clothMat);
+      cloth.position.set(0.5, 0, 0);          // hangs off one side of the mast line
+      fg.add(cloth);
+      fg.add(makeGlowSprite(0xffe08a, 2.2));
+      const light = new THREE.PointLight(0xffd24d, 1.1, 8, 2);
+      fg.add(light);
+      group.add(fg);
+      const clothBase = Float32Array.from(cloth.geometry.attributes.position.array);
+      return { fg, cloth, clothBase, light };
     })();
 
     // ---- the two corner bases (glow ring + beacon + score pips) ------------
@@ -799,7 +805,7 @@ export const tostarena = {
         }),
       );
       const ring = new THREE.Mesh(
-        track(new THREE.RingGeometry(bankR * 0.82, bankR, 48)),
+        track(new THREE.RingGeometry(homeR * 0.82, homeR, 48)),
         ringMat,
       );
       ring.rotation.x = -Math.PI / 2;
@@ -816,7 +822,7 @@ export const tostarena = {
         }),
       );
       const disc = new THREE.Mesh(
-        track(new THREE.CircleGeometry(bankR, 48)),
+        track(new THREE.CircleGeometry(homeR, 48)),
         discMat,
       );
       disc.rotation.x = -Math.PI / 2;
@@ -825,9 +831,9 @@ export const tostarena = {
       const beacon = new THREE.PointLight(color, 1.3, 8, 2);
       beacon.position.set(0, 1.6, 0);
       bg.add(beacon);
-      // score pips: one small moon per required bank, revealed as banks land
+      // score pips: one small flag-token per required capture, revealed as they land
       const pips = [];
-      for (let i = 0; i < banksToWin; i++) {
+      for (let i = 0; i < capturesToWin; i++) {
         const pm = new THREE.Mesh(
           track(new THREE.IcosahedronGeometry(0.22, 0)),
           track(
@@ -839,7 +845,7 @@ export const tostarena = {
             }),
           ),
         );
-        pm.position.set((i - (banksToWin - 1) / 2) * 0.55, 1.9, 0);
+        pm.position.set((i - (capturesToWin - 1) / 2) * 0.55, 1.9, 0);
         pm.visible = false;
         bg.add(pm);
         pips.push(pm);
@@ -873,7 +879,7 @@ export const tostarena = {
       carryRing[side] = r;
     }
 
-    // ---- one-shot grab / steal / bank bursts -------------------------------
+    // ---- one-shot grab/steal/capture/crate/chain/bomb bursts ---------------
     const seenEvents = new Set();
     const seenOrder = [];
     const bursts = [];
@@ -886,14 +892,18 @@ export const tostarena = {
     }
     function spawnBurst(ev) {
       const color =
-        ev.type === "bank"
-          ? ev.side === "red"
-            ? 0xff7a4d
-            : 0x4db0ff
+        ev.type === "capture"
+          ? ev.side === "red" ? 0xff7a4d : 0x4db0ff
           : ev.type === "steal"
             ? 0xffd24d
-            : 0xfff0b0;
-      const big = ev.type === "bank";
+            : ev.type === "crate"
+              ? POWER_COLOR[ev.powerup] ?? 0xc98a3a
+              : ev.type === "bomb"
+                ? 0xff6a4d
+                : ev.type === "chain"
+                  ? 0xffb347
+                  : 0xfff0b0;                    // grab
+      const big = ev.type === "capture";
       const bg = new THREE.Group();
       bg.position.set(ev.pos[0], 0.5, ev.pos[1]);
       const ringMat = new THREE.MeshBasicMaterial({
@@ -933,45 +943,187 @@ export const tostarena = {
       }
     }
 
-    function updateHeist(t, dt, frame) {
-      const m = frame?.moon;
-      const holder = m?.holder ?? frame?.moonHolder ?? null;
-      const held = holder === "red" || holder === "blue";
-      const tx = m?.pos ? m.pos[0] : C;
-      const tz = m?.pos ? m.pos[1] : C;
-      const ty = held
-        ? 2.7 + Math.sin(t * 4) * 0.12
-        : 1.0 + Math.sin(t * 2.2) * 0.18;
-      const k = 1 - Math.exp(-dt * 14);
-      moon.g.position.x += (tx - moon.g.position.x) * k;
-      moon.g.position.z += (tz - moon.g.position.z) * k;
-      moon.g.position.y += (ty - moon.g.position.y) * (held ? k : 0.12);
-      moon.g.rotation.y += dt * 1.4;
-      moon.ring.rotation.z += dt * 1.0;
-      moon.light.intensity = 1.6 + Math.sin(t * 6) * 0.3;
+    // ---- breakable crates: the real FrailBox, loaded once + pooled by id ----
+    const crateMeshes = new Map();          // crate id -> Object3D
+    let crateProtoObj = null;
+    new ColladaLoader().load(
+      CRATE_PATH + "FrailBox.dae",
+      (dae) => {
+        if (disposed) return;
+        const root = dae.scene;
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          const ms = Array.isArray(o.material) ? o.material : [o.material];
+          for (const mm of ms) {
+            if (!mm) continue;
+            if (mm.map) mm.map.colorSpace = THREE.SRGBColorSpace;
+            if ("roughness" in mm) mm.roughness = 0.85;
+            if ("metalness" in mm) mm.metalness = 0.0;
+          }
+        });
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        root.position.set(-ctr.x, -box.min.y, -ctr.z);
+        const wrap = new THREE.Group();
+        wrap.add(root);
+        wrap.scale.setScalar(1.15 / Math.max(size.x, size.y, size.z, 0.001));
+        crateProtoObj = wrap;
+      },
+      undefined,
+      () => { crateProtoObj = null; },       // missing model -> crates just don't draw
+    );
+    function syncCrates(frame, t, dt) {
+      const active = new Set();
+      for (const cr of frame?.crates || []) {
+        active.add(cr.id);
+        let m = crateMeshes.get(cr.id);
+        if (!m && crateProtoObj) {
+          m = crateProtoObj.clone();
+          m.rotation.y = (cr.id * 1.37) % (Math.PI * 2);
+          group.add(m);
+          crateMeshes.set(cr.id, m);
+        }
+        if (m) {
+          m.position.set(cr.pos[0], 0.05 + Math.sin(t * 2 + cr.id) * 0.05, cr.pos[1]);
+          m.rotation.y += dt * 0.35;
+        }
+      }
+      for (const [id, m] of crateMeshes) {
+        if (active.has(id)) continue;
+        group.remove(m);                     // smashed -> the crate burst covers the FX
+        crateMeshes.delete(id);
+      }
+    }
 
+    // ---- per-side power-up auras: shield bubble, speed glow, stun stars -----
+    const aura = {};
+    for (const side of ["red", "blue"]) {
+      const shield = new THREE.Mesh(
+        track(new THREE.SphereGeometry(1.05, 18, 14)),
+        track(new THREE.MeshBasicMaterial({
+          color: 0x8fd0ff, transparent: true, opacity: 0.22,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+          side: THREE.DoubleSide,
+        })));
+      shield.visible = false;
+      group.add(shield);
+      const speedGlow = makeGlowSprite(0x66ffcc, 2.4);
+      speedGlow.visible = false;
+      group.add(speedGlow);
+      const stars = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const s = makeGlowSprite(0xfff2a0, 0.55);
+        s.position.set(Math.cos((i / 3) * Math.PI * 2) * 0.5, 0,
+                       Math.sin((i / 3) * Math.PI * 2) * 0.5);
+        stars.add(s);
+      }
+      stars.visible = false;
+      group.add(stars);
+      aura[side] = { shield, speedGlow, stars };
+    }
+
+    // ---- the Chain-Chomp yank (transient, spawned on a "chain" event) ------
+    const chainFx = [];
+    function spawnChain(fromXZ, toXZ) {
+      const g = new THREE.Group();
+      const linkMat = new THREE.MeshStandardMaterial({
+        color: 0x2b2b2b, roughness: 0.45, metalness: 0.8,
+      });
+      const links = [];
+      for (let i = 0; i < 7; i++) {
+        const l = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.045, 6, 10), linkMat);
+        l.rotation.x = i % 2 ? Math.PI / 2 : 0;
+        g.add(l);
+        links.push(l);
+      }
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.34, 16, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0x141414, roughness: 0.4, metalness: 0.3,
+        }));
+      g.add(head);
+      group.add(g);
+      chainFx.push({ g, links, head, linkMat, from: fromXZ, to: toXZ, t: 0, dur: 0.55 });
+    }
+    function disposeChain(c) {
+      group.remove(c.g);
+      c.linkMat.dispose();
+      for (const l of c.links) l.geometry.dispose();
+      c.head.geometry.dispose();
+      c.head.material.dispose();
+    }
+    function updateChains(dt) {
+      for (let i = chainFx.length - 1; i >= 0; i--) {
+        const c = chainFx[i];
+        c.t += dt;
+        const u = c.t / c.dur;
+        for (let k = 0; k < c.links.length; k++) {
+          const f = k / (c.links.length - 1);
+          c.links[k].position.set(
+            c.from[0] + (c.to[0] - c.from[0]) * f,
+            0.9 + Math.sin(f * Math.PI) * 0.15,
+            c.from[1] + (c.to[1] - c.from[1]) * f);
+        }
+        c.head.position.set(c.to[0], 0.9, c.to[1]);
+        c.linkMat.transparent = true;
+        c.linkMat.opacity = Math.max(0, 1 - u);
+        c.head.material.transparent = true;
+        c.head.material.opacity = Math.max(0, 1 - u);
+        if (u >= 1) {
+          disposeChain(c);
+          chainFx.splice(i, 1);
+        }
+      }
+    }
+
+    function updateCTF(t, dt, frame) {
+      // the neutral flag: floats above the carrier, else rests on the mast
+      const f = frame?.flag;
+      const holder = f?.holder ?? frame?.flagHolder ?? null;
+      const held = holder === "red" || holder === "blue";
+      const carrier = held ? frame?.[holder] : null;
+      const tx = held && carrier ? carrier[0] : C;
+      const tz = held && carrier ? carrier[1] : C;
+      const ty = held ? 2.6 + Math.sin(t * 5) * 0.1 : 2.9;
+      const k = 1 - Math.exp(-dt * 14);
+      const rate = held ? k : 0.12;
+      flag.fg.position.x += (tx - flag.fg.position.x) * rate;
+      flag.fg.position.z += (tz - flag.fg.position.z) * rate;
+      flag.fg.position.y += (ty - flag.fg.position.y) * rate;
+      // wave the cloth (displace Z off the stored base X)
+      const cpos = flag.cloth.geometry.attributes.position;
+      const cb = flag.clothBase;
+      for (let i = 0; i < cpos.count; i++) {
+        const bx = cb[i * 3];
+        cpos.setZ(i, Math.sin(bx * 3.0 + t * 6) * 0.09 * (bx + 0.5));
+      }
+      cpos.needsUpdate = true;
+      flag.light.intensity = 1.0 + Math.sin(t * 6) * 0.25;
+
+      // carrier foot-ring
       for (const side of ["red", "blue"]) {
         const on = holder === side;
         const r = carryRing[side];
         r.visible = on;
         if (on) {
           const p = frame?.[side];
-          if (p) {
-            r.position.x = p[0];
-            r.position.z = p[1];
-          }
+          if (p) { r.position.x = p[0]; r.position.z = p[1]; }
           r.rotation.z += dt * 2;
           r.scale.setScalar(1 + Math.sin(t * 8) * 0.06);
         }
       }
 
-      const banks = frame?.banks || { red: 0, blue: 0 };
+      // bases: pulse + reveal a pip per capture
+      const caps = frame?.captures || { red: 0, blue: 0 };
       for (const side of ["red", "blue"]) {
         const bv = baseVis[side];
         bv.ringMat.opacity =
           0.45 + Math.sin(t * 3 + (side === "red" ? 0 : 1.5)) * 0.12;
         bv.beacon.intensity = 1.1 + Math.sin(t * 3) * 0.4;
-        const n = banks[side] || 0;
+        const n = caps[side] || 0;
         for (let i = 0; i < bv.pips.length; i++) {
           const pm = bv.pips[i];
           pm.visible = i < n;
@@ -982,10 +1134,39 @@ export const tostarena = {
         }
       }
 
-      for (const ev of frame?.heistEvents || []) {
-        if (rememberEvent(ev.id)) spawnBurst(ev);
+      // power-up auras + stun stars, per side
+      const effects = frame?.effects || {};
+      const stun = frame?.stun || {};
+      for (const side of ["red", "blue"]) {
+        const p = frame?.[side];
+        const a = aura[side];
+        const ef = effects[side] || {};
+        a.shield.visible = (ef.shield || 0) > 0 && !!p;
+        if (a.shield.visible) {
+          a.shield.position.set(p[0], 1.0, p[1]);
+          a.shield.scale.setScalar(1 + Math.sin(t * 6) * 0.05);
+        }
+        a.speedGlow.visible = (ef.speed || 0) > 0 && !!p;
+        if (a.speedGlow.visible) a.speedGlow.position.set(p[0], 0.5, p[1]);
+        a.stars.visible = (stun[side] || 0) > 0 && !!p;
+        if (a.stars.visible) {
+          a.stars.position.set(p[0], 2.2, p[1]);
+          a.stars.rotation.y += dt * 5;
+        }
+      }
+
+      // crates + one-shot event bursts + chain yanks
+      syncCrates(frame, t, dt);
+      for (const ev of frame?.ctfEvents || []) {
+        if (!rememberEvent(ev.id)) continue;
+        spawnBurst(ev);
+        if (ev.type === "chain" && ev.target) {
+          const to = frame?.[ev.target];
+          if (ev.pos && to) spawnChain(ev.pos, to);
+        }
       }
       updateBursts(dt);
+      updateChains(dt);
     }
 
     function resetEffects(frameToSuppress = null) {
@@ -993,9 +1174,10 @@ export const tostarena = {
       seenOrder.length = 0;
       for (const b of bursts) disposeBurst(b);
       bursts.length = 0;
-      // absorb the events already present in a restored frame so they don't
-      // re-fire when returning from a replay or after a reset
-      for (const ev of frameToSuppress?.heistEvents || []) rememberEvent(ev.id);
+      for (const c of chainFx) disposeChain(c);
+      chainFx.length = 0;
+      // absorb events already present in a restored frame so they don't re-fire
+      for (const ev of frameToSuppress?.ctfEvents || []) rememberEvent(ev.id);
     }
 
     // ---- animation + teardown ---------------------------------------------
@@ -1042,14 +1224,28 @@ export const tostarena = {
         tumble.visible = false;
       }
 
-      // the Moon Heist props (moon / bases / carrier ring / event bursts)
-      updateHeist(t, dt, frame);
+      // the Capture-the-Flag props (flag / crates / bases / auras / bursts)
+      updateCTF(t, dt, frame);
     }
 
     function dispose() {
       disposed = true;
       for (const b of bursts) disposeBurst(b);
       bursts.length = 0;
+      for (const c of chainFx) disposeChain(c);
+      chainFx.length = 0;
+      for (const [, m] of crateMeshes) group.remove(m);
+      crateMeshes.clear();
+      if (crateProtoObj) {
+        crateProtoObj.traverse((o) => {
+          if (o.isMesh) {
+            o.geometry?.dispose?.();
+            const ms = Array.isArray(o.material) ? o.material : [o.material];
+            for (const mm of ms) mm?.dispose?.();
+          }
+        });
+        crateProtoObj = null;
+      }
       scene.remove(group);
       for (const o of trash) o.dispose?.();
     }

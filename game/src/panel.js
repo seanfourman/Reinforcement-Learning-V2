@@ -102,6 +102,7 @@ export const GLOBAL_PARAMS = [
   // seeded course; expose only controls that genuinely alter the MDP. ---
   { key: 'r2SlipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.01, sect: 'world', scope: 'r2', def: 0.12, desc: 'Chance that a move made while standing on a puddle skids to one of the two perpendicular directions. A plant-zone landing eliminates that racer until the next episode while the rival continues.', fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'r2TomatoReward', label: 'Tomato reward', min: 0, max: 2, step: 0.05, sect: 'world', scope: 'r2', def: 0.35, desc: 'One-time reward paid when this model collects each required tomato. Revisiting the same tomato pays nothing.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'r3SlipProb', label: 'Wet-cell slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r3', def: 0.20, desc: 'Chance that a move made while standing on a wet puddle skids to one of the two perpendicular directions. This is the variance that lets one racer fall behind, so the cage pickup becomes a real catch-up tool.', fmt: (v) => `${Math.round(v * 100)}%` },
   // --- Round-4 game feel (Ruined Kingdom survival). Applied live to the arena. ---
   { key: 'r4MissileSpeed', label: 'Missile speed', min: 2, max: 10, step: 0.2, sect: 'world', scope: 'r4', def: 5.4, desc: "Top speed of a Banzai Bill at full pressure. Below the flyer's own ~7 speed, a single Bill is always outrunnable.", fmt: (v) => (+v).toFixed(1) },
   { key: 'r4MissileHoming', label: 'Missile homing', min: 0, max: 1.5, step: 0.05, sect: 'world', scope: 'r4', def: 0.5, desc: 'How sharply a Bill turns to track you (rad/s). 0 = flies straight; higher = much harder to juke past.', fmt: (v) => (+v).toFixed(2) },
@@ -1065,6 +1066,7 @@ export function initPanel() {
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
         case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
         case 'r2': return roundIndex === 1;       // Round-2 game mechanics (regioned maze: pipes + puddles)
+        case 'r3': return roundIndex === 2;       // Round-3 game mechanics (Fossil Falls wet cells)
         case 'r4': return roundIndex === 3;       // Round-4 game feel (missiles / hearts / hit penalty)
         default: return true;                     // 'always'
       }

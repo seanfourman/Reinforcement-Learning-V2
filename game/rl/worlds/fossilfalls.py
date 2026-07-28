@@ -36,6 +36,8 @@ PATROL_LEN = 3                    # cells per Goomba patrol - UNIFORM 3 (every g
                                   # length -> one period -> a CONSTANT phase factor). Only
                                   # NATURAL 2-deep branches qualify (a carved pocket can't go
                                   # 2 deep without looping), so some sparse mazes get < 6.
+N_WET_PAIRS = 2                   # mirror pairs of WET (skid) cells on the route (variance so
+                                  # one racer can fall behind); a skid can slide you sideways
 
 
 MID = W // 2                     # 9: the left-right mirror axis (a wall column)
@@ -210,28 +212,51 @@ def _place_cage(grid, rng, path, occupied):
                 return B
         return None
 
-    # Prefer a nook in the FIRST HALF of the route (reads as a mid-race detour); else take the
-    # earliest one anywhere past a small spawn gap - always better than a spawn-side freebie.
-    for lo_hi in ((4, max(6, plen // 2)), (4, plen - 3)):
+    # Prefer a nook in the MIDDLE stretch of the route - physically away from the spawn
+    # corner, a true mid-race detour (not just a few steps in). Widen only if none there.
+    half = plen // 2
+    for lo_hi in ((plen // 4, 3 * plen // 4), (4, plen - 3)):
         mids = [P for P in path if lo_hi[0] <= d_spawn.get(P, 10 ** 9) <= lo_hi[1] and 0 < P[1] < MID]
         rng.shuffle(mids)
-        mids.sort(key=lambda P: d_spawn.get(P, 0))
+        mids.sort(key=lambda P: abs(d_spawn.get(P, 0) - half))    # closest to the route's MIDDLE
         for P in mids:
             B = nook_off(P)
             if B:
                 grid[B[0]][B[1]] = FLOOR                         # carve the nook + its mirror
                 grid[B[0]][W - 1 - B[1]] = FLOOR
                 return B, (B[0], W - 1 - B[1])
-    # fallback (rare, no nook anywhere): an existing 1-off cell past a small gap, else nearest.
+    # fallback (rare, no nook anywhere): an existing 1-off cell nearest the route's middle.
     d_path = bfs([Q for Q in path if Q[1] < MID])
     off = [(c, d_spawn.get(c, 10 ** 9)) for c, dp in d_path.items()
-           if dp == 1 and c not in pathset and c not in occupied and d_spawn.get(c, 10 ** 9) <= plen - 3]
+           if dp == 1 and c not in pathset and c not in occupied and 3 <= d_spawn.get(c, 10 ** 9) <= plen - 3]
     if not off:
         return None, None
     rng.shuffle(off)
-    off.sort(key=lambda x: (0 if x[1] >= 3 else 1, abs(x[1] - 5)))
+    off.sort(key=lambda x: abs(x[1] - half))                     # nearest to the route's middle
     blue = off[0][0]
     return blue, (blue[0], W - 1 - blue[1])
+
+
+def _place_wet(grid, rng, path, avoid, n_pairs, before_idx):
+    """Wet cells on the route, strictly BEFORE the cage (path index < before_idx). Order
+    matters: you must slip on a puddle and fall behind FIRST, and THEN reach the cage and
+    grab it - if the puddle came after the cage the two mechanics wouldn't connect. A skid
+    sends you sideways = the variance that makes one racer fall behind. Left half, spread
+    out, clear of ``avoid`` (goombas + neighbours so a skid can't shove you onto one, plus
+    the cage / exit / spawn). Mirrored."""
+    lo, hi = 3, max(4, before_idx - 1)
+    cands = [P for P in path[lo:hi] if 0 < P[1] < MID and P not in avoid]
+    rng.shuffle(cands)
+    wet, left = [], []
+    for P in cands:
+        if len(left) >= n_pairs:
+            break
+        if any(abs(P[0] - q[0]) + abs(P[1] - q[1]) < 3 for q in left):
+            continue                                 # keep the puddles spread along the route
+        left.append(P)
+        wet.append(P)
+        wet.append((P[0], W - 1 - P[1]))             # mirror
+    return wet
 
 
 def generate(seed=None, **_):
@@ -255,10 +280,21 @@ def generate(seed=None, **_):
     blue_path = _path(grid, BLUE_SPAWN_POS, EXIT)
     blue_cage, red_cage = _place_cage(grid, rng, blue_path, avoid | gcells)
 
+    # WET cells on the route BEFORE the cage (skid -> fall behind -> THEN reach the cage).
+    # Keep them off the goombas AND their neighbours (a skid must not shove you onto a
+    # Goomba) and off the cage / exit / spawn.
+    gzone = gcells | {(c[0] + dr, c[1] + dc) for c in gcells for dr, dc in ORTHO}
+    wet_avoid = avoid | gzone | {c for c in (blue_cage, red_cage) if c}
+    blue_path = _path(grid, BLUE_SPAWN_POS, EXIT)     # recompute (cage carved nooks)
+    pathset = set(blue_path)
+    cage_adj = next((n for n in _open_neighbors(grid, blue_cage) if n in pathset), None) if blue_cage else None
+    cage_idx = blue_path.index(cage_adj) if cage_adj in pathset else len(blue_path) // 2
+    wet = _place_wet(grid, rng, blue_path, wet_avoid, N_WET_PAIRS, cage_idx)
+
     world = World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS, escape=[EXIT],
-        goombas=goombas, bridge=bridge,
+        goombas=goombas, bridge=bridge, slip=wet,
         blue_cage=[blue_cage] if blue_cage else None,
         red_cage=[red_cage] if red_cage else None,
     )
