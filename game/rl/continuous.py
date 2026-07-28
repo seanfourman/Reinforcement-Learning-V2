@@ -36,9 +36,11 @@ VMAX = 7.0            # speed cap (units/sec)
 GOAL_R = 1.4          # capture radius
 AGENT_R = 0.55
 MAX_STEPS = 300       # Round-5 race: optimal run is ~86 steps, so this is ample
-# Round-4 survival has no real target length: let a good agent last as long as it
-# can. This is only a runaway safety ceiling, not a goal the agents ever approach.
-MISSILE_MAX_STEPS = 10_000
+# Round-4 EPISODE length cap (this is the agents' per-episode timeout, NOT anything
+# about the missiles). Also the default the panel's Max-steps slider shows for R4.
+# 3000 steps ~= 5 minutes: the agents lose their 3 hearts well before this, so it
+# rarely bites; raise it from the slider if you want even longer runs.
+SURVIVAL_MAX_STEPS = 3000
 
 # Round-4 Banzai Bill survival game.
 MISSILE_R = 0.30
@@ -149,7 +151,7 @@ class ContinuousArena:
         # per DQN action; the later shared arena keeps its original dynamics.
         self.dt = 0.10 if round_id == 4 else DT
         self.rng = random.Random(seed)
-        self.max_steps = MISSILE_MAX_STEPS if self.missile_game else MAX_STEPS
+        self.max_steps = SURVIVAL_MAX_STEPS if self.missile_game else MAX_STEPS
         # movement physics (module constants are the defaults)
         self.thrust = float(thrust)
         self.damp = float(damp)

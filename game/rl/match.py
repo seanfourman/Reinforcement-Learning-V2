@@ -152,19 +152,21 @@ class Match:
         self.r2_plants = 3                      # one piranha shortcut trap in each stage
         self.r2_slip = 3                        # slippery puddles per side (mirrored)
         self.r2_slip_prob = R2_SLIP_PROB        # independent of Round-1 ice
-        # DQN learners (continuous rounds 4-5)
+        # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
+        # Red each train fully independently (different brain AND different training
+        # regime). batch/warmup/target-sync apply live; buffer/width/depth rebuild.
         self.dqn_batch = 64
-        self.dqn_buffer = 50_000                # replay capacity  (rebuild on change)
-        self.dqn_warmup = 1_000                 # non-R4 DQN fallback
-        self.r4_dqn_warmup = 500                # missile arena learns after 500 samples
+        self.dqn_buffer = 50_000
+        self.dqn_warmup = 500                   # learn after this many samples
         self.dqn_target_sync = 500              # target-net copy interval
-        # The NETWORK (width + depth) is PER-SIDE: Blue and Red can each have a
-        # different brain, so you can pit a big/deep net against a small/shallow one.
-        # (The replay/batch/warmup/sync internals below stay shared.)
-        self.dqn_hidden = 128                   # Blue hidden width  (rebuild on change)
-        self.dqn_layers = 2                     # Blue hidden layers (rebuild on change)
-        self.red_dqn_hidden = 128               # Red hidden width   (rebuild on change)
-        self.red_dqn_layers = 2                 # Red hidden layers  (rebuild on change)
+        self.dqn_hidden = 128                   # Blue hidden width
+        self.dqn_layers = 2                     # Blue hidden layers
+        self.red_dqn_batch = 64
+        self.red_dqn_buffer = 50_000
+        self.red_dqn_warmup = 500
+        self.red_dqn_target_sync = 500
+        self.red_dqn_hidden = 128               # Red hidden width
+        self.red_dqn_layers = 2                 # Red hidden layers
         # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
         self._apply_env_config()
@@ -264,9 +266,6 @@ class Match:
     def _is_round4_missile(self):
         return self.round_id == 4 and bool(getattr(self.env, "missile_game", False))
 
-    def _effective_dqn_warmup(self):
-        return self.r4_dqn_warmup if self._is_round4_missile() else self.dqn_warmup
-
     def _effective_blue_eps_episodes(self):
         if not self._is_round4_missile():
             return self.eps_episodes
@@ -293,15 +292,16 @@ class Match:
                            plan_speed=speed)
         if is_dqn(algo):
             from dqn import make_dqn   # lazy: only the deep rounds need PyTorch
-            # PER-SIDE network: Red and Blue can each carry a different width/depth.
-            hidden = self.red_dqn_hidden if color == "red" else self.dqn_hidden
-            layers = self.red_dqn_layers if color == "red" else self.dqn_layers
+            red = color == "red"       # EVERY DQN internal is per-side
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
                             seed=seed, alpha=alpha, gamma=gamma,
-                            buffer=self.dqn_buffer, batch=self.dqn_batch,
-                            warmup=self._effective_dqn_warmup(),
-                            target_sync=self.dqn_target_sync,
-                            hidden=hidden, layers=layers)
+                            buffer=self.red_dqn_buffer if red else self.dqn_buffer,
+                            batch=self.red_dqn_batch if red else self.dqn_batch,
+                            warmup=self.red_dqn_warmup if red else self.dqn_warmup,
+                            target_sync=(self.red_dqn_target_sync if red
+                                         else self.dqn_target_sync),
+                            hidden=self.red_dqn_hidden if red else self.dqn_hidden,
+                            layers=self.red_dqn_layers if red else self.dqn_layers)
         if is_pg(algo):
             from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
             return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
@@ -838,15 +838,11 @@ class Match:
                 self.r2_slip = max(0, min(3, int(p["r2Slip"])))
                 need_env_rebuild = True
 
-            # ---- GLOBAL: DQN internals ----
+            # ---- BLUE's DQN internals (per-side; Red's are in set_red_params) ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
             if "dqnWarmup" in p:
-                warmup = max(0, int(p["dqnWarmup"]))
-                if self._is_round4_missile():
-                    self.r4_dqn_warmup = warmup
-                else:
-                    self.dqn_warmup = warmup
+                self.dqn_warmup = max(0, int(p["dqnWarmup"]))
             if "dqnTargetSync" in p:
                 self.dqn_target_sync = max(1, int(p["dqnTargetSync"]))
             if "dqnBuffer" in p:
@@ -871,14 +867,14 @@ class Match:
                 self.blue.gamma = self.gamma
             if hasattr(self.blue, "plan_speed"):          # DP sweeps/tick (Blue), live
                 self.blue.plan_speed = self.dp_plan_speed
-            # live-settable DQN attrs on BOTH agents (buffer/width handled by rebuild)
-            for ag in (self.red, self.blue):
-                if hasattr(ag, "batch"):
-                    ag.batch = self.dqn_batch
-                if hasattr(ag, "warmup"):
-                    ag.warmup = self._effective_dqn_warmup()
-                if hasattr(ag, "target_sync"):
-                    ag.target_sync = self.dqn_target_sync
+            # live-settable DQN attrs on BLUE only (buffer/width handled by rebuild;
+            # Red's internals are applied in set_red_params)
+            if hasattr(self.blue, "batch"):
+                self.blue.batch = self.dqn_batch
+            if hasattr(self.blue, "warmup"):
+                self.blue.warmup = self.dqn_warmup
+            if hasattr(self.blue, "target_sync"):
+                self.blue.target_sync = self.dqn_target_sync
 
             if need_env_rebuild:
                 self._rebuild_world()
@@ -941,7 +937,7 @@ class Match:
             "r2Slip": self.r2_slip,
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
-            "dqnWarmup": self._effective_dqn_warmup(),
+            "dqnWarmup": self.dqn_warmup,
             "dqnTargetSync": self.dqn_target_sync,
             "dqnHidden": self.dqn_hidden,
             "dqnLayers": self.dqn_layers,
@@ -970,7 +966,24 @@ class Match:
                     self.r4_red_eps_episodes = eps_episodes
                 else:
                     self.red_eps_episodes = eps_episodes
+            # Red's PER-SIDE DQN internals. batch/warmup/target-sync apply live;
+            # buffer/width/depth need fresh weights -> rebuild.
+            if "dqnBatch" in p:
+                self.red_dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
+            if "dqnWarmup" in p:
+                self.red_dqn_warmup = max(0, int(p["dqnWarmup"]))
+            if "dqnTargetSync" in p:
+                self.red_dqn_target_sync = max(1, int(p["dqnTargetSync"]))
+            if hasattr(self.red, "batch"):
+                self.red.batch = self.red_dqn_batch
+            if hasattr(self.red, "warmup"):
+                self.red.warmup = self.red_dqn_warmup
+            if hasattr(self.red, "target_sync"):
+                self.red.target_sync = self.red_dqn_target_sync
             red_net_change = False
+            if "dqnBuffer" in p:
+                self.red_dqn_buffer = max(1_000, min(2_000_000, int(p["dqnBuffer"])))
+                red_net_change = True
             if "dqnHidden" in p:
                 self.red_dqn_hidden = max(16, min(1024, int(p["dqnHidden"])))
                 red_net_change = True
@@ -978,8 +991,8 @@ class Match:
                 self.red_dqn_layers = max(1, min(6, int(p["dqnLayers"])))
                 red_net_change = True
             if red_net_change:
-                # a new architecture needs fresh weights: rebuild both sides and
-                # restart the contest (mirrors set_params' width/buffer rebuild).
+                # a new architecture / buffer needs fresh weights: rebuild both sides
+                # and restart the contest (mirrors set_params' width/buffer rebuild).
                 self._build_agents()
                 self._reset_stats()
                 self._new_episode()
@@ -1008,6 +1021,10 @@ class Match:
             "epsEnd": round(self.red_eps_end, 3),
             "epsEpisodes": self._effective_red_eps_episodes(),
             "dpPlanning": round(self.red_plan_speed, 3),
+            "dqnBatch": self.red_dqn_batch,
+            "dqnBuffer": self.red_dqn_buffer,
+            "dqnWarmup": self.red_dqn_warmup,
+            "dqnTargetSync": self.red_dqn_target_sync,
             "dqnHidden": self.red_dqn_hidden,
             "dqnLayers": self.red_dqn_layers,
             "maxSteps": self.env.max_steps,

@@ -1,6 +1,6 @@
 // Round 2 — New Donk City, built as a Manhattan park block.
 //
-// The 20x20 RL grid is a central GREEN PLAZA (lawn + hedges + trees) sitting on
+// The 19x19 RL grid is a central GREEN PLAZA (lawn + hedges + trees) sitting on
 // the y=0 board plane where the actors, keys, gold and value heatmap live (see
 // live.js / heatmap.js). Going outward from the board: a stone curb, a sidewalk
 // ring (street trees + lamps), a ring road (lane lines + crosswalks), an outer
@@ -15,17 +15,17 @@ import * as THREE from 'three';
 import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
-const GRID = 20;
+const GRID = 19;
 const CTR = GRID / 2;
 const ASSETS = './assets/models/city-newdonk/';
 const MK_TEXTURES = './assets/textures/mushroom-kingdom/';
 
 // Zone half-extents measured from the board centre (CTR,CTR). The board is
-// [0,20] => half 10; each ring stacks outward from there.
-const PARK_H = 10;     // board edge
-const ISW_H = 11.0;    // inner sidewalk (1.0 wide)
-const ROAD_H = 15.0;   // ring road outer edge (tight, 4-wide road)
-const OSW_H = 16.0;    // outer sidewalk (1.0 wide)
+// [0,19] => half 9.5; each ring stacks outward from there.
+const PARK_H = GRID / 2;      // board edge
+const ISW_H = PARK_H + 1.0;   // inner sidewalk (1.0 wide)
+const ROAD_H = PARK_H + 5.0;  // ring road outer edge (tight, 4-wide road)
+const OSW_H = PARK_H + 6.0;   // outer sidewalk (1.0 wide)
 const LAWN_TOP = 0.04; // raised park cell surface, kept below decals/heatmap
 const LAWN_THICK = 0.055;
 
@@ -78,6 +78,11 @@ export const city = {
   bgIntensity: 1.02,
   redName: 'Crimson',
   blueName: 'Cobalt',
+  boardCenter: [CTR, CTR],
+  camera: {
+    gridSize: GRID,
+    target: [CTR, 0, CTR + 1],
+  },
 
   buildScene(scene, world, { renderer } = {}) {
     const group = new THREE.Group();

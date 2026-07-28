@@ -218,10 +218,11 @@ export function createHeatmap(scene) {
   // sit the overlay plane exactly on the board: scale with the cell size AND apply
   // the per-round board slide (getOffset), which the fixed centre used to ignore -
   // that offset is why peach's numbers landed off the tiles.
-  function placePlane() {
-    const [ox, oz] = getOffset();
-    numPlane.scale.setScalar(getCell());
-    numPlane.position.set(GRID / 2 + ox, 0.2, GRID / 2 + oz);
+  function placePlane(H = GRID, W = GRID) {
+    const first = cellToWorld(0, 0);
+    const last = cellToWorld(Math.max(0, H - 1), Math.max(0, W - 1));
+    numPlane.scale.set((W / GRID) * getCell(), (H / GRID) * getCell(), 1);
+    numPlane.position.set((first.x + last.x) / 2, 0.2, (first.z + last.z) / 2);
   }
 
   // the TRUE greedy action over the 4 move directions (N,S,W,E)
@@ -250,10 +251,10 @@ export function createHeatmap(scene) {
 
   const TEAM_CSS = { red: '#e23a2c', blue: '#2f6bff' }; // greedy number colour, per agent
   function setNumbers(grid, bestGrid, agent) {
-    placePlane(); // scale + board slide so the numbers sit on the tiles
     const teamFill = TEAM_CSS[agent] || '#123fb0'; // the GREEDY action's number, agent-coloured
     cctx.clearRect(0, 0, CW, CH);
     const H = grid.length, W = grid[0] ? grid[0].length : 0;
+    placePlane(H, W); // size + board slide so the numbers sit on the actual tiles
     const tw = CW / W, th = CH / H;
     const f = Math.round(th * 0.2);
     cctx.textAlign = 'center';

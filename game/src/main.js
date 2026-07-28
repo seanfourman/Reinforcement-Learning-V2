@@ -132,6 +132,7 @@ scene.add(fill);
 
 // apply a theme's palette/sky/lighting (called on every world rebuild)
 function applyTheme(theme) {
+  const [centerX, centerZ] = theme.boardCenter || [GRID / 2, GRID / 2];
   setSky(theme.sky);
   scene.fog.color.set(theme.fog);
   scene.fog.near = theme.fogNear;
@@ -141,8 +142,11 @@ function applyTheme(theme) {
   hemi.intensity = theme.hemi[2];
   sun.color.set(theme.sun);
   sun.intensity = theme.sunIntensity;
+  sun.position.set(centerX - 9, 21, centerZ - 5);
+  sun.target.position.set(centerX, 0, centerZ);
   fill.color.set(theme.fill);
   fill.intensity = theme.fillIntensity;
+  fill.position.set(centerX + 10, 12, centerZ + 9);
   renderer.toneMappingExposure = theme.exposure;
   applyEnv(theme); // HDRI image-based lighting/skybox, or clears it
   fx.setBloom(theme.bloom); // per-theme glow (undefined -> default bloom)
@@ -696,7 +700,9 @@ renderer.domElement.addEventListener("click", async (e) => {
   ray.setFromCamera(ndc, camera);
   if (!ray.ray.intersectPlane(groundPlane, hit)) return;
   const { r, c } = worldToCell(hit.x, hit.z);
-  if (r < 0 || c < 0 || r >= GRID || c >= GRID) return;
+  const gridH = lastWorldJson?.rows?.length || GRID;
+  const gridW = lastWorldJson?.rows?.[0]?.length || GRID;
+  if (r < 0 || c < 0 || r >= gridH || c >= gridW) return;
   try {
     const q = await (
       await fetch(`${API}/api/values?agent=${heatAgent}&cell=${r},${c}`, {

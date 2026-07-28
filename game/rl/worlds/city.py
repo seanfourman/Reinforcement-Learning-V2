@@ -2,7 +2,7 @@
 
 The arena currently contains:
 
-* a 20x20 open board;
+* a 19x19 open board;
 * two seeded, non-straight bush dividers that form three horizontal sections;
 * mirrored spawns and the shared top-centre goal.
 * a mirrored decision maze in the bottom section.
@@ -17,14 +17,15 @@ safe route. Both routes merge at a Pipe locked by that tomato.
 
 import random
 
-from .grid import World, SIZE, WALL, FLOOR, ESCAPE
+from .grid import World, WALL, FLOOR, ESCAPE
 
 THEME = "city"
 ROUND_ID = 2
 TITLE = "New Donk City"
 
-GOALS = ((0, 9), (0, 10))
-DIVIDER_ROWS = ((6, 7), (13, 14))
+CITY_SIZE = 19
+GOALS = ((0, 9),)
+DIVIDER_ROWS = ((6, 7), (12, 13))
 
 # Kept for compatibility with Match's existing Round-2 generator arguments.
 DEF_PLANTS = 1
@@ -35,24 +36,20 @@ MAX_SLIP = 1
 
 def _mirror(cell):
     r, c = cell
-    return r, SIZE - 1 - c
+    return r, CITY_SIZE - 1 - c
 
 
 def _left_steps(rng, first=None):
-    """Ten binary steps with horizontal runs no longer than two cells."""
+    """Nine left-half steps with horizontal runs no longer than two cells."""
     steps = [rng.randint(0, 1) if first is None else first]
     run_length = 1
-    for _ in range(1, SIZE // 2 - 1):
+    for _ in range(1, CITY_SIZE // 2):
         if run_length == 2 or rng.random() < 0.58:
             steps.append(1 - steps[-1])
             run_length = 1
         else:
             steps.append(steps[-1])
             run_length += 1
-
-    # The mirrored centre duplicates the last left value. Make that left value
-    # a fresh turn so the centre run is exactly two, never three or four.
-    steps.append(1 - steps[-1])
     return steps
 
 
@@ -62,8 +59,9 @@ def _divider(rng, rows):
     # pocket cap, avoiding a trapped one-cell patch at either board edge.
     first = 1 if rows == DIVIDER_ROWS[-1] else None
     left = _left_steps(rng, first=first)
-    steps = left + list(reversed(left))
-    cells = {(rows[steps[c]], c) for c in range(SIZE)}
+    centre_step = 1 - left[-1]
+    steps = left + [centre_step] + list(reversed(left))
+    cells = {(rows[steps[c]], c) for c in range(CITY_SIZE)}
     return cells
 
 
@@ -89,7 +87,7 @@ def _join(*segments):
 
 
 def _build(rng):
-    grid = [[FLOOR] * SIZE for _ in range(SIZE)]
+    grid = [[FLOOR] * CITY_SIZE for _ in range(CITY_SIZE)]
     dividers = []
     for rows in DIVIDER_ROWS:
         cells = _divider(rng, rows)
@@ -100,30 +98,30 @@ def _build(rng):
     for r, c in GOALS:
         grid[r][c] = ESCAPE
 
-    blue_spawn = (19, 0)
+    blue_spawn = (18, 0)
     red_spawn = _mirror(blue_spawn)
 
     # Bottom-room route guides.  No horizontal bush run exceeds two cells:
     # the bottom pair forces the spawn onto the tomato approach, while the
     # upper/lower guide groups make the safe and risky lanes visually distinct.
     blue_maze = {
-        (19, 1), (19, 2),
-        (15, 0), (16, 1), (17, 2),
-        (16, 4), (16, 5), (16, 7),
-        (18, 4), (18, 7),
+        (18, 1), (18, 2),
+        (14, 0), (15, 1), (16, 2),
+        (15, 4), (15, 5), (15, 7),
+        (17, 4), (17, 7),
     }
     maze_walls = blue_maze | {_mirror(cell) for cell in blue_maze}
     for r, c in maze_walls:
         grid[r][c] = WALL
 
-    pipe_entry = (16, 8)
-    pipe_dest = (12, 8)
-    tomato = (16, 0)
-    spur_base = (18, 0)
-    junction = (18, 3)
+    pipe_entry = (15, 8)
+    pipe_dest = (11, 8)
+    tomato = (15, 0)
+    spur_base = (17, 0)
+    junction = (17, 3)
     water_col = rng.choice((5, 6))
-    puddle = (17, water_col)
-    plant = (19, water_col)
+    puddle = (16, water_col)
+    plant = (18, water_col)
     plants = [plant, _mirror(plant)]
     slip = [puddle, _mirror(puddle)]
     for r, c in plants:
@@ -140,22 +138,22 @@ def _build(rng):
         })
 
     initial_path = _join(
-        _line(blue_spawn, (18, 0)),
-        _line((18, 0), junction),
+        _line(blue_spawn, (17, 0)),
+        _line((17, 0), junction),
     )
     tomato_spur = _join(
         _line(spur_base, tomato),
         _line(tomato, spur_base),
     )
     safe_path = _join(
-        _line(junction, (15, 3)),
-        _line((15, 3), (15, 8)),
-        _line((15, 8), pipe_entry),
+        _line(junction, (14, 3)),
+        _line((14, 3), (14, 8)),
+        _line((14, 8), pipe_entry),
     )
     risky_path = _join(
-        _line(junction, (17, 3)),
-        _line((17, 3), (17, 8)),
-        _line((17, 8), pipe_entry),
+        _line(junction, (16, 3)),
+        _line((16, 3), (16, 8)),
+        _line((16, 8), pipe_entry),
     )
 
     hedges = set().union(*dividers) | maze_walls
@@ -201,13 +199,13 @@ def _validate_design(world, design):
 
     if world.red_spawn != _mirror(world.blue_spawn):
         raise ValueError("Arena-2 spawns are not mirrored")
-    for r in range(SIZE):
-        for c in range(SIZE):
-            if grid[r][c] != grid[r][SIZE - 1 - c]:
+    for r in range(CITY_SIZE):
+        for c in range(CITY_SIZE):
+            if grid[r][c] != grid[r][CITY_SIZE - 1 - c]:
                 raise ValueError("Arena-2 board is not mirror-symmetric")
 
     divider_cells = set().union(*design["dividers"])
-    if any(r in (0, SIZE - 1) for r, _ in divider_cells):
+    if any(r in (0, CITY_SIZE - 1) for r, _ in divider_cells):
         raise ValueError("a divider touched the north or south board edge")
     if world.red_stars != [_mirror(cell) for cell in world.blue_stars]:
         raise ValueError("bottom-room tomatoes are not mirrored")
@@ -223,21 +221,22 @@ def _validate_design(world, design):
         rows = {r for r, _ in cells}
         if rows != set(allowed_rows):
             raise ValueError("a bush divider generated as a straight line")
-        if len(cells) != SIZE:
+        if len(cells) != CITY_SIZE:
             raise ValueError("a sealed divider must contain one bush in every column")
-        if any(sum((r, c) in cells for r in allowed_rows) != 1 for c in range(SIZE)):
+        if any(sum((r, c) in cells for r in allowed_rows) != 1
+               for c in range(CITY_SIZE)):
             raise ValueError("a divider has a gap or exceeds one-cell thickness")
 
         for row in allowed_rows:
             run = 0
-            for c in range(SIZE):
+            for c in range(CITY_SIZE):
                 run = run + 1 if (row, c) in cells else 0
                 if run > 2:
                     raise ValueError("a divider has three bushes in the same row")
 
     if len(world.plants) != 2 or len(world.slip) != 2 or len(world.pipes) != 2:
         raise ValueError("bottom room needs one mirrored plant, puddle, and Pipe")
-    if any(r < 15 for r, _ in world.plants + world.slip):
+    if any(r < 14 for r, _ in world.plants + world.slip):
         raise ValueError("a bottom-room hazard escaped into another section")
     if any(grid[r][c] != WALL for r, c in world.plants):
         raise ValueError("Piranha Plant cells must be impassable")
