@@ -624,53 +624,72 @@ export const city = {
       group.add(water);
     }
 
-    // ---- a spinning Power Star floating between the two goal cells --------
+    // ---- the floating Power Moon over the goal cells ---------------------
+    // R1's Shine (Power Moon) model, tinted CYAN = R2's own goal colour (each
+    // round tints the same moon differently). Loaded straight from the shared
+    // objects dir (not the city model pack) + deskinned like R1/R3.
     let star = null;
     const starEsc = world.escape || [];
     if (starEsc.length) {
       let mx = 0, mz = 0;
       for (const [r, c] of starEsc) { mx += c + 0.5; mz += r + 0.5; }
       mx /= starEsc.length; mz /= starEsc.length;
-      // PowerStar is genuinely Z_UP -> keep the loader's upright rotation
-      loadModel('PowerStar.dae', true).then((proto) => {
-        if (disposed || !proto) return;
-        const b = proto.userData.bounds;
-        const inner = cloneSkinned(proto);
-        inner.position.set(-b.cx, -(b.minY + b.h / 2), -b.cz);   // centre at origin so it floats
-        // model reads white -> golden-yellow BODY, but keep the EYES solid black
-        // (the star has separate Shine__BodyMT and Shine__EyeMT meshes/materials)
-        const bodyMats = [];
-        inner.traverse((o) => {
+      // this pack flags static meshes as SkinnedMesh with a broken skeleton;
+      // convert each to a plain rest-pose Mesh (same fix R1/R3 use).
+      const deskinShine = (root) => {
+        const skinned = [];
+        root.traverse((o) => o.isSkinnedMesh && skinned.push(o));
+        for (const sm of skinned) {
+          const m = new THREE.Mesh(sm.geometry, sm.material);
+          m.name = sm.name;
+          m.position.copy(sm.position);
+          m.quaternion.copy(sm.quaternion);
+          m.scale.copy(sm.scale);
+          if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+        }
+        return root;
+      };
+      collada.loadAsync('./assets/objects/Shine/Shine.dae').then((asset) => {
+        if (disposed) return;
+        const root = deskinShine(asset.scene);   // ColladaLoader already sets it Y-up
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const b = box.getSize(new THREE.Vector3());
+        const c = box.getCenter(new THREE.Vector3());
+        root.position.set(-c.x, -c.y, -c.z);      // centre at origin so it floats
+        // one shared cyan body material on every mesh (keeps the moon's emissive
+        // face pattern + normal relief, same as R1/R3); the lock/unlock update
+        // recolours it (bright cyan when open, dull grey while locked).
+        const shineTex = (name, srgb) => {
+          const t = new THREE.TextureLoader().load('./assets/objects/Shine/Textures/' + name);
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+          if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+          return t;
+        };
+        const moonMat = track(new THREE.MeshStandardMaterial({
+          color: 0x3ac8ff, emissive: 0x1f8fd0,
+          emissiveMap: shineTex('shinebody_emm.png', false),
+          normalMap: shineTex('shinebody_nrm.png', false),
+          emissiveIntensity: 0.25, metalness: 0.4, roughness: 0.4,
+        }));
+        const bodyMats = [moonMat];
+        root.traverse((o) => {
           if (!o.isMesh) return;
-          const isEye = /eye/i.test(o.name || '');
-          for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
-            if (!m) continue;
-            if (isEye) {
-              m.map = null;
-              m.color?.set?.(0x000000);
-              m.emissive?.set?.(0x000000);
-              if ('emissiveIntensity' in m) m.emissiveIntensity = 0;
-            } else {
-              m.color?.set?.(0xffd12a);
-              m.emissive?.set?.(0xffb000);
-              if ('emissiveIntensity' in m) m.emissiveIntensity = 0.25;
-              bodyMats.push(m);
-            }
-            m.needsUpdate = true;
-          }
+          o.castShadow = true;
+          track(o.geometry);
+          o.material = moonMat;
         });
         const wrap = new THREE.Group();
-        wrap.add(inner);
-        wrap.scale.setScalar(0.95 / Math.max(b.w, b.h, b.d));
+        wrap.add(root);
+        wrap.scale.setScalar(0.95 / Math.max(b.x, b.y, b.z));
         wrap.position.set(mx, 1.0, mz);
         group.add(wrap);
-        // "glow" = the star's own emissive gently pulsing + a faint warm light.
-        // NO halo sprite (that read as a flat pasted-on disc).
-        const glow = new THREE.PointLight(0xffd24a, 0.2, 4, 2);
+        // "glow" = the moon's own emissive gently pulsing + a faint cool light.
+        const glow = new THREE.PointLight(0x6ad6ff, 0.2, 4, 2);
         glow.position.set(mx, 1.0, mz);
         group.add(glow);
         star = { mesh: wrap, mats: bodyMats, light: glow, baseY: 1.0 };
-      });
+      }).catch((e) => console.warn('Shine moon failed to load', e));
     }
 
     // ---- a few street lamps hugging the grid edge, axis-aligned (0/90),
@@ -1032,7 +1051,7 @@ export const city = {
         const lock = unlocked ? 1 : 0.28;                // dim while still locked
         for (const m of star.mats) {
           m.emissiveIntensity = (0.15 + breath * 0.3) * lock;
-          m.color.setHex(unlocked ? 0xffd12a : 0x9a8f6a);   // gold when open, dull while locked
+          m.color.setHex(unlocked ? 0x3ac8ff : 0x8f96a0);   // cyan when open, dull while locked
         }
         star.light.intensity = (0.06 + breath * 0.16) * lock;
       }

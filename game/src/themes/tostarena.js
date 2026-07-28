@@ -752,106 +752,121 @@ export const tostarena = {
       return sp;
     }
 
-    // ---- the centre flag-pole + the neutral flag ---------------------------
-    // The mast + knob stay planted at the pole; the flag CLOTH (group `fg`) rides
-    // up to float above whoever is carrying it, and returns to the mast when free.
-    const flag = (() => {
-      const mastMat = track(new THREE.MeshStandardMaterial({
-        color: 0x6b4a2a, roughness: 0.8, metalness: 0.1,
-      }));
-      const mast = new THREE.Mesh(
-        track(new THREE.CylinderGeometry(0.08, 0.11, 3.2, 10)), mastMat);
-      mast.position.set(C, 1.6, C);
-      mast.castShadow = true;
-      group.add(mast);
-      const knob = new THREE.Mesh(
-        track(new THREE.SphereGeometry(0.16, 12, 12)),
-        track(new THREE.MeshStandardMaterial({
-          color: 0xffd24d, emissive: 0xffcf4d, emissiveIntensity: 0.6,
-          roughness: 0.4,
-        })));
-      knob.position.set(C, 3.28, C);
-      group.add(knob);
-      const fg = new THREE.Group();
-      fg.position.set(C, 2.9, C);
-      const clothMat = track(new THREE.MeshStandardMaterial({
-        color: 0xfff2d0, emissive: 0xffe08a, emissiveIntensity: 0.5,
-        roughness: 0.6, metalness: 0, side: THREE.DoubleSide,
-      }));
-      const cloth = new THREE.Mesh(
-        track(new THREE.PlaneGeometry(0.95, 0.62, 8, 4)), clothMat);
-      cloth.position.set(0.5, 0, 0);          // hangs off one side of the mast line
-      fg.add(cloth);
-      fg.add(makeGlowSprite(0xffe08a, 2.2));
-      const light = new THREE.PointLight(0xffd24d, 1.1, 8, 2);
-      fg.add(light);
-      group.add(fg);
-      const clothBase = Float32Array.from(cloth.geometry.attributes.position.array);
-      return { fg, cloth, clothBase, light };
-    })();
+    // ---- the flag: the real Odyssey Checkpoint Flag model ------------------
+    // Stands PLANTED at the centre when free; RISES and rides above whoever is
+    // carrying it (a captured banner held aloft). Loaded async like the crates.
+    const FLAG_PATH = "./assets/objects/Checkpoint%20Flag/";
+    const flag = {
+      wrap: new THREE.Group(),
+      model: null,
+      light: new THREE.PointLight(0xffd24d, 1.1, 9, 2),
+    };
+    flag.wrap.position.set(C, 0, C);
+    flag.light.position.set(0, 2.2, 0);
+    flag.wrap.add(flag.light);
+    flag.wrap.add(makeGlowSprite(0xffe08a, 2.0));
+    group.add(flag.wrap);
+    new ColladaLoader().load(
+      FLAG_PATH + "CheckpointFlag.dae",
+      (dae) => {
+        if (disposed) return;
+        const root = dae.scene;
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          const ms = Array.isArray(o.material) ? o.material : [o.material];
+          for (const mm of ms) {
+            if (!mm) continue;
+            if (mm.map) mm.map.colorSpace = THREE.SRGBColorSpace;
+            mm.side = THREE.DoubleSide;         // thin banner reads from both sides
+            if ("metalness" in mm) mm.metalness = 0.0;
+          }
+        });
+        // fit upright, base on the ground, ~2.8 units tall
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        root.position.set(-ctr.x, -box.min.y, -ctr.z);
+        const holder = new THREE.Group();
+        holder.add(root);
+        holder.scale.setScalar(2.8 / Math.max(size.y, 0.001));
+        flag.wrap.add(holder);
+        flag.model = holder;
+      },
+      undefined,
+      () => {},                                 // missing model -> flag just doesn't draw
+    );
 
-    // ---- the two corner bases (glow ring + beacon + score pips) ------------
+    // ---- the two corner HOME bases -----------------------------------------
+    // A crisp team rim on the sand, a soft light-beam column rising to the sky
+    // (spot your home from across the plaza), and a row of score orbs on little
+    // posts that light up gold as each capture lands.
     function makeBase(pos, color) {
       const bg = new THREE.Group();
       bg.position.set(pos[0], 0, pos[1]);
-      const ringMat = track(
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: 0.5,
-          side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      const ring = new THREE.Mesh(
-        track(new THREE.RingGeometry(homeR * 0.82, homeR, 48)),
-        ringMat,
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.06;
-      bg.add(ring);
-      const discMat = track(
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: 0.12,
-          side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      const disc = new THREE.Mesh(
-        track(new THREE.CircleGeometry(homeR, 48)),
-        discMat,
-      );
-      disc.rotation.x = -Math.PI / 2;
-      disc.position.y = 0.04;
-      bg.add(disc);
-      const beacon = new THREE.PointLight(color, 1.3, 8, 2);
-      beacon.position.set(0, 1.6, 0);
-      bg.add(beacon);
-      // score pips: one small flag-token per required capture, revealed as they land
+      // (1) crisp ground rim + a faint inner fill (flat on the sand)
+      const rimMat = track(new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.85,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      const rim = new THREE.Mesh(
+        track(new THREE.TorusGeometry(homeR, 0.07, 10, 64)), rimMat);
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = 0.05;
+      bg.add(rim);
+      const fillMat = track(new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.13,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        side: THREE.DoubleSide,
+      }));
+      const fill = new THREE.Mesh(
+        track(new THREE.CircleGeometry(homeR - 0.06, 48)), fillMat);
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.y = 0.035;
+      bg.add(fill);
+      // (2) the light BEAM: a team-coloured column tapering up to the sky
+      const beamMat = track(new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.2,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        side: THREE.DoubleSide, fog: false,
+      }));
+      const beam = new THREE.Mesh(
+        track(new THREE.CylinderGeometry(0.05, homeR * 0.92, 5.2, 40, 1, true)),
+        beamMat);
+      beam.position.y = 2.6;
+      bg.add(beam);
+      // (3) score tally: capturesToWin orbs on short posts along the INNER edge
+      //     (facing the plaza), dark until that capture lands then lit gold.
+      const inx = C - pos[0], inz = C - pos[1];
+      const il = Math.hypot(inx, inz) || 1;
+      const ux = inx / il, uz = inz / il;       // toward the plaza centre
+      const px = -uz, pz = ux;                  // perpendicular, to space the row
       const pips = [];
       for (let i = 0; i < capturesToWin; i++) {
-        const pm = new THREE.Mesh(
-          track(new THREE.IcosahedronGeometry(0.22, 0)),
-          track(
-            new THREE.MeshStandardMaterial({
-              color: 0xfff2a8,
-              emissive: 0xffcf4d,
-              emissiveIntensity: 1.2,
-              roughness: 0.4,
-            }),
-          ),
-        );
-        pm.position.set((i - (capturesToWin - 1) / 2) * 0.55, 1.9, 0);
-        pm.visible = false;
-        bg.add(pm);
-        pips.push(pm);
+        const s = (i - (capturesToWin - 1) / 2) * 0.55;
+        const bx = ux * (homeR + 0.5) + px * s;
+        const bz = uz * (homeR + 0.5) + pz * s;
+        const post = new THREE.Mesh(
+          track(new THREE.CylinderGeometry(0.04, 0.05, 0.55, 8)),
+          track(new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.85 })));
+        post.position.set(bx, 0.28, bz);
+        post.castShadow = true;
+        bg.add(post);
+        const orbMat = track(new THREE.MeshStandardMaterial({
+          color: 0x2b2b2b, emissive: 0x000000, emissiveIntensity: 0, roughness: 0.5,
+        }));
+        const orb = new THREE.Mesh(track(new THREE.IcosahedronGeometry(0.17, 0)), orbMat);
+        orb.position.set(bx, 0.66, bz);
+        bg.add(orb);
+        pips.push({ orb, orbMat });
       }
+      // a low team glow so the pad reads warm at dusk
+      const glow = new THREE.PointLight(color, 0.8, 6, 2);
+      glow.position.set(0, 0.9, 0);
+      bg.add(glow);
       group.add(bg);
-      return { ringMat, beacon, pips };
+      return { rimMat, fillMat, beamMat, beam, pips, glow };
     }
     const baseVis = {
       red: makeBase(bases.red, RED),
@@ -1080,27 +1095,20 @@ export const tostarena = {
     }
 
     function updateCTF(t, dt, frame) {
-      // the neutral flag: floats above the carrier, else rests on the mast
+      // the flag: planted at the centre when free, lifted above the carrier when held
       const f = frame?.flag;
       const holder = f?.holder ?? frame?.flagHolder ?? null;
       const held = holder === "red" || holder === "blue";
       const carrier = held ? frame?.[holder] : null;
       const tx = held && carrier ? carrier[0] : C;
       const tz = held && carrier ? carrier[1] : C;
-      const ty = held ? 2.6 + Math.sin(t * 5) * 0.1 : 2.9;
-      const k = 1 - Math.exp(-dt * 14);
-      const rate = held ? k : 0.12;
-      flag.fg.position.x += (tx - flag.fg.position.x) * rate;
-      flag.fg.position.z += (tz - flag.fg.position.z) * rate;
-      flag.fg.position.y += (ty - flag.fg.position.y) * rate;
-      // wave the cloth (displace Z off the stored base X)
-      const cpos = flag.cloth.geometry.attributes.position;
-      const cb = flag.clothBase;
-      for (let i = 0; i < cpos.count; i++) {
-        const bx = cb[i * 3];
-        cpos.setZ(i, Math.sin(bx * 3.0 + t * 6) * 0.09 * (bx + 0.5));
-      }
-      cpos.needsUpdate = true;
+      const ty = held ? 1.3 + Math.sin(t * 5) * 0.12 : 0;   // planted vs carried aloft
+      const rate = held ? 1 - Math.exp(-dt * 14) : 0.1;
+      flag.wrap.position.x += (tx - flag.wrap.position.x) * rate;
+      flag.wrap.position.z += (tz - flag.wrap.position.z) * rate;
+      flag.wrap.position.y += (ty - flag.wrap.position.y) * rate;
+      flag.wrap.rotation.y += dt * (held ? 2.2 : 0.5);       // spins faster when carried
+      flag.wrap.rotation.z = held ? Math.sin(t * 3) * 0.14 : 0;  // tilt while running
       flag.light.intensity = 1.0 + Math.sin(t * 6) * 0.25;
 
       // carrier foot-ring
@@ -1116,21 +1124,23 @@ export const tostarena = {
         }
       }
 
-      // bases: pulse + reveal a pip per capture
+      // home bases: pulse the rim/beam + light an orb per capture
       const caps = frame?.captures || { red: 0, blue: 0 };
       for (const side of ["red", "blue"]) {
         const bv = baseVis[side];
-        bv.ringMat.opacity =
-          0.45 + Math.sin(t * 3 + (side === "red" ? 0 : 1.5)) * 0.12;
-        bv.beacon.intensity = 1.1 + Math.sin(t * 3) * 0.4;
+        const ph = side === "red" ? 0 : 1.5;
+        bv.rimMat.opacity = 0.72 + Math.sin(t * 2.5 + ph) * 0.15;
+        bv.beamMat.opacity = 0.16 + Math.sin(t * 2 + ph) * 0.06;
+        bv.beam.scale.x = bv.beam.scale.z = 1 + Math.sin(t * 2 + ph) * 0.03;
+        bv.glow.intensity = 0.7 + Math.sin(t * 3 + ph) * 0.25;
         const n = caps[side] || 0;
         for (let i = 0; i < bv.pips.length; i++) {
-          const pm = bv.pips[i];
-          pm.visible = i < n;
-          if (pm.visible) {
-            pm.rotation.y += dt * 1.5;
-            pm.position.y = 1.9 + Math.sin(t * 3 + i) * 0.06;
-          }
+          const lit = i < n;
+          const om = bv.pips[i].orbMat;
+          om.color.setHex(lit ? 0xfff2a8 : 0x2b2b2b);
+          om.emissive.setHex(lit ? 0xffcf4d : 0x000000);
+          om.emissiveIntensity = lit ? 1.3 : 0;
+          bv.pips[i].orb.rotation.y += dt * (lit ? 1.6 : 0.2);
         }
       }
 
@@ -1236,16 +1246,14 @@ export const tostarena = {
       chainFx.length = 0;
       for (const [, m] of crateMeshes) group.remove(m);
       crateMeshes.clear();
-      if (crateProtoObj) {
-        crateProtoObj.traverse((o) => {
-          if (o.isMesh) {
-            o.geometry?.dispose?.();
-            const ms = Array.isArray(o.material) ? o.material : [o.material];
-            for (const mm of ms) mm?.dispose?.();
-          }
-        });
-        crateProtoObj = null;
-      }
+      const disposeTree = (obj) => obj?.traverse?.((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const ms = Array.isArray(o.material) ? o.material : [o.material];
+        for (const mm of ms) mm?.dispose?.();
+      });
+      if (crateProtoObj) { disposeTree(crateProtoObj); crateProtoObj = null; }
+      if (flag.model) { disposeTree(flag.model); flag.model = null; }
       scene.remove(group);
       for (const o of trash) o.dispose?.();
     }

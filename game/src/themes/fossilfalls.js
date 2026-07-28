@@ -56,8 +56,11 @@ export const fossilfalls = {
   env: "./assets/hdri/qwantani_noon_2k.hdr",
   envIntensity: 0.45,
   envBackground: false, // HDRI lights the scene; the sky stays the soft gradient
-  // wider shot than the default 30 so the assembled level around the arena shows
-  camera: { startDist: 38, maxDist: 38 },
+  // wider shot than the default 30 so the assembled level around the arena shows.
+  // 19x19 board (cells 0..18, cell=1) -> true centre is world (9.5, 9.5); the
+  // default target assumes GRID=20 and lands at (10, 11), off to the up-left, so
+  // pin the look-at to the real board centre and clamp pans to the 19 footprint.
+  camera: { startDist: 38, maxDist: 38, target: [9.5, 0, 9.5], gridSize: 19 },
   redName: "Magma",
   blueName: "Glacier",
 
@@ -303,9 +306,8 @@ export const fossilfalls = {
       slabMat(c),
     );
     const stoneDeepMats = [0xb4c1c9, 0xacb9c1, 0xbcc8d0].map((c) => slabMat(c));
-    // special slab tops: pale gold at the goal, a darker wet sheen on the
-    // slippery cells; spawn cells are plain field slabs like everything else
-    const goalSlabMat = slabMat(0xffe9ad, { roughness: 0.75 });
+    // the goal + slip cells now keep a NORMAL stone slab (the hovering Moon /
+    // the puddle blob mark them); no special gold/wet slab tops any more.
     // slippery cells get the SAME 3D cartoon-water PUDDLE as the city arena: a procedural
     // turquoise ripple texture on a wobbly extruded blob standing out of the floor; the
     // ripples scroll in update(). (Ported from themes/city.js.)
@@ -601,10 +603,9 @@ export const fossilfalls = {
     const slipSet = new Set(
       (world.slipCells || []).map(([r, c]) => `${r},${c}`),
     );
-    const goalSet = new Set((world.escape || []).map(([r, c]) => `${r},${c}`));
     function slabTopMat(r, c) {
-      if (goalSet.has(`${r},${c}`)) return goalSlabMat;   // slip cells keep a normal stone slab;
-      const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;  // the water PUDDLE sits on top
+      // the goal + slip cells keep a NORMAL stone slab (the Moon / puddle sits on top)
+      const fam = (r + c) % 2 ? stoneDeepMats : stoneLightMats;
       return fam[hash(r * 19 + 11, c * 23 + 5) % fam.length];
     }
     for (let r = 0; r < GRID; r++) {
@@ -753,39 +754,9 @@ export const fossilfalls = {
     }
 
     // ---- the floating Power Moon over the goal cells ---------------------
+    // The real R1 Shine model, tinted VIOLET (R3's own moon colour) - loaded
+    // below near the other object models where the loader helpers exist.
     let moon = null;
-    const goals = world.escape || [];
-    if (goals.length) {
-      let mx = 0,
-        mz = 0;
-      for (const [r, c] of goals) {
-        mx += c + 0.5;
-        mz += r + 0.5;
-      }
-      mx /= goals.length;
-      mz /= goals.length;
-      const moonGeo = track(new THREE.IcosahedronGeometry(0.42, 1));
-      const moonMat = track(
-        new THREE.MeshStandardMaterial({
-          color: 0xffe9a0,
-          emissive: 0xffc23a,
-          emissiveIntensity: 0.6,
-          roughness: 0.5,
-          metalness: 0.0,
-          flatShading: true,
-        }),
-      );
-      const mesh = new THREE.Mesh(moonGeo, moonMat);
-      mesh.castShadow = true;
-      const wrap = new THREE.Group();
-      wrap.add(mesh);
-      wrap.position.set(mx, 1.25, mz);
-      group.add(wrap);
-      const glow = new THREE.PointLight(0xffd866, 0.5, 6, 2);
-      glow.position.set(mx, 1.25, mz);
-      group.add(glow);
-      moon = { mesh: wrap, mat: moonMat, light: glow, baseY: 1.25 };
-    }
 
     // ---- the 4 Cascade floater islands on the left and right sides -------
     // floaters at VERY different heights left + right, for vertical depth
@@ -1402,6 +1373,39 @@ export const fossilfalls = {
       wrap.scale.setScalar(size / ((byHeight ? d.y : Math.max(d.x, d.z)) || 1));
       return wrap;
     };
+
+    // -- the floating Power Moon over the goal (R1's Shine model, tinted VIOLET) --
+    // Same moon model as R1/R2; each round tints it a different colour. Here the
+    // gold albedo is dropped for a solid violet tint, keeping the Shine's own
+    // emissive pattern + normal relief so it still reads as a glowing Power Moon.
+    {
+      const goals = world.escape || [];
+      if (goals.length) {
+        let mx = 0, mz = 0;
+        for (const [r, c] of goals) { mx += c + 0.5; mz += r + 0.5; }
+        mx /= goals.length; mz /= goals.length;
+        const SH = OBJ + "Shine/";
+        const moonMat = track(new THREE.MeshStandardMaterial({
+          color: 0xb98cff,                                     // violet body tint
+          emissive: 0x8a3aff,
+          emissiveMap: objTex(SH + "Textures/shinebody_emm.png", false),
+          normalMap: objTex(SH + "Textures/shinebody_nrm.png", false),
+          emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.4,
+        }));
+        collada.loadAsync(encodeURI(SH + "Shine.dae")).then((asset) => {
+          if (disposed) return;
+          const root = deskinObj(asset.scene);
+          root.traverse((o) => { if (o.isMesh) o.material = moonMat; });
+          const wrap = fitObj(root, 0.92, true);               // ~0.92 units tall
+          wrap.position.set(mx, 1.25, mz);
+          group.add(wrap);
+          const glow = new THREE.PointLight(0xc08cff, 0.5, 6, 2);
+          glow.position.set(mx, 1.25, mz);
+          group.add(glow);
+          moon = { mesh: wrap, mat: moonMat, light: glow, baseY: 1.25 };
+        }).catch((e) => console.warn("Shine moon failed to load", e));
+      }
+    }
 
     // -- freeze-coin pickups at each side's cage cell -------------------------
     const cagePickups = [];

@@ -232,10 +232,9 @@ export const peach = {
         bd.position.set(p.x, 0.035, p.z); // top ~0.045
         bd.updateMatrix();
         tiles.setMatrixAt(i, bd.matrix);
-        const goalCell = rows[r][c] === "E";
         tiles.setColorAt(
           i,
-          bcol.set(goalCell ? GOALC : (r + c) % 2 === 0 ? LIGHT : DARK),
+          bcol.set((r + c) % 2 === 0 ? LIGHT : DARK),
         );
       });
       if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
@@ -366,66 +365,9 @@ export const peach = {
     }
 
     // ---- goal: a hair-thin gold inlay + a soft light pool -------------------
-    // The goal is marked only by a flush gold inlay hugging the exact goal
-    // cells and a warm pool of light at the throne approach.
+    // The goal tile itself is a regular board tile (no gold inlay / special
+    // slab); the hovering Power Moon over it is the only goal marker.
     const animated = { inlay: null };
-    if (goals.length) {
-      let gx = 0;
-      let gz = 0;
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minZ = Infinity;
-      let maxZ = -Infinity;
-      for (const [r, c] of goals) {
-        const p = cw(r, c);
-        gx += p.x;
-        gz += p.z;
-        minX = Math.min(minX, p.x - cell / 2);
-        maxX = Math.max(maxX, p.x + cell / 2);
-        minZ = Math.min(minZ, p.z - cell / 2);
-        maxZ = Math.max(maxZ, p.z + cell / 2);
-      }
-      gx /= goals.length;
-      gz /= goals.length;
-
-      // hair-thin flush gold inlay around the goal pair, faint breathing glow
-      const oW = (maxX - minX) / 2 + 0.02;
-      const oH = (maxZ - minZ) / 2 + 0.02;
-      const band = 0.06;
-      const outline = new THREE.Shape();
-      outline.moveTo(-oW, -oH);
-      outline.lineTo(oW, -oH);
-      outline.lineTo(oW, oH);
-      outline.lineTo(-oW, oH);
-      outline.closePath();
-      const holePath = new THREE.Path();
-      holePath.moveTo(-oW + band, -oH + band);
-      holePath.lineTo(oW - band, -oH + band);
-      holePath.lineTo(oW - band, oH - band);
-      holePath.lineTo(-oW + band, oH - band);
-      holePath.closePath();
-      outline.holes.push(holePath);
-      const inlayMat = new THREE.MeshStandardMaterial({
-        color: 0xd9a94a,
-        metalness: 0.75,
-        roughness: 0.35,
-        emissive: 0xffb23a,
-        emissiveIntensity: 0.25,
-      });
-      const inlay = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(outline, {
-          depth: 0.012,
-          bevelEnabled: false,
-        }),
-        inlayMat,
-      );
-      inlay.geometry.rotateX(-Math.PI / 2);
-      inlay.position.set(gx, 0.05, gz); // above the raised board tiles
-      group.add(inlay);
-      animated.inlay = inlayMat;
-
-      // (goal light pool removed - the thin gold inlay marks the goal, no glow)
-    }
 
     // ---- Round-1 game objects: coins, Shine, "?" power-up blocks -------------
     // Each agent owns a MIRROR set of coins + one "?" block (Red tinted warm, Blue

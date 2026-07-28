@@ -1279,7 +1279,7 @@ class Match:
 
             # ---- GLOBAL: structural world (rebuild the scene) ----
             if "trainSeed" in p:
-                self.train_seed = _int_or_none(p["trainSeed"], lo=0, hi=10_000_000)
+                self.train_seed = _int_or_none(p["trainSeed"], lo=0, hi=1000)
                 need_env_rebuild = True
 
             # push live learning-rate / discount onto OUR live agent (Blue) only

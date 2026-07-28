@@ -110,7 +110,7 @@ export const GLOBAL_PARAMS = [
   { key: 'r4HitPenalty', label: 'Hit penalty', min: -5, max: -0.1, step: 0.1, sect: 'world', scope: 'r4', def: -2, desc: 'Reward lost when a Bill takes one of your hearts. More negative = the model fears getting hit more.', fmt: (v) => (+v).toFixed(1) },
   { key: 'r4ActionRepeat', label: 'Action repeat', min: 1, max: 8, step: 1, sect: 'world', scope: 'r4', def: 4, desc: 'How many 0.02 s steps each chosen direction is held before the model may change it. 1 = decide every step (the greedy policy jitters); higher = the model commits to a direction, which stabilises both learning and dodging. 4 is the tuned default.', fmt: (v) => `${Math.round(v)}` },
   // --- reproducibility ---
-  { key: 'trainSeed', label: 'Random seed', min: -1, max: 10000000, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
+  { key: 'trainSeed', label: 'Random seed', min: -1, max: 1000, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
 
 
