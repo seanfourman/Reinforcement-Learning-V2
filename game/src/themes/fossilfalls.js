@@ -1374,10 +1374,9 @@ export const fossilfalls = {
       return wrap;
     };
 
-    // -- the floating Power Moon over the goal (R1's Shine model, tinted VIOLET) --
-    // Same moon model as R1/R2; each round tints it a different colour. Here the
-    // gold albedo is dropped for a solid violet tint, keeping the Shine's own
-    // emissive pattern + normal relief so it still reads as a glowing Power Moon.
+    // -- the floating Power Moon over the goal (R1's Shine model, GOLD) --------
+    // Same moon model + colour as R1/R2: the real gold albedo + emissive face +
+    // normal relief, so it reads as the Odyssey Power Moon.
     {
       const goals = world.escape || [];
       if (goals.length) {
@@ -1386,11 +1385,11 @@ export const fossilfalls = {
         mx /= goals.length; mz /= goals.length;
         const SH = OBJ + "Shine/";
         const moonMat = track(new THREE.MeshStandardMaterial({
-          color: 0xb98cff,                                     // violet body tint
-          emissive: 0x8a3aff,
+          map: objTex(SH + "Textures/shinebody_alb.png", true),
+          emissive: 0xffd24a,
           emissiveMap: objTex(SH + "Textures/shinebody_emm.png", false),
           normalMap: objTex(SH + "Textures/shinebody_nrm.png", false),
-          emissiveIntensity: 0.6, metalness: 0.4, roughness: 0.4,
+          emissiveIntensity: 0.6, metalness: 0.5, roughness: 0.35,
         }));
         collada.loadAsync(encodeURI(SH + "Shine.dae")).then((asset) => {
           if (disposed) return;
@@ -1399,7 +1398,7 @@ export const fossilfalls = {
           const wrap = fitObj(root, 0.92, true);               // ~0.92 units tall
           wrap.position.set(mx, 1.25, mz);
           group.add(wrap);
-          const glow = new THREE.PointLight(0xc08cff, 0.5, 6, 2);
+          const glow = new THREE.PointLight(0xffd866, 0.5, 6, 2);
           glow.position.set(mx, 1.25, mz);
           group.add(glow);
           moon = { mesh: wrap, mat: moonMat, light: glow, baseY: 1.25 };
@@ -1485,7 +1484,7 @@ export const fossilfalls = {
       puddleTex.offset.x = Math.sin(t * 0.2) * 0.05 + t * 0.012;
       puddleTex.offset.y = Math.cos(t * 0.15) * 0.05 + t * 0.009;
       if (moon) {
-        moon.mesh.rotation.y = t * 0.9;
+        moon.mesh.rotation.y = -t * 0.9;
         moon.mesh.position.y = moon.baseY + Math.sin(t * 1.8) * 0.12;
         const breath = 0.5 + 0.5 * Math.sin(t * 1.4);
         moon.mat.emissiveIntensity = 0.45 + breath * 0.4;

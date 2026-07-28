@@ -534,7 +534,7 @@ export const peach = {
         shine.userData.baseY = 1.15;
         group.add(shine);
         collect.shine = shine;
-        spin.push({ obj: shine, baseY: 1.15, spin: true });
+        spin.push({ obj: shine, baseY: 1.15, spin: true, dir: -1 });
         const glow = new THREE.PointLight(0xffe08a, 1.2, 7, 2);
         glow.position.set(gx, 1.4, gz);
         group.add(glow);
@@ -890,7 +890,7 @@ export const peach = {
         }
         // spin the coins + Shine, gently bob every collectible (glow rides along)
         for (const s of spin) {
-          if (s.spin) s.obj.rotation.y = t * 1.7;
+          if (s.spin) s.obj.rotation.y = t * 1.7 * (s.dir || 1);
           s.obj.position.y = s.baseY + Math.sin(t * 2 + s.obj.position.x) * 0.08;
           syncGlow(s.obj);
         }

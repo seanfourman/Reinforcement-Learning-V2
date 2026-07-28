@@ -657,9 +657,9 @@ export const city = {
         const b = box.getSize(new THREE.Vector3());
         const c = box.getCenter(new THREE.Vector3());
         root.position.set(-c.x, -c.y, -c.z);      // centre at origin so it floats
-        // one shared cyan body material on every mesh (keeps the moon's emissive
-        // face pattern + normal relief, same as R1/R3); the lock/unlock update
-        // recolours it (bright cyan when open, dull grey while locked).
+        // one shared GOLD body material on every mesh (real albedo + emissive
+        // face + normal relief, same colour as R1/R3); the lock/unlock update
+        // recolours it (natural gold when open, dull grey while locked).
         const shineTex = (name, srgb) => {
           const t = new THREE.TextureLoader().load('./assets/objects/Shine/Textures/' + name);
           t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -667,10 +667,11 @@ export const city = {
           return t;
         };
         const moonMat = track(new THREE.MeshStandardMaterial({
-          color: 0x3ac8ff, emissive: 0x1f8fd0,
+          map: shineTex('shinebody_alb.png', true),
+          emissive: 0xffd24a,
           emissiveMap: shineTex('shinebody_emm.png', false),
           normalMap: shineTex('shinebody_nrm.png', false),
-          emissiveIntensity: 0.25, metalness: 0.4, roughness: 0.4,
+          emissiveIntensity: 0.25, metalness: 0.5, roughness: 0.35,
         }));
         const bodyMats = [moonMat];
         root.traverse((o) => {
@@ -684,8 +685,8 @@ export const city = {
         wrap.scale.setScalar(0.95 / Math.max(b.x, b.y, b.z));
         wrap.position.set(mx, 1.0, mz);
         group.add(wrap);
-        // "glow" = the moon's own emissive gently pulsing + a faint cool light.
-        const glow = new THREE.PointLight(0x6ad6ff, 0.2, 4, 2);
+        // "glow" = the moon's own emissive gently pulsing + a faint warm light.
+        const glow = new THREE.PointLight(0xffd24a, 0.2, 4, 2);
         glow.position.set(mx, 1.0, mz);
         group.add(glow);
         star = { mesh: wrap, mats: bodyMats, light: glow, baseY: 1.0 };
@@ -1045,13 +1046,13 @@ export const city = {
         // the goal prize is LOCKED until an agent holds all 3 apples: dim + grey while
         // locked, and it flares bright gold + spins up the moment someone completes.
         const unlocked = nStars > 0 && Math.max(popcount(blueBits), popcount(redBits)) >= nStars;
-        star.mesh.rotation.y = t * (unlocked ? 3.0 : 1.3);
+        star.mesh.rotation.y = -t * (unlocked ? 3.0 : 1.3);
         star.mesh.position.y = star.baseY + Math.sin(t * 2) * 0.12;
         const breath = 0.5 + 0.5 * Math.sin(t * 1.5);    // slow in/out (~4s)
         const lock = unlocked ? 1 : 0.28;                // dim while still locked
         for (const m of star.mats) {
           m.emissiveIntensity = (0.15 + breath * 0.3) * lock;
-          m.color.setHex(unlocked ? 0x3ac8ff : 0x8f96a0);   // cyan when open, dull while locked
+          m.color.setHex(unlocked ? 0xffffff : 0x8f96a0);   // natural gold when open, dull while locked
         }
         star.light.intensity = (0.06 + breath * 0.16) * lock;
       }

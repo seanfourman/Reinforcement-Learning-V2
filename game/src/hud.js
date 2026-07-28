@@ -147,6 +147,12 @@ const STYLE = `
   opacity:.5;transition:fill .18s,opacity .18s;}
 .fb-side.blue .fb-tomato.alive path{fill:#4c9dff;opacity:1;}
 .fb-side.red .fb-tomato.alive path{fill:#f04b43;opacity:1;}
+/* Arena-5 CTF: captured flags, same row/position as the hearts/tomatoes */
+.fb-flag{width:34px;height:34px;flex:none;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45));}
+.fb-flag path{fill:#101010;stroke:#000;stroke-width:1.7;stroke-linejoin:round;
+  opacity:.5;transition:fill .18s,opacity .18s;}
+.fb-side.blue .fb-flag.alive path{fill:#4c9dff;opacity:1;}
+.fb-side.red .fb-flag.alive path{fill:#f04b43;opacity:1;}
 `;
 
 export function initHud() {
@@ -354,6 +360,11 @@ export function initHud() {
     '<svg class="fb-tomato" viewBox="0 0 24 24" aria-hidden="true">' +
     '<path d="M12 6.2c5.55-1.45 9.15 1.7 8.75 6.65-.42 5.2-4.12 8.15-8.75 8.15s-8.33-2.95-8.75-8.15C2.85 7.9 6.45 4.75 12 6.2z M12 7.65 9.55 5.5 6.35 6.1 8.2 3.45 7.6 1.4 11 3.25 13.75 1.2 13.45 4.05 17.65 4.65 14.3 6.05z"/>' +
     "</svg>";
+  // a flag on a pole (pole bar + a wavy banner), filled per side like the others
+  const FLAG_SVG =
+    '<svg class="fb-flag" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M5.6 2.8h1.7v18.6H5.6z M7.3 3.6c3.2-1.1 6.4 1 9.6 0v6.8c-3.2 1.1-6.4-1-9.6 0z"/>' +
+    "</svg>";
   const heartBox = { blue: $("#fb-hearts-blue"), red: $("#fb-hearts-red") };
   function setProgressPips(side, filled, max, kind) {
     const box = heartBox[side];
@@ -363,12 +374,12 @@ export function initHud() {
       return;
     }
     box.style.display = "flex";
-    const svg = kind === "tomato" ? TOMATO_SVG : HEART_SVG;
+    const svg = kind === "tomato" ? TOMATO_SVG : kind === "flag" ? FLAG_SVG : HEART_SVG;
     if (box.childElementCount !== max || box.dataset.kind !== kind) {
       box.innerHTML = svg.repeat(max);
       box.dataset.kind = kind;
     }
-    box.querySelectorAll(".fb-heart,.fb-tomato").forEach((pip, i) => {
+    box.querySelectorAll(".fb-heart,.fb-tomato,.fb-flag").forEach((pip, i) => {
       const on = i < filled;
       pip.classList.toggle("alive", on);
       pip.classList.toggle("lost", !on);
@@ -399,8 +410,8 @@ export function initHud() {
       .querySelectorAll("i")
       .forEach((d, i) => d.classList.toggle("on", i < sr));
 
-    // Arena 4: remaining lives. Arena 2: collected-tomato bit count. Any other
-    // round hides the same shared heart row.
+    // Arena 4: remaining lives (hearts). Arena 2: collected-tomato count. Arena 5:
+    // captured flags. Any other round hides the same shared progress row.
     const frame = e.detail.frame;
     const hearts =
       frame && frame.gameMode === "missileSurvival" ? frame.hearts : null;
@@ -408,6 +419,11 @@ export function initHud() {
       const maxHearts = frame.maxHearts || 3;
       setProgressPips("blue", hearts.blue, maxHearts, "heart");
       setProgressPips("red", hearts.red, maxHearts, "heart");
+    } else if (frame && frame.gameMode === "captureFlag") {
+      const cap = frame.captures || {};
+      const max = frame.capturesToWin || 3;
+      setProgressPips("blue", cap.blue || 0, max, "flag");
+      setProgressPips("red", cap.red || 0, max, "flag");
     } else if (frame && frame.nStars) {
       const bitCount = (bits) => {
         let count = 0;

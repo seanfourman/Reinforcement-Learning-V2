@@ -752,121 +752,155 @@ export const tostarena = {
       return sp;
     }
 
-    // ---- the flag: the real Odyssey Checkpoint Flag model ------------------
-    // Stands PLANTED at the centre when free; RISES and rides above whoever is
-    // carrying it (a captured banner held aloft). Loaded async like the crates.
-    const FLAG_PATH = "./assets/objects/Checkpoint%20Flag/";
+    // ---- shared loader for the real object DAEs (deskin + hand-built PBR) ---
+    // These Odyssey packs flag STATIC meshes as SkinnedMesh with a broken skeleton
+    // whose samplers three cannot bind, so they must be deskinned to a plain Mesh
+    // and re-textured by hand (same recipe as fossilfalls.js / peach.js).
+    const OBJ = "./assets/objects/";
+    const collada = new ColladaLoader();
+    const objTex = (url, srgb = true) => {
+      const tex = trackTexture(texLoader.load(encodeURI(url)));
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = maxAniso;
+      if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+    const deskinObj = (root) => {
+      const sk = [];
+      root.traverse((o) => o.isSkinnedMesh && sk.push(o));
+      for (const sm of sk) {
+        const m = new THREE.Mesh(sm.geometry, sm.material);
+        m.name = sm.name;
+        m.position.copy(sm.position);
+        m.quaternion.copy(sm.quaternion);
+        m.scale.copy(sm.scale);
+        if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+      }
+      return root;
+    };
+    const fitObj = (root, size, byHeight) => {
+      root.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(root);
+      const d = box.getSize(new THREE.Vector3());
+      const c = box.getCenter(new THREE.Vector3());
+      root.position.set(-c.x, -box.min.y, -c.z);
+      const wrap = new THREE.Group();
+      wrap.add(root);
+      wrap.scale.setScalar(size / ((byHeight ? d.y : Math.max(d.x, d.z)) || 1));
+      return wrap;
+    };
+
+    // ---- the flag: the real Odyssey Checkpoint Flag (deskinned) ------------
+    // The BodyMT pole stays rigid; the FlagMT cloth ripples in the wind (a vertex
+    // wave growing from the pole to the free edge). Stands PLANTED and STILL at
+    // the centre when free; RISES to ride above whoever is carrying it.
+    const FLAGDIR = OBJ + "Checkpoint Flag/";
     const flag = {
       wrap: new THREE.Group(),
-      model: null,
-      light: new THREE.PointLight(0xffd24d, 1.1, 9, 2),
+      model: null, cloth: null, clothBase: null, wave: null,
     };
     flag.wrap.position.set(C, 0, C);
-    flag.light.position.set(0, 2.2, 0);
-    flag.wrap.add(flag.light);
-    flag.wrap.add(makeGlowSprite(0xffe08a, 2.0));
     group.add(flag.wrap);
-    new ColladaLoader().load(
-      FLAG_PATH + "CheckpointFlag.dae",
-      (dae) => {
+    {
+      const poleMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(FLAGDIR + "CheckpointFlagBody_alb.png", true),
+        normalMap: objTex(FLAGDIR + "CheckpointFlagBody_nrm.png", false),
+        roughnessMap: objTex(FLAGDIR + "CheckpointFlagBody_rgh.png", false),
+        roughness: 0.75, metalness: 0.2,
+      }));
+      const clothMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(FLAGDIR + "CheckpointFlagMark_alb.0.png", true),
+        normalMap: objTex(FLAGDIR + "CheckpointFlagMark_nrm.0.png", false),
+        roughnessMap: objTex(FLAGDIR + "CheckpointFlagMark_rgh.0.png", false),
+        roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide,
+      }));
+      collada.loadAsync(encodeURI(FLAGDIR + "CheckpointFlag.dae")).then((asset) => {
         if (disposed) return;
-        const root = dae.scene;
+        const root = deskinObj(asset.scene);
         root.traverse((o) => {
           if (!o.isMesh) return;
           o.castShadow = true;
           o.receiveShadow = true;
-          const ms = Array.isArray(o.material) ? o.material : [o.material];
-          for (const mm of ms) {
-            if (!mm) continue;
-            if (mm.map) mm.map.colorSpace = THREE.SRGBColorSpace;
-            mm.side = THREE.DoubleSide;         // thin banner reads from both sides
-            if ("metalness" in mm) mm.metalness = 0.0;
+          track(o.geometry);
+          // NB: the pole mesh is "CheckpointFlag__BodyMT" - it CONTAINS "Flag"
+          // (from the model name), so key off "Body" for the pole and treat the
+          // rest (the "__FlagMT" cloth) as the banner. Getting this backwards puts
+          // the flag texture on the pole.
+          if (/body/i.test(o.name || "")) {
+            o.material = poleMat;
+          } else {
+            o.material = clothMat;
+            flag.cloth = o;
           }
         });
-        // fit upright, base on the ground, ~2.8 units tall
-        const box = new THREE.Box3().setFromObject(root);
-        const size = box.getSize(new THREE.Vector3());
-        const ctr = box.getCenter(new THREE.Vector3());
-        root.position.set(-ctr.x, -box.min.y, -ctr.z);
-        const holder = new THREE.Group();
-        holder.add(root);
-        holder.scale.setScalar(2.8 / Math.max(size.y, 0.001));
-        flag.wrap.add(holder);
-        flag.model = holder;
-      },
-      undefined,
-      () => {},                                 // missing model -> flag just doesn't draw
-    );
+        const wrap = fitObj(root, 2.8, true);      // ~2.8 units tall by height
+        flag.wrap.add(wrap);
+        flag.model = wrap;
+        // prime the cloth wave: flattest axis = the sheet normal to displace, the
+        // wider horizontal axis = the length (the free edge waves most).
+        if (flag.cloth) {
+          const g = flag.cloth.geometry;
+          g.computeBoundingBox();
+          const bb = g.boundingBox;
+          const ext = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z];
+          const normalAxis = ext.indexOf(Math.min(...ext));
+          const lenAxis = normalAxis === 0 ? 2 : normalAxis === 2 ? 0
+            : (ext[0] >= ext[2] ? 0 : 2);
+          flag.clothBase = Float32Array.from(g.attributes.position.array);
+          flag.wave = {
+            normalAxis, lenAxis,
+            lo: bb.min.getComponent(lenAxis),
+            range: ext[lenAxis] || 1,
+          };
+        }
+      }).catch(() => {});
+    }
 
-    // ---- the two corner HOME bases -----------------------------------------
-    // A crisp team rim on the sand, a soft light-beam column rising to the sky
-    // (spot your home from across the plaza), and a row of score orbs on little
-    // posts that light up gold as each capture lands.
+    // ---- the two corner HOME bases: the Shiverian Rug, tinted per team ------
+    // A real flat rug laid on the sand at each corner, its albedo MULTIPLIED by the
+    // owning model's colour (red base = red rug, blue base = blue rug). Sized to the
+    // actual capture zone (radius homeR), so the rug edge IS the scoring line. The
+    // capture COUNT is shown in the HUD (flag icons), not on the board.
+    const rugModels = [];                       // for disposal
     function makeBase(pos, color) {
       const bg = new THREE.Group();
       bg.position.set(pos[0], 0, pos[1]);
-      // (1) crisp ground rim + a faint inner fill (flat on the sand)
-      const rimMat = track(new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.85,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-      }));
-      const rim = new THREE.Mesh(
-        track(new THREE.TorusGeometry(homeR, 0.07, 10, 64)), rimMat);
-      rim.rotation.x = -Math.PI / 2;
-      rim.position.y = 0.05;
-      bg.add(rim);
-      const fillMat = track(new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.13,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-        side: THREE.DoubleSide,
-      }));
-      const fill = new THREE.Mesh(
-        track(new THREE.CircleGeometry(homeR - 0.06, 48)), fillMat);
-      fill.rotation.x = -Math.PI / 2;
-      fill.position.y = 0.035;
-      bg.add(fill);
-      // (2) the light BEAM: a team-coloured column tapering up to the sky
-      const beamMat = track(new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.2,
-        blending: THREE.AdditiveBlending, depthWrite: false,
-        side: THREE.DoubleSide, fog: false,
-      }));
-      const beam = new THREE.Mesh(
-        track(new THREE.CylinderGeometry(0.05, homeR * 0.92, 5.2, 40, 1, true)),
-        beamMat);
-      beam.position.y = 2.6;
-      bg.add(beam);
-      // (3) score tally: capturesToWin orbs on short posts along the INNER edge
-      //     (facing the plaza), dark until that capture lands then lit gold.
       const inx = C - pos[0], inz = C - pos[1];
       const il = Math.hypot(inx, inz) || 1;
       const ux = inx / il, uz = inz / il;       // toward the plaza centre
-      const px = -uz, pz = ux;                  // perpendicular, to space the row
-      const pips = [];
-      for (let i = 0; i < capturesToWin; i++) {
-        const s = (i - (capturesToWin - 1) / 2) * 0.55;
-        const bx = ux * (homeR + 0.5) + px * s;
-        const bz = uz * (homeR + 0.5) + pz * s;
-        const post = new THREE.Mesh(
-          track(new THREE.CylinderGeometry(0.04, 0.05, 0.55, 8)),
-          track(new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.85 })));
-        post.position.set(bx, 0.28, bz);
-        post.castShadow = true;
-        bg.add(post);
-        const orbMat = track(new THREE.MeshStandardMaterial({
-          color: 0x2b2b2b, emissive: 0x000000, emissiveIntensity: 0, roughness: 0.5,
-        }));
-        const orb = new THREE.Mesh(track(new THREE.IcosahedronGeometry(0.17, 0)), orbMat);
-        orb.position.set(bx, 0.66, bz);
-        bg.add(orb);
-        pips.push({ orb, orbMat });
-      }
-      // a low team glow so the pad reads warm at dusk
-      const glow = new THREE.PointLight(color, 0.8, 6, 2);
-      glow.position.set(0, 0.9, 0);
+      const rugMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_alb.png", true),
+        normalMap: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_nrm.png", false),
+        roughnessMap: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_rgh.png", false),
+        color,                                  // team tint (multiplies the albedo)
+        roughness: 0.92, metalness: 0.0,
+      }));
+      collada.loadAsync(encodeURI(OBJ + "Shiverian Rug/SouvenirSnow1.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          o.material = rugMat;
+          o.receiveShadow = true;
+          track(o.geometry);
+        });
+        // footprint = the capture DIAMETER (2 * homeR), so the rug marks the zone
+        const wrap = fitObj(root, homeR * 2, false);
+        // if the export came in standing up, lay it flat on the sand
+        wrap.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(wrap);
+        const s = b.getSize(new THREE.Vector3());
+        if (s.y > Math.max(s.x, s.z) * 0.6) wrap.rotation.x = -Math.PI / 2;
+        wrap.rotation.y = Math.atan2(ux, uz);            // point length at centre
+        wrap.position.y = 0.02;
+        bg.add(wrap);
+        rugModels.push(wrap);
+      }).catch(() => {});
+      const glow = new THREE.PointLight(color, 0.7, 6, 2);
+      glow.position.set(0, 0.7, 0);
       bg.add(glow);
       group.add(bg);
-      return { rimMat, fillMat, beamMat, beam, pips, glow };
+      return { glow };
     }
     const baseVis = {
       red: makeBase(bases.red, RED),
@@ -958,38 +992,29 @@ export const tostarena = {
       }
     }
 
-    // ---- breakable crates: the real FrailBox, loaded once + pooled by id ----
+    // ---- breakable crates: the real FrailBox (deskinned), pooled by id ------
     const crateMeshes = new Map();          // crate id -> Object3D
     let crateProtoObj = null;
-    new ColladaLoader().load(
-      CRATE_PATH + "FrailBox.dae",
-      (dae) => {
+    {
+      const crateMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(CRATE_PATH + "FrailBoxBody00_alb.png", true),
+        normalMap: objTex(CRATE_PATH + "FrailBoxBody00_nrm.png", false),
+        roughnessMap: objTex(CRATE_PATH + "FrailBoxBody00_rgh.png", false),
+        roughness: 0.85, metalness: 0.0,
+      }));
+      collada.loadAsync(encodeURI(CRATE_PATH + "FrailBox.dae")).then((asset) => {
         if (disposed) return;
-        const root = dae.scene;
+        const root = deskinObj(asset.scene);
         root.traverse((o) => {
           if (!o.isMesh) return;
           o.castShadow = true;
           o.receiveShadow = true;
-          const ms = Array.isArray(o.material) ? o.material : [o.material];
-          for (const mm of ms) {
-            if (!mm) continue;
-            if (mm.map) mm.map.colorSpace = THREE.SRGBColorSpace;
-            if ("roughness" in mm) mm.roughness = 0.85;
-            if ("metalness" in mm) mm.metalness = 0.0;
-          }
+          o.material = crateMat;
+          track(o.geometry);
         });
-        const box = new THREE.Box3().setFromObject(root);
-        const size = box.getSize(new THREE.Vector3());
-        const ctr = box.getCenter(new THREE.Vector3());
-        root.position.set(-ctr.x, -box.min.y, -ctr.z);
-        const wrap = new THREE.Group();
-        wrap.add(root);
-        wrap.scale.setScalar(1.15 / Math.max(size.x, size.y, size.z, 0.001));
-        crateProtoObj = wrap;
-      },
-      undefined,
-      () => { crateProtoObj = null; },       // missing model -> crates just don't draw
-    );
+        crateProtoObj = fitObj(root, 1.15, false);
+      }).catch(() => { crateProtoObj = null; });   // missing model -> crates don't draw
+    }
     function syncCrates(frame, t, dt) {
       const active = new Set();
       for (const cr of frame?.crates || []) {
@@ -1095,7 +1120,8 @@ export const tostarena = {
     }
 
     function updateCTF(t, dt, frame) {
-      // the flag: planted at the centre when free, lifted above the carrier when held
+      // the flag: planted STILL at the centre when free, lifted above the carrier
+      // when held (NO spin - only a slight lean while being run home).
       const f = frame?.flag;
       const holder = f?.holder ?? frame?.flagHolder ?? null;
       const held = holder === "red" || holder === "blue";
@@ -1107,9 +1133,23 @@ export const tostarena = {
       flag.wrap.position.x += (tx - flag.wrap.position.x) * rate;
       flag.wrap.position.z += (tz - flag.wrap.position.z) * rate;
       flag.wrap.position.y += (ty - flag.wrap.position.y) * rate;
-      flag.wrap.rotation.y += dt * (held ? 2.2 : 0.5);       // spins faster when carried
-      flag.wrap.rotation.z = held ? Math.sin(t * 3) * 0.14 : 0;  // tilt while running
-      flag.light.intensity = 1.0 + Math.sin(t * 6) * 0.25;
+      flag.wrap.rotation.y = 0;                              // stays put, never spins
+      flag.wrap.rotation.z = held ? Math.sin(t * 3) * 0.12 : 0;  // slight lean while carried
+      // WIND on the cloth only (the FlagMT mesh): a vertex ripple growing from the
+      // pole to the free edge; the BodyMT pole is untouched.
+      if (flag.cloth && flag.wave) {
+        const g = flag.cloth.geometry;
+        const pos = g.attributes.position;
+        const b = flag.clothBase;
+        const { normalAxis, lenAxis, lo, range } = flag.wave;
+        const amp = range * (held ? 0.06 : 0.045);         // flaps harder when carried
+        for (let i = 0; i < pos.count; i++) {
+          const along = (b[i * 3 + lenAxis] - lo) / range;  // 0 at pole .. 1 at edge
+          const disp = Math.sin(along * 5.0 - t * 7) * amp * along;
+          pos.array[i * 3 + normalAxis] = b[i * 3 + normalAxis] + disp;
+        }
+        pos.needsUpdate = true;
+      }
 
       // carrier foot-ring
       for (const side of ["red", "blue"]) {
@@ -1124,24 +1164,10 @@ export const tostarena = {
         }
       }
 
-      // home bases: pulse the rim/beam + light an orb per capture
-      const caps = frame?.captures || { red: 0, blue: 0 };
+      // home bases: just a gentle glow pulse (capture COUNT is shown in the HUD)
       for (const side of ["red", "blue"]) {
-        const bv = baseVis[side];
         const ph = side === "red" ? 0 : 1.5;
-        bv.rimMat.opacity = 0.72 + Math.sin(t * 2.5 + ph) * 0.15;
-        bv.beamMat.opacity = 0.16 + Math.sin(t * 2 + ph) * 0.06;
-        bv.beam.scale.x = bv.beam.scale.z = 1 + Math.sin(t * 2 + ph) * 0.03;
-        bv.glow.intensity = 0.7 + Math.sin(t * 3 + ph) * 0.25;
-        const n = caps[side] || 0;
-        for (let i = 0; i < bv.pips.length; i++) {
-          const lit = i < n;
-          const om = bv.pips[i].orbMat;
-          om.color.setHex(lit ? 0xfff2a8 : 0x2b2b2b);
-          om.emissive.setHex(lit ? 0xffcf4d : 0x000000);
-          om.emissiveIntensity = lit ? 1.3 : 0;
-          bv.pips[i].orb.rotation.y += dt * (lit ? 1.6 : 0.2);
-        }
+        baseVis[side].glow.intensity = 0.6 + Math.sin(t * 3 + ph) * 0.2;
       }
 
       // power-up auras + stun stars, per side
