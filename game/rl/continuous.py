@@ -49,6 +49,7 @@ MISSILE_MIN_SPEED = 3.2
 # Below the agent's own top speed (VMAX 7.0) so a single Bill is always OUTRUNNABLE:
 # the difficulty comes from facing MANY at once, not from one unavoidable missile.
 MISSILE_MAX_SPEED = 5.4
+MISSILE_TURN_RATE = 0.5   # max homing turn (rad/s) at full sharpness; panel-tunable
 EXPLOSION_HOLD_SECONDS = 1.25
 SURVIVAL_REWARD = 0.02
 HIT_REWARD = 0.05        # small: this is a SURVIVAL game, not a "kill the rival" game
@@ -156,6 +157,11 @@ class ContinuousArena:
         self.thrust = float(thrust)
         self.damp = float(damp)
         self.vmax = float(vmax)
+        # Round-4 game-feel dials, tunable live from the panel's World card.
+        self.missile_max_speed = MISSILE_MAX_SPEED
+        self.missile_turn = MISSILE_TURN_RATE
+        self.hearts_max = HEARTS
+        self.hit_penalty = HIT_PENALTY
         self.n_actions = N_ACTIONS          # match.py reads these off the env
         self.obs_dim = MISSILE_OBS_DIM if self.missile_game else RACE_OBS_DIM
         self.H = self.W = int(self.arena)   # coarse grid the value field samples on
@@ -173,7 +179,7 @@ class ContinuousArena:
             side: {kind: 0 for kind in PICKUP_TYPES}
             for side in ("red", "blue")
         }
-        self.hearts = {"red": HEARTS, "blue": HEARTS}
+        self.hearts = {"red": self.hearts_max, "blue": self.hearts_max}
         # post-hit mercy invulnerability (steps), separate from the pickup shield so
         # the frontend can BLINK the character here but show the shield for the pickup.
         self.hit_flash = {"red": 0, "blue": 0}
@@ -312,8 +318,8 @@ class ContinuousArena:
                     1.0,
                     float(np.clip(rel[0] / self.arena, -2, 2)),
                     float(np.clip(rel[1] / self.arena, -2, 2)),
-                    float(missile["vel"][0]) / MISSILE_MAX_SPEED,
-                    float(missile["vel"][1]) / MISSILE_MAX_SPEED,
+                    float(missile["vel"][0]) / self.missile_max_speed,
+                    float(missile["vel"][1]) / self.missile_max_speed,
                     1.0 if missile["target"] == which else -1.0,
                     min(1.0, t / 2.0) if closing else 1.0,   # time-to-impact
                     min(1.0, miss / 3.0),                    # predicted miss dist
@@ -378,7 +384,7 @@ class ContinuousArena:
                 side: {kind: 0 for kind in PICKUP_TYPES}
                 for side in ("red", "blue")
             }
-            self.hearts = {"red": HEARTS, "blue": HEARTS}
+            self.hearts = {"red": self.hearts_max, "blue": self.hearts_max}
             self.hit_flash = {"red": 0, "blue": 0}
             self.next_pickup_step = self._seconds_to_steps(PICKUP_FIRST_SECONDS)
             # Keep recent explosions through the automatic episode reset long
@@ -394,6 +400,19 @@ class ContinuousArena:
     def set_round(self, round_id):
         self.round_id = round_id
         self.reset(regenerate=True)
+
+    def set_missile_dynamics(self, missile_speed=None, missile_turn=None,
+                             hearts=None, hit_penalty=None):
+        """Live-tune the Round-4 game feel from the panel (None = leave unchanged).
+        A hearts change takes effect from the next episode (the caller resets)."""
+        if missile_speed is not None:
+            self.missile_max_speed = max(0.5, float(missile_speed))
+        if missile_turn is not None:
+            self.missile_turn = max(0.0, float(missile_turn))
+        if hit_penalty is not None:
+            self.hit_penalty = float(hit_penalty)
+        if hearts is not None:
+            self.hearts_max = max(1, int(hearts))
 
     # ------------------------------------------------------------- dynamics
     def _integrate(self, pos, vel, action, speed_multiplier=1.0, frozen=False):
@@ -671,7 +690,7 @@ class ContinuousArena:
         aim[0] += self.rng.uniform(-0.8, 0.8) * (1.0 - difficulty * 0.55)
         direction = aim - spawn
         direction /= max(float(np.linalg.norm(direction)), 1e-6)
-        speed = MISSILE_MIN_SPEED + (MISSILE_MAX_SPEED - MISSILE_MIN_SPEED) * difficulty
+        speed = MISSILE_MIN_SPEED + (self.missile_max_speed - MISSILE_MIN_SPEED) * difficulty
         occupied = {missile["slot"] for missile in self.missiles}
         slot = next(slot for slot in range(MISSILE_HARD_CAP) if slot not in occupied)
         self._missile_serial += 1
@@ -853,11 +872,11 @@ class ContinuousArena:
             # Straight at the start, widening to a gentle 0.5 rad/s home. Its turn
             # radius stays larger than the arena, so a well-timed juke always makes
             # a single Bill overshoot - surviving many at once is the real skill.
-            turn_rate = 0.5 * difficulty
+            turn_rate = self.missile_turn * difficulty
             turn = max(-turn_rate * self.dt, min(turn_rate * self.dt, delta))
             angle = current_angle + turn
             speed = MISSILE_MIN_SPEED + (
-                MISSILE_MAX_SPEED - MISSILE_MIN_SPEED) * difficulty
+                self.missile_max_speed - MISSILE_MIN_SPEED) * difficulty
             old_missile = missile["pos"].copy()
             missile["vel"] = np.array(
                 [math.cos(angle) * speed, math.sin(angle) * speed],
@@ -1041,7 +1060,7 @@ class ContinuousArena:
             # round only ENDS when someone runs out of hearts; otherwise the
             # victim respawns (briefly shielded) and the episode keeps going.
             for side in hits:
-                reward[side] += HIT_PENALTY
+                reward[side] += self.hit_penalty
                 self.hearts[side] = max(0, self.hearts[side] - 1)
             out = {side for side in hits if self.hearts[side] <= 0}
             if out:
@@ -1159,9 +1178,9 @@ class ContinuousArena:
                 "radius": MISSILE_R,
                 "entry": [self.arena / 2, MISSILE_SPAWN_Z],
                 "minSpeed": MISSILE_MIN_SPEED,
-                "maxSpeed": MISSILE_MAX_SPEED,
+                "maxSpeed": self.missile_max_speed,
                 "maxConcurrent": MISSILE_HARD_CAP,
-                "maxHearts": HEARTS,
+                "maxHearts": self.hearts_max,
                 "curriculumEpisodes": MISSILE_CURRICULUM_EPISODES,
                 "dodgeShapingCap": DODGE_SHAPING_CAP,
             }
@@ -1198,7 +1217,7 @@ class ContinuousArena:
         if self.missile_game:
             out.update({
                 "hearts": dict(self.hearts),
-                "maxHearts": HEARTS,
+                "maxHearts": self.hearts_max,
                 "survivalTime": round(self.steps * self.dt, 2),
                 "difficulty": round(self._difficulty(), 3),
                 # the escalation level (unbounded): drives how many Bills / pickups

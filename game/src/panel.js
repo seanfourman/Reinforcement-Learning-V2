@@ -84,12 +84,14 @@ export const GLOBAL_PARAMS = [
     desc: 'One sweep updates every state once. This is only a safety ceiling: reaching it stops planning without proving convergence.', fmt: fLoc },
   { key: 'dpPlanning', label: 'Planning speed (sweeps / step)', min: 0.1, max: 5, step: 0.1, color: C_OURS, sect: 'algo', scope: 'dp', def: 0.6,
     desc: 'How much planning happens between moves. 1.0 = one full pass over all states per game step; 0.5 = one pass every two steps; 2.0 = two passes per step. It changes planning speed, not the final solution.', fmt: (v) => (+v).toFixed(1) },
-  { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, color: C_OURS, fmt: fLoc },
-  { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, color: C_OURS, fmt: fLoc },
-  { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, fmt: fLoc },
-  { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, fmt: fLoc },
-  { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, color: C_OURS, fmt: fLoc },
-  { key: 'dqnLayers', label: 'Hidden layers', min: 1, max: 5, step: 1, sect: 'algo', scope: 'dqn', def: 2, color: C_OURS, fmt: fLoc },
+  // Network architecture first, then the training-loop knobs - all per-side, grouped.
+  { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, color: C_OURS, desc: "Neurons per hidden layer of this model's Q-network.", fmt: fLoc },
+  { key: 'dqnLayers', label: 'Hidden layers', min: 1, max: 5, step: 1, sect: 'algo', scope: 'dqn', def: 2, color: C_OURS, desc: "How many hidden layers deep this model's Q-network is.", fmt: fLoc },
+  { key: 'dqnBatch', label: 'Batch size', min: 8, max: 256, step: 8, sect: 'algo', scope: 'dqn', def: 64, color: C_OURS, desc: 'How many past experiences are sampled from memory for each gradient update.', fmt: fLoc },
+  { key: 'dqnBuffer', label: 'Replay buffer', min: 5000, max: 200000, step: 5000, sect: 'algo', scope: 'dqn', def: 50000, color: C_OURS, desc: 'Size of the memory of past experiences it trains from (a rolling window). Bigger = more varied but less recent.', fmt: fLoc },
+  { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, desc: 'Experiences collected BEFORE training starts, so the first updates are not drawn from an almost-empty memory.', fmt: fLoc },
+  { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, desc: 'How often the stable "target" copy of the network is refreshed. Larger = steadier but slower to follow.', fmt: fLoc },
+  { key: 'dqnNstep', label: 'N-step returns', min: 1, max: 10, step: 1, sect: 'algo', scope: 'dqn', def: 3, color: C_OURS, desc: 'How many steps of future reward are folded into one learning target. 1 = standard DQN.', fmt: fLoc },
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
   // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
   // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
@@ -99,10 +101,15 @@ export const GLOBAL_PARAMS = [
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
-  // --- Round-2 game mechanics (New Donk City: three safe-vs-risky hedge
-  // mazes with two Warp-Pipe transfers). Structural edits regenerate it. ---
+  // --- Round-2 game mechanics (New Donk City: seeded safe-vs-risky hedge
+  // rooms feeding shared centre Warp Pipes). Structural edits regenerate it. ---
   { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Shortcut traps per side. The default puts one Piranha Plant in each of the three decision rooms; death retries that room from its Pipe checkpoint.', fmt: (v) => `${Math.round(v)}` },
   { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Risky-route puddles per side. The default puts one in every shortcut; moving from one has a 12% total chance to skid sideways, potentially into the nearby plant.', fmt: (v) => `${Math.round(v)}` },
+  // --- Round-4 game feel (Ruined Kingdom survival). Applied live to the arena. ---
+  { key: 'r4MissileSpeed', label: 'Missile speed', min: 2, max: 10, step: 0.2, sect: 'world', scope: 'r4', def: 5.4, desc: "Top speed of a Banzai Bill at full pressure. Below the flyer's own ~7 speed, a single Bill is always outrunnable.", fmt: (v) => (+v).toFixed(1) },
+  { key: 'r4MissileHoming', label: 'Missile homing', min: 0, max: 1.5, step: 0.05, sect: 'world', scope: 'r4', def: 0.5, desc: 'How sharply a Bill turns to track you (rad/s). 0 = flies straight; higher = much harder to juke past.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'r4Hearts', label: 'Hearts (lives)', min: 1, max: 9, step: 1, sect: 'world', scope: 'r4', def: 3, desc: 'How many hits each character survives before the round ends. Changing this restarts the episode.', fmt: (v) => `${Math.round(v)}` },
+  { key: 'r4HitPenalty', label: 'Hit penalty', min: -5, max: -0.1, step: 0.1, sect: 'world', scope: 'r4', def: -2, desc: 'Reward lost when a Bill takes one of your hearts. More negative = the model fears getting hit more.', fmt: (v) => (+v).toFixed(1) },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -566,10 +573,11 @@ export function initPanel() {
     const showHelp = ['dpTheta', 'dpMaxIters', 'dpPlanning'].includes(p.key);
     const outcomeEnds = p.key === 'blockGhostProb'
       ? '<div class="range-ends"><span>Freeze</span><span>Ghost</span></div>' : '';
+    const tip = (p.desc || '').replace(/"/g, '&quot;');
     return `
     <div class="ctl${learn ? ' learn' : ''}" data-scope="${p.scope}">
-      <div class="row"><span>${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
-      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" style="--fill:${fill}">
+      <div class="row"><span title="${tip}">${p.label}</span><b id="rl-pv-${p.key}">-</b></div>
+      <input type="range" id="rl-p-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.min}" title="${tip}" style="--fill:${fill}">
       ${outcomeEnds}
       ${showHelp && p.desc ? `<p class="ctl-help">${p.desc}</p>` : ''}
     </div>`;
@@ -893,6 +901,7 @@ export function initPanel() {
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
         case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
         case 'r2': return roundIndex === 1;       // Round-2 game mechanics (regioned maze: pipes + puddles)
+        case 'r4': return roundIndex === 3;       // Round-4 game feel (missiles / hearts / hit penalty)
         default: return true;                     // 'always'
       }
     };

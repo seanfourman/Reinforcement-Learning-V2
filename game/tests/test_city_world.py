@@ -31,6 +31,15 @@ def test_seed_is_repeatable_and_changes_both_zigzags():
     assert _signature(city.generate(seed=42)) == _signature(city.generate(seed=42))
     signatures = {_signature(city.generate(seed=seed)) for seed in range(20)}
     assert len(signatures) >= 18
+    bottom_rooms = {
+        (
+            tuple(city.generate(seed=seed).rows()[14:]),
+            tuple(city.generate(seed=seed).slip),
+            tuple(city.generate(seed=seed).blue_stars),
+        )
+        for seed in range(100)
+    }
+    assert len(bottom_rooms) >= 95
 
 
 def test_two_sealed_two_row_dividers_form_three_disconnected_sections():
@@ -75,25 +84,34 @@ def test_two_sealed_two_row_dividers_form_three_disconnected_sections():
         assert components == 3
 
 
-def test_bottom_room_has_one_mirrored_risk_setup_and_pipe():
+def test_bottom_room_has_one_mirrored_risk_setup_and_shared_pipe():
     world = city.generate(seed=7)
     assert world.spikes == []
     assert len(world.plants) == 2
     assert len(world.slip) == 2
-    assert len(world.pipes) == 2
+    assert len(world.pipes) == 1
     assert world.blue_stars == [(15, 0)]
     assert world.red_stars == [(15, 18)]
 
     blue_plant = next(cell for cell in world.plants if cell[1] < city.CITY_SIZE // 2)
     blue_puddle = next(cell for cell in world.slip if cell[1] < city.CITY_SIZE // 2)
-    blue_pipe = next(pipe for pipe in world.pipes if pipe["entry"][1] < city.CITY_SIZE // 2)
+    pipe = world.pipes[0]
     assert blue_plant == (18, blue_puddle[1])
     assert blue_puddle[0] == 16
-    assert blue_pipe["entry"] == (15, 8)
-    assert blue_pipe["dests"] == [(11, 8)]
-    assert blue_pipe["requiresStar"] == 0
+    assert pipe["entry"] == (15, 9)
+    assert pipe["dests"] == [(10, 9)]
+    assert pipe["exit"] == (10, 9)
+    assert pipe["requiresStar"] == 0
     assert world.grid[blue_plant[0]][blue_plant[1]] == WALL
     assert blue_plant not in world.hedge_cells
+    attack_zone = {
+        (r + dr, c + dc)
+        for r, c in world.plants
+        for dr in (-1, 0, 1)
+        for dc in (-1, 0, 1)
+        if dr or dc
+    }
+    assert not (attack_zone & set(world.hedge_cells))
 
     # A southward skid from the water enters one of the eight attack cells.
     assert (17, blue_puddle[1]) in {
@@ -126,18 +144,31 @@ def test_tomato_is_required_before_bottom_pipe_activates():
     env = GridWorld(seed=4, round_id=2)
     env.reset()
 
-    env.blue_pos = (14, 8)
+    env.blue_pos = (14, 9)
     env.step(0, 1)
-    assert env.blue_pos == (14, 8)
+    assert env.blue_pos == (14, 9)
 
-    env.blue_pos = (16, 0)
+    blue_tomato = env.world.blue_stars[0]
+    env.blue_pos = (blue_tomato[0] + 1, blue_tomato[1])
     env.step(0, 0)
-    assert env.blue_pos == (15, 0)
+    assert env.blue_pos == blue_tomato
     assert env.stars_collected["blue"] == 1
 
-    env.blue_pos = (14, 8)
+    env.blue_pos = (14, 9)
     env.step(0, 1)
-    assert env.blue_pos == (11, 8)
+    assert env.blue_pos == (10, 9)
+
+    # Red owns the mirrored tomato but enters and exits through the same Pipe.
+    env.reset()
+    red_tomato = env.world.red_stars[0]
+    env.red_pos = (red_tomato[0] + 1, red_tomato[1])
+    env.step(0, 0)
+    assert env.red_pos == red_tomato
+    assert env.stars_collected["red"] == 1
+
+    env.red_pos = (14, 9)
+    env.step(1, 0)
+    assert env.red_pos == (10, 9)
 
 
 def test_piranha_attack_zone_is_eight_neighbours_not_plant_cell():

@@ -151,6 +151,12 @@ class Match:
         # applied at WORLD GEN.
         self.r2_plants = 3                      # one piranha shortcut trap in each stage
         self.r2_slip = 3                        # slippery puddles per side (mirrored)
+        # Round-4 game-feel overrides (None = the arena's own default), applied to
+        # the env after any (re)build and live from the panel's World card.
+        self.r4_missile_speed = None
+        self.r4_missile_homing = None
+        self.r4_hearts = None
+        self.r4_hit_penalty = None
         self.r2_slip_prob = R2_SLIP_PROB        # independent of Round-1 ice
         # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
         # Red each train fully independently (different brain AND different training
@@ -159,12 +165,14 @@ class Match:
         self.dqn_buffer = 50_000
         self.dqn_warmup = 500                   # learn after this many samples
         self.dqn_target_sync = 500              # target-net copy interval
+        self.dqn_n_step = 3                     # multi-step return length
         self.dqn_hidden = 128                   # Blue hidden width
         self.dqn_layers = 2                     # Blue hidden layers
         self.red_dqn_batch = 64
         self.red_dqn_buffer = 50_000
         self.red_dqn_warmup = 500
         self.red_dqn_target_sync = 500
+        self.red_dqn_n_step = 3
         self.red_dqn_hidden = 128               # Red hidden width
         self.red_dqn_layers = 2                 # Red hidden layers
         # ------------------------------------------------------------------------
@@ -223,6 +231,11 @@ class Match:
         push changed the DP STATE SPACE (ghost/freeze length) - the caller re-enumerates."""
         if self.max_steps_override is not None:
             self.env.max_steps = self.max_steps_override
+        setm = getattr(self.env, "set_missile_dynamics", None)
+        if setm:                                # Round-4 game-feel overrides
+            setm(missile_speed=self.r4_missile_speed,
+                 missile_turn=self.r4_missile_homing,
+                 hearts=self.r4_hearts, hit_penalty=self.r4_hit_penalty)
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
@@ -300,6 +313,7 @@ class Match:
                             warmup=self.red_dqn_warmup if red else self.dqn_warmup,
                             target_sync=(self.red_dqn_target_sync if red
                                          else self.dqn_target_sync),
+                            n_step=self.red_dqn_n_step if red else self.dqn_n_step,
                             hidden=self.red_dqn_hidden if red else self.dqn_hidden,
                             layers=self.red_dqn_layers if red else self.dqn_layers)
         if is_pg(algo):
@@ -769,6 +783,8 @@ class Match:
             need_agent_rebuild = False  # network shape changed (buffer / width)
             replan = False              # GLOBAL DP change: BOTH planners must re-solve
             replan_blue = False         # per-side (Blue's discount / speed): only Blue re-solves
+            r4_dyn = False              # Round-4 game-feel change (apply live to the env)
+            r4_hearts_reset = False     # a heart-count change needs a fresh episode
 
             # ---- per-side LEARNING (Blue) ----
             if "alpha" in p:
@@ -838,6 +854,21 @@ class Match:
                 self.r2_slip = max(0, min(3, int(p["r2Slip"])))
                 need_env_rebuild = True
 
+            # ---- Round-4 game feel (World card; applied live to the arena) ----
+            if "r4MissileSpeed" in p:
+                self.r4_missile_speed = max(2.0, min(10.0, float(p["r4MissileSpeed"])))
+                r4_dyn = True
+            if "r4MissileHoming" in p:
+                self.r4_missile_homing = max(0.0, min(1.5, float(p["r4MissileHoming"])))
+                r4_dyn = True
+            if "r4HitPenalty" in p:
+                self.r4_hit_penalty = max(-5.0, min(-0.1, float(p["r4HitPenalty"])))
+                r4_dyn = True
+            if "r4Hearts" in p:
+                self.r4_hearts = max(1, min(9, int(p["r4Hearts"])))
+                r4_dyn = True
+                r4_hearts_reset = True
+
             # ---- BLUE's DQN internals (per-side; Red's are in set_red_params) ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
@@ -853,6 +884,9 @@ class Match:
                 need_agent_rebuild = True
             if "dqnLayers" in p:
                 self.dqn_layers = max(1, min(6, int(p["dqnLayers"])))
+                need_agent_rebuild = True
+            if "dqnNstep" in p:
+                self.dqn_n_step = max(1, min(10, int(p["dqnNstep"])))
                 need_agent_rebuild = True
 
             # ---- GLOBAL: structural world (rebuild the scene) ----
@@ -911,6 +945,10 @@ class Match:
                         and hasattr(self.blue, "plan_speed"):
                     self.blue.reset_learning()
                 self._apply_epsilon()
+            # A Round-4 heart-count change needs a fresh episode to take effect (the
+            # rebuild paths already restart; only the pure-live path needs this).
+            if r4_hearts_reset and not need_env_rebuild and not need_agent_rebuild:
+                self._new_episode()
             return self.params()
 
     def params(self):
@@ -935,10 +973,16 @@ class Match:
             "blockReward": round(self.block_reward, 2),
             "r2Plants": self.r2_plants,
             "r2Slip": self.r2_slip,
+            # round-4 game feel (only shown on R4; safe defaults on other rounds)
+            "r4MissileSpeed": round(getattr(self.env, "missile_max_speed", 5.4), 2),
+            "r4MissileHoming": round(getattr(self.env, "missile_turn", 0.5), 2),
+            "r4Hearts": int(getattr(self.env, "hearts_max", 3)),
+            "r4HitPenalty": round(getattr(self.env, "hit_penalty", -2.0), 2),
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
             "dqnTargetSync": self.dqn_target_sync,
+            "dqnNstep": self.dqn_n_step,
             "dqnHidden": self.dqn_hidden,
             "dqnLayers": self.dqn_layers,
             # reproducibility
@@ -990,6 +1034,9 @@ class Match:
             if "dqnLayers" in p:
                 self.red_dqn_layers = max(1, min(6, int(p["dqnLayers"])))
                 red_net_change = True
+            if "dqnNstep" in p:
+                self.red_dqn_n_step = max(1, min(10, int(p["dqnNstep"])))
+                red_net_change = True
             if red_net_change:
                 # a new architecture / buffer needs fresh weights: rebuild both sides
                 # and restart the contest (mirrors set_params' width/buffer rebuild).
@@ -1025,6 +1072,7 @@ class Match:
             "dqnBuffer": self.red_dqn_buffer,
             "dqnWarmup": self.red_dqn_warmup,
             "dqnTargetSync": self.red_dqn_target_sync,
+            "dqnNstep": self.red_dqn_n_step,
             "dqnHidden": self.red_dqn_hidden,
             "dqnLayers": self.red_dqn_layers,
             "maxSteps": self.env.max_steps,
@@ -1319,7 +1367,7 @@ class Match:
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
                             "own mirror-image copy of the same star-collecting maze.")
-                stage_pipes = n_pipes // 2
+                stage_pipes = n_pipes
                 skid = getattr(env, "r2_slip_prob", R2_SLIP_PROB)
                 if star_mode:
                     dynamics = (
@@ -1372,54 +1420,48 @@ class Match:
             elif getattr(env, "missile_game", False):
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None
-                sees_opp = True
+                sees_opp = False
                 state_desc = (
-                    f"continuous {env.obs_dim}-vector: both characters' motion, "
-                    "three stable Banzai Bill slots, active effects, and two "
-                    "stable pickup slots"
+                    f"continuous {env.obs_dim}-vector = "
+                    "5 own kinematics (position x/z, velocity x/z, rim clearance) + "
+                    "5 own effect timers (speed, shield, slow, freeze, post-hit mercy) + "
+                    "3 nearest missiles x 8 (present, relative x/z, velocity x/z, "
+                    "aimed-at-me, time-to-impact, predicted miss) + "
+                    "3 nearest pickups x 7 (present, relative x/z, 4-way type one-hot)"
                 )
                 observation = (
-                    "Each model sees its own motion, the rival's relative motion, rim "
-                    "clearance, elapsed difficulty and the next launch. Three fixed "
-                    "missile slots expose position, velocity, target, age and whether "
-                    "the missile has entered the tower. It also sees both characters' "
-                    "effect timers, time to the next pickup, and the type, relative "
-                    "position and lifetime of each active pickup."
+                    "Each agent sees ONLY itself and its immediate surroundings: its own "
+                    "position / velocity and clearance to the rim, its own power-up and "
+                    "post-hit timers, the 3 nearest Banzai Bills SORTED by how soon they "
+                    "reach it (each with a targets-me flag, a time-to-impact and a "
+                    "predicted miss distance), and the 3 nearest pickups with their type."
                 )
                 opp_info = (
-                    "Relative position and velocity. This is required because a Banzai "
-                    "Bill targeting the rival still changes the observing agent's future."
+                    "Nothing - the rival is not in the observation. Each agent just "
+                    "survives its own share of the shared missiles; a targets-me flag "
+                    "tells it which Bills are currently hunting it."
                 )
                 dynamics = (
                     "Continuous thrust and momentum inside a circular tower. Banzai Bills "
-                    "enter through the north opening and explode on a character or the "
-                    "curved rim. During the first 1,000 training episodes an episode-based "
-                    "curriculum begins with one slow, straight missile, then "
-                    "progressively unlocks stronger homing, higher speed, a faster launch "
-                    "rate and additional concurrent missiles. Within each unlocked stage "
-                    "the pressure can still rise with survival time. Pickups can boost "
-                    "speed, block missile hits, slow movement or briefly freeze the "
-                    "collector."
+                    "enter from the north and home in, exploding on a character or the rim. "
+                    "The barrage escalates with survival time: 1 Bill at the start, 2 from "
+                    "100 steps, 3 from 200 (capped at 3). Each character has 3 HEARTS - a "
+                    "hit costs a heart and grants a brief mercy-invulnerability in place "
+                    "(no respawn); the round ends only when a character loses all 3. "
+                    "Pickups can speed you up, shield you, slow you or briefly freeze you."
                 )
                 rewards = [
-                    ["Survive one decision", 0.015],
-                    ["Improve a closing missile's projected miss distance",
-                     "up to +0.025 / decision"],
-                    ["Worsen a closing missile's projected miss distance",
-                     "down to -0.025 / decision"],
-                    ["Safe explosion", "up to +0.12 by distance"],
-                    ["Collect speed pickup", 0.035],
-                    ["Collect invincibility pickup", 0.045],
-                    ["Collect slow pickup", -0.035],
-                    ["Collect freeze pickup", -0.05],
-                    ["Redirected missile hits opponent", 0.25],
-                    ["Opponent is hit", 1.0],
-                    ["Hit by Banzai Bill", -1.25],
+                    ["Survive one decision", 0.02],
+                    ["Dodge a Bill aimed at you (it expires without a hit)", 0.15],
+                    ["Change a closing missile's projected miss distance",
+                     "up to +/-0.025 / decision"],
+                    ["Lose a heart (hit by a Banzai Bill)", -2.0],
+                    ["Rival loses their last heart (you win)", 0.05],
                 ]
                 win = (
-                    "A missile hit eliminates that character; the surviving character "
-                    "wins the episode. Invincibility destroys the missile instead, and "
-                    "a simultaneous lethal blast is a draw."
+                    "Each character has 3 hearts; a Bill hit costs one. The round ends when "
+                    "a character runs OUT of hearts - the survivor wins (both emptied on "
+                    "the same instant is a draw)."
                 )
             else:
                 actions = ["8 compass thrusts + coast (9)"]
@@ -1634,7 +1676,15 @@ class Match:
         n = len(ro) or 1
         return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
 
+    # The continuous arena's 9 thrust actions (see continuous.DIRS): 8 compass
+    # directions + coast. Shown as real directions, never bare 0..8 indices.
+    _ARENA_LABELS = ["N", "S", "W", "E", "NW", "NE", "SW", "SE", "Stay"]
+    _ARENA_LABELS_FULL = ["North", "South", "West", "East", "North-West",
+                          "North-East", "South-West", "South-East", "Stay (coast)"]
+
     def _action_labels(self, full=False):
+        if self.env.n_actions == 9 and getattr(self.env, "objective", "") == "arena":
+            return self._ARENA_LABELS_FULL if full else self._ARENA_LABELS
         if self.env.n_actions != 4:
             return [str(i) for i in range(self.env.n_actions)]
         # Peach's camera views the board from the opposite side. Keep the learner's
