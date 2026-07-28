@@ -791,16 +791,18 @@ export const tostarena = {
     };
 
     // ---- the flag: the real Odyssey Checkpoint Flag (deskinned) ------------
-    // The BodyMT pole stays rigid; the FlagMT cloth ripples in the wind (a vertex
-    // wave growing from the pole to the free edge). Stands PLANTED and STILL at
-    // the centre when free; RISES to ride above whoever is carrying it.
+    // The BodyMT pole is PLANTED at the centre and never moves. The FlagMT cloth is
+    // split into its own group: it sits on the pole when free, and only IT flies to
+    // ride above whoever is carrying it (the pole stays behind). The cloth ripples
+    // in the wind (a vertex wave growing from the pole to the free edge).
     const FLAGDIR = OBJ + "Checkpoint Flag/";
     const flag = {
-      wrap: new THREE.Group(),
-      model: null, cloth: null, clothBase: null, wave: null,
+      poleWrap: new THREE.Group(),          // the planted pole (never moves)
+      clothWrap: null,                      // the movable cloth group
+      cloth: null, clothBase: null, wave: null, clothHome: null,
     };
-    flag.wrap.position.set(C, 0, C);
-    group.add(flag.wrap);
+    flag.poleWrap.position.set(C, 0, C);
+    group.add(flag.poleWrap);
     {
       const poleMat = track(new THREE.MeshStandardMaterial({
         map: objTex(FLAGDIR + "CheckpointFlagBody_alb.png", true),
@@ -817,6 +819,7 @@ export const tostarena = {
       collada.loadAsync(encodeURI(FLAGDIR + "CheckpointFlag.dae")).then((asset) => {
         if (disposed) return;
         const root = deskinObj(asset.scene);
+        let clothMesh = null;
         root.traverse((o) => {
           if (!o.isMesh) return;
           o.castShadow = true;
@@ -824,22 +827,34 @@ export const tostarena = {
           track(o.geometry);
           // NB: the pole mesh is "CheckpointFlag__BodyMT" - it CONTAINS "Flag"
           // (from the model name), so key off "Body" for the pole and treat the
-          // rest (the "__FlagMT" cloth) as the banner. Getting this backwards puts
-          // the flag texture on the pole.
-          if (/body/i.test(o.name || "")) {
-            o.material = poleMat;
-          } else {
-            o.material = clothMat;
-            flag.cloth = o;
-          }
+          // rest (the "__FlagMT" cloth) as the banner.
+          if (/body/i.test(o.name || "")) o.material = poleMat;
+          else { o.material = clothMat; clothMesh = o; }
         });
         const wrap = fitObj(root, 2.8, true);      // ~2.8 units tall by height
-        flag.wrap.add(wrap);
-        flag.model = wrap;
-        // prime the cloth wave: flattest axis = the sheet normal to displace, the
-        // wider horizontal axis = the length (the free edge waves most).
-        if (flag.cloth) {
-          const g = flag.cloth.geometry;
+        flag.poleWrap.add(wrap);
+        // lift the CLOTH out of the pole model into its own world-space group, so
+        // only the cloth travels while the pole stays planted. Bake its planted
+        // world transform so it doesn't jump when we detach it.
+        if (clothMesh) {
+          flag.poleWrap.updateMatrixWorld(true);
+          const wp = new THREE.Vector3(), wq = new THREE.Quaternion(),
+            ws = new THREE.Vector3();
+          clothMesh.matrixWorld.decompose(wp, wq, ws);
+          clothMesh.parent.remove(clothMesh);
+          clothMesh.position.set(0, 0, 0);
+          clothMesh.quaternion.copy(wq);
+          clothMesh.scale.copy(ws);
+          const cw = new THREE.Group();
+          cw.position.copy(wp);
+          cw.add(clothMesh);
+          group.add(cw);
+          flag.clothWrap = cw;
+          flag.cloth = clothMesh;
+          flag.clothHome = wp.clone();             // where it rests on the pole
+          // prime the wind wave: flattest axis = the sheet normal to displace, the
+          // wider horizontal axis = the length (the free edge waves most).
+          const g = clothMesh.geometry;
           g.computeBoundingBox();
           const bb = g.boundingBox;
           const ext = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z];
@@ -1120,21 +1135,24 @@ export const tostarena = {
     }
 
     function updateCTF(t, dt, frame) {
-      // the flag: planted STILL at the centre when free, lifted above the carrier
-      // when held (NO spin - only a slight lean while being run home).
+      // the flag: the POLE stays planted at the centre; only the CLOTH travels - it
+      // rests on the pole when free and flies to ride above the carrier when held.
       const f = frame?.flag;
       const holder = f?.holder ?? frame?.flagHolder ?? null;
       const held = holder === "red" || holder === "blue";
       const carrier = held ? frame?.[holder] : null;
-      const tx = held && carrier ? carrier[0] : C;
-      const tz = held && carrier ? carrier[1] : C;
-      const ty = held ? 1.3 + Math.sin(t * 5) * 0.12 : 0;   // planted vs carried aloft
-      const rate = held ? 1 - Math.exp(-dt * 14) : 0.1;
-      flag.wrap.position.x += (tx - flag.wrap.position.x) * rate;
-      flag.wrap.position.z += (tz - flag.wrap.position.z) * rate;
-      flag.wrap.position.y += (ty - flag.wrap.position.y) * rate;
-      flag.wrap.rotation.y = 0;                              // stays put, never spins
-      flag.wrap.rotation.z = held ? Math.sin(t * 3) * 0.12 : 0;  // slight lean while carried
+      if (flag.clothWrap && flag.clothHome) {
+        const home = flag.clothHome;
+        const tx = held && carrier ? carrier[0] : home.x;
+        const tz = held && carrier ? carrier[1] : home.z;
+        // carried just above the character's head, not floating high in the air
+        const ty = held ? 1.25 + Math.sin(t * 5) * 0.1 : home.y;
+        const rate = held ? 1 - Math.exp(-dt * 14) : 0.12;
+        flag.clothWrap.position.x += (tx - flag.clothWrap.position.x) * rate;
+        flag.clothWrap.position.y += (ty - flag.clothWrap.position.y) * rate;
+        flag.clothWrap.position.z += (tz - flag.clothWrap.position.z) * rate;
+        flag.clothWrap.rotation.z = held ? Math.sin(t * 3) * 0.12 : 0;  // lean while carried
+      }
       // WIND on the cloth only (the FlagMT mesh): a vertex ripple growing from the
       // pole to the free edge; the BodyMT pole is untouched.
       if (flag.cloth && flag.wave) {
@@ -1279,7 +1297,8 @@ export const tostarena = {
         for (const mm of ms) mm?.dispose?.();
       });
       if (crateProtoObj) { disposeTree(crateProtoObj); crateProtoObj = null; }
-      if (flag.model) { disposeTree(flag.model); flag.model = null; }
+      disposeTree(flag.poleWrap);
+      if (flag.clothWrap) { disposeTree(flag.clothWrap); flag.clothWrap = null; }
       scene.remove(group);
       for (const o of trash) o.dispose?.();
     }

@@ -1413,21 +1413,47 @@ export const fossilfalls = {
       ...(world.redCage || []).map((c) => ({ cell: c, side: "red" })),
     ];
     if (pickupSpec.length) {
-      const coinMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(OBJ + "Regional Coins/CoinCollectA_alb.png", true),
+      // HOLOGRAPHIC WHITE: a white body shot through with a soft PASTEL RAINBOW so it
+      // reads "white and colourful at the same time" (user's ask). The colour comes from
+      // a generated emissive map (reliable everywhere, unlike env-only iridescence);
+      // iridescence + clearcoat add extra shimmer where the GPU/env supports it. Facet
+      // relief kept from the normal/roughness maps; the purple albedo is dropped.
+      const holoTex = (() => {
+        const N = 128, cv = document.createElement("canvas"); cv.width = cv.height = N;
+        const ctx2 = cv.getContext("2d"), im = ctx2.createImageData(N, N), d = im.data;
+        const hsl = (h, s, l) => {
+          const k = (n) => (n + h * 12) % 12, a = s * Math.min(l, 1 - l);
+          const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+          return [f(0) * 255, f(8) * 255, f(4) * 255];
+        };
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const u = x / N, v = y / N;
+          const hue = ((u * 1.5 + v * 0.6 + 0.13 * Math.sin(v * Math.PI * 5) + 0.1 * Math.sin(u * Math.PI * 7)) % 1 + 1) % 1;
+          const [r, g, b] = hsl(hue, 0.9, 0.7), i = (y * N + x) * 4;
+          d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+        }
+        ctx2.putImageData(im, 0, 0);
+        const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.colorSpace = THREE.SRGBColorSpace; return trackTexture(t);
+      })();
+      const coinMat = track(new THREE.MeshPhysicalMaterial({
+        color: 0xf4f5ff,
         normalMap: objTex(OBJ + "Regional Coins/CoinCollectA_nrm.png", false),
         roughnessMap: objTex(OBJ + "Regional Coins/CoinCollectA_rgh.png", false),
-        metalnessMap: objTex(OBJ + "Regional Coins/CoinCollectA_mtl.png", false),
-        roughness: 0.6, metalness: 0.5,
+        roughness: 0.55, metalness: 0.1,               // matter surface -> softer, dimmer highlights
+        envMapIntensity: 0.5,                           // less mirror-bright env reflection
+        emissive: 0xffffff, emissiveMap: holoTex, emissiveIntensity: 0.8,
+        iridescence: 0.6, iridescenceIOR: 1.3, iridescenceThicknessRange: [120, 500],
+        clearcoat: 0.15, clearcoatRoughness: 0.5,       // drop the glossy clearcoat hotspot
       }));
       collada.loadAsync(encodeURI(OBJ + "Regional Coins/CoinCollectA.dae")).then((asset) => {
         if (disposed) return;
         const root = deskinObj(asset.scene);
         root.traverse((o) => { if (o.isMesh) { o.material = coinMat; o.castShadow = true; track(o.geometry); } });
-        const proto = fitObj(root, 0.55, false);
+        const proto = fitObj(root, 0.7, false);
         for (const p of pickupSpec) {
           const m = proto.clone();
-          m.position.set(p.cell[1] + 0.5, 0.4, p.cell[0] + 0.5);
+          m.position.set(p.cell[1] + 0.5, 0.9, p.cell[0] + 0.5);   // hover ABOVE the ~0.7 rock walls
           group.add(m);
           cagePickups.push({ mesh: m, r: p.cell[0], c: p.cell[1] });
         }
@@ -1564,7 +1590,7 @@ export const fossilfalls = {
           p.mesh.visible = alive;
           if (alive) {
             p.mesh.rotation.y = t * 2.2;
-            p.mesh.position.y = 0.4 + Math.sin(t * 3 + p.c) * 0.07;
+            p.mesh.position.y = 0.9 + Math.sin(t * 3 + p.c) * 0.08;
           }
         }
       }

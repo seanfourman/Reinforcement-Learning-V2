@@ -213,10 +213,11 @@ def _place_cage(grid, rng, path, occupied):
                 return B
         return None
 
-    # Prefer a nook in the MIDDLE stretch of the route - physically away from the spawn
-    # corner, a true mid-race detour (not just a few steps in). Widen only if none there.
+    # Prefer a carved dead-end nook in the MIDDLE stretch of the route - physically away
+    # from the spawn corner, a true mid-race detour. Widen the band if none there, and as a
+    # final nook pass allow ANY route cell (near spawn/exit included).
     half = plen // 2
-    for lo_hi in ((plen // 4, 3 * plen // 4), (4, plen - 3)):
+    for lo_hi in ((plen // 4, 3 * plen // 4), (4, plen - 3), (0, plen)):
         mids = [P for P in path if lo_hi[0] <= d_spawn.get(P, 10 ** 9) <= lo_hi[1] and 0 < P[1] < MID]
         rng.shuffle(mids)
         mids.sort(key=lambda P: abs(d_spawn.get(P, 0) - half))    # closest to the route's MIDDLE
@@ -226,16 +227,24 @@ def _place_cage(grid, rng, path, occupied):
                 grid[B[0]][B[1]] = FLOOR                         # carve the nook + its mirror
                 grid[B[0]][W - 1 - B[1]] = FLOOR
                 return B, (B[0], W - 1 - B[1])
-    # fallback (rare, no nook anywhere): an existing 1-off cell nearest the route's middle.
+    # fallback 1 (rare, no nook anywhere): an existing 1-off branch cell nearest the route's
+    # middle. Drop the distance band so any 1-off cell qualifies (guarantee > tidy placement).
     d_path = bfs([Q for Q in path if Q[1] < MID])
     off = [(c, d_spawn.get(c, 10 ** 9)) for c, dp in d_path.items()
-           if dp == 1 and c not in pathset and c not in occupied and 3 <= d_spawn.get(c, 10 ** 9) <= plen - 3]
-    if not off:
-        return None, None
-    rng.shuffle(off)
-    off.sort(key=lambda x: abs(x[1] - half))                     # nearest to the route's middle
-    blue = off[0][0]
-    return blue, (blue[0], W - 1 - blue[1])
+           if dp == 1 and c not in pathset and c not in occupied]
+    if off:
+        rng.shuffle(off)
+        off.sort(key=lambda x: abs(x[1] - half))                 # nearest to the route's middle
+        blue = off[0][0]
+        return blue, (blue[0], W - 1 - blue[1])
+    # fallback 2 (last resort, a maze with no branch/nook on the left half): put the cage ON a
+    # mid-route path cell so the pickup + comeback mechanic ALWAYS exist. It can't return None.
+    on = [P for P in path if 0 < P[1] < MID and P not in occupied]
+    if on:
+        on.sort(key=lambda P: abs(d_spawn.get(P, 0) - half))
+        blue = on[0]
+        return blue, (blue[0], W - 1 - blue[1])
+    return None, None
 
 
 def _place_wet(grid, rng, path, avoid, n_pairs):

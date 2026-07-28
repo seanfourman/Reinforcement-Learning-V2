@@ -148,12 +148,20 @@ WIN, LOSE = 1.0, -1.0
 # same agent must EVADE while carrying and PURSUE while chasing, and time its crate
 # detours - and the best evasion is unpredictable, exactly where a stochastic
 # (policy-gradient) policy beats a deterministic one.
-CTF_MAX_STEPS = 900         # first-to-3-captures needs room for several carry cycles
+# Per-episode cap. A decisive first-to-3-captures game resolves in ~300-900 steps, but
+# this cap must also cover EVENLY-MATCHED / defensive games (and, early in training,
+# untrained agents that never capture and run to the cap). 3000 steps (150 s) matches
+# Round 4's cap and leaves ample room without cutting real games short at a timeout.
+# It is live-tunable from the panel's Max-steps control.
+CTF_MAX_STEPS = 3000
 FLAG_R = 0.75               # reach for grabbing the FREE flag at the pole
 TAG_R = 0.95                # chaser's tag reach vs the carrier (the steal)
 HOME_R = 1.5                # distance to your own base that CAPTURES (scores) the flag
 CARRY_SLOW = 0.72           # the carrier is slowed, so a chase can actually resolve
-STUN_SECONDS = 0.5          # a robbed carrier is briefly frozen (stops ping-pong steals)
+# A robbed carrier is FROZEN this long. It must be long enough that the thief (who is
+# now slowed by CARRY_SLOW) actually gets away, or the victim just re-steals the instant
+# it recovers (a hot-potato). 1.5 s frees the thief by ~7 units before the chase resumes.
+STUN_SECONDS = 1.5
 CAPTURES_TO_WIN = 3
 CTF_EVENT_HOLD_SECONDS = 0.9
 # per-side reward structure (event rewards fire once; shaping telescopes)
