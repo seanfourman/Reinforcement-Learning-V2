@@ -41,7 +41,7 @@ class World:
                  red_blocks=None, blue_blocks=None, slip=None,
                  spikes=None, plants=None, pipes=None,
                  red_stars=None, blue_stars=None,
-                 hedge_cells=None):
+                 hedge_cells=None, goombas=None, bridge=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -81,6 +81,14 @@ class World:
         # impassable cells receive shrub geometry; collision still comes
         # exclusively from ``grid``.
         self.hedge_cells = [tuple(c) for c in (hedge_cells or [])]
+        # Round-3 (Fossil Falls): patrolling Goombas + a single-file bridge. Each
+        # goomba is {"cells": [(r,c), ...], "phase0": int} and walks its cell list
+        # back and forth deterministically. ``bridge`` cells are the choke where the
+        # live rival can block you. Empty on every other round.
+        self.goombas = [{"cells": [tuple(c) for c in gb["cells"]],
+                         "phase0": int(gb.get("phase0", 0))}
+                        for gb in (goombas or [])]
+        self.bridge = [tuple(b) for b in (bridge or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -116,6 +124,10 @@ class World:
             "redStars": [list(s) for s in self.red_stars],
             "blueStars": [list(s) for s in self.blue_stars],
             "hedgeCells": [list(c) for c in self.hedge_cells],
+            # Round-3 patrolling Goombas (cell lists) + the single-file bridge cells.
+            "goombas": [{"cells": [list(c) for c in gb["cells"]], "phase0": gb["phase0"]}
+                        for gb in self.goombas],
+            "bridge": [list(b) for b in self.bridge],
         }
 
 

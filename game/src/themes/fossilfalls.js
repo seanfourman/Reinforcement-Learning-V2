@@ -20,7 +20,7 @@ import * as THREE from "three";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
-const GRID = 20;
+const GRID = 19; // R3's maze fills a 19x19 board (matches rl/worlds/fossilfalls.py)
 const CTR = GRID / 2;
 const ASSETS = "./assets/models/fossil-falls/";
 const ISLAND_GRASS = "./assets/models/city-newdonk/GroundLawn00_alb.png";
@@ -229,11 +229,14 @@ export const fossilfalls = {
     }
 
     function loadModel(name, keepRotation) {
+      // pack files resolve under ASSETS; an explicit ./ or / path (e.g. the shared
+      // Goomba under assets/objects/) loads as-is so its own textures resolve beside it
+      const url = /^(\.?\/)/.test(name) ? name : ASSETS + name;
       if (!protos.has(name)) {
         protos.set(
           name,
           collada
-            .loadAsync(ASSETS + name)
+            .loadAsync(url)
             .then((asset) => {
               const proto = prepare(asset, keepRotation);
               if (disposed) disposeTree(proto);
@@ -819,8 +822,8 @@ export const fossilfalls = {
       footprint: 15.0,
       ry: -1.5 + Math.PI, // east flank (mirrored)
     });
-    place("WaterfallWorldHomeBone000.dae", 10.75, 21.0, {
-      baseY: -6.5,
+    place("WaterfallWorldHomeBone000.dae", 10.8, 21.0, {
+      baseY: -7.0,
       footprint: 7.5,
       ry: 0, // the skull on the south face (tuned live via the dev bar)
     });
@@ -1213,6 +1216,100 @@ export const fossilfalls = {
     }
 
     // ---- animation + teardown -------------------------------------------
+    // ---- Round-3 patrolling Goombas: the REAL Odyssey Goomba (assets/objects/Goomba)
+    // per world.goombas patrol, positioned each frame from the deterministic cells the
+    // backend sends in frame.goombas. Each goomba gets an empty container Group now (so
+    // update() can drive it immediately); the shared model is loaded + reskinned once
+    // below and cloned into every container when it arrives.
+    const GOOMBA_DAE = "./assets/objects/Goomba/Goomba.dae";
+    const GOOMBA_TEX = "./assets/objects/Goomba/Textures/";
+    const GOOMBA_HEIGHT = 0.72; // world units tall (~0.7 of a cell)
+    const goombaMeshes = [];
+    for (let i = 0; i < (world.goombas || []).length; i++) {
+      const gm = new THREE.Group();
+      gm.visible = false;
+      group.add(gm);
+      goombaMeshes.push({ g: gm, x: 0, z: 0, has: false });
+    }
+    if (goombaMeshes.length) {
+      // The Goomba.dae is a Z-up SkinnedMesh with a broken skeleton and library-id
+      // texture refs three can't bind - cloning it as-is MELTS the mesh. So (as in the
+      // peach/city rounds) DESKIN it to rest-pose meshes, then reskin from its Textures/
+      // PNGs by MATERIAL family (BodyMT / EyeLMT-R / HairMT). One shared material set is
+      // reused across every clone (no per-clone PBR blow-up).
+      const deskin = (root) => {
+        const skinned = [];
+        root.traverse((o) => o.isSkinnedMesh && skinned.push(o));
+        for (const sm of skinned) {
+          const m = new THREE.Mesh(sm.geometry, sm.material);
+          m.name = sm.name;
+          m.position.copy(sm.position);
+          m.quaternion.copy(sm.quaternion);
+          m.scale.copy(sm.scale);
+          if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+        }
+        return root;
+      };
+      const gTex = (name, color) => {
+        // the body + eye meshes use MIRRORED (negative) UVs, so the texture must REPEAT-
+        // wrap: clamping pinned the left half of the body and both eyes to a texture edge
+        // (a flat smear / a grey blob). Repeat wraps -U back onto the real detail.
+        const t = textureAt(GOOMBA_TEX + name, 1, 1, color);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        return t;
+      };
+      const skinFor = (key) => {
+        const set =
+          key === "eye"
+            ? ["kuriboeye_alb.0.png", "kuriboeye_nrm.0.png", "kuriboeye_rgh.0.png"]
+            : key === "hair"
+              ? ["mariohairface_alb.png", "mariohairface_nrm.png", "mariohairface_rgh.png"]
+              : ["kuribobody_alb.png", "kuribobody_nrm.png", "kuribobody_rgh.png"];
+        return track(
+          new THREE.MeshStandardMaterial({
+            map: gTex(set[0], true),
+            normalMap: gTex(set[1], false),
+            roughnessMap: gTex(set[2], false),
+            roughness: 0.85,
+            metalness: 0,
+          }),
+        );
+      };
+      const skinCache = {};
+      // the eyeballs use the EyeL/EyeR materials; the cap/face patch uses HairMT;
+      // EVERYTHING else (body, brows, eye-whites) is BodyMT -> the brown body skin.
+      const famOf = (o) => {
+        const m = (o.material?.name || "").toLowerCase();
+        const key = m.includes("hair") ? "hair" : m.includes("eye") ? "eye" : "body";
+        return (skinCache[key] ||= skinFor(key));
+      };
+      collada.loadAsync(GOOMBA_DAE).then((asset) => {
+        if (disposed) return;
+        const root = deskin(asset.scene);
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          // the model ships extra states stacked in one spot: PressModel is the flat
+          // STOMPED disc (that was the spreading pancake), EyeClose/EyeHalfClose are
+          // blink frames. Hide them all; keep only the standing body + wide-awake eyes.
+          if (/PressModel|EyeClose|EyeHalfClose|Mustache/i.test(o.name || "")) { o.visible = false; return; }
+          o.material = famOf(o);
+          o.castShadow = true;
+          o.receiveShadow = true;
+          track(o.geometry);
+        });
+        // centre in XZ, sit the base at y=0, scale to a readable height
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const dim = box.getSize(new THREE.Vector3());
+        const ctr = box.getCenter(new THREE.Vector3());
+        root.position.set(-ctr.x, -box.min.y, -ctr.z);
+        const proto = new THREE.Group();
+        proto.add(root);
+        proto.scale.setScalar(GOOMBA_HEIGHT / (dim.y || 1));
+        for (const gm of goombaMeshes) gm.g.add(proto.clone());
+      }).catch((e) => console.warn("Goomba failed to load", e));
+    }
+
     function update(t, dt, frame) {
       if (pondNrm) {
         pondNrm.offset.x = Math.sin(t * 0.18) * 0.4 + t * 0.013; // gentle swirling ripples
@@ -1262,6 +1359,30 @@ export const fossilfalls = {
         h.mesh.position.x = h.baseX + Math.sin(t * 0.05 + h.ph) * 6;
         h.mesh.position.z = h.baseZ + Math.cos(t * 0.04 + h.ph * 1.3) * 5;
         h.mesh.rotation.z = t * 0.008 + h.ph;
+      }
+      // Round-3 Goombas: ease toward the deterministic cell the backend reports each
+      // frame (cell (r,c) -> world (c+0.5, r+0.5)); waddle + bob while they patrol.
+      const gcells = (frame && frame.goombas) || [];
+      for (let i = 0; i < goombaMeshes.length; i++) {
+        const gm = goombaMeshes[i];
+        const cell = gcells[i];
+        if (!cell) {
+          gm.g.visible = false;
+          continue;
+        }
+        const tx = cell[1] + 0.5,
+          tz = cell[0] + 0.5;
+        if (!gm.has) {
+          gm.x = tx;
+          gm.z = tz;
+          gm.has = true;
+        }
+        const k = Math.min(1, dt * 9);
+        gm.x += (tx - gm.x) * k;
+        gm.z += (tz - gm.z) * k;
+        gm.g.visible = true;
+        gm.g.position.set(gm.x, Math.abs(Math.sin(t * 6 + i)) * 0.06, gm.z);
+        gm.g.rotation.z = Math.sin(t * 6 + i) * 0.13; // waddle
       }
     }
 

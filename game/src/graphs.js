@@ -475,15 +475,61 @@ export function initReplay(parent) {
         <button data-a="red" aria-pressed="false">Red - top 30</button>
       </div>
       <div id="rl-rep-list" class="replist" role="region" aria-label="Top episode replays"></div>
+      <div id="rl-rep-detail" class="repdetail" role="region" aria-label="Selected replay details" hidden></div>
     </section>`,
   );
   const $ = (id) => parent.querySelector(id);
   const seg = $("#rl-rep-model");
   const listEl = $("#rl-rep-list");
+  const detailEl = $("#rl-rep-detail");
   let model = "blue"; // default: the player's own model (Blue), on the left
   let selEpisode = null; // immutable replay identity; rank changes as training runs
   let listRequest = 0;
   let replayRequest = 0;
+
+  const signed = (v) => (v >= 0 ? "+" : "") + Number(v).toFixed(2);
+
+  function clearDetail() {
+    detailEl.hidden = true;
+    detailEl.innerHTML = "";
+  }
+  // Show EVERYTHING recorded for the picked run: its return (total reward) and the
+  // terminal / shaping / step-cost split, the exploration ε it acted under, and how
+  // the head-to-head went - not just the length in the list row.
+  function renderDetail(r) {
+    const who = r.agent === "red" ? "Red" : "Blue";
+    const s = r.stats || null;
+    const rows = [
+      ["Run", `${who} #${(r.rank ?? 0) + 1}`],
+      ["Episode", (r.episode || 0).toLocaleString()],
+      [r.metric === "longest" ? "Survived" : "Steps", `${r.steps}`],
+    ];
+    if (s) {
+      if (Number.isFinite(s.return))
+        rows.push(["Return (total reward)", signed(s.return)]);
+      if (s.parts) {
+        rows.push(["&nbsp;&nbsp;· Win / loss", signed(s.parts.terminal)]);
+        rows.push(["&nbsp;&nbsp;· Shaping (pickups)", signed(s.parts.shape)]);
+        rows.push(["&nbsp;&nbsp;· Step cost", signed(s.parts.other)]);
+      }
+      if (Number.isFinite(s.epsilon))
+        rows.push(["Exploration ε", s.epsilon.toFixed(2)]);
+      if (s.outcome) {
+        const label =
+          s.outcome === "win" ? "Won the race"
+          : s.outcome === "lose" ? "Rival finished first"
+          : s.truncated ? "Rival timed out" : "Draw";
+        rows.push(["Head-to-head", label]);
+      }
+    }
+    detailEl.innerHTML = rows
+      .map(
+        ([k, v]) =>
+          `<div class="rd-row"><span class="rd-k">${k}</span><b class="rd-v">${v}</b></div>`,
+      )
+      .join("");
+    detailEl.hidden = false;
+  }
 
   async function refreshList() {
     const requestedModel = model;
@@ -506,6 +552,9 @@ export function initReplay(parent) {
             `aria-label="Replay rank ${it.rank + 1}, ${it.steps} steps, episode ${it.episode}">` +
             `<span class="rk">#${it.rank + 1}</span>` +
             `<span class="st">${it.steps} steps</span>` +
+            (Number.isFinite(it.return)
+              ? `<span class="rt">R ${signed(it.return)}</span>`
+              : "") +
             `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></button>`,
         )
         .join("");
@@ -548,6 +597,7 @@ export function initReplay(parent) {
       );
       if (!loaded || request !== replayRequest || requestedModel !== model) return;
       selEpisode = r.episode ?? episode;
+      renderDetail(r);
       [...listEl.children].forEach((el) =>
         el.classList.toggle("sel", +el.dataset.episode === selEpisode),
       );
@@ -569,6 +619,7 @@ export function initReplay(parent) {
     window.RL?.replay?.reserveLoad?.();
     listEl.classList.toggle("red", model === "red"); // red model -> red row selection
     selEpisode = null;
+    clearDetail();
     refreshList();
   });
   listEl.addEventListener("click", (e) => {
@@ -585,6 +636,7 @@ export function initReplay(parent) {
         selEpisode = null;
         [...listEl.children].forEach((el) => el.classList.remove("sel"));
       }
+      clearDetail();
       refreshList();
     }
   });

@@ -145,7 +145,7 @@ BLUE_MODEL = {
     "eps_start": 1.00, "eps_end": .05, "eps_episodes": 3000,
     "r2": {
         "alpha": .19, "gamma": .98,
-        "eps_start": .90, "eps_end": .23, "eps_episodes": 7200,
+        "eps_start": .90, "eps_end": .05, "eps_episodes": 7200,
     },
 }
 
@@ -964,13 +964,35 @@ class Match:
                 "steps": best_n,
                 "frames": self._frames[:best_n + 1],
             }
+        race = winner if winner in ("red", "blue") else "draw"
+        env_parts = getattr(self.env, "ep_parts", None)
         for replay_side in replay_sides:
             lst = self._top[replay_side]
             replay_policy = self._replay_policy_frames(replay_side)
             steps = side_steps[replay_side]
             frames = self._frames[:steps + 1]
+            # Freeze this run's numbers so the replay browser can show WHAT it
+            # actually scored (return + its terminal/shaping/step-cost split, the
+            # exploration ε it acted under, and the head-to-head outcome), not just
+            # its length. ep_parts is grid-only; arena rounds carry no split.
+            side_parts = None
+            if env_parts is not None and replay_side in env_parts:
+                p = env_parts[replay_side]
+                side_parts = {k: round(float(p.get(k, 0.0)), 3)
+                              for k in ("terminal", "shape", "other")}
+            stats = {
+                "return": round(float(self.ep_return.get(replay_side, 0.0)), 3),
+                "parts": side_parts,
+                "epsilon": round(float(self.red_epsilon if replay_side == "red"
+                                       else self.epsilon), 3),
+                "raceWinner": race,
+                "outcome": ("win" if race == replay_side
+                            else "lose" if race in ("red", "blue") else "draw"),
+                "truncated": bool(truncated),
+            }
             lst.append({"steps": steps, "episode": self.episode,
                         "winner": replay_side,
+                        "stats": stats,
                         "frames": frames,
                         "policyFrames": replay_policy,
                         "replayFields": (replay_fields or {}).get(replay_side)})
@@ -1731,7 +1753,7 @@ class Match:
                 win = ("First to the Power Moon wins; coins are optional value on the way. A "
                        "simultaneous arrival is a draw.")
                 slip_prob = sp
-            elif not arena and getattr(env, "hazardous", False):
+            elif not arena and getattr(env, "hazardous", False) and not getattr(env, "goomba_mode", False):
                 # Round 2 (New Donk City): the collect-three-tomatoes MC tour.
                 actions = ["North", "South", "West", "East"]
                 n_stars = getattr(env, "n_stars", 0)
@@ -1817,6 +1839,41 @@ class Match:
                         "This construction stage tests the bottom decision room. A plant death "
                         "eliminates that racer until the next episode while the rival continues."
                     )
+            elif getattr(env, "goomba_mode", False):
+                # Round 3 (Fossil Falls): the CLIFF-WALKING race - a Goomba-patrolled fast
+                # lane (the cliff) vs safe outer lanes, funnelling into a single-file bridge.
+                actions = ["North", "South", "West", "East"]
+                state_desc = (
+                    f"your tile, the Goomba patrol PHASE (steps mod {env._phase_period}), and a "
+                    "compact RIVAL flag (ahead / level / behind, plus whether the rival is "
+                    "holding the single-file bridge)"
+                )
+                state_size = None
+                observation = (
+                    "Its own tile, the patrol phase (so it can TIME the moving Goombas), and "
+                    "where the rival is relative to it and to the bridge."
+                )
+                observation_tuple = "(cell, phase, rival_flag)"
+                sees_opp = True
+                opp_info = (
+                    "The rival's RELATIVE position is in the state (ahead / level / behind + "
+                    "bridge-blocking), so the agent can decide whether to rush the single-file "
+                    "bridge first (to block and delay the rival) or take the safe lane."
+                )
+                dynamics = (
+                    "Deterministic 4-way moves; walls block. GOOMBAS patrol the fast central "
+                    "lane on fixed loops - a Goomba on your cell = DEATH. The two sides funnel "
+                    "into a single-file BRIDGE just below the shared goal; whoever reaches it "
+                    "first holds it and blocks the rival."
+                )
+                rewards = [["Step", -0.01], ["Reach the goal first (win)", 1.0],
+                           ["Caught by a Goomba (death)", -1.0],
+                           ["Rival reaches the goal first (lose)", -1.0]]
+                win = (
+                    "First to the shared Power Moon at top-centre wins. The FAST central lane "
+                    "is short but Goomba-risky (Q-Learning's optimal path); the SAFE outer lanes "
+                    "are longer (SARSA's safer path) - this round IS Cliff Walking."
+                )
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
@@ -2020,6 +2077,7 @@ class Match:
                         "metric": metric,
                         "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
                         "episode": ep["episode"], "frames": ep["frames"],
+                        "stats": ep.get("stats"),
                         "policyFrames": ep.get("policyFrames", []),
                         "replayFields": ep.get("replayFields")}
             ep = self.best_episode if which == "best" else self.last_episode
@@ -2036,6 +2094,7 @@ class Match:
             return {"agent": agent, "count": len(lst),
                     "metric": "longest" if getattr(self.env, "missile_game", False) else "fastest",
                     "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"],
+                               "return": (e.get("stats") or {}).get("return"),
                                "id": f"{self.round_id}:{agent}:{e['episode']}"}
                               for i, e in enumerate(lst)]}
 

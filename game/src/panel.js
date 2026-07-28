@@ -438,8 +438,18 @@ const STYLE = `
 #rl-panel .replist.red .rrow.sel{background:#fceceb;box-shadow:inset 3px 0 0 #e60012;} /* red model = red selection */
 #rl-panel .replist .rrow .rk{color:#9a9da4;font-weight:800;width:30px;flex:none;}
 #rl-panel .replist .rrow .st{font-variant-numeric:tabular-nums;font-weight:700;color:#1f1f21;}
+#rl-panel .replist .rrow .rt{color:#6b7280;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;}
 #rl-panel .replist .rrow .ep{margin-left:auto;color:#9a9da4;font-size:11px;font-variant-numeric:tabular-nums;}
 #rl-panel .replist .empty{padding:15px 12px;color:#9a9da4;font-size:12px;text-align:center;}
+
+/* selected-replay detail card: full stats for the picked run */
+#rl-panel .repdetail{margin:8px 0 0;border:1px solid #e6e8ec;border-radius:10px;padding:6px 11px;background:#fbfbfc;}
+#rl-panel .repdetail[hidden]{display:none;}
+#rl-panel .repdetail .rd-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:11.5px;padding:4px 0;border-bottom:1px solid #f0f1f3;}
+#rl-panel .repdetail .rd-row:last-child{border-bottom:0;}
+#rl-panel .repdetail .rd-k{color:#7a7d84;}
+#rl-panel .repdetail .rd-v{color:#1f1f21;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;}
 
 /* Q inspector */
 #rl-panel #rl-qinspect:empty{display:none;} /* no empty gap under the value map until a tile is clicked */

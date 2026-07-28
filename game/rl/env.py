@@ -192,6 +192,46 @@ class GridWorld(gym.Env):
                 [self.n_cells, max(1, 1 << self.n_stars)]
             )
 
+        # ---- Round-3 (Fossil Falls): patrolling Goombas + a single-file bridge. Each
+        # Goomba walks its cell list back and forth DETERMINISTICALLY, so its position
+        # is a function of the step; sharing a Goomba's cell (or swapping through it) is
+        # death. Reuses the independent-racer death/finish machinery (hazardous). The
+        # state carries steps % phase_period so avoiding the MOVING hazard stays Markov.
+        self.goombas = [{"cells": [tuple(c) for c in gb["cells"]],
+                         "phase0": int(gb.get("phase0", 0))}
+                        for gb in getattr(world, "goombas", [])]
+        self.bridge = {tuple(b) for b in getattr(world, "bridge", [])}
+        self.goomba_mode = bool(self.goombas)
+        if self.goomba_mode:
+            self.hazardous = True                       # borrow the R2 death/finish path
+
+            def _gcd(a, b):
+                while b:
+                    a, b = b, a % b
+                return a
+            periods = [2 * (len(gb["cells"]) - 1) if len(gb["cells"]) > 1 else 1
+                       for gb in self.goombas] or [1]
+            lcm = 1
+            for p in periods:
+                lcm = lcm * p // _gcd(lcm, p)
+            self._phase_period = max(1, lcm)
+        else:
+            self._phase_period = 1
+
+    def _goomba_positions(self, step):
+        """Deterministic Goomba cells at ``step`` - a triangle wave along each patrol."""
+        out = []
+        for gb in self.goombas:
+            cells = gb["cells"]
+            n = len(cells)
+            if n <= 1:
+                out.append(cells[0] if cells else None)
+                continue
+            period = 2 * (n - 1)
+            t = (step + gb["phase0"]) % period
+            out.append(cells[t if t < n else period - t])
+        return out
+
     # ------------------------------------------------------------------ tiles
     def _static_passable(self, agent, r, c):
         """Passability for a STATIC model (a planner's transition model): in-bounds
@@ -313,7 +353,25 @@ class GridWorld(gym.Env):
             return (idx, self.collect[agent], self.status[agent])
         if getattr(self, "star_mode", False):      # Round 2: cell x stars-collected mask
             return (idx, self.stars_collected[agent])
+        if getattr(self, "goomba_mode", False):    # Round 3: cell x patrol-phase x rival
+            return (idx, self.steps % self._phase_period, self._rival_flag(agent, cell))
         return (idx,)
+
+    def _rival_flag(self, agent, cell):
+        """Compact rival summary for the tabular Round-3 state (0..5): whether the rival
+        is ahead / level / behind toward the goal (row as a progress proxy), plus whether
+        the LIVE rival is on-or-next-to the bridge (about to block my funnel)."""
+        rival = "blue" if agent == "red" else "red"
+        rpos = self._pos(rival)
+        my_row, rv_row = cell[0], rpos[0]
+        ahead = 2 if rv_row < my_row else (0 if rv_row > my_row else 1)  # lower row = closer
+        near_bridge = 0
+        if not self._agent_done.get(rival, False):
+            for b in self.bridge:
+                if abs(rpos[0] - b[0]) + abs(rpos[1] - b[1]) <= 1:
+                    near_bridge = 1
+                    break
+        return ahead * 2 + near_bridge
 
     # ------------------------------------------------------------------- step
     def _pos(self, agent):
@@ -562,13 +620,40 @@ class GridWorld(gym.Env):
         dead_at = {"red": None, "blue": None}  # the tile where it died (before respawn)
         warp_from = {"red": None, "blue": None}  # the pipe ENTRANCE it dived into
 
-        for agent, act in (("red", a_red), ("blue", a_blue)):
+        # Round-3: deterministic Goomba cells this tick (and last tick, for swap-deaths),
+        # plus a fair resolve order so the racer nearer the goal wins the bridge on a tie.
+        order = (("red", a_red), ("blue", a_blue))
+        if self.goomba_mode:
+            g_now_list = self._goomba_positions(self.steps)
+            g_now = {p for p in g_now_list if p is not None}
+            g_prev = self._goomba_positions(self.steps - 1)
+            if self._pos("blue")[0] < self._pos("red")[0] or (
+                    self._pos("blue")[0] == self._pos("red")[0] and self.steps % 2 == 0):
+                order = (("blue", a_blue), ("red", a_red))
+
+        for agent, act in order:
             if not active_before[agent]:
                 continue
             if self.rich:
                 bonus = self._apply_rich(agent, act)   # updates pos / collect / status
                 reward[agent] += bonus
                 shape[agent] = bonus
+            elif self.goomba_mode:
+                old = self._pos(agent)
+                nxt = self._resolve(agent, old, act)   # walls block
+                rival = "blue" if agent == "red" else "red"
+                if not self._agent_done.get(rival, False) and nxt == self._pos(rival):
+                    nxt = old                          # can't enter the live rival's cell (bridge block)
+                self._set_pos(agent, nxt)
+                die = nxt in g_now
+                if not die:
+                    for gi, gp in enumerate(g_prev):   # swapped straight through a Goomba
+                        if gp is not None and nxt == gp and old == g_now_list[gi]:
+                            die = True
+                            break
+                dead[agent] = "goomba" if die else None
+                if die:
+                    dead_at[agent] = nxt
             elif self.hazardous:
                 nxt, death, warp, entry = self._r2_resolve(agent, act)
                 self._set_pos(agent, nxt)
@@ -745,6 +830,12 @@ class GridWorld(gym.Env):
                 snap["redStars"] = sc.get("red", 0)      # bitmask of collected stars (hide + progress)
                 snap["blueStars"] = sc.get("blue", 0)
                 snap["nStars"] = self.n_stars
+        if getattr(self, "goomba_mode", False):
+            # Round-3: the live Goomba cells this tick (deterministic from steps), so the
+            # theme can render + lerp them, and the bridge choke for a highlight.
+            snap["goombas"] = [list(p) for p in self._goomba_positions(self.steps)
+                               if p is not None]
+            snap["bridge"] = [list(b) for b in self.bridge]
         return snap
 
 
