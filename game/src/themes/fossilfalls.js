@@ -852,7 +852,7 @@ export const fossilfalls = {
       footprint: 15.0,
       ry: -1.5 + Math.PI, // east flank (mirrored)
     });
-    place("WaterfallWorldHomeBone000.dae", 10.8, 21.0, {
+    place("WaterfallWorldHomeBone000.dae", 10.3, 21.0, {
       baseY: -7.0,
       footprint: 7.5,
       ry: 0, // the skull on the south face (tuned live via the dev bar)

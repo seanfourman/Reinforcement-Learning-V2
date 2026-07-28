@@ -24,7 +24,8 @@ from collections import deque
 
 from env import (GridWorld, N_ACTIONS,
                  COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
-                 SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD)
+                 SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD,
+                 CAGE_REWARD, CAGE_LEN)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
@@ -233,6 +234,9 @@ class Match:
         self.r2_slip_prob = R2_SLIP_PROB
         self.r3_slip_prob = R3_SLIP_PROB        # Round-3 wet-cell skid chance (live control)
         self.r2_tomato_reward = STAR_REWARD
+        # Round-3 cage comeback tool (live controls): grab bonus + freeze duration
+        self.cage_reward = CAGE_REWARD
+        self.cage_len = CAGE_LEN
         # Round-4 game-feel overrides (None = the arena's own default), applied to
         # the env after any (re)build and live from the panel's World card.
         self.r4_missile_speed = None
@@ -324,7 +328,8 @@ class Match:
                         r2_slip_prob=self.r2_slip_prob, r3_slip_prob=self.r3_slip_prob,
                         freeze_len=self.freeze_len, block_ghost_prob=self.block_ghost_prob,
                         coin_reward=self.coin_reward, block_reward=self.block_reward,
-                        star_reward=self.r2_tomato_reward)
+                        star_reward=self.r2_tomato_reward,
+                        cage_reward=self.cage_reward, cage_len=self.cage_len)
         return False
 
     def _rebuild_world(self):
@@ -1233,6 +1238,12 @@ class Match:
             if "r3SlipProb" in p:                # Round-3 wet-cell skid chance
                 self.r3_slip_prob = max(0.0, min(0.9, float(p["r3SlipProb"])))
                 self._apply_env_config()
+            if "r3CageReward" in p:              # Round-3 cage grab bonus (catch-up shaping)
+                self.cage_reward = max(0.0, min(2.0, float(p["r3CageReward"])))
+                self._apply_env_config()
+            if "r3CageLen" in p:                 # Round-3 cage freeze duration (turns)
+                self.cage_len = int(max(1, min(15, round(float(p["r3CageLen"])))))
+                self._apply_env_config()
             if "r2TomatoReward" in p:
                 value = max(0.0, min(2.0, float(p["r2TomatoReward"])))
                 r2_mdp_reset |= value != self.r2_tomato_reward
@@ -1371,6 +1382,8 @@ class Match:
             "r2SlipProb": round(self.r2_slip_prob, 2),
             "r3SlipProb": round(self.r3_slip_prob, 2),
             "r2TomatoReward": round(self.r2_tomato_reward, 2),
+            "r3CageReward": round(self.cage_reward, 2),
+            "r3CageLen": int(self.cage_len),
             # round-4 game feel (only shown on R4; safe defaults on other rounds)
             "r4MissileSpeed": round(getattr(self.env, "missile_max_speed", 5.4), 2),
             "r4MissileHoming": round(getattr(self.env, "missile_turn", 0.5), 2),

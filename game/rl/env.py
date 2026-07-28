@@ -82,6 +82,7 @@ class GridWorld(gym.Env):
         self.block_reward = BLOCK_REWARD   # bonus on a Ghost roll
         self.star_reward = STAR_REWARD     # Round-2: value of one of the 3 required tomatoes
         self.cage_reward = CAGE_REWARD     # Round-3: bonus for grabbing your cage pickup
+        self.cage_len = CAGE_LEN           # Round-3: turns the rival stays frozen in the cage
         self._resolved_action = {"red": None, "blue": None}
         self._slipped = {"red": False, "blue": False}
         self.world = None
@@ -281,7 +282,7 @@ class GridWorld(gym.Env):
     def set_dynamics(self, *, slip_prob=None, r2_slip_prob=None, r3_slip_prob=None,
                      ghost_len=None, freeze_len=None,
                      block_ghost_prob=None, coin_reward=None, block_reward=None,
-                     star_reward=None):
+                     star_reward=None, cage_reward=None, cage_len=None):
         """Update the Round-1 mechanic params live from the panel. A None (or negative)
         value KEEPS the current one. Returns True iff a change moved the DP STATE SPACE
         (the ghost / freeze timer range), so the caller knows the planners must
@@ -298,6 +299,8 @@ class GridWorld(gym.Env):
         self.coin_reward = pick(self.coin_reward, coin_reward, 0.0, 2.0)
         self.block_reward = pick(self.block_reward, block_reward, 0.0, 2.0)
         self.star_reward = pick(self.star_reward, star_reward, 0.0, 2.0)
+        self.cage_reward = pick(self.cage_reward, cage_reward, 0.0, 2.0)
+        self.cage_len = int(pick(self.cage_len, cage_len, 1, 15))
         return self.ghost_len != old_gl or self.freeze_len != old_fl
 
     # ------------------------------------------------------------------ reset
@@ -690,7 +693,7 @@ class GridWorld(gym.Env):
                 if (not frozen and nxt == self.cage_cell.get(agent)
                         and not self.cage_taken[agent]):
                     self.cage_taken[agent] = True
-                    self.caged[rival] = CAGE_LEN
+                    self.caged[rival] = self.cage_len
                     # OPTION B: pay the shaping bonus ONLY when you are BEHIND (rival closer to
                     # the exit = lower row), so the detour is learned as a CATCH-UP move, not an
                     # always-grab. Grabbing while ahead earns nothing (and wastes steps).
