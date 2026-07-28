@@ -7,7 +7,7 @@ The arena currently contains:
 * mirrored spawns and the shared top-centre goal.
 * a mirrored decision maze in the bottom section;
 * one shared centre Pipe into the second section;
-* a seeded mirrored tomato detour and one side Pipe per racer in section two.
+* seeded mirrored tomato detours and safe/risky routes in all three sections.
 
 The left half of each divider is generated from the seed and reflected for the
 right half, so both racers always receive exactly the same geometry.  Each
@@ -20,7 +20,8 @@ tomato. Its visible exit Pipe is in the second section.
 From that shared exit, the second room splits symmetrically. Each racer must
 leave its generated main corridor to collect its own second tomato, return,
 then choose between a short puddle-and-plant shortcut or a longer safe route
-to the Pipe on its side. Those Pipes enter the top section.
+to the Pipe on its side. Those Pipes enter a final mirrored room with a third
+tomato, plants, optional puddles, and seeded bush corridors before the goal.
 """
 
 import random
@@ -341,8 +342,8 @@ def _build(rng):
 
     protected_blue = set(initial_path + tomato_spur + safe_path + risky_path)
     protected = protected_blue | {_mirror(cell) for cell in protected_blue}
-    # When the lower divider occupies row 11, the floor immediately below it
-    # on row 12 belongs to the bottom room. Keep its row-13 continuation open;
+    # When the lower divider occupies its upper row, keep the first complete
+    # bottom-room row open beneath that stair-step;
     # otherwise a random bush could seal a useless one-cell pocket beneath a
     # stair-step corner.
     protected.update(
@@ -370,7 +371,7 @@ def _build(rng):
     middle_gate_col = rng.randint(3, 4)
     middle_tomato_col = rng.randint(middle_gate_col + 3, 7)
     middle_junction = (9, middle_tomato_col)
-    middle_tomato = (8, middle_tomato_col)
+    middle_tomato = (7, middle_tomato_col)
     middle_spur_base = middle_junction
     middle_pipe_entry = (8, 1)
     middle_pipe_dest = (2, 1)
@@ -407,8 +408,18 @@ def _build(rng):
         _line(middle_spur_base, middle_tomato),
         _line(middle_tomato, middle_spur_base),
     )
+    middle_tomato_safe_approach = _join(
+        _line(middle_spur_base, (9, middle_tomato_col + 1)),
+        _line((9, middle_tomato_col + 1), (7, middle_tomato_col + 1)),
+        _line((7, middle_tomato_col + 1), middle_tomato),
+    )
+    middle_tomato_safe = _join(
+        middle_tomato_safe_approach,
+        list(reversed(middle_tomato_safe_approach)),
+    )
     middle_blue_paths = set(
-        middle_initial + middle_safe + middle_risky + middle_tomato_spur
+        middle_initial + middle_safe + middle_risky
+        + middle_tomato_spur + middle_tomato_safe
     )
     middle_protected = (
         middle_blue_paths | {_mirror(cell) for cell in middle_blue_paths}
@@ -431,10 +442,15 @@ def _build(rng):
         if (DIVIDER_ROWS[-1][1], c) in dividers[-1]
     )
     middle_forced = {
-        (8, middle_tomato_col - 1),
-        (8, middle_tomato_col + 1),
-        (7, middle_tomato_col),
+        (7, middle_tomato_col - 1),
+        (6, middle_tomato_col),
+        (6, middle_tomato_col + 1),
     } - middle_protected - middle_plant_zone
+    extra_middle_puddle = (8, middle_tomato_col)
+    extra_middle_slip = [
+        extra_middle_puddle, _mirror(extra_middle_puddle)
+    ]
+    middle_protected.update(extra_middle_slip)
     middle_walls = _procedural_maze_walls(
         rng,
         middle_protected,
@@ -457,9 +473,74 @@ def _build(rng):
             "requiresStar": 1,
         })
 
-    all_plants = plants + middle_plants
-    all_slip = slip + middle_slip
-    hedges = set().union(*dividers) | maze_walls | middle_walls
+    # ------------------------------ top room / final tomato and goal
+    top_entry = middle_pipe_dest
+    top_junction = (2, 3)
+    top_gate_col = rng.randint(5, 6)
+    top_merge = (2, top_gate_col + 2)
+    top_tomato = (0, 1)
+    top_plant = (1, top_gate_col)
+    top_puddle = (1, 1)
+    top_plants = [top_plant, _mirror(top_plant)]
+    top_slip = [top_puddle, _mirror(top_puddle)]
+    top_plant_zone = {
+        cell
+        for plant_cell in top_plants
+        for cell in _surrounding(plant_cell)
+    }
+    top_initial = _line(top_entry, top_junction)
+    top_tomato_spur = _join(
+        _line(top_entry, top_tomato),
+        _line(top_tomato, top_entry),
+    )
+    top_tomato_safe_approach = _join(
+        _line(top_entry, (2, 2)),
+        _line((2, 2), (0, 2)),
+        _line((0, 2), top_tomato),
+    )
+    top_tomato_safe = _join(
+        top_tomato_safe_approach,
+        list(reversed(top_tomato_safe_approach)),
+    )
+    top_safe = _join(
+        _line(top_junction, (3, top_junction[1])),
+        _line((3, top_junction[1]), (3, top_merge[1])),
+        _line((3, top_merge[1]), top_merge),
+    )
+    top_finish = _join(
+        _line(top_merge, (2, 9)),
+        _line((2, 9), GOALS[0]),
+    )
+    top_blue_paths = set(
+        top_initial + top_tomato_spur + top_tomato_safe
+        + top_safe + top_finish
+    )
+    top_protected = top_blue_paths | {
+        _mirror(cell) for cell in top_blue_paths
+    }
+    for landing in (top_entry, _mirror(top_entry)):
+        top_protected.update({landing} | _surrounding(landing))
+    top_forced = {
+        (0, 0),
+    } - top_protected - top_plant_zone
+    top_walls = _procedural_maze_walls(
+        rng,
+        top_protected,
+        top_forced,
+        plants + middle_plants + top_plants,
+        top_plant_zone,
+        set().union(*dividers) | maze_walls | middle_walls,
+        0,
+        4,
+    )
+    for r, c in top_walls | set(top_plants):
+        grid[r][c] = WALL
+
+    all_plants = plants + middle_plants + top_plants
+    all_slip = slip + middle_slip + extra_middle_slip + top_slip
+    hedges = (
+        set().union(*dividers) | maze_walls | middle_walls | top_walls
+    )
     hedges -= set(all_plants)
     world = World(
         grid,
@@ -475,8 +556,10 @@ def _build(rng):
         plants=all_plants,
         pipes=pipes,
         slip=all_slip,
-        red_stars=[_mirror(tomato), _mirror(middle_tomato)],
-        blue_stars=[tomato, middle_tomato],
+        red_stars=[
+            _mirror(tomato), _mirror(middle_tomato), _mirror(top_tomato)
+        ],
+        blue_stars=[tomato, middle_tomato, top_tomato],
         hedge_cells=sorted(hedges),
     )
     return world, {
@@ -507,12 +590,27 @@ def _build(rng):
         "middle_safe": middle_safe,
         "middle_risky": middle_risky,
         "middle_tomato_spur": middle_tomato_spur,
+        "middle_tomato_safe": middle_tomato_safe,
         "middle_pipe_entry": middle_pipe_entry,
         "middle_pipe_dest": middle_pipe_dest,
         "middle_puddle": middle_puddle,
+        "extra_middle_puddle": extra_middle_puddle,
         "middle_plant": middle_plant,
         "middle_plant_zone": middle_plant_zone,
         "middle_walls": middle_walls,
+        "top_entry": top_entry,
+        "top_junction": top_junction,
+        "top_merge": top_merge,
+        "top_tomato": top_tomato,
+        "top_tomato_spur": top_tomato_spur,
+        "top_tomato_safe": top_tomato_safe,
+        "top_initial": top_initial,
+        "top_safe": top_safe,
+        "top_finish": top_finish,
+        "top_puddle": top_puddle,
+        "top_plant": top_plant,
+        "top_plant_zone": top_plant_zone,
+        "top_walls": top_walls,
     }
 
 
@@ -540,8 +638,8 @@ def _validate_design(world, design):
         raise ValueError("a divider touched the north or south board edge")
     if world.red_stars != [_mirror(cell) for cell in world.blue_stars]:
         raise ValueError("the racers' tomatoes are not mirrored")
-    if len(world.blue_stars) != 2:
-        raise ValueError("the first two rooms need exactly two tomatoes per racer")
+    if len(world.blue_stars) != 3:
+        raise ValueError("the three rooms need exactly three tomatoes per racer")
 
     if len(design["dividers"]) != 2:
         raise ValueError("Arena 2 must have exactly two bush dividers")
@@ -565,8 +663,8 @@ def _validate_design(world, design):
                 if run > 2:
                     raise ValueError("a divider has three bushes in the same row")
 
-    if len(world.plants) != 4 or len(world.slip) != 4:
-        raise ValueError("the first two rooms each need mirrored plants and puddles")
+    if len(world.plants) != 6 or len(world.slip) != 8:
+        raise ValueError("all three rooms need their generated mirrored hazards")
     if len(world.pipes) != 3:
         raise ValueError("the first two rooms need one shared and two side Pipes")
     bottom_hazards = {
@@ -583,6 +681,8 @@ def _validate_design(world, design):
         raise ValueError("a bush generated inside a Piranha Plant attack zone")
     if hedges & design["middle_plant_zone"]:
         raise ValueError("a middle-room bush generated inside a plant attack zone")
+    if hedges & design["top_plant_zone"]:
+        raise ValueError("a top-room bush generated inside a plant attack zone")
     for pipe in world.pipes:
         landing = pipe["exit"]
         landing_plaza = _surrounding(landing)
@@ -704,6 +804,7 @@ def _validate_design(world, design):
     middle_risky = design["middle_risky"]
     middle_main = design["middle_initial"] + middle_safe + middle_risky
     middle_spur = design["middle_tomato_spur"]
+    middle_tomato_safe = design["middle_tomato_safe"]
     if design["middle_tomato"] in middle_main:
         raise ValueError("the middle tomato must be a detour off the main route")
     if (
@@ -714,6 +815,8 @@ def _validate_design(world, design):
         raise ValueError("the middle tomato is not a returning dead-end detour")
     if any(grid[r][c] == WALL for r, c in middle_main + middle_spur):
         raise ValueError("a generated middle-room route is blocked")
+    if any(grid[r][c] == WALL for r, c in middle_tomato_safe):
+        raise ValueError("the safe middle-tomato detour is blocked")
     if len(middle_safe) <= len(middle_risky):
         raise ValueError("the middle safe route must be longer than its shortcut")
     if set(middle_safe) & (
@@ -722,6 +825,12 @@ def _validate_design(world, design):
         raise ValueError("the middle safe route contains a hazard")
     if design["middle_puddle"] not in middle_risky:
         raise ValueError("the middle shortcut does not cross its puddle")
+    if design["extra_middle_puddle"] not in middle_spur:
+        raise ValueError("the extra middle puddle is not a tomato shortcut")
+    if set(middle_tomato_safe) & set(world.slip):
+        raise ValueError("the longer middle-tomato approach contains a puddle")
+    if len(middle_tomato_safe) <= len(middle_spur):
+        raise ValueError("the dry middle-tomato approach is not longer")
     middle_skid = (
         design["middle_puddle"][0] - 1,
         design["middle_puddle"][1],
@@ -747,15 +856,39 @@ def _validate_design(world, design):
     if len(middle_risky) >= len(safe_middle_shortest):
         raise ValueError("the middle puddle shortcut is not shorter than the safe route")
 
+    top_safe = design["top_safe"]
+    top_main = design["top_initial"] + top_safe + design["top_finish"]
+    top_spur = design["top_tomato_spur"]
+    top_tomato_safe = design["top_tomato_safe"]
+    if design["top_tomato"] in top_main:
+        raise ValueError("the final tomato must be a detour off the main route")
+    if (
+        top_spur[0] != design["top_entry"]
+        or top_spur[-1] != design["top_entry"]
+        or design["top_tomato"] not in top_spur
+    ):
+        raise ValueError("the final tomato is not a returning dead-end detour")
+    if any(grid[r][c] == WALL for r, c in top_main + top_spur):
+        raise ValueError("a generated top-room route is blocked")
+    if any(grid[r][c] == WALL for r, c in top_tomato_safe):
+        raise ValueError("the safe final-tomato detour is blocked")
+    if set(top_safe) & (design["top_plant_zone"] | set(world.slip)):
+        raise ValueError("the final safe route contains a hazard")
+    if design["top_puddle"] not in top_spur:
+        raise ValueError("the final puddle is not a tomato shortcut")
+    if set(top_tomato_safe) & set(world.slip):
+        raise ValueError("the longer final-tomato approach contains a puddle")
+    if len(top_tomato_safe) <= len(top_spur):
+        raise ValueError("the dry final-tomato approach is not longer")
+
 
 def generate(seed=None, **_):
     """Return the same arena for the same seed and a new shape for a new seed."""
     base_seed = 0 if seed is None else seed
     rng = random.Random(f"new-donk-foundation:{base_seed}")
     world, design = _build(rng)
-    # Generic world validation still requires a full spawn-to-goal route.  Only
-    # the bottom room has a Pipe so far; the upper divider remains intentionally
-    # sealed until its own decision room is added.
+    # Validate the generated course-specific decisions after all three seeded
+    # rooms and their Pipe transfers have been assembled.
     _validate_design(world, design)
     return world
 

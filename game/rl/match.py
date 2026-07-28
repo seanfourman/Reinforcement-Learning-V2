@@ -1376,8 +1376,11 @@ class Match:
                     dynamics = (
                         f"The generated bottom room offers a SHORT mandatory-puddle shortcut beside "
                         f"a PIRANHA PLANT and a longer hazard-free route into one shared centre Pipe. "
-                        f"After its mirrored tomato detour, the second room again offers a short "
-                        f"puddle-and-plant shortcut or a longer safe route to each racer's side Pipe. "
+                        f"The second tomato has a short puddle approach and a longer dry approach; "
+                        f"after collecting it, the room offers a separate puddle-and-plant shortcut "
+                        f"or a longer safe route to each racer's side Pipe. The final tomato also "
+                        f"offers wet-short versus dry-long approaches before seeded bush corridors, "
+                        f"another plant, and the shared goal. "
                         f"While standing on a puddle, movement skids perpendicular with probability "
                         f"{round(skid * 100)}% total. There are "
                         f"{stage_pipes} required deterministic WARP PIPE transfers per racer. "

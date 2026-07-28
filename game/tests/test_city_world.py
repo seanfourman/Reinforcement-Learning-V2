@@ -87,10 +87,10 @@ def test_two_sealed_two_row_dividers_form_three_disconnected_sections():
 def test_bottom_room_has_one_mirrored_risk_setup_and_shared_pipe():
     world = city.generate(seed=7)
     assert world.spikes == []
-    assert len(world.plants) == 4
-    assert len(world.slip) == 4
+    assert len(world.plants) == 6
+    assert len(world.slip) == 8
     assert len(world.pipes) == 3
-    assert len(world.blue_stars) == len(world.red_stars) == 2
+    assert len(world.blue_stars) == len(world.red_stars) == 3
     assert world.blue_stars[0] in ((14, 0), (15, 0))
     assert world.red_stars[0] == city._mirror(world.blue_stars[0])
 
@@ -127,7 +127,7 @@ def test_middle_room_has_required_tomatoes_and_one_pipe_per_side():
     world = city.generate(seed=7)
     blue_tomato = world.blue_stars[1]
     red_tomato = world.red_stars[1]
-    assert blue_tomato[0] == red_tomato[0] == 8
+    assert blue_tomato[0] == red_tomato[0] == 7
     assert red_tomato == city._mirror(blue_tomato)
 
     side_pipes = [p for p in world.pipes if p["requiresStar"] == 1]
@@ -170,6 +170,48 @@ def test_middle_room_has_required_tomatoes_and_one_pipe_per_side():
     env.red_pos = (9, 17)
     env.step(0, 0)
     assert env.red_pos == (2, 17)
+
+
+def test_top_room_has_final_tomatoes_plants_puddles_and_bush_routes():
+    world = city.generate(seed=7)
+    assert world.blue_stars[2] == (0, 1)
+    assert world.red_stars[2] == (0, 17)
+
+    top_plants = [cell for cell in world.plants if cell[0] == 1]
+    top_puddles = [cell for cell in world.slip if cell[0] == 1]
+    assert len(top_plants) == len(top_puddles) == 2
+    assert top_plants[1] == city._mirror(top_plants[0])
+    assert top_puddles == [(1, 1), (1, 17)]
+
+    env = GridWorld(seed=7, round_id=2)
+    env.reset()
+    env.stars_collected["blue"] = 3
+    env.blue_pos = (1, 1)
+    env.r2_slip_prob = 0.0
+    env.step(0, 0)
+    assert env.blue_pos == (0, 1)
+    assert env.stars_collected["blue"] == 7
+
+    env.blue_pos = (1, 9)
+    _, _, done, _, info = env.step(0, 0)
+    assert done
+    assert info["winner"] == "blue"
+
+
+def test_second_room_puddle_pair_creates_a_tomato_shortcut():
+    for seed in range(100):
+        world, design = city._build(
+            city.random.Random(f"new-donk-foundation:{seed}")
+        )
+        extra = [cell for cell in world.slip if cell[0] == 8]
+        assert len(extra) == 2
+        assert extra[1] == city._mirror(extra[0])
+        assert design["extra_middle_puddle"] in design["middle_tomato_spur"]
+        assert not (set(design["middle_tomato_safe"]) & set(world.slip))
+        assert (
+            len(design["middle_tomato_safe"])
+            > len(design["middle_tomato_spur"])
+        )
 
 
 def test_plant_death_ends_episode_and_respawns_only_on_reset():
