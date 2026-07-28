@@ -766,19 +766,33 @@ export function initPanel() {
   $('#rl-prev').addEventListener('click', () => navRound('prevRound'));
   $('#rl-next').addEventListener('click', () => navRound('nextRound'));
   const speed = $('#rl-speed');
+  // Round 4 runs a 5x-finer sim step (0.02 s vs 0.1 s), so it needs 5x the steps/sec
+  // for the SAME on-screen pace. speedMul carries that factor per round, so both the
+  // number the user sees AND the rate the sim runs at include it (e.g. slider 5 -> 25).
+  let speedMul = 1;
+  const effSpeed = () => Math.round(sliderToSpeed(+speed.value) * speedMul);
   const showSpeed = () => {
-    $('#rl-spd-val').textContent = `${sliderToSpeed(+speed.value).toLocaleString()} / s`;
+    $('#rl-spd-val').textContent = `${effSpeed().toLocaleString()} / s`;
     paintRange(speed);
   };
+  const sendSpeed = () => window.RL.control({ cmd: 'speed', value: effSpeed() });
   // a loaded replay plays at the CURRENT speed setting (mapped to a watchable fps)
-  const replayFps = () => Math.max(1, Math.min(60, sliderToSpeed(+speed.value)));
+  const replayFps = () => Math.max(1, Math.min(60, effSpeed()));
+  const setSpeedRound = (roundIndex) => {
+    const mul = roundIndex === 3 ? 5 : 1;   // R4's 0.02 s step needs 5x the raw rate
+    if (mul === speedMul) return;
+    speedMul = mul;
+    showSpeed();
+    sendSpeed();
+    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
+  };
   speed.addEventListener('input', () => {
     showSpeed();
-    window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) });
+    sendSpeed();
     if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
   });
   showSpeed();
-  window.RL.control({ cmd: 'speed', value: sliderToSpeed(+speed.value) });
+  sendSpeed();
 
   // play/pause is DUAL-MODE: drives the loaded replay when there is one, else the live game
   const playBtn = $('#rl-play');
@@ -1019,6 +1033,7 @@ export function initPanel() {
     if (s.algoBlue !== lastAlgoBlue || s.algoRed !== lastAlgoRed || ri !== lastRoundIndex) {
       lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
       reShowRelevant();
+      setSpeedRound(ri);   // R4 needs the 5x speed factor; others 1x
     }
     // 5 round-result dots: blue / red / draw(purple) for played rounds, grey otherwise,
     // with a ring on the round currently in progress.

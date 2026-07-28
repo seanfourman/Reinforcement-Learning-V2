@@ -73,8 +73,8 @@ class World:
                        "requiresStar": int(p["requiresStar"])
                        if p.get("requiresStar") is not None else None}
                       for p in (pipes or [])]
-        # Round-2 PER-AGENT Power Stars (mirror pairs): 3 collectibles each; the goal
-        # is locked until an agent holds all 3.
+        # Round-2 PER-AGENT tomatoes (mirror pairs); progression Pipes and the
+        # eventual goal can require the corresponding collected bits.
         self.red_stars = [tuple(s) for s in (red_stars or [])]
         self.blue_stars = [tuple(s) for s in (blue_stars or [])]
         # Optional theme hints used by New Donk City. They only control which
@@ -139,10 +139,14 @@ def validate(world):
         and 0 <= c + dc < W
     }
     lethal = set(spikes) | plant_zone
-    # pipe teleport edges: entry -> each destination (entering a pipe is always safe)
+    # Pipe teleport edges work in both directions between each visible pair.
     warp = {}
     for p in world.pipes:
-        warp.setdefault(tuple(p["entry"]), []).extend(tuple(d) for d in p["dests"])
+        entry = tuple(p["entry"])
+        dests = [tuple(d) for d in p["dests"]]
+        warp.setdefault(entry, []).extend(dests)
+        for dest in dests:
+            warp.setdefault(dest, []).append(entry)
 
     def passable(r, c):
         return 0 <= r < H and 0 <= c < W and g[r][c] != WALL

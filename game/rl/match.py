@@ -63,7 +63,7 @@ DQN_CHECKPOINT_NAME = "round4_dqn.pt"
 # grow with survival time, no 3-cap) and a wider observation (6 nearest missiles +
 # 3 nearest pickups + the mercy-invuln timer). The observation dimension changed, so
 # an older checkpoint is rejected on both counts and agents retrain from scratch.
-ROUND4_TRAINING_REVISION = 7
+ROUND4_TRAINING_REVISION = 8
 
 # Red (the CPU) is NOT tunable from the panel; its strength comes from the chosen
 # CPU character's tier (1 = easiest .. 5 = hardest). Stage 1 reads ONLY plan_speed.
@@ -1367,17 +1367,21 @@ class Match:
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
                             "own mirror-image copy of the same star-collecting maze.")
-                stage_pipes = n_pipes
+                stage_pipes = len({
+                    req for req in getattr(env, "pipe_req", {}).values()
+                    if req is not None
+                })
                 skid = getattr(env, "r2_slip_prob", R2_SLIP_PROB)
                 if star_mode:
                     dynamics = (
-                        f"Each racer owns a separate mirror-image course with THREE hedge-maze "
-                        f"parts. Every part forks into a SHORT lane containing a slippery puddle "
-                        f"beside a PIRANHA PLANT, and a longer route with no puddles or lethal cells. "
-                        f"While standing on a puddle, a move skids perpendicular with probability "
-                        f"{round(skid * 100)}% total. After {stage_pipes} deterministic WARP PIPE "
-                        f"transfers, the final maze leads to the exit. Entering any of the eight "
-                        f"cells around a plant ends the episode immediately."
+                        f"The generated bottom room offers a SHORT mandatory-puddle shortcut beside "
+                        f"a PIRANHA PLANT and a longer hazard-free route into one shared centre Pipe. "
+                        f"After its mirrored tomato detour, the second room again offers a short "
+                        f"puddle-and-plant shortcut or a longer safe route to each racer's side Pipe. "
+                        f"While standing on a puddle, movement skids perpendicular with probability "
+                        f"{round(skid * 100)}% total. There are "
+                        f"{stage_pipes} required deterministic WARP PIPE transfers per racer. "
+                        f"Entering any of the eight cells around a plant ends the episode immediately."
                     )
                     rewards = [
                         ["Step", -0.01],
@@ -1418,7 +1422,7 @@ class Match:
                 rewards = [["Step", -0.01], ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = "First to reach the Power Moon wins; a simultaneous arrival is a draw."
             elif getattr(env, "missile_game", False):
-                actions = ["8 compass thrusts + coast (9)"]
+                actions = ["8 compass directions + stay (9)"]
                 state_size = None
                 sees_opp = False
                 state_desc = (
@@ -1451,10 +1455,10 @@ class Match:
                     "Pickups can speed you up, shield you, slow you or briefly freeze you."
                 )
                 rewards = [
-                    ["Survive one decision", 0.02],
+                    ["Stay alive", "+0.2 / second"],
                     ["Dodge a Bill aimed at you (it expires without a hit)", 0.15],
                     ["Change a closing missile's projected miss distance",
-                     "up to +/-0.025 / decision"],
+                     "up to +/-0.25 / second"],
                     ["Lose a heart (hit by a Banzai Bill)", -2.0],
                     ["Rival loses their last heart (you win)", 0.05],
                 ]

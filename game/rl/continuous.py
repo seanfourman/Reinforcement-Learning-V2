@@ -51,7 +51,12 @@ MISSILE_MIN_SPEED = 3.2
 MISSILE_MAX_SPEED = 5.4
 MISSILE_TURN_RATE = 0.5   # max homing turn (rad/s) at full sharpness; panel-tunable
 EXPLOSION_HOLD_SECONDS = 1.25
-SURVIVAL_REWARD = 0.02
+# Per-STEP rewards (survival + dodge shaping) are quoted per a 0.1 s reference step
+# and scaled by dt/REF at runtime, so their per-SECOND value is constant no matter how
+# fine the decision step is. The per-EVENT rewards below (hit / evade / win) are NOT
+# scaled - they fire once per event and are already dt-independent.
+REWARD_DT_REF = 0.1
+SURVIVAL_REWARD = 0.02   # per 0.1 s alive (-> 0.2 / second)
 HIT_REWARD = 0.05        # small: this is a SURVIVAL game, not a "kill the rival" game
 HIT_PENALTY = -2.0       # losing a heart hurts a lot: dodging is the whole task
 EVADE_REWARD = 0.15      # a missile aimed at you expiring without a hit = you dodged it
@@ -104,7 +109,7 @@ SLOW_MULTIPLIER = 0.5
 # gentler early than the old fixed cap (few slow missiles at first, so a run breathes
 # before the storm), then keeps climbing: 3 Bills by ~500 steps, 4 by ~750, 5 by
 # ~1000, up to the hard cap. So a good agent survives further AND meets real chaos.
-CHAOS_RAMP_STEPS = 220.0    # steps for missile SHARPNESS (speed/homing) to peak
+CHAOS_RAMP_SECONDS = 22.0   # SECONDS for missile SHARPNESS (speed/homing) to peak
 MISSILE_HARD_CAP = 3        # hard cap: never more than 3 Bills in the air at once
 PICKUP_HARD_CAP = 6         # up from 2
 OBS_MISSILE_SLOTS = 3       # the net sees all 3 possible threats (sorted by imminence)
@@ -147,10 +152,12 @@ class ContinuousArena:
         self.arena = ROUND4_ARENA if round_id == 4 else ARENA
         self.shape = "circle" if round_id == 4 else "square"
         self.missile_game = round_id == 4
-        # At the viewer's slow 3 decisions/sec, the original 50 ms integration
-        # produced tiny shuffles. Round 4 advances a meaningful tenth of a second
-        # per DQN action; the later shared arena keeps its original dynamics.
-        self.dt = 0.10 if round_id == 4 else DT
+        # Round 4 follows the project spec: a 0.02 s decision step and DIRECT discrete
+        # velocity (no momentum). Round 5 (the race) keeps the original 0.05 s thrust
+        # + drag physics. All the Round-4 schedules below are time-based, so the tiny
+        # dt does not change how the game feels.
+        self.dt = 0.02 if round_id == 4 else DT
+        self.momentum = not self.missile_game   # R5 accumulates velocity; R4 sets it
         self.rng = random.Random(seed)
         self.max_steps = SURVIVAL_MAX_STEPS if self.missile_game else MAX_STEPS
         # movement physics (module constants are the defaults)
@@ -191,7 +198,7 @@ class ContinuousArena:
         # the current training episode (zero for a fresh learner) before reset.
         self.curriculum_episode = MISSILE_CURRICULUM_EPISODES
         self._next_target = self.rng.choice(("red", "blue"))
-        self.next_missile_step = 6
+        self.next_missile_step = self._seconds_to_steps(0.6)
         self.next_pickup_step = self._seconds_to_steps(PICKUP_FIRST_SECONDS)
         self.reset()
 
@@ -229,9 +236,9 @@ class ContinuousArena:
 
     def _chaos(self):
         """UNBOUNDED escalation: how chaotic the arena is right now. Grows with
-        survival time (no ceiling) and is gated by the training curriculum, so early
-        training stays gentle. Drives the missile + pickup COUNT."""
-        return (self.steps / CHAOS_RAMP_STEPS) * self._curriculum_progress()
+        survival TIME (no ceiling) and is gated by the training curriculum, so early
+        training stays gentle. Time-based, so it is independent of the decision dt."""
+        return (self.steps * self.dt / CHAOS_RAMP_SECONDS) * self._curriculum_progress()
 
     def _sharpness(self):
         """0..1: how fast and how hard each individual missile homes (chaos capped)."""
@@ -376,7 +383,7 @@ class ContinuousArena:
         self.winner = None
         if self.missile_game:
             self.missiles = []
-            self.next_missile_step = 6
+            self.next_missile_step = self._seconds_to_steps(0.6)
             self._next_target = self.rng.choice(("red", "blue"))
             self.pickups = []
             self.pickup_events = []
@@ -422,15 +429,20 @@ class ContinuousArena:
             return pos.copy().astype(np.float32), np.zeros(2, dtype=np.float32)
         speed_multiplier = max(0.0, float(speed_multiplier))
         dx, dz = DIRS[action]
-        vel = vel + (
-            np.array([dx, dz], dtype=np.float32)
-            * self.thrust * speed_multiplier * self.dt
-        )
-        vel = vel * self.damp
-        sp = float(np.linalg.norm(vel))
-        effective_vmax = self.vmax * speed_multiplier
-        if sp > effective_vmax:
-            vel = vel * (effective_vmax / sp)
+        direction = np.array([dx, dz], dtype=np.float32)
+        if self.momentum:
+            # Round-5 race: thrust accelerates, drag bleeds off, speed is capped, so
+            # velocity ACCUMULATES across steps (real inertia).
+            vel = vel + direction * self.thrust * speed_multiplier * self.dt
+            vel = vel * self.damp
+            sp = float(np.linalg.norm(vel))
+            effective_vmax = self.vmax * speed_multiplier
+            if sp > effective_vmax:
+                vel = vel * (effective_vmax / sp)
+        else:
+            # Round-4 (spec): velocity is SET DIRECTLY from the chosen discrete
+            # direction each step - no momentum, no drag. v = direction x speed.
+            vel = direction * (self.vmax * speed_multiplier)
         npos = pos + vel * self.dt
         if self.shape == "circle":
             # Project onto the circular tower rim and remove only outward velocity,
@@ -660,16 +672,18 @@ class ContinuousArena:
 
     # ------------------------------------------------------- Round-4 missiles
     def _missile_interval(self):
-        # Gap between launches: ~1.2 s early, tightening to ~0.4 s as it sharpens, so
-        # even the single early Bill keeps coming and there is no dead air.
-        return max(4, int(round(12 - 8 * self._sharpness())))
+        # Gap between launches in SECONDS -> steps: ~1.2 s early, tightening to ~0.4 s
+        # as it sharpens (time-based, so dt does not change the launch cadence).
+        seconds = 1.2 - 0.8 * self._sharpness()
+        return max(1, self._seconds_to_steps(seconds))
 
     def _missile_limit(self):
-        # Fixed step schedule, hard-capped at 3: 1 Bill to start, 2 from 100 steps,
-        # 3 from 200 steps on (never more than 3 at once).
-        if self.steps < 100:
+        # Fixed TIME schedule, hard-capped at 3: 1 Bill to start, 2 from 10 s survived,
+        # 3 from 20 s on. Time-based, so the 0.02 s step does not change the pacing.
+        t = self.steps * self.dt
+        if t < 10.0:
             return 1
-        if self.steps < 200:
+        if t < 20.0:
             return 2
         return 3
 
@@ -763,6 +777,8 @@ class ContinuousArena:
     def _dodge_shaping(self, old_paths, new_paths):
         """Signed, bounded action credit for improving projected miss distance."""
         shaping = {"red": 0.0, "blue": 0.0}
+        # per-step shaping, scaled by dt like the survival reward (constant per second)
+        cap = DODGE_SHAPING_CAP * (self.dt / REWARD_DT_REF)
         for side in ("red", "blue"):
             # An immune character (shield or post-hit mercy window) is not under a
             # lethal threat, so it cannot collect avoidance credit just by moving.
@@ -781,10 +797,7 @@ class ContinuousArena:
                 after = self._dodge_potential(
                     missile["pos"], missile["vel"], new_pos, new_vel)
                 potential_delta += after - before
-            shaping[side] = max(
-                -DODGE_SHAPING_CAP,
-                min(DODGE_SHAPING_CAP, potential_delta * DODGE_SHAPING_CAP),
-            )
+            shaping[side] = max(-cap, min(cap, potential_delta * cap))
         return shaping
 
     @staticmethod
@@ -842,7 +855,7 @@ class ContinuousArena:
             # steps) so there is never dead air; only pause a full interval once the
             # limit is met. This kills the "long time with no missile" gaps.
             if len(self.missiles) < self._missile_limit():
-                self.next_missile_step = self.steps + 3
+                self.next_missile_step = self.steps + max(1, self._seconds_to_steps(0.3))
             else:
                 self.next_missile_step = self.steps + self._missile_interval()
 
@@ -903,7 +916,7 @@ class ContinuousArena:
                     old_missile, next_missile, centre, rim)
                 if wall_time is not None:
                     candidates.append((wall_time, 1, "wall", None))
-            if missile["age"] > 120:  # safety fuse for an unlikely endless orbit
+            if missile["age"] * self.dt > 12.0:  # safety fuse (12 s) vs an endless orbit
                 candidates.append((1.0, 2, "fuse", None))
 
             event = None
@@ -1016,7 +1029,10 @@ class ContinuousArena:
         # age the post-hit mercy window from prior steps (a fresh hit below re-arms it)
         for side in ("red", "blue"):
             self.hit_flash[side] = max(0, self.hit_flash[side] - 1)
-        reward = {"red": SURVIVAL_REWARD, "blue": SURVIVAL_REWARD}
+        # per-step survival, scaled by dt so it is a constant reward PER SECOND (not
+        # a giant per-tick bonus that would drown the per-event hit / evade rewards).
+        survive = SURVIVAL_REWARD * (self.dt / REWARD_DT_REF)
+        reward = {"red": survive, "blue": survive}
         old_red = self.red_pos.copy()
         old_blue = self.blue_pos.copy()
         old_red_vel = self.red_vel.copy()

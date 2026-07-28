@@ -45,8 +45,8 @@ SLIP_PROB = 0.30       # total chance an ice-cell move slips sideways (0.15 each
 R2_SLIP_PROB = 0.12    # risky-shortcut skid chance (0.06 toward each perpendicular)
 BLOCK_REWARD = 0.15    # bonus on a GHOST roll (keeps the Mystery Block gamble worth taking so the
                        # power-up actually shows; a FREEZE roll gets nothing - the risk)
-STAR_REWARD = 0.35     # Round-2: reward for collecting one of the 3 required Power Stars
-                       # (the shaping that makes the 3-star hunt learnable for Monte-Carlo)
+STAR_REWARD = 0.35     # Round-2: reward for collecting a required tomato
+                       # (shaping that keeps the multi-room hunt learnable for Monte-Carlo)
 
 
 class GridWorld(gym.Env):
@@ -146,26 +146,31 @@ class GridWorld(gym.Env):
             and 0 <= r + dr < self.H
             and 0 <= c + dc < self.W
         }
-        # pipe ENTRY cell -> its destinations, and the FIXED probability of each. The
-        # weights are baked into the map at generation time (``p["weights"]``) and NEVER
-        # regenerate per episode, so a pipe is a stationary stochastic teleport (Markov).
-        self.pipe_map = {tuple(p["entry"]): [tuple(d) for d in p["dests"]]
-                         for p in getattr(world, "pipes", [])}
-        self.pipe_req = {
-            tuple(p["entry"]): (
-                int(p["requiresStar"])
-                if p.get("requiresStar") is not None else None
-            )
-            for p in getattr(world, "pipes", [])
-        }
+        # Both visible ends of a Pipe are active. Entering its entrance travels
+        # to the generated destination; entering that exit again returns to the
+        # original entrance. This also prevents actors from walking through the
+        # solid exit model as if it were an ordinary floor tile.
+        self.pipe_map = {}
+        self.pipe_req = {}
         self.pipe_wt = {}
         for p in getattr(world, "pipes", []):
             entry = tuple(p["entry"])
+            dests = [tuple(d) for d in p["dests"]]
+            required = (
+                int(p["requiresStar"])
+                if p.get("requiresStar") is not None else None
+            )
+            self.pipe_map[entry] = dests
+            self.pipe_req[entry] = required
             w = list(p.get("weights") or [])
-            n = len(self.pipe_map[entry])
+            n = len(dests)
             if len(w) != n or sum(w) <= 0:            # default: uniform over the dests
                 w = [1.0] * n
             self.pipe_wt[entry] = w
+            for dest in dests:
+                self.pipe_map.setdefault(dest, []).append(entry)
+                self.pipe_req[dest] = required
+                self.pipe_wt.setdefault(dest, []).append(1.0)
         self.hazardous = bool(self.spike_cells or self.plant_cells or self.pipe_map)
 
         # ---- Round-2 STARS: 3 collectibles PER AGENT (mirror pairs), collected on
@@ -450,7 +455,7 @@ class GridWorld(gym.Env):
         """Round-2 move: walk one tile (walls block), then apply hazards. Returns
         ``(final_cell, death, warp_dest)`` - ``death`` is "spike"/"plant"/None and
         ``warp_dest`` is the tile a pipe teleported the agent onto (else None).
-        Stepping INTO a pipe entry applies its fixed destination distribution;
+        Stepping INTO either end of a pipe applies its fixed transfer;
         a spike or any of the eight cells around a plant is lethal."""
         cur = self._pos(agent)
         move = action

@@ -66,6 +66,8 @@ def trainer():
             if _paused or time.monotonic() < _sync_hold_until:
                 time.sleep(0.03)
                 continue
+            # The panel already scales the speed for Round 4's fine 0.02 s step (it
+            # sends 5x the raw steps/sec), so the trainer just honours the value.
             sp = _speed
             if sp <= 120:
                 match.tick()

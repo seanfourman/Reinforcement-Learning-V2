@@ -6,7 +6,8 @@ The arena currently contains:
 * two seeded, non-straight bush dividers that form three horizontal sections;
 * mirrored spawns and the shared top-centre goal.
 * a mirrored decision maze in the bottom section;
-* one shared centre Pipe into the second section.
+* one shared centre Pipe into the second section;
+* a seeded mirrored tomato detour and one side Pipe per racer in section two.
 
 The left half of each divider is generated from the seed and reflected for the
 right half, so both racers always receive exactly the same geometry.  Each
@@ -15,6 +16,11 @@ disconnected except for Pipes.  The bottom room has a required dead-end tomato
 spur off the main approach, followed by a short slippery route and a longer
 safe route. Both racers' routes merge at one centre Pipe locked by their own
 tomato. Its visible exit Pipe is in the second section.
+
+From that shared exit, the second room splits symmetrically. Each racer must
+leave its generated main corridor to collect its own second tomato, return,
+then choose between a short puddle-and-plant shortcut or a longer safe route
+to the Pipe on its side. Those Pipes enter the top section.
 """
 
 import random
@@ -28,7 +34,7 @@ TITLE = "New Donk City"
 
 CITY_SIZE = 19
 GOALS = ((0, 9),)
-DIVIDER_ROWS = ((5, 6), (11, 12))
+DIVIDER_ROWS = ((4, 5), (11, 12))
 BOTTOM_TOP = 13
 
 # Kept for compatibility with Match's existing Round-2 generator arguments.
@@ -41,6 +47,19 @@ MAX_SLIP = 1
 def _mirror(cell):
     r, c = cell
     return r, CITY_SIZE - 1 - c
+
+
+def _surrounding(cell):
+    """All in-bounds cells in the eight-neighbour ring around ``cell``."""
+    r, c = cell
+    return {
+        (r + dr, c + dc)
+        for dr in (-1, 0, 1)
+        for dc in (-1, 0, 1)
+        if (dr or dc)
+        and 0 <= r + dr < CITY_SIZE
+        and 0 <= c + dc < CITY_SIZE
+    }
 
 
 def _left_steps(rng, first=None):
@@ -207,7 +226,8 @@ def _component_count(blocked):
 
 
 def _procedural_maze_walls(
-    rng, protected, forced, plants, plant_zone, divider_cells
+    rng, protected, forced, plants, excluded, base_walls,
+    row_start, row_end
 ):
     """Scatter mirrored bush segments around carved routes.
 
@@ -220,7 +240,7 @@ def _procedural_maze_walls(
     plant_set = set(plants)
     candidates = [
         (r, c)
-        for r in range(BOTTOM_TOP, CITY_SIZE)
+        for r in range(row_start, row_end)
         for c in range(CITY_SIZE // 2)
         if (r, c) not in protected
         and _mirror((r, c)) not in protected
@@ -228,8 +248,8 @@ def _procedural_maze_walls(
         and _mirror((r, c)) not in forced
         and (r, c) not in plant_set
         and _mirror((r, c)) not in plant_set
-        and (r, c) not in plant_zone
-        and _mirror((r, c)) not in plant_zone
+        and (r, c) not in excluded
+        and _mirror((r, c)) not in excluded
     ]
 
     for _ in range(80):
@@ -245,7 +265,7 @@ def _procedural_maze_walls(
             # sealed decision barrier is already in ``forced`` and is exempt.
             if all(_run_at(trial, added) <= 2 for added in pair):
                 walls = trial
-        blocked = set(divider_cells) | walls | plant_set
+        blocked = set(base_walls) | walls | plant_set
         if _component_count(blocked) == 3:
             return walls
 
@@ -270,7 +290,7 @@ def _build(rng):
     red_spawn = _mirror(blue_spawn)
 
     pipe_entry = (15, 9)
-    pipe_dest = (10, 9)
+    pipe_dest = (9, 9)
     tomato = (rng.choice((14, 15)), 0)
     spur_base = (17, 0)
     junction = (17, rng.randint(2, 3))
@@ -340,13 +360,107 @@ def _build(rng):
         forced_walls.add((14, 0))
     maze_walls = _procedural_maze_walls(
         rng, protected, forced_walls, plants, plant_zone,
-        set().union(*dividers)
+        set().union(*dividers), BOTTOM_TOP, CITY_SIZE
     )
     for r, c in maze_walls | set(plants):
         grid[r][c] = WALL
 
-    hedges = set().union(*dividers) | maze_walls
-    hedges -= set(plants)
+    # ------------------------------ middle room / second tomato
+    middle_entry = pipe_dest
+    middle_gate_col = rng.randint(3, 4)
+    middle_tomato_col = rng.randint(middle_gate_col + 3, 7)
+    middle_junction = (9, middle_tomato_col)
+    middle_tomato = (8, middle_tomato_col)
+    middle_spur_base = middle_junction
+    middle_pipe_entry = (8, 1)
+    middle_pipe_dest = (2, 1)
+    middle_puddle = (10, middle_gate_col)
+    middle_plant = (8, middle_gate_col)
+    middle_plants = [middle_plant, _mirror(middle_plant)]
+    middle_slip = [middle_puddle, _mirror(middle_puddle)]
+    middle_plant_zone = {
+        (r + dr, c + dc)
+        for r, c in middle_plants
+        for dr in (-1, 0, 1)
+        for dc in (-1, 0, 1)
+        if (dr or dc)
+        and 0 <= r + dr < CITY_SIZE
+        and 0 <= c + dc < CITY_SIZE
+    }
+
+    middle_initial = _join(
+        _line(middle_entry, middle_junction),
+    )
+    middle_safe_col = middle_gate_col + 2
+    middle_safe = _join(
+        _line(middle_junction, (9, middle_safe_col)),
+        _line((9, middle_safe_col), (6, middle_safe_col)),
+        _line((6, middle_safe_col), (6, 1)),
+        _line((6, 1), middle_pipe_entry),
+    )
+    middle_risky = _join(
+        _line(middle_junction, (10, middle_junction[1])),
+        _line((10, middle_junction[1]), (10, 1)),
+        _line((10, 1), middle_pipe_entry),
+    )
+    middle_tomato_spur = _join(
+        _line(middle_spur_base, middle_tomato),
+        _line(middle_tomato, middle_spur_base),
+    )
+    middle_blue_paths = set(
+        middle_initial + middle_safe + middle_risky + middle_tomato_spur
+    )
+    middle_protected = (
+        middle_blue_paths | {_mirror(cell) for cell in middle_blue_paths}
+    )
+    # A warp must never drop a racer into a bush pocket. Keep the shared
+    # landing Pipe and its complete eight-neighbour plaza clear on every seed.
+    middle_protected.update(
+        {middle_entry} | _surrounding(middle_entry)
+    )
+    # Preserve the floor immediately below every upper-divider stair step.
+    middle_protected.update(
+        (6, c)
+        for c in range(CITY_SIZE)
+        if (DIVIDER_ROWS[0][0], c) in dividers[0]
+    )
+    # Also keep the middle-side continuation above the lower divider open.
+    middle_protected.update(
+        (10, c)
+        for c in range(CITY_SIZE)
+        if (DIVIDER_ROWS[-1][1], c) in dividers[-1]
+    )
+    middle_forced = {
+        (8, middle_tomato_col - 1),
+        (8, middle_tomato_col + 1),
+        (7, middle_tomato_col),
+    } - middle_protected - middle_plant_zone
+    middle_walls = _procedural_maze_walls(
+        rng,
+        middle_protected,
+        middle_forced,
+        plants + middle_plants,
+        middle_plant_zone,
+        set().union(*dividers) | maze_walls,
+        6,
+        11,
+    )
+    for r, c in middle_walls | set(middle_plants):
+        grid[r][c] = WALL
+
+    for reflect in (lambda cell: cell, _mirror):
+        pipes.append({
+            "entry": reflect(middle_pipe_entry),
+            "dests": [reflect(middle_pipe_dest)],
+            "weights": [1.0],
+            "exit": reflect(middle_pipe_dest),
+            "requiresStar": 1,
+        })
+
+    all_plants = plants + middle_plants
+    all_slip = slip + middle_slip
+    hedges = set().union(*dividers) | maze_walls | middle_walls
+    hedges -= set(all_plants)
     world = World(
         grid,
         theme=THEME,
@@ -358,11 +472,11 @@ def _build(rng):
         escape=GOALS,
         shine=GOALS,
         spikes=[],
-        plants=plants,
+        plants=all_plants,
         pipes=pipes,
-        slip=slip,
-        red_stars=[_mirror(tomato)],
-        blue_stars=[tomato],
+        slip=all_slip,
+        red_stars=[_mirror(tomato), _mirror(middle_tomato)],
+        blue_stars=[tomato, middle_tomato],
         hedge_cells=sorted(hedges),
     )
     return world, {
@@ -385,6 +499,20 @@ def _build(rng):
         "initial_path": initial_path,
         "safe_path": safe_path,
         "risky_path": risky_path,
+        "middle_entry": middle_entry,
+        "middle_junction": middle_junction,
+        "middle_tomato": middle_tomato,
+        "middle_spur_base": middle_spur_base,
+        "middle_initial": middle_initial,
+        "middle_safe": middle_safe,
+        "middle_risky": middle_risky,
+        "middle_tomato_spur": middle_tomato_spur,
+        "middle_pipe_entry": middle_pipe_entry,
+        "middle_pipe_dest": middle_pipe_dest,
+        "middle_puddle": middle_puddle,
+        "middle_plant": middle_plant,
+        "middle_plant_zone": middle_plant_zone,
+        "middle_walls": middle_walls,
     }
 
 
@@ -411,9 +539,9 @@ def _validate_design(world, design):
     if any(r in (0, CITY_SIZE - 1) for r, _ in divider_cells):
         raise ValueError("a divider touched the north or south board edge")
     if world.red_stars != [_mirror(cell) for cell in world.blue_stars]:
-        raise ValueError("bottom-room tomatoes are not mirrored")
-    if len(world.blue_stars) != 1:
-        raise ValueError("bottom room needs exactly one tomato per racer")
+        raise ValueError("the racers' tomatoes are not mirrored")
+    if len(world.blue_stars) != 2:
+        raise ValueError("the first two rooms need exactly two tomatoes per racer")
 
     if len(design["dividers"]) != 2:
         raise ValueError("Arena 2 must have exactly two bush dividers")
@@ -437,11 +565,15 @@ def _validate_design(world, design):
                 if run > 2:
                     raise ValueError("a divider has three bushes in the same row")
 
-    if len(world.plants) != 2 or len(world.slip) != 2:
-        raise ValueError("bottom room needs one mirrored plant and puddle")
-    if len(world.pipes) != 1:
-        raise ValueError("bottom room needs exactly one shared centre Pipe")
-    if any(r < BOTTOM_TOP for r, _ in world.plants + world.slip):
+    if len(world.plants) != 4 or len(world.slip) != 4:
+        raise ValueError("the first two rooms each need mirrored plants and puddles")
+    if len(world.pipes) != 3:
+        raise ValueError("the first two rooms need one shared and two side Pipes")
+    bottom_hazards = {
+        design["plant"], _mirror(design["plant"]),
+        design["puddle"], _mirror(design["puddle"]),
+    }
+    if any(r < BOTTOM_TOP for r, _ in bottom_hazards):
         raise ValueError("a bottom-room hazard escaped into another section")
     if any(grid[r][c] != WALL for r, c in world.plants):
         raise ValueError("Piranha Plant cells must be impassable")
@@ -449,6 +581,24 @@ def _validate_design(world, design):
         raise ValueError("a Piranha Plant was rendered as a bush")
     if hedges & design["plant_zone"]:
         raise ValueError("a bush generated inside a Piranha Plant attack zone")
+    if hedges & design["middle_plant_zone"]:
+        raise ValueError("a middle-room bush generated inside a plant attack zone")
+    for pipe in world.pipes:
+        landing = pipe["exit"]
+        landing_plaza = _surrounding(landing)
+        if landing in hedges or landing_plaza & hedges:
+            raise ValueError("a bush generated beside a Pipe exit")
+        if any(grid[r][c] == WALL for r, c in landing_plaza):
+            raise ValueError("a Pipe exit landing plaza is blocked")
+        r, c = landing
+        open_egress = sum(
+            0 <= r + dr < CITY_SIZE
+            and 0 <= c + dc < CITY_SIZE
+            and grid[r + dr][c + dc] != WALL
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1))
+        )
+        if open_egress < 2:
+            raise ValueError("a Pipe exit does not have enough ways out")
 
     plant = design["plant"]
     attack_zone = {
@@ -522,15 +672,80 @@ def _validate_design(world, design):
     dests = {dest for pipe in world.pipes for dest in pipe["dests"]}
     if design["pipe_entry"] not in entries or design["pipe_dest"] not in dests:
         raise ValueError("the bottom-room Pipe transfer is missing")
-    pipe = world.pipes[0]
+    pipe = next(p for p in world.pipes if p["entry"] == design["pipe_entry"])
     if _mirror(pipe["entry"]) != pipe["entry"]:
         raise ValueError("the shared Pipe entrance is not centred")
     if _mirror(pipe["exit"]) != pipe["exit"]:
         raise ValueError("the shared Pipe exit is not centred")
     if pipe["exit"] != design["pipe_dest"]:
         raise ValueError("the visible exit Pipe does not match the warp destination")
-    if any(pipe.get("requiresStar") != 0 for pipe in world.pipes):
+    if pipe.get("requiresStar") != 0:
         raise ValueError("the bottom-room Pipe is not locked by its tomato")
+
+    middle_entries = {
+        design["middle_pipe_entry"],
+        _mirror(design["middle_pipe_entry"]),
+    }
+    middle_dests = {
+        design["middle_pipe_dest"],
+        _mirror(design["middle_pipe_dest"]),
+    }
+    middle_pipes = [p for p in world.pipes if p["entry"] in middle_entries]
+    if {p["entry"] for p in middle_pipes} != middle_entries:
+        raise ValueError("the middle room is missing its left/right Pipes")
+    if {
+        dest for p in middle_pipes for dest in p["dests"]
+    } != middle_dests:
+        raise ValueError("the middle-room Pipes do not exit into the top section")
+    if any(p.get("requiresStar") != 1 for p in middle_pipes):
+        raise ValueError("a middle-room Pipe is not locked by the second tomato")
+
+    middle_safe = design["middle_safe"]
+    middle_risky = design["middle_risky"]
+    middle_main = design["middle_initial"] + middle_safe + middle_risky
+    middle_spur = design["middle_tomato_spur"]
+    if design["middle_tomato"] in middle_main:
+        raise ValueError("the middle tomato must be a detour off the main route")
+    if (
+        middle_spur[0] != design["middle_spur_base"]
+        or middle_spur[-1] != design["middle_spur_base"]
+        or design["middle_tomato"] not in middle_spur
+    ):
+        raise ValueError("the middle tomato is not a returning dead-end detour")
+    if any(grid[r][c] == WALL for r, c in middle_main + middle_spur):
+        raise ValueError("a generated middle-room route is blocked")
+    if len(middle_safe) <= len(middle_risky):
+        raise ValueError("the middle safe route must be longer than its shortcut")
+    if set(middle_safe) & (
+        design["middle_plant_zone"] | set(world.slip)
+    ):
+        raise ValueError("the middle safe route contains a hazard")
+    if design["middle_puddle"] not in middle_risky:
+        raise ValueError("the middle shortcut does not cross its puddle")
+    middle_skid = (
+        design["middle_puddle"][0] - 1,
+        design["middle_puddle"][1],
+    )
+    if middle_skid not in design["middle_plant_zone"]:
+        raise ValueError("the middle puddle cannot skid into the plant attack zone")
+
+    middle_alive = {
+        (r, c)
+        for r in range(6, 11)
+        for c in range(CITY_SIZE)
+        if grid[r][c] != WALL
+        and (r, c) not in design["middle_plant_zone"]
+    }
+    middle_without_puddle = middle_alive - {
+        design["middle_puddle"], _mirror(design["middle_puddle"])
+    }
+    safe_middle_shortest = _shortest_path(
+        design["middle_junction"],
+        design["middle_pipe_entry"],
+        middle_without_puddle,
+    )
+    if len(middle_risky) >= len(safe_middle_shortest):
+        raise ValueError("the middle puddle shortcut is not shorter than the safe route")
 
 
 def generate(seed=None, **_):
