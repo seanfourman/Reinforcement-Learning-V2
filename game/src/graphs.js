@@ -60,7 +60,7 @@ function chartBlock(c) {
     .map(([col, t]) => `<i style="background:${col}"></i>${t}`)
     .join("");
   // c.fullonly charts are hidden in the docked quick view (only the win-rate
-  // chart rides along there); they all show in fullscreen.
+  // chart rides along there); grouped chart tabs can show all of them together.
   return `
     <div class="chart${c.fullonly ? " fullonly" : ""}">
       <div class="ct"><h3>${c.title}</h3><span class="lg">${lg}</span></div>
@@ -437,7 +437,7 @@ function drawVSurface(canvas, grid) {
 // ---- per-side learning curves ----
 export function initCurves(parent, side) {
   const CH = chartsFor(side);
-  // one card per chart, so they tile as uniform grid cells in fullscreen
+  // one card per chart, so grouped chart views tile as uniform grid cells
   parent.insertAdjacentHTML(
     "beforeend",
     CH.map((c) => `<section id="rl-curve-${c.id}">${chartBlock(c)}</section>`).join(""),
@@ -470,69 +470,86 @@ export function initReplay(parent) {
     `
     <section id="rl-replay">
       <h2>Episode replay</h2>
-      <div class="seg" id="rl-rep-model">
-        <button data-a="blue" class="active">Blue - top 30</button>
-        <button data-a="red">Red - top 30</button>
+      <div class="seg" id="rl-rep-model" role="group" aria-label="Replay model">
+        <button data-a="blue" class="active" aria-pressed="true">Blue - top 30</button>
+        <button data-a="red" aria-pressed="false">Red - top 30</button>
       </div>
-      <div id="rl-rep-list" class="replist"></div>
+      <div id="rl-rep-list" class="replist" role="region" aria-label="Top episode replays"></div>
     </section>`,
   );
   const $ = (id) => parent.querySelector(id);
   const seg = $("#rl-rep-model");
   const listEl = $("#rl-rep-list");
   let model = "blue"; // default: the player's own model (Blue), on the left
-  let selRank = -1; // currently loaded rank (highlighted in the list)
+  let selEpisode = null; // immutable replay identity; rank changes as training runs
+  let listRequest = 0;
+  let replayRequest = 0;
 
   async function refreshList() {
+    const requestedModel = model;
+    const request = ++listRequest;
     try {
       const r = await (
-        await fetch(`/api/replays?agent=${model}`, { cache: "no-store" })
+        await fetch(`/api/replays?agent=${requestedModel}`, { cache: "no-store" })
       ).json();
+      if (request !== listRequest || requestedModel !== model) return;
       const items = r.items || [];
       if (!items.length) {
-        listEl.innerHTML = `<div class="empty">No winning runs yet for ${model === "red" ? "Red" : "Blue"}.</div>`;
+        listEl.innerHTML = `<div class="empty">No winning runs yet for ${requestedModel === "red" ? "Red" : "Blue"}.</div>`;
         return;
       }
       listEl.innerHTML = items
         .map(
           (it) =>
-            `<div class="rrow${it.rank === selRank ? " sel" : ""}" data-rank="${it.rank}">` +
+            `<button type="button" class="rrow${it.episode === selEpisode ? " sel" : ""}" ` +
+            `data-rank="${it.rank}" data-episode="${it.episode}" ` +
+            `aria-label="Replay rank ${it.rank + 1}, ${it.steps} steps, episode ${it.episode}">` +
             `<span class="rk">#${it.rank + 1}</span>` +
             `<span class="st">${it.steps} steps</span>` +
-            `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></div>`,
+            `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></button>`,
         )
         .join("");
     } catch (e) {
+      if (request !== listRequest || requestedModel !== model) return;
       listEl.innerHTML = '<div class="empty">List fetch failed.</div>';
     }
   }
 
-  async function loadTop(rank) {
+  async function loadTop(rank, episode) {
+    const requestedModel = model;
+    const request = ++replayRequest;
+    // Cancel an older replay load immediately, rather than waiting for this
+    // request to cross both the fetch and replayEnter pause boundary.
+    const loadGeneration = window.RL?.replay?.reserveLoad?.();
     try {
       const r = await (
-        await fetch(`/api/replay?which=top&agent=${model}&rank=${rank}`, {
+        await fetch(`/api/replay?which=top&agent=${requestedModel}&rank=${rank}&episode=${episode}`, {
           cache: "no-store",
         })
       ).json();
+      if (request !== replayRequest || requestedModel !== model) return;
       if (!r.available) {
         refreshList(); // rolled out of the top 30 - refresh
         return;
       }
-      selRank = rank;
-      [...listEl.children].forEach((el) =>
-        el.classList.toggle("sel", +el.dataset.rank === rank),
-      );
       // hand the frames to the shared player, PAUSED (Playback takes over from here);
       // pass the model so the Playback scrubber matches (red for Red runs)
       const eps = r.replayFields?.epsilon;
-      const label = `${model === "red" ? "Red" : "Blue"} #${rank + 1} - ${r.steps} steps` +
+      const replayModel = r.agent === "red" ? "red" : requestedModel;
+      const label = `${replayModel === "red" ? "Red" : "Blue"} #${r.rank + 1} - ${r.steps} steps` +
         (Number.isFinite(eps) ? ` · ε ${eps.toFixed(2)}` : "");
-      await window.RL?.replay?.load?.(
+      const loaded = await window.RL?.replay?.load?.(
         r.frames || [],
         label,
-        model,
+        replayModel,
         r.policyFrames || [],
         r.replayFields || null,
+        loadGeneration,
+      );
+      if (!loaded || request !== replayRequest || requestedModel !== model) return;
+      selEpisode = r.episode ?? episode;
+      [...listEl.children].forEach((el) =>
+        el.classList.toggle("sel", +el.dataset.episode === selEpisode),
       );
     } catch (e) {
       /* ignore a failed fetch - the list stays as-is */
@@ -543,20 +560,26 @@ export function initReplay(parent) {
     const b = e.target.closest("button[data-a]");
     if (!b) return;
     [...seg.children].forEach((x) => x.classList.toggle("active", x === b));
+    [...seg.children].forEach((x) =>
+      x.setAttribute("aria-pressed", x === b ? "true" : "false"),
+    );
     model = b.dataset.a;
+    listRequest++;
+    replayRequest++;
+    window.RL?.replay?.reserveLoad?.();
     listEl.classList.toggle("red", model === "red"); // red model -> red row selection
-    selRank = -1;
+    selEpisode = null;
     refreshList();
   });
   listEl.addEventListener("click", (e) => {
     const row = e.target.closest(".rrow");
     if (!row) return;
-    loadTop(+row.dataset.rank);
+    loadTop(+row.dataset.rank, +row.dataset.episode);
   });
   // when the panel exits replay (Back to live / arena change), drop the highlight
   window.addEventListener("rl-replay-state", (e) => {
-    if (!e.detail?.active && selRank !== -1) {
-      selRank = -1;
+    if (!e.detail?.active && selEpisode !== null) {
+      selEpisode = null;
       [...listEl.children].forEach((el) => el.classList.remove("sel"));
     }
   });
@@ -849,7 +872,7 @@ function dualCharts() {
     {
       id: "d-td",
       fullonly: true,
-      title: "Learning signal - |TD error| / DQN loss",
+      title: "Learning signal - prediction gap / loss",
       legend: [
         [BLUE, "Blue"],
         [RED, "Red"],
@@ -860,14 +883,14 @@ function dualCharts() {
       ],
       showValues: true,
       fmt: (v) => v.toFixed(3),
-      note: "How big the agent's learning updates are: the gap between what it expected and what actually happened (TD error for the table-based agents, network loss for DQN). Large early while it learns fast, shrinking toward 0 as its estimates settle.",
+      note: "How large the current correction is: |G−Q| for Monte Carlo, TD target error for TD control, or network loss for DQN. It is usually large while estimates move quickly and shrinks as they settle.",
     },
   ];
 }
 
 export function initCurvesDual(parent) {
   const CH = dualCharts();
-  // one card PER chart, so they tile as uniform cells in the fullscreen grid
+  // one card PER chart, so grouped chart views tile as uniform grid cells
   // (instead of one very tall stacked card). Only the win-rate card (d-rate) is
   // marked '.qk', so it's the single curve the docked quick view shows.
   parent.insertAdjacentHTML(
@@ -1051,19 +1074,44 @@ export function initBriefing(parent) {
       }
       const seq = (s.stateDesc || "").includes("9-vector");
       const obsTuple =
-        s.objective === "cross"
-          ? s.slipProb
-            ? "(cell, coins, power)" // Round 1's rich MDP: tile + collected + power-up
-            : "(cell)"
+        s.observationTuple ||
+        (s.objective === "cross"
+          ? "(cell)"
           : s.objective === "race"
             ? "(cell, key, gold, opp-region, adjacent, trap)"
             : s.missileGame
               ? "(self + rival, missiles x3, effects, pickups x2)"
               : seq
               ? "(x, z, vx, vz, →cp x, →cp y, leg, →storm x, →storm y)"
-              : "(x, z, vx, vz, →goal x, →goal y)";
+              : "(x, z, vx, vz, →goal x, →goal y)");
       const sqCls = s.seesOpponent ? "yes" : "no";
       const sqLabel = s.seesOpponent ? "VISIBLE" : "HIDDEN";
+      // a structured obs vector renders as a stacked bar + legend; otherwise fall back
+      // to the plain sentence (grid rounds, simple race).
+      const groups = s.stateGroups || null;
+      const gTotal = groups ? groups.reduce((a, g) => a + g.dim, 0) || 1 : 1;
+      const stateRow = groups
+        ? `<div class="so-row"><span class="so-k">State (S) - ${gTotal} dimensions</span>` +
+          `<div class="sv-bar">` +
+          groups
+            .map(
+              (g) =>
+                `<span class="sv-seg" style="width:${((g.dim / gTotal) * 100).toFixed(2)}%;background:${g.color}" title="${g.label}: ${g.dim} dims">${g.dim}</span>`,
+            )
+            .join("") +
+          `</div>` +
+          `<div class="sv-legend">` +
+          groups
+            .map(
+              (g) =>
+                `<div class="sv-item"><span class="sv-dot" style="background:${g.color}"></span>` +
+                `<span class="sv-lab">${g.label}</span>` +
+                `<span class="sv-dim">${g.count ? `${g.count}&times;${g.each}` : `&times;${g.dim}`}</span>` +
+                `<span class="sv-det">${g.detail}</span></div>`,
+            )
+            .join("") +
+          `</div></div>`
+        : `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>`;
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
@@ -1071,7 +1119,7 @@ export function initBriefing(parent) {
         `<h3 class="brief-sub">State &amp; observation</h3>` +
         `<div class="so-card">` +
         `<div class="so-hero"><div class="so-big">${heroBig}</div><div class="so-unit">${heroUnit}</div></div>` +
-        `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>` +
+        stateRow +
         `<div class="so-row"><span class="so-k">Each model observes</span><span class="so-v">${s.observation}</span>` +
         `<span class="so-tuple">${obsTuple}</span></div>` +
         `<div class="so-row"><span class="so-k">Sees the opponent?</span>` +
@@ -1084,7 +1132,7 @@ export function initBriefing(parent) {
 
         `<h3 class="brief-sub">Transition dynamics</h3>` +
         (s.slipProb
-          ? `<div class="stat"><span>Slip probability</span><b>${s.slipProb}</b></div>`
+          ? `<div class="stat"><span>Slip probability</span><b>${Math.round(100 * s.slipProb)}%</b></div>`
           : "") +
         `<div class="stat"><span>Max steps / episode</span><b>${s.maxSteps}</b></div>` +
         `<p class="note">${s.dynamics}</p>` +
@@ -1095,7 +1143,7 @@ export function initBriefing(parent) {
         `<p class="note">γ sets how much a future reward is worth versus an immediate one. The effective horizon &asymp; 1/(1-γ) is roughly how many steps ahead still sway a decision - a higher γ makes the agent more far-sighted.</p>` +
 
         `<h3 class="brief-sub">Reward structure</h3>${rewards}` +
-        `<p class="note"><b>Shaping</b> is a small potential-based bonus for getting closer to the goal each step. It speeds up learning without changing who actually wins.</p>`;
+        (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
     } catch (e) {
       /* warming up */
     }
@@ -1110,7 +1158,8 @@ export function initBriefing(parent) {
     // rebuilt the Challenge card. Refresh when the live parameter signature changes.
     const p = st.params || {};
     const worldKey = [st.round?.index, p.maxSteps, p.slipProb, p.blockGhostProb,
-      p.ghostLen, p.freezeLen, p.coinReward, p.blockReward].join("|");
+      p.ghostLen, p.freezeLen, p.coinReward, p.blockReward,
+      p.r2SlipProb, p.r2TomatoReward].join("|");
     if (worldKey !== refresh.worldKey) {
       refresh.worldKey = worldKey;
       clearTimeout(refresh.timer);
@@ -1169,12 +1218,6 @@ export function initCompare(parent) {
         lead(sc.red || 0, sc.blue || 0),
       ) +
       cmpRow(
-        "Avg ep length",
-        s.avgEpisodeLen ?? "-",
-        s.avgEpisodeLen ?? "-",
-        "",
-      ) +
-      cmpRow(
         "Last return",
         (ret.red || 0).toFixed(2),
         (ret.blue || 0).toFixed(2),
@@ -1218,13 +1261,13 @@ export function initExplore(parent) {
       body.innerHTML =
         cmpHead("Red", "Blue") +
         cmpRow(
-          "Board coverage",
+          "Physical tile coverage",
           (100 * rb.coverage).toFixed(0) + "%",
           (100 * bb.coverage).toFixed(0) + "%",
           lead(rb.coverage, bb.coverage),
         ) +
         cmpRow(
-          "Cells visited",
+          "Physical tiles visited",
           `${rb.unique}/${rb.floor}`,
           `${bb.unique}/${bb.floor}`,
           "",
@@ -1295,8 +1338,8 @@ export function initDueling(parent) {
   refresh();
 }
 
-// ---- REWARD DECOMPOSITION: how much of the return is real terminal reward vs
-// potential shaping vs step-level cost (grid rounds; the env tracks the split) ----
+// ---- REWARD DECOMPOSITION: terminal payoff vs one-time collectible/other
+// bonuses vs step-level cost (grid rounds; the env tracks the split) ----
 export function initReward(parent) {
   parent.insertAdjacentHTML(
     "beforeend",
@@ -1304,23 +1347,23 @@ export function initReward(parent) {
     <section id="rl-reward" hidden>
       <h2 style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">Reward decomposition<span id="rl-reward-avg" style="flex:none;font-weight:700;font-size:9.5px;letter-spacing:.2px;text-transform:none;color:#a2a5ac;"></span></h2>
       <div id="rl-reward-body"></div>
-      <p class="hint">Average per-episode reward, split by where it comes from. Terminal = the win/lose payoff at the end. Shaping = small guiding rewards that nudge the agent toward the goal (e.g. a bonus for getting closer), without changing the real objective.<br>Other = the per-step time cost and misc bonuses.</p>
+      <p class="hint" id="rl-reward-note">Average full-course reward, split by where it comes from. Terminal = the finish/death payoff. Bonuses = one-time collectible rewards. Other = the per-step time cost and miscellaneous rewards.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-reward");
   const body = parent.querySelector("#rl-reward-body");
   const avgEl = parent.querySelector("#rl-reward-avg");
-  const PARTS = [
-    ["Terminal", "terminal", "#37b26a"],
-    ["Shaping", "shape", "#7c4dd0"],
-    ["Other", "other", "#8a8d94"],
-  ];
-  const rows = (s, color) => {
+  const rows = (s, color, shapeLabel) => {
+    const parts = [
+      ["Terminal", "terminal", "#37b26a"],
+      [shapeLabel || "Bonuses", "shape", "#7c4dd0"],
+      ["Other", "other", "#8a8d94"],
+    ];
     const tot = Math.max(
       0.01,
       Math.abs(s.terminal) + Math.abs(s.shape) + Math.abs(s.other),
     );
-    return PARTS.map(([label, key, c]) => {
+    return parts.map(([label, key, c]) => {
       const v = s[key],
         w = ((100 * Math.abs(v)) / tot).toFixed(0);
       return (
@@ -1343,9 +1386,9 @@ export function initReward(parent) {
       avgEl.textContent = `${d.episodes}-ep avg`;
       body.innerHTML =
         `<div class="brief-sub" style="color:#1f5fd0">Blue</div>` +
-        rows(d.blue, "#1f5fd0") +
+        rows(d.blue, "#1f5fd0", d.shapeLabel) +
         `<div class="brief-sub" style="color:#e60012;margin-top:12px">Red</div>` +
-        rows(d.red, "#e60012");
+        rows(d.red, "#e60012", d.shapeLabel);
     } catch (e) {
       /* warming up */
     }
@@ -1400,12 +1443,13 @@ export function initPolicyDiff(parent) {
     `
     <section id="rl-polagree" hidden>
       <h2>Policy agreement</h2>
-      <div class="stat"><span>Blue &amp; Red greedy match</span><b id="rl-pa-rate">-</b></div>
+      <div class="stat"><span id="rl-pa-label">Blue &amp; Red greedy match</span><b id="rl-pa-rate">-</b></div>
       <!-- neutral (black) fill, not the Blue-model .b class: this bar is about BOTH agents agreeing -->
       <div class="bar" style="margin-top:9px;"><i id="rl-pa-bar" style="background:#141518;"></i></div>
     </section>`,
   );
   const sec = parent.querySelector("#rl-polagree");
+  const label = parent.querySelector("#rl-pa-label");
   const rate = parent.querySelector("#rl-pa-rate");
   const bar = parent.querySelector("#rl-pa-bar");
   async function refresh() {
@@ -1418,6 +1462,9 @@ export function initPolicyDiff(parent) {
         return;
       }
       sec.hidden = false;
+      label.textContent = d.mirrored
+        ? "Mirrored greedy-policy match"
+        : "Blue & Red greedy match";
       rate.textContent = `${(100 * d.rate).toFixed(0)}%  (${d.agree}/${d.cells})`;
       bar.style.width = (100 * d.rate).toFixed(0) + "%";
     } catch (e) {

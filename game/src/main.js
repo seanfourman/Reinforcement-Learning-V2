@@ -222,6 +222,7 @@ function disposeWorld() {
 }
 
 function rebuildWorld(worldJson) {
+  // stop() also cancels a replay whose fetch/replayEnter request is in flight.
   window.RL?.replay?.stop?.(); // a new arena invalidates any loaded replay -> back to live
   lastWorldJson = worldJson;
   const key = worldJson.theme;
@@ -372,6 +373,7 @@ let pollCount = 0;
 let polling = false;
 let pollTimer = null;
 let replayActive = false; // while replaying a recorded episode, ignore live frames
+let replayGeneration = 0; // invalidates live/replay requests when replay context changes
 let holdUI = false; // true while an arena transition covers the screen: freeze all
 //                     live UI (HUD, panels, board) so nothing updates before black
 
@@ -578,9 +580,8 @@ async function poll() {
         };
         transition
           .play(w.world, snap.stats, async () => {
-            // the screen is fully black now - swap the world under it. The N + M
-            // side panels stay OPEN and sit ABOVE the black (higher z-index), so they
-            // persist across the stage change instead of being torn down/reopened.
+            // The screen is fully black now: swap the world under it. The shared
+            // control panel stays above the wipe and persists across the change.
             awardCeremony.stop();
             rebuildWorld(w.world);
             applyStats(snap); // update HUD / panels now, while black covers them
@@ -614,6 +615,7 @@ async function poll() {
         const requestedAgent = heatAgent;
         const requestedMode = heatMode;
         const requestedGeneration = heatGeneration;
+        const requestedReplayGeneration = replayGeneration;
         const f = await (
           await fetch(
             `${API}/api/field?agent=${requestedAgent}&mode=${requestedMode}`,
@@ -623,7 +625,9 @@ async function poll() {
         if (
           holdUI ||
           menuIdle ||
+          replayActive ||
           requestedGeneration !== heatGeneration ||
+          requestedReplayGeneration !== replayGeneration ||
           requestedAgent !== heatAgent ||
           requestedMode !== heatMode
         )
@@ -636,9 +640,10 @@ async function poll() {
         const requestedAgent = heatAgent;
         const requestedMode = heatMode;
         const requestedGeneration = heatGeneration;
+        const requestedReplayGeneration = replayGeneration;
         const m =
           requestedMode === "value"
-            ? "q"
+            ? "value"
             : requestedMode === "policy"
               ? "policy"
               : "visits";
@@ -650,14 +655,15 @@ async function poll() {
         if (
           holdUI ||
           menuIdle ||
+          replayActive ||
           requestedGeneration !== heatGeneration ||
+          requestedReplayGeneration !== replayGeneration ||
           requestedAgent !== heatAgent ||
           requestedMode !== heatMode
         )
           return;
         if (v.grid) {
-          // arrows + greedy value-number are coloured to match the viewed agent (heatAgent)
-          if (requestedMode === "value") { heatmap.setNumbers(v.grid, v.best, requestedAgent); heatmap.setGhostArrows([]); }
+          if (requestedMode === "value") { heatmap.setGrid(v.grid); heatmap.setGhostArrows([]); }
           // policy: floor arrows on the ground + raised ghost arrows on the walls (only
           // present while the agent is phasing, so they appear/vanish with the power-up)
           else if (requestedMode === "policy") { heatmap.setPolicy(v.grid, requestedAgent); heatmap.setGhostArrows(v.ghostArrows, requestedAgent); }
@@ -708,11 +714,23 @@ renderer.domElement.addEventListener("click", async (e) => {
     return;
   }
   try {
+    const requestedAgent = heatAgent;
+    const requestedMode = heatMode;
+    const requestedHeatGeneration = heatGeneration;
+    const requestedReplayGeneration = replayGeneration;
     const q = await (
-      await fetch(`${API}/api/values?agent=${heatAgent}&cell=${r},${c}`, {
+      await fetch(`${API}/api/values?agent=${requestedAgent}&cell=${r},${c}`, {
         cache: "no-store",
       })
     ).json();
+    if (
+      replayActive ||
+      requestedAgent !== heatAgent ||
+      requestedMode !== heatMode ||
+      requestedHeatGeneration !== heatGeneration ||
+      requestedReplayGeneration !== replayGeneration
+    )
+      return;
     window.dispatchEvent(new CustomEvent("rl-qinspect", { detail: q }));
   } catch (err) {
     /* ignore */
@@ -745,8 +763,30 @@ const replay = {
   policyFrames: [], // Stage-1 canonical policies, indexed by recorded DP sweep
   modelFields: null, // historical Arena-2 Q/policy fields keyed by tomato mask
   _timer: null,
+  _loadGeneration: 0,
+  _sessionEntered: false,
+  _enterPromise: null,
   active() {
     return this.frames.length > 0;
+  },
+  // Reserve an immutable generation as soon as a replay row is selected. A
+  // newer selection, arena change, or Back-to-live invalidates every older load.
+  reserveLoad() {
+    replayGeneration++;
+    return ++this._loadGeneration;
+  },
+  async _ensureSession() {
+    if (this._sessionEntered) return;
+    if (!this._enterPromise) {
+      this._enterPromise = Promise.resolve(control({ cmd: "replayEnter" }))
+        .then(() => {
+          this._sessionEntered = true;
+        })
+        .finally(() => {
+          this._enterPromise = null;
+        });
+    }
+    await this._enterPromise;
   },
   _render() {
     const f = this.frames[this.idx];
@@ -772,7 +812,11 @@ const replay = {
       if (cell && grid[cell[0]]) grid[cell[0]][cell[1]] = 0;
     }
     for (let i = 0; i <= this.idx; i++) {
-      const cell = this.frames[i]?.[this.agent];
+      const frame = this.frames[i] || {};
+      const entry = frame[this.agent + "WarpFrom"];
+      if (entry && grid[entry[0]] && grid[entry[0]][entry[1]] != null)
+        grid[entry[0]][entry[1]] += 1;
+      const cell = frame[this.agent];
       if (cell && grid[cell[0]] && grid[cell[0]][cell[1]] != null)
         grid[cell[0]][cell[1]] += 1;
     }
@@ -790,10 +834,13 @@ const replay = {
       heatmap.showPolicy();
       return true;
     }
-    if (heatMode === "value" && field?.q) {
-      heatmap.setNumbers(field.q, field.policy, this.agent);
+    if (heatMode === "value" && (field?.value || field?.q)) {
+      const values = field.value || field.q.map((row) =>
+        row.map((q) => q ? Math.max(...q) : null)
+      );
+      heatmap.setGrid(values);
       heatmap.setGhostArrows([]);
-      heatmap.showNumbers();
+      heatmap.showColors();
       return true;
     }
     if (heatMode === "visits") {
@@ -812,11 +859,15 @@ const replay = {
     const q = field?.q?.[r]?.[c];
     if (!q) return null;
     const allowed = field.effective?.[r]?.[c] || q.map(() => true);
+    const valid = q.map((_, i) => i).filter((i) => allowed[i]);
+    const bestValue = Math.max(...valid.map((i) => q[i]));
+    const ties = valid.filter((i) => q[i] === bestValue);
     return {
       agent: this.agent,
       cell: [r, c],
       q,
       best: field.policy?.[r]?.[c],
+      ties,
       mask: allowed,
       labels: ["North", "South", "West", "East"],
       replay: true,
@@ -835,6 +886,7 @@ const replay = {
     return true;
   },
   _emit() {
+    const frame = this.frames[this.idx] || {};
     window.dispatchEvent(
       new CustomEvent("rl-replay-state", {
         detail: {
@@ -844,6 +896,8 @@ const replay = {
           total: this.frames.length,
           label: this.label,
           agent: this.agent,
+          tomatoMask: frame[this.agent + "Stars"],
+          nTomatoes: frame.nStars,
         },
       }),
     );
@@ -869,10 +923,22 @@ const replay = {
   // Load a run PAUSED at frame 0 (the user presses play). Entering the first
   // replay also pauses live training; replacing one loaded replay with another
   // keeps the same saved live state on the server.
-  async load(frames, label, agent, policyFrames = [], modelFields = null) {
+  async load(
+    frames,
+    label,
+    agent,
+    policyFrames = [],
+    modelFields = null,
+    loadGeneration = null,
+  ) {
     const nextFrames = Array.isArray(frames) ? frames : [];
-    if (!nextFrames.length) return;
-    if (!this.active()) await control({ cmd: "replayEnter" });
+    const request =
+      loadGeneration == null ? this.reserveLoad() : loadGeneration;
+    if (!nextFrames.length || request !== this._loadGeneration) return false;
+    await this._ensureSession();
+    // replayEnter is asynchronous. Revalidate after it so an older row cannot
+    // overwrite a newer selection while both cross the pause boundary.
+    if (request !== this._loadGeneration) return false;
     this._stopTimer();
     this.frames = nextFrames;
     this.idx = 0;
@@ -887,6 +953,7 @@ const replay = {
     resetArenaReplayEffects();
     this._render();
     this._emit();
+    return true;
   },
   play() {
     if (!this.frames.length) return;
@@ -927,6 +994,10 @@ const replay = {
     // Exit replay -> back to the live game. replayExit restores whether live
     // training had been playing or paused before this replay session began.
     const wasActive = this.active();
+    const hadSession =
+      wasActive || this._sessionEntered || this._enterPromise != null;
+    const pendingEnter = this._enterPromise;
+    const stopGeneration = this.reserveLoad();
     this._stopTimer();
     this.frames = [];
     this.idx = 0;
@@ -939,7 +1010,22 @@ const replay = {
     resetArenaReplayEffects(latestLiveFrame);
     if (latestLiveFrame) actors.onFrame(latestLiveFrame);
     this._emit();
-    if (wasActive) control({ cmd: "replayExit" });
+    if (hadSession) {
+      const exitWhenEntered = () => {
+        // If a newer replay began while replayEnter was completing, it owns the
+        // shared paused session and must not be unpaused by this stale stop.
+        if (
+          stopGeneration !== this._loadGeneration ||
+          this.active() ||
+          !this._sessionEntered
+        )
+          return;
+        this._sessionEntered = false;
+        control({ cmd: "replayExit" });
+      };
+      if (pendingEnter) pendingEnter.finally(exitWhenEntered);
+      else exitWhenEntered();
+    }
   },
 };
 
@@ -952,10 +1038,12 @@ window.RL = {
     heatAgent = agent;
     heatMode = mode || "value";
     if (!agent) heatmap.hide();
-    else if (arenaMode) heatmap.showArena(heatMode);
-    else if (heatMode === "value") heatmap.showNumbers();
+    // A loaded replay always owns diagnostics. Never reveal a live field first,
+    // even when the requested mode is Value or the arena is continuous.
     else if (replayActive && replay.renderOverlay()) {}
     else if (replayActive) heatmap.hide();
+    else if (arenaMode) heatmap.showArena(heatMode);
+    else if (heatMode === "value") heatmap.showColors();
     else if (heatMode === "policy") heatmap.showPolicy();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)
@@ -970,9 +1058,10 @@ window.RL = {
   },
   setReplay: (on) => {
     replayActive = !!on;
+    replayGeneration++;
   },
 };
-// ---- the single docked control menu (#rl-panel). N toggles it; the header's model
+// ---- the single docked control menu (#rl-panel). C toggles it; the header's model
 // selector switches the your-model / CPU views WITHIN it (handled in panel.js). ----
 window.RL.panels = {
   toggle() { document.getElementById("rl-panel")?.classList.toggle("open"); },
@@ -986,22 +1075,21 @@ const fx = createPostFX(renderer, scene, camera);
 
 // show the start menu (cabin background) first; boot the live match on Start.
 // Created after fx so the menu can tune bloom (books shouldn't glow).
-function startFromMenu() {
+async function startFromMenu() {
+  menuIdle = false; // leaving the menu: polling may build the world again
+  // These mutations must be ordered. Concurrent requests could otherwise let
+  // resetTournament overwrite the selected character's Arena-2 profile.
+  await control({ cmd: "loadouts", cpu: getCpuAlgos(), player: getPlayerAlgos() });
+  await control({ cmd: "resetTournament" });
+  await control({
+    cmd: "cpuTier",
+    value: getCpuTier(),
+    level: getCpuLevel(),
+    force: true,
+  });
+  await control({ cmd: "play" });
+
   return new Promise((resolve) => {
-    menuIdle = false; // leaving the menu: polling may build the world again
-    // install the matchup FIRST (before resetTournament builds round 1): Red = the
-    // chosen CPU character's algorithm per round, Blue = the player's card picks.
-    control({ cmd: "loadouts", cpu: getCpuAlgos(), player: getPlayerAlgos() });
-    // a fresh game = a fresh tournament. The server persists the round + score across
-    // page loads, so without this a previous session's round 5 / stray point leaks in.
-    control({ cmd: "resetTournament" });
-    // Red's strength: the 1-5 tier is the display label; level (0..9) picks the
-    // per-character hyperparameter model (RED_MODELS) that actually scales the CPU
-    control({ cmd: "cpuTier", value: getCpuTier(), level: getCpuLevel() });
-    // starting from the menu = always resume training. The server keeps _paused across
-    // page reloads, so a stale pause from a previous session could leave the board frozen
-    // while the Playback UI (which resets to "playing") shows play - clear it here.
-    control({ cmd: "play" });
     // swap the board pieces to the chosen menu characters (player = blue, CPU = red)
     let walkersReady = false;
     loadBoardWalkers()

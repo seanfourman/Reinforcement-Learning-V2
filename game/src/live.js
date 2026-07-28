@@ -47,7 +47,7 @@ export function createLiveActors(scene, walkers) {
   // the stable direction the character is actually travelling.
   const velocity = { red: { x: 0, z: 0 }, blue: { x: 0, z: 0 } };
   // Round-2 one-shot FX: a warp DIVE (shrink into the entrance pipe, pop out the exit)
-  // or a hazard DEATH (impaled/eaten on the tile it died on, then respawn). Driven by
+  // or a hazard DEATH (impaled/eaten on the tile it died on, then removed). Driven by
   // the env's per-frame event cells; overrides the normal target-follow while playing.
   const fx = { red: null, blue: null };
   // Seconds after a warp emerge during which we GLIDE (never snap) toward the live sim
@@ -423,7 +423,7 @@ export function createLiveActors(scene, walkers) {
   }
 
   // Round-2 one-shot animation: dive into a pipe + pop out the exit, or die on a
-  // hazard then respawn. Returns true when finished (releases the normal follow).
+  // hazard then disappear until the next episode. Returns true when finished.
   function playFx(key, walker, dt) {
     const f = fx[key];
     f.t += dt;
@@ -506,7 +506,7 @@ export function createLiveActors(scene, walkers) {
       return true;
     }
     // DEATH: on the tile it died on - a plant yanks it UP small, spikes squash it FLAT -
-    // then it is gone and the respawn snaps in.
+    // then it is gone; a later episode-reset frame restores it at spawn.
     const DUR = 0.55;
     if (f.t < DUR) {
       const u = f.t / DUR;
@@ -520,7 +520,7 @@ export function createLiveActors(scene, walkers) {
       g.rotation.y += dt * 12;
       return false;
     }
-    rendered[key] = { ...target[key] };              // respawn position
+    rendered[key] = { ...target[key] };              // terminal hazard position
     g.position.set(target[key].x, baseY, target[key].z);
     g.scale.setScalar(agentScale);
     g.rotation.y = heading[key];
@@ -597,7 +597,8 @@ export function createLiveActors(scene, walkers) {
       // elsewhere it's 0 so the walker stays solidly visible.
       const hitFlash = arena ? frame?.effects?.[key]?.hitFlash || 0 : 0;
       walker.group.visible =
-        hitFlash <= 0 || Math.floor(t / BLINK_HALF) % 2 === 0;
+        !frame?.[key + 'Inactive'] &&
+        (hitFlash <= 0 || Math.floor(t / BLINK_HALF) % 2 === 0);
     }
 
     if (!frame) return;

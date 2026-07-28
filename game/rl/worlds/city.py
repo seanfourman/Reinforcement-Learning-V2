@@ -38,13 +38,6 @@ GOALS = ((0, 9),)
 DIVIDER_ROWS = ((4, 5), (11, 12))
 BOTTOM_TOP = 13
 
-# Kept for compatibility with Match's existing Round-2 generator arguments.
-DEF_PLANTS = 1
-DEF_SLIP = 1
-MAX_PLANTS = 1
-MAX_SLIP = 1
-
-
 def _mirror(cell):
     r, c = cell
     return r, CITY_SIZE - 1 - c
@@ -882,7 +875,7 @@ def _validate_design(world, design):
         raise ValueError("the dry final-tomato approach is not longer")
 
 
-def generate(seed=None, **_):
+def generate(seed=None):
     """Return the same arena for the same seed and a new shape for a new seed."""
     base_seed = 0 if seed is None else seed
     rng = random.Random(f"new-donk-foundation:{base_seed}")

@@ -1,6 +1,6 @@
-"""Tabular self-play agents - the learnable "models".
+"""Tabular agents - the learnable models used by the live tournament.
 
-Every agent shares one interface so the match loop and the M-panel can swap
+Every agent shares one interface so the match loop and control panel can swap
 algorithms at runtime:
 
     a  = agent.policy_action(state)      # epsilon-greedy (explore/exploit)

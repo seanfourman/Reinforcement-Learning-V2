@@ -1,8 +1,10 @@
-# Rival Minds - a live self-play RL tournament
+# Rival Minds - a live reinforcement-learning tournament
 
 Two agents, **Red** and **Blue**, play the **same** task head-to-head while you
 watch them learn (or plan) live and on-screen. It is a five-round tournament, and
-each round pits two **rival algorithms** against each other in a themed arena:
+each round pits two **rival algorithms** against each other in a themed arena.
+The table shows the defaults; the start menu accepts any algorithm from that
+round's compatible family:
 
 | Round | Arena                         | Red vs Blue                          |
 | ----- | ----------------------------- | ------------------------------------ |
@@ -13,12 +15,15 @@ each round pits two **rival algorithms** against each other in a themed arena:
 | 5     | Tostarena                     | **Actor-Critic** vs **PPO** (Policy Gradient) |
 
 The two models are **real Python reinforcement learning** running in a background
-thread; the browser is a live 3D viewer that polls the match and renders it. Pure
-self-play - from each agent's point of view the rival is just part of the world.
+thread; the browser is a live 3D viewer that polls the match and renders it. Each
+side owns an independent model. In New Donk City they learn mirrored copies of
+the same seeded course and do not observe the rival, keeping the tabular state
+Markov and the competition fair.
 
 You pick the two characters in the start menu: **Blue is you**, **Red is the CPU**
-(the CPU's strength scales with the character's tier). Red always plays the red half
-of each round's matchup above.
+(the CPU's arena-specific hyperparameters scale with the character's strength).
+Red uses the CPU character's compatible algorithm; Blue uses your selected
+algorithm.
 
 ## Run
 
@@ -35,13 +40,12 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 | Input         | Action                                            |
 | ------------- | ------------------------------------------------- |
 | `R`           | **Reset** both models (relearn from scratch)      |
-| `N`           | Open the **Training Control** panel               |
-| `M`           | Open the **CPU** panel                            |
+| `C`           | Open/close the shared **Control** panel           |
 | Mouse drag    | Pan the camera                                    |
 | WASD / arrows | Pan the camera                                    |
 | Scroll wheel  | Zoom                                              |
 
-## The Training Control panel (N)
+## The Control panel (C)
 
 - **Playback** - play/pause, speed (slow = watch them walk, fast = thousands of
   iterations fly by), reset, new world, and prev/next round.
@@ -55,8 +59,10 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 - **Contest** - live win tally + recent win-rate bars.
 - **Value map** - overlay each model's **V(s)** heatmap on the grid; click a tile to
   inspect the per-action **Q(s,·)**.
-- **Episode replay** - scrub the fastest winning episode step by step.
-- **Fullscreen** - the button top-right expands the panel into a full dashboard.
+- **Episode replay** - browse each model's top 30 complete winning runs. Arena 2
+  replays use the policy, value, Q, and visit context frozen with that episode.
+The model selector in the panel header switches between your Blue model and the
+CPU's locked Red profile.
 
 ## How the RL concepts are captured
 
@@ -82,13 +88,13 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 | `rl/agents.py`       | Tabular agents: Q-Learning, SARSA, Expected-SARSA, Monte-Carlo |
 | `rl/dqn.py`          | The DQN family: DQN / Double-DQN / Dueling-DQN (Round 4)      |
 | `rl/pg.py`           | Policy Gradient: Actor-Critic / PPO / REINFORCE (Round 5)     |
-| `rl/match.py`        | Live self-play loop, stats, value grids, thread-safe controls |
+| `rl/match.py`        | Live tournament loop, stats, value grids, thread-safe controls |
 | `rl/worlds/`         | Per-round world layouts + the round/algorithm registry        |
 | `src/main.js`        | Live poll client: builds the scene, drives the render loop    |
 | `src/live.js`        | The two board agents, driven by polled frames                 |
 | `src/themes/`        | Per-round arena geometry, palette, sky and camera             |
 | `src/startmenu.js`   | Character select + cinematic start menu                       |
-| `src/panel.js`       | The Training Control panel (N)                                 |
+| `src/panel.js`       | The shared model/control panel (C)                             |
 | `src/graphs.js`      | Learning-curve / DP-convergence charts + episode replay       |
 | `src/heatmap.js`     | The learned-value heatmap overlay                             |
 | `vendor/three/`      | Bundled three.js (no package manager needed)                  |
@@ -102,7 +108,8 @@ GET  /api/worlds            every round's world (prebuilt during the menu)
 GET  /api/values?agent=red  value heatmap V(s) per tile
 GET  /api/values?agent=red&cell=r,c   per-action Q for one tile
 GET  /api/dp?agent=red      Round 1 DP convergence trace (per-sweep δ + mean V)
-GET  /api/replay            the fastest winning episode, for the replay scrubber
+GET  /api/replays           top-30 complete winning runs for one model
+GET  /api/replay            one replay by stable episode identity
 POST /api/control           {cmd: play|pause|speed|reset|regenerate|setParams|
                              cpuTier|prevRound|nextRound|setRound|sideAlgo, ...}
 ```

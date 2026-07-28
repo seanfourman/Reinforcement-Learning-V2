@@ -1,4 +1,4 @@
-// The training control panel (toggle with M). A clean, Nintendo-style dashboard:
+// The training control panel (toggle with C). A clean, Nintendo-style dashboard:
 // per-round matchup (read-only), live training controls, the tunable
 // hyperparameters (which feed straight back into the trainer), live stats, the
 // learning curves, an episode replay, and each model's learned value heatmap.
@@ -46,17 +46,15 @@ const SVG = {
 // slider fill colours: blue = tunes OUR model (Blue); gray = global / both models
 const C_OURS = '#1f5fd0';
 const C_GLOBAL = '#141518'; // black fill for the global / structural sliders (was gray)
-const TIER_LABELS = { 1: 'Rookie', 2: 'Amateur', 3: 'Skilled', 4: 'Veteran', 5: 'Master' };
+const CPU_NAMES = ['Mario', 'Luigi', 'Yoshi', 'Toadette', 'Pauline', 'Koopa', 'Bowser', 'Peach', 'Toad', 'Parabones'];
+const CPU_LEVEL_LABELS = ['Rookie', 'Rookie', 'Amateur', 'Amateur', 'Skilled', 'Skilled', 'Veteran', 'Veteran', 'Master', 'Champion'];
 
-// tunable training hyperparameters - the panel writes these to the trainer live.
-// PARAMS = the per-side LEARNING knobs (both the N and the mirrored M panel use
-// this array). The global structural settings live in GLOBAL_PARAMS below and
-// are rendered by the N (Training) panel only, since they are match-wide (not
-// "Red's params") and route through setParams.
+// Tunable training hyperparameters. Per-model controls follow the selected
+// header model; match-wide controls always route through setParams.
 export const PARAMS = [
   { key: 'targetEpisodes', label: 'Stop after (episodes)', min: 0, max: 20000, step: 100, color: C_GLOBAL, scope: 'always', desc: 'Stops new training episodes at this count. 0 keeps running.', fmt: (v) => (v <= 0 ? 'no limit' : (+v).toLocaleString()) },
   { key: 'maxSteps', label: 'Max steps / episode', min: 50, max: 10000, step: 50, color: C_GLOBAL, scope: 'always', desc: 'Caps episode length (timeout). Race rounds end here if nobody reaches the goal; the survival round runs to this many steps if the models keep their lives.', fmt: (v) => (+v).toLocaleString() },
-  { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', desc: 'How strongly one new experience changes this model. Dynamic Programming does not use α.', fmt: (v) => (+v).toFixed(2) },
+  { key: 'alpha', label: 'Learning rate α', min: 0.01, max: 1, step: 0.01, color: C_OURS, scope: 'learn', desc: 'How strongly one new experience changes this model. Dynamic Programming does not use α. Monte Carlo applies α/4 to its higher-variance full-return updates for stability.', fmt: (v) => (+v).toFixed(2) },
   { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', desc: 'How much future rewards matter. Higher values make the model plan farther ahead.', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Chance of a random action at the start of training.', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Final random-action chance after decay. It does not have to reach zero.', fmt: (v) => (+v).toFixed(2) },
@@ -66,11 +64,11 @@ export const PARAMS = [
 // shared display + reset helpers
 const fLoc = (v) => (+v).toLocaleString();
 
-// GLOBAL settings (N panel only), scoped per round by showRelevant():
+// Match-wide and algorithm-specific settings, scoped per round by showRelevant():
 //   'dp'   -> DP planners (Value/Policy Iteration): convergence + sweep cap + speed
 //   'dqn'  -> neural value rounds: replay / batch / target-net / width
 //   'always' -> every round (the reproducibility seed)
-// (The game-mechanic scopes 'cont'/'slip'/'r4'/'r5' are gone with the hazards.)
+// Arena scopes keep each round's world controls out of unrelated tabs.
 // `sect` places the slider in the Algorithm-internals ('algo') or World ('world')
 // card. `def` is the backend default (for Reset). `enc`/`dec` map slider-space
 // <-> backend-space where they differ (dpTheta rides a log/exponent slider).
@@ -93,31 +91,30 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, desc: 'How often the stable "target" copy of the network is refreshed. Larger = steadier but slower to follow.', fmt: fLoc },
   { key: 'dqnNstep', label: 'N-step returns', min: 1, max: 10, step: 1, sect: 'algo', scope: 'dqn', def: 3, color: C_OURS, desc: 'How many steps of future reward are folded into one learning target. 1 = standard DQN.', fmt: fLoc },
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
-  // Only rounds 2-5 are still bare skeletons; R1 is a real stochastic MDP, so these
-  // scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
+  // These scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
   { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'blockGhostProb', label: 'Mystery Block outcome', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.5, desc: 'Probability that a Mystery Block grants Ghost. The remaining probability causes Freeze.', fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'ghostLen', label: 'Ghost length (tiles)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 4, desc: 'Number of landed tiles for which wall-phasing stays active.', fmt: (v) => `${Math.round(v)}` },
   { key: 'freezeLen', label: 'Freeze length (turns)', min: 1, max: 8, step: 1, sect: 'world', scope: 'r1', def: 3, desc: 'Turns lost when a Mystery Block produces Freeze.', fmt: (v) => `${Math.round(v)}` },
   { key: 'coinReward', label: 'Coin reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.2, desc: 'Optional reward added once when the model collects one of its coins.', fmt: (v) => (+v).toFixed(2) },
   { key: 'blockReward', label: 'Mystery Block reward', min: 0, max: 1, step: 0.05, sect: 'world', scope: 'r1', def: 0.15, desc: 'One-time reward when a Mystery Block grants Ghost.', fmt: (v) => (+v).toFixed(2) },
-  // --- Round-2 game mechanics (New Donk City: seeded safe-vs-risky hedge
-  // rooms feeding shared centre Warp Pipes). Structural edits regenerate it. ---
-  { key: 'r2Plants', label: 'Piranha plants', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Shortcut traps per side. The default puts one Piranha Plant in each of the three decision rooms; death retries that room from its Pipe checkpoint.', fmt: (v) => `${Math.round(v)}` },
-  { key: 'r2Slip', label: 'Slippery puddles', min: 0, max: 3, step: 1, sect: 'world', scope: 'r2', def: 3, desc: 'Risky-route puddles per side. The default puts one in every shortcut; moving from one has a 12% total chance to skid sideways, potentially into the nearby plant.', fmt: (v) => `${Math.round(v)}` },
+  // --- Round-2 dynamics. Hazard placement/counts belong to the validated
+  // seeded course; expose only controls that genuinely alter the MDP. ---
+  { key: 'r2SlipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.01, sect: 'world', scope: 'r2', def: 0.12, desc: 'Chance that a move made while standing on a puddle skids to one of the two perpendicular directions. A plant-zone landing eliminates that racer until the next episode while the rival continues.', fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'r2TomatoReward', label: 'Tomato reward', min: 0, max: 2, step: 0.05, sect: 'world', scope: 'r2', def: 0.35, desc: 'One-time reward paid when this model collects each required tomato. Revisiting the same tomato pays nothing.', fmt: (v) => (+v).toFixed(2) },
   // --- Round-4 game feel (Ruined Kingdom survival). Applied live to the arena. ---
   { key: 'r4MissileSpeed', label: 'Missile speed', min: 2, max: 10, step: 0.2, sect: 'world', scope: 'r4', def: 5.4, desc: "Top speed of a Banzai Bill at full pressure. Below the flyer's own ~7 speed, a single Bill is always outrunnable.", fmt: (v) => (+v).toFixed(1) },
   { key: 'r4MissileHoming', label: 'Missile homing', min: 0, max: 1.5, step: 0.05, sect: 'world', scope: 'r4', def: 0.5, desc: 'How sharply a Bill turns to track you (rad/s). 0 = flies straight; higher = much harder to juke past.', fmt: (v) => (+v).toFixed(2) },
   { key: 'r4Hearts', label: 'Hearts (lives)', min: 1, max: 9, step: 1, sect: 'world', scope: 'r4', def: 3, desc: 'How many hits each character survives before the round ends. Changing this restarts the episode.', fmt: (v) => `${Math.round(v)}` },
   { key: 'r4HitPenalty', label: 'Hit penalty', min: -5, max: -0.1, step: 0.1, sect: 'world', scope: 'r4', def: -2, desc: 'Reward lost when a Bill takes one of your hearts. More negative = the model fears getting hit more.', fmt: (v) => (+v).toFixed(1) },
   // --- reproducibility ---
-  { key: 'trainSeed', label: 'Random seed', min: -1, max: 999, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
+  { key: 'trainSeed', label: 'Random seed', min: -1, max: 10000000, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
 
 
 const STYLE = `
 @property --hue{syntax:'<color>';inherits:true;initial-value:#1f5fd0;}
-#rl-panel{position:fixed;top:0;left:0;height:100%;width:465px;z-index:62;--hue:#1f5fd0;
+#rl-panel{position:fixed;top:0;left:0;height:100%;width:min(465px,100vw);z-index:62;--hue:#1f5fd0;
   transform:translateX(calc(-100% - 24px));
   transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1),--hue .3s ease;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -126,7 +123,8 @@ const STYLE = `
 #rl-panel.open{transform:translateX(0);}
 #rl-panel .rl-body{height:100%;box-sizing:border-box;overflow-y:auto;overflow-x:hidden;
   scrollbar-width:none;-ms-overflow-style:none;padding-bottom:0;transition:padding-bottom .25s ease;}
-#rl-panel.has-dp-converged .rl-body{padding-bottom:96px;}
+#rl-panel.has-dp-converged .rl-body,
+#rl-panel.has-train-done .rl-body{padding-bottom:96px;}
 /* scroll stays, scrollbar hidden (Chromium/WebKit here; Firefox/IE via the rule above) */
 #rl-panel .rl-body::-webkit-scrollbar{width:0;height:0;display:none;}
 
@@ -210,8 +208,9 @@ const STYLE = `
    glow rising above the line. ===== */
 #rl-panel .hdr{z-index:4;}                            /* header stays above the tab bar */
 #rl-panel .rl-tabs{position:sticky;top:0;z-index:3;display:flex;gap:0;padding:0 8px;
-  background:#fff;border-bottom:1px solid #e6e8ec;}
-#rl-panel .rl-tab{flex:1 1 0;min-width:0;position:relative;padding:11px 3px 12px;border:0;border-radius:0;background:none;
+  background:#fff;border-bottom:1px solid #e6e8ec;overflow-x:auto;scrollbar-width:none;}
+#rl-panel .rl-tabs::-webkit-scrollbar{display:none;}
+#rl-panel .rl-tab{flex:1 0 62px;min-width:62px;position:relative;padding:11px 3px 12px;border:0;border-radius:0;background:none;
   color:#8a8d94;font:inherit;font-size:10.5px;font-weight:700;letter-spacing:-.2px;cursor:pointer;outline:none;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .2s ease,background-color .22s ease;}
 #rl-panel .rl-tab:hover{background:#eff1f5;}   /* soft light bg fades in on hover */
@@ -277,7 +276,9 @@ const STYLE = `
 #rl-panel button{flex:1;padding:9px 6px;border:1px solid #d7dade;border-radius:9px;background:#fff;
   color:#26272b;font:inherit;font-size:12px;font-weight:600;cursor:pointer;outline:none;
   transition:background .12s,border-color .12s,color .12s;}
-#rl-panel button:focus,#rl-panel button:focus-visible{outline:none;box-shadow:none;}
+#rl-panel button:focus{outline:none;}
+#rl-panel button:focus-visible{outline:2px solid var(--hue);outline-offset:2px;
+  box-shadow:0 0 0 1px #fff;}
 #rl-panel button:hover{background:#f0f1f3;}
 #rl-panel button:active{background:#e7e8eb;}
 #rl-panel button.primary{background:#1f5fd0;border-color:#1a52b8;color:#fff;}
@@ -316,6 +317,7 @@ const STYLE = `
 #rl-panel .ctl .row b{font-variant-numeric:tabular-nums;color:#1f1f21;font-weight:700;}
 #rl-panel input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:3px;
   background:#e1e3e8;outline:none;margin:0;cursor:pointer;}
+#rl-panel input[type=range]:focus-visible{outline:2px solid var(--hue);outline-offset:4px;}
 #rl-panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;
   border-radius:50%;background:#fff;border:2px solid var(--fill,#8a8d94);box-shadow:0 1px 2px rgba(0,0,0,.3);}
 #rl-panel input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;
@@ -360,6 +362,18 @@ const STYLE = `
 #rl-panel #rl-brief .so-row:last-child{border-bottom:0;padding-bottom:1px;}
 #rl-panel #rl-brief .so-k{display:block;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;margin-bottom:4px;}
 #rl-panel #rl-brief .so-v{display:block;font-size:11.5px;color:#4b4d53;line-height:1.5;}
+/* the state vector as a VISUAL stacked bar (segment width = share of dimensions) + legend */
+#rl-panel #rl-brief .sv-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;gap:2px;background:transparent;margin:3px 0 11px;}
+#rl-panel #rl-brief .sv-seg{display:flex;align-items:center;justify-content:center;min-width:14px;
+  color:#fff;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.2px;
+  border-radius:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);}
+#rl-panel #rl-brief .sv-legend{display:flex;flex-direction:column;gap:8px;}
+#rl-panel #rl-brief .sv-item{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;column-gap:8px;row-gap:2px;}
+#rl-panel #rl-brief .sv-dot{width:10px;height:10px;border-radius:3px;align-self:center;}
+#rl-panel #rl-brief .sv-lab{font-size:11.5px;font-weight:800;color:#2a2c31;}
+#rl-panel #rl-brief .sv-dim{font-size:10.5px;font-weight:800;color:#8a8d94;font-variant-numeric:tabular-nums;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
+#rl-panel #rl-brief .sv-det{grid-column:2 / -1;font-size:10.5px;color:#7a7d84;line-height:1.45;}
 /* the observation vector, shown as a code-style tuple */
 #rl-panel #rl-brief .so-tuple{display:block;margin-top:7px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   font-size:11px;font-weight:700;color:#1f5fd0;background:#eef2fa;border:1px solid #e0e6f2;border-radius:8px;
@@ -412,10 +426,13 @@ const STYLE = `
 
 /* top-30 replay browser (per model) */
 #rl-panel .replist{max-height:196px;overflow-y:auto;margin:10px 0 0;border:1px solid #e6e8ec;border-radius:10px;}
-#rl-panel .replist .rrow{display:flex;align-items:center;gap:10px;padding:8px 11px;font-size:12px;cursor:pointer;
-  border-bottom:1px solid #f0f1f3;}
+#rl-panel .replist .rrow{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;
+  flex:none;margin:0;padding:8px 11px;border:0;border-bottom:1px solid #f0f1f3;border-radius:0;
+  background:#fff;color:inherit;font:inherit;font-size:12px;text-align:left;cursor:pointer;
+  -webkit-appearance:none;appearance:none;}
 #rl-panel .replist .rrow:last-child{border-bottom:0;}
 #rl-panel .replist .rrow:hover{background:#f0f1f3;}
+#rl-panel .replist .rrow:focus-visible{outline:2px solid var(--hue);outline-offset:-2px;}
 #rl-panel .replist .rrow.sel{background:#eaf0fb;box-shadow:inset 3px 0 0 #1f5fd0;}
 #rl-panel .replist.red .rrow.sel{background:#fceceb;box-shadow:inset 3px 0 0 #e60012;} /* red model = red selection */
 #rl-panel .replist .rrow .rk{color:#9a9da4;font-weight:800;width:30px;flex:none;}
@@ -447,7 +464,7 @@ const STYLE = `
 // a large plain-language heading, an optional one-line subtitle, then its cards
 // stacked vertically (one scrolling column). A catch-all 'More' group guarantees
 // any unmapped/future section still appears (never silently dropped). Shared by
-// both the N and M panels.
+// the shared control panel.
 //   groups = [[id, title, [sectionId, ...], subtitle?], ...]
 export function organizeGroups(body, groups) {
   const mk = (id, title, sub) => {
@@ -501,20 +518,28 @@ const N_GROUPS = [
 
 // Build the sticky tab bar (one tab per group) and wire it to swap sections. The
 // tab bar pins right under the sticky header; clicking a tab shows only that
-// group and scrolls the panel back to the top. Shared by the N and M panels.
+// group and scrolls the panel back to the top.
 export function buildTabs(panel, body, groups) {
   // the header may live OUTSIDE `body` (the merged panel shares one header across two
   // view containers) - fall back to the panel's header for the sticky offset
   const hdr = body.querySelector('.hdr') || panel.querySelector('.hdr');
   const bar = document.createElement('div');
   bar.className = 'rl-tabs';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Control menu sections');
   const tabs = [...body.querySelectorAll('.rl-group')].map((g) => {
     const meta = groups.find((x) => x[0] === g.dataset.group);
+    g.id = `rl-group-${g.dataset.group}`;
+    g.setAttribute('role', 'tabpanel');
     const btn = document.createElement('button');
+    btn.id = `rl-tab-${g.dataset.group}`;
     btn.type = 'button';
     btn.className = 'rl-tab';
     btn.dataset.group = g.dataset.group;
     btn.textContent = (meta && (meta[4] || meta[1])) || g.dataset.group;
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-controls', g.id);
+    g.setAttribute('aria-labelledby', btn.id);
     bar.appendChild(btn);
     return { btn, g };
   });
@@ -545,12 +570,27 @@ export function buildTabs(panel, body, groups) {
     for (const { btn, g } of tabs) {
       const on = g.dataset.group === id;
       g.classList.toggle('active', on);
+      g.hidden = !on;
       btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.tabIndex = on ? 0 : -1;
+      if (on) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
     moveHl();
     body.scrollTop = 0;
   };
   tabs.forEach(({ btn }) => btn.addEventListener('click', () => activate(btn.dataset.group)));
+  bar.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const current = tabs.findIndex(({ btn }) => btn.classList.contains('active'));
+    let next = current;
+    if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else next = (current + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    e.preventDefault();
+    activate(tabs[next].g.dataset.group);
+    tabs[next].btn.focus();
+  });
   if (tabs.length) activate(tabs[0].g.dataset.group);
   setOffset();
   window.addEventListener('resize', setOffset);
@@ -596,14 +636,14 @@ export function initPanel() {
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
       <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
-      <div class="mselect">
+      <div class="mselect" role="group" aria-label="Model view">
         <span class="msel-wash" aria-hidden="true"></span>
-        <button type="button" class="msel your active" data-view="your">
+        <button type="button" class="msel your active" data-view="your" aria-pressed="true">
           <span class="msel-k">Your model</span>
           <b class="msel-n" id="rl-mb">-</b>
           <em class="msel-s" id="rl-vs"></em>
         </button>
-        <button type="button" class="msel cpu" data-view="cpu">
+        <button type="button" class="msel cpu" data-view="cpu" aria-pressed="false">
           <span class="msel-k">CPU model</span>
           <b class="msel-n" id="rl-cp-algo">-</b>
           <em class="msel-s" id="rl-cp-tier"></em>
@@ -616,14 +656,15 @@ export function initPanel() {
         <span class="reptag-face reptag-front">Replay</span>
         <span class="reptag-face reptag-back">Back to live</span>
       </button>
-      <div class="transport">
-        <button id="rl-prev" class="tbtn">${SVG.prev}</button>
-        <button id="rl-play" class="tplay">${SVG.pause}</button>
-        <button id="rl-next" class="tbtn">${SVG.next}</button>
+      <div class="transport" role="group" aria-label="Playback controls">
+        <button id="rl-prev" class="tbtn" type="button" aria-label="Previous round">${SVG.prev}</button>
+        <button id="rl-play" class="tplay" type="button" aria-label="Pause live training">${SVG.pause}</button>
+        <button id="rl-next" class="tbtn" type="button" aria-label="Next round">${SVG.next}</button>
       </div>
       <div class="ctl" id="rl-rep-scrub">
         <div class="row"><span id="rl-rep-info">Replay</span><b id="rl-rep-frame"></b></div>
-        <input type="range" id="rl-rep-seek" min="0" max="0" value="0" style="--fill:#1f5fd0">
+        <input type="range" id="rl-rep-seek" min="0" max="0" value="0"
+          aria-label="Replay position" style="--fill:#1f5fd0">
       </div>
       <div class="btns" style="margin-top:14px;">
         <button id="rl-reset">↺ Reset</button>
@@ -631,7 +672,8 @@ export function initPanel() {
       </div>
       <div class="ctl" style="margin-top:13px;">
         <div class="row"><span>Speed</span><b id="rl-spd-val">-</b></div>
-        <input type="range" id="rl-speed" min="0" max="100" value="10" style="--fill:#141518">
+        <input type="range" id="rl-speed" min="0" max="100" value="10"
+          aria-label="Simulation and replay speed" style="--fill:#141518">
       </div>
     </section>
     <section id="rl-sec-hyper" class="qk">
@@ -653,20 +695,22 @@ export function initPanel() {
     <section id="rl-sec-training" class="qk">
       <h2>Training</h2>
       <div class="stat"><span>Episode</span><b id="rl-ep">0</b></div>
+      <div class="stat" id="rl-curriculum" hidden><span>Full-course / section starts</span><b id="rl-curriculum-val">0 / 0</b></div>
       <div class="stat" id="rl-training-eps"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
       <div class="stat fullonly"><span>Total steps</span><b id="rl-steps">0</b></div>
-      <div class="stat fullonly"><span>Avg episode length</span><b id="rl-len">-</b></div>
-      <div class="stat fullonly"><span>Last return (B / R)</span><b id="rl-ret">-</b></div>
+      <div class="stat fullonly"><span>Avg full-course length</span><b id="rl-len">-</b></div>
+      <div class="stat fullonly"><span>Last full-course return (B / R)</span><b id="rl-ret">-</b></div>
       <div class="stat fullonly" id="rl-training-q"><span>Learned states (B / R)</span><b id="rl-q">0 / 0</b></div>
     </section>
     <section id="rl-sec-value" class="qk">
       <h2>Value map</h2>
-      <div class="seg">
-        <button id="rl-h-off" class="active">Off</button>
-        <button id="rl-h-policy">Policy</button>
-        <button id="rl-h-value">Value</button>
-        <button id="rl-h-visits">Visits</button>
+      <div class="seg" role="group" aria-label="Diagnostic map mode">
+        <button id="rl-h-off" type="button" class="active" aria-pressed="true">Off</button>
+        <button id="rl-h-policy" type="button" aria-pressed="false">Policy</button>
+        <button id="rl-h-value" type="button" aria-pressed="false">Value</button>
+        <button id="rl-h-visits" type="button" aria-pressed="false">Visits</button>
       </div>
+      <p class="hint" id="rl-map-context"></p>
       <div id="rl-qinspect" style="margin-top:8px;"></div>
     </section>
     </div>
@@ -677,6 +721,15 @@ export function initPanel() {
       <span class="converged-pin-copy">
         <b>Models converged</b>
         <span>Planning is finished. Both models now compete using their fixed policies.</span>
+      </span>
+    </aside>
+    <aside id="rl-train-done-pin" class="converged-pin" hidden aria-live="polite">
+      <span class="converged-pin-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg>
+      </span>
+      <span class="converged-pin-copy">
+        <b>Training complete</b>
+        <span class="td-sub">The episode limit was reached; training has stopped.</span>
       </span>
     </aside>`;
   document.body.appendChild(panel);
@@ -697,7 +750,7 @@ export function initPanel() {
   hdrEl.insertAdjacentElement('afterend', playback);
   buildTabs(panel, body, N_GROUPS);
 
-  // ---- model selector: SAME tabs. Picking the CPU tints the accent + the learning sliders
+  // ---- model selector: picking the CPU tints the accent + the learning sliders
   // red (via --hue) and shows the CPU's values; the lock swings in and locks ONLY those red
   // sliders. The black (shared) sliders stay open. No section swap / whole-tab fade. The
   // per-model helpers (loadLearn / applyLock / rewriteModelLabel / reShowRelevant / lock UI)
@@ -721,14 +774,37 @@ export function initPanel() {
     window.dispatchEvent(new Event('resize'));
   };
   const setModel = (m) => {
-    if (panel.dataset.model === m) return;
-    msels.forEach((b) => b.classList.toggle('active', b.dataset.view === m));
+    const changed = panel.dataset.model !== m;
+    msels.forEach((b) => {
+      const on = b.dataset.view === m;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
     lockBtn.classList.toggle('show', m === 'cpu'); // the lock swings in on the CPU model
+    if (!changed) return;
     applyModel(m);
   };
   msels.forEach((b) => b.addEventListener('click', () => setModel(b.dataset.view)));
 
   const $ = (id) => panel.querySelector(id);
+  const popcount = (value) => {
+    let n = value | 0, count = 0;
+    while (n) { count += n & 1; n >>>= 1; }
+    return count;
+  };
+  const setMapContext = (mask, total, replay = false) => {
+    const el = $('#rl-map-context');
+    if (!el) return;
+    if (mask == null || !total) {
+      el.textContent = replay
+        ? 'Replay motion may include exploration; the map shows the frozen greedy model. Tied greedy actions have no arrow.'
+        : '';
+      return;
+    }
+    el.textContent = `Model context: ${popcount(mask)}/${total} tomatoes collected.` +
+      (replay ? ' Motion may include ε exploration or a puddle skid; Policy/Value show the frozen greedy model.' : '') +
+      ' Policy arrows appear only for a unique greedy action.';
+  };
 
   // paint the filled (left-of-thumb) part of a range slider red
   const paintRange = (el) => {
@@ -739,7 +815,7 @@ export function initPanel() {
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
 
-  // ---- open / close the control menu (N key) ----
+  // ---- open / close the control menu (C key) ----
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && panel.classList.contains('open')) {
@@ -796,7 +872,10 @@ export function initPanel() {
 
   // play/pause is DUAL-MODE: drives the loaded replay when there is one, else the live game
   const playBtn = $('#rl-play');
-  const setLiveIcon = () => { playBtn.innerHTML = paused ? SVG.play : SVG.pause; };
+  const setLiveIcon = () => {
+    playBtn.innerHTML = paused ? SVG.play : SVG.pause;
+    playBtn.setAttribute('aria-label', paused ? 'Resume live training' : 'Pause live training');
+  };
   playBtn.addEventListener('click', () => {
     if (window.RL.replay?.active?.()) window.RL.replay.toggle(); // icon updates via rl-replay-state
     else {
@@ -821,11 +900,19 @@ export function initPanel() {
     scrubEl.classList.toggle('show', on);  // grows in / collapses
     // red model -> the whole replay UI (tag REPLAY bg, play button, scrubber) goes red
     const red = on && s.agent === 'red';
-    if (on && !lastReplayActive) setModel(red ? 'cpu' : 'your');
+    // A replay owns the model context. Synchronize on EVERY replay-state event
+    // (including Blue -> Red replacement while already active), and lock the
+    // selector so its label can never disagree with the historical overlay.
+    if (on) setModel(red ? 'cpu' : 'your');
+    msels.forEach((b) => {
+      b.disabled = on;
+      b.setAttribute('aria-disabled', on ? 'true' : 'false');
+    });
     repTag.classList.toggle('red', red);
     // live = gray (CSS default), blue replay = blue, red replay = red
     playBtn.style.background = on ? (red ? '#e60012' : '#1f5fd0') : '';
     if (on) {
+      setMapContext(s.tomatoMask, s.nTomatoes, true);
       if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
       seekEl.style.setProperty('--fill', red ? '#e60012' : '#1f5fd0'); // scrubber matches the model
       seekEl.max = Math.max(0, (s.total || 1) - 1);
@@ -833,7 +920,9 @@ export function initPanel() {
       repInfo.textContent = s.label || 'Replay';
       repFrame.textContent = s.total ? `${s.idx + 1}/${s.total}` : '';
       playBtn.innerHTML = s.playing ? SVG.pause : SVG.play;
+      playBtn.setAttribute('aria-label', s.playing ? 'Pause replay' : 'Play replay');
     } else {
+      setMapContext(null, null, false);
       setLiveIcon(); // back to live: restore the live play/pause icon
     }
     lastReplayActive = on;
@@ -847,26 +936,18 @@ export function initPanel() {
     $(`#rl-pv-${p.key}`).textContent = p.fmt(+$(`#rl-p-${p.key}`).value);
     paintRange($(`#rl-p-${p.key}`));
   };
-  // send only the keys the user actually touched, so nudging α never triggers the
-  // world rebuild that a structural key (hazard counts / seed) does.
+  // Send only the keys the user actually touched, so nudging α never triggers a
+  // structural world rebuild such as changing the seed.
   let applyTimer = null;
   let seedTimer = null;
-  let pending = {};
+  const emptyPending = () => ({ mine: {}, cpu: {} });
+  let pending = emptyPending();
   const flush = () => {
-    const keys = Object.keys(pending);
-    if (keys.length) {
-      // learning-knob edits while viewing the CPU route to setRedParams; everything else
-      // (the shared globals, and all edits while on your model) routes to setParams.
-      const mine = {}, cpu = {};
-      for (const k of keys) {
-        const p = ALL_PARAMS.find((x) => x.key === k);
-        if (panel.dataset.model === 'cpu' && p && p.color === C_OURS) cpu[k] = pending[k];
-        else mine[k] = pending[k];
-      }
-      if (Object.keys(mine).length) window.RL.control({ cmd: 'setParams', params: mine });
-      if (Object.keys(cpu).length) window.RL.control({ cmd: 'setRedParams', params: cpu });
-    }
-    pending = {};
+    const { mine, cpu } = pending;
+    pending = emptyPending();
+    if (Object.keys(mine).length) window.RL.control({ cmd: 'setParams', params: mine });
+    if (Object.keys(cpu).length) window.RL.control({ cmd: 'setRedParams', params: cpu });
+    applyTimer = null;
   };
   const queue = (p) => {
     const raw = +$(`#rl-p-${p.key}`).value;
@@ -876,10 +957,14 @@ export function initPanel() {
       clearTimeout(seedTimer);
       seedTimer = setTimeout(() => {
         window.RL.control({ cmd: 'setParams', params: { trainSeed: raw } });
+        seedTimer = null;
       }, 700);
       return;
     }
-    pending[p.key] = p.enc ? p.enc(raw) : raw;
+    // Capture the destination now: switching model tabs before the debounce
+    // expires must not redirect an edit to the other model.
+    const target = panel.dataset.model === 'cpu' && p.color === C_OURS ? 'cpu' : 'mine';
+    pending[target][p.key] = p.enc ? p.enc(raw) : raw;
     clearTimeout(applyTimer);
     applyTimer = setTimeout(flush, 160);
   };
@@ -891,17 +976,18 @@ export function initPanel() {
   const setFromBackend = (p, val) => {
     const el = $(`#rl-p-${p.key}`);
     if (!el || val == null) return;
-    el.value = p.dec ? p.dec(val) : val;
+    const next = p.dec ? p.dec(val) : val;
+    if (+el.value === +next) return;
+    el.value = next;
     setLabel(p);
   };
 
-  let paramsInit = false;   // pull the backend defaults onto the sliders just once
   let lastAlgoBlue = null, lastAlgoRed = null;  // re-show relevant controls per model + round
-  let lastRoundIndex = -1;  // r4/r5 hazard sliders are scoped by round, not just algo
+  let lastRoundIndex = -1;  // round-scoped world controls depend on the arena, not just the algorithm
 
   // show only the controls that matter for THIS round: hide α / ε on DP rounds
-  // (planners use only γ); DP / DQN internals + arena dynamics + hazard counts each
-  // appear only where they apply. Then hide any settings card left empty.
+  // (planners use only γ); algorithm internals and arena dynamics each appear
+  // only where they apply. Then hide any settings card left empty.
   const showRelevant = (algoBlue, roundIndex) => {
     const isDP = DP_ALGOS.has(algoBlue);
     const isDqn = DQN_ALGOS.has(algoBlue);
@@ -967,7 +1053,9 @@ export function initPanel() {
   const updateLockUI = () => {
     lockBtn.innerHTML = cpuLocked ? LOCK_CLOSED : LOCK_OPEN;
     lockBtn.classList.toggle('locked', cpuLocked);
-    lockBtn.title = cpuLocked ? "Unlock to edit the CPU's values" : "Lock the CPU's values";
+    const action = cpuLocked ? "Unlock to edit the CPU's values" : "Lock the CPU's values";
+    lockBtn.title = action;
+    lockBtn.setAttribute('aria-label', action);
   };
   updateLockUI();
   lockBtn.addEventListener('click', () => {
@@ -981,8 +1069,15 @@ export function initPanel() {
   // you, Red = CPU). Modes Off / Value / Policy / Visits.
   const hbtns = { off: $('#rl-h-off'), value: $('#rl-h-value'), policy: $('#rl-h-policy'), visits: $('#rl-h-visits') };
   const heatAgent = () => (panel.dataset.model === 'cpu' ? 'red' : 'blue');
+  const markHeatMode = (m) => {
+    for (const k in hbtns) {
+      const on = k === m;
+      hbtns[k].classList.toggle('active', on);
+      hbtns[k].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  };
   const setMode = (m) => {
-    for (const k in hbtns) hbtns[k].classList.toggle('active', k === m);
+    markHeatMode(m);
     if (m === 'off') { window.RL.setHeatmap(null); $('#rl-qinspect').innerHTML = ''; }
     else window.RL.setHeatmap(heatAgent(), m);
   };
@@ -998,7 +1093,7 @@ export function initPanel() {
   // if some other source grabs the single overlay, fall back to Off here
   window.addEventListener('rl-heatmap', (e) => {
     if ((e.detail || {}).agent !== heatAgent()) {
-      for (const k in hbtns) hbtns[k].classList.toggle('active', k === 'off');
+      markHeatMode('off');
       $('#rl-qinspect').innerHTML = '';
     }
   });
@@ -1009,25 +1104,40 @@ export function initPanel() {
     if (!s) return;
     if (typeof s.paused === 'boolean') paused = s.paused;
     if (!window.RL.replay?.active?.()) setLiveIcon();
-    // cache both models' params; seed the sliders from the backend once
+    if (!window.RL.replay?.active?.()) {
+      const frame = e.detail.frame || {};
+      const side = panel.dataset.model === 'cpu' ? 'red' : 'blue';
+      setMapContext(frame[side + 'Stars'], frame.nStars, false);
+    }
+    // Cache both models, then continuously rehydrate every control that has no
+    // debounced edit pending. This keeps seed, per-round max steps, CPU profiles
+    // and reset values truthful.
     if (s.params) lastParams = s.params;
     if (s.redParams) lastRedParams = s.redParams;
-    if (!paramsInit && s.params) {
-      for (const p of ALL_PARAMS) setFromBackend(p, s.params[p.key]);
-      paramsInit = true;
+    const modelParams = panel.dataset.model === 'cpu' ? lastRedParams : lastParams;
+    for (const p of ALL_PARAMS) {
+      const targetPending = p.color === C_OURS && panel.dataset.model === 'cpu'
+        ? pending.cpu
+        : pending.mine;
+      const busy = Object.prototype.hasOwnProperty.call(targetPending, p.key)
+        || (p.key === 'trainSeed' && seedTimer != null);
+      if (busy) continue;
+      const src = p.color === C_OURS ? modelParams : lastParams;
+      setFromBackend(p, src?.[p.key]);
     }
-    // while viewing the CPU LOCKED, mirror its (tier-set) learning values live
-    if (panel.dataset.model === 'cpu' && cpuLocked) loadLearn();
     $('#rl-mb').textContent = NAMES[s.algoBlue] || s.algoBlue || '-';
     const redNm = NAMES[s.algoRed] || s.algoRed || '';
-    const tier = s.cpuTier ? `CPU - Tier ${s.cpuTier}` : '';
+    const level = Math.max(0, Math.min(CPU_NAMES.length - 1, s.cpuLevel ?? 0));
+    const cpuName = CPU_NAMES[level] || 'CPU';
+    const cpuLabel = CPU_LEVEL_LABELS[level] || '';
+    const tier = s.cpuTier ? `${cpuName} - ${cpuLabel}` : cpuName;
     $('#rl-vs').textContent = redNm
       ? `vs ${redNm}${tier ? ` - ${tier}` : ''}`
       : (tier ? `vs ${tier}` : '');
     // the CPU card in the header selector
     $('#rl-cp-algo').textContent = redNm || '-';
     $('#rl-cp-tier').textContent = s.cpuTier
-      ? `Tier ${s.cpuTier}${TIER_LABELS[s.cpuTier] ? ` - ${TIER_LABELS[s.cpuTier]}` : ''}` : '';
+      ? `${cpuName} · Tier ${s.cpuTier} - ${cpuLabel}` : cpuName;
     const r = s.round || {};
     const ri = r.index ?? 0;
     if (s.algoBlue !== lastAlgoBlue || s.algoRed !== lastAlgoRed || ri !== lastRoundIndex) {
@@ -1052,6 +1162,20 @@ export function initPanel() {
     $('#rl-ep').textContent = tgt > 0
       ? `${s.episode.toLocaleString()} / ${tgt.toLocaleString()}`
       : s.episode.toLocaleString();
+    // "Stop after N" reached: the trainer idles once episode >= target, so surface a
+    // green completion pin (mirrors the DP convergence pin). DP rounds use their own.
+    const trainDone = tgt > 0 && !DP_ALGOS.has(s.algoBlue) && s.episode >= tgt;
+    const donePin = $('#rl-train-done-pin');
+    if (donePin) {
+      if (trainDone) $('#rl-train-done-pin .td-sub').textContent =
+        `Reached ${tgt.toLocaleString()} episodes. Training has stopped; the models now play with their trained policies.`;
+      donePin.hidden = !trainDone;
+      panel.classList.toggle('has-train-done', trainDone);
+    }
+    const curriculum = s.curriculumEpisodes || 0;
+    $('#rl-curriculum').hidden = curriculum <= 0 && ri !== 1;
+    $('#rl-curriculum-val').textContent =
+      `${(s.fullCourseEpisodes || 0).toLocaleString()} / ${curriculum.toLocaleString()}`;
     $('#rl-steps').textContent = s.totalSteps.toLocaleString();
     lastEps = { blue: s.epsilon, red: s.redEpsilon ?? lastEps.red };
     updateEps(); // Exploration ε follows the selected model (blue = you, red = CPU)
@@ -1069,7 +1193,8 @@ export function initPanel() {
     const lo = Math.min(...d.q, 0), hi = Math.max(...d.q, 0), span = hi - lo || 1;
     // star the action the agent WOULD take (best among EFFECTIVE actions), not just the
     // raw argmax - a higher-Q move that bumps a wall is blocked and shown dimmed
-    const best = (d.best != null) ? d.best : d.q.indexOf(Math.max(...d.q));
+    const best = d.best;
+    const ties = Array.isArray(d.ties) ? d.ties : [];
     const mask = d.mask || null;
     const actionNames = ACTION_NAMES;
     const actionOrder = lastRoundIndex === 0 ? PEACH_ACTION_ORDER : [0, 1, 2, 3];
@@ -1078,7 +1203,8 @@ export function initPanel() {
       actionOrder.map((i, displayIndex) => {
         const q = d.q[i];
         const blk = mask && !mask[i];
-        return `<div class="qrow${blk ? ' blk' : ''}"><span>${actionNames[displayIndex]}${i === best ? ' ★' : ''}${blk ? ' <span class="blktag">blocked</span>' : ''}</span>
+        const mark = i === best ? ' ★' : (best == null && ties.includes(i) ? ' ◇' : '');
+        return `<div class="qrow${blk ? ' blk' : ''}"><span>${actionNames[displayIndex]}${mark}${blk ? ' <span class="blktag">blocked</span>' : ''}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;
             width:${(Math.abs(q) / span) * 100}%"></i></span>
           <span>${q.toFixed(2)}</span></div>`;

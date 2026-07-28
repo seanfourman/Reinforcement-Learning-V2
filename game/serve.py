@@ -3,7 +3,7 @@
 
 Run with:  python serve.py
 
-Serves the game (static files) AND runs the two self-play models live in a
+Serves the game (static files) AND runs the two independent models live in a
 background thread, streaming the match to the browser over a tiny JSON API:
 
     GET  /api/snapshot          -> {worldVersion, frame, stats}     (poll ~30Hz)
@@ -164,7 +164,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 rank = int(q.get("rank", ["0"])[0])
             except ValueError:
                 rank = 0
-            return self._json(match.replay(which, agent, rank))
+            try:
+                episode = (
+                    int(q["episode"][0]) if "episode" in q else None
+                )
+            except (ValueError, IndexError):
+                episode = None
+            return self._json(match.replay(which, agent, rank, episode))
         if route == "/api/replays":
             return self._json(match.replays_index(q.get("agent", ["red"])[0]))
         if route == "/api/dp":
@@ -234,7 +240,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif cmd == "setRedParams":
             match.set_red_params(body.get("params", {}))
         elif cmd == "cpuTier":
-            match.set_cpu_tier(body.get("value", 1), body.get("level"))
+            match.set_cpu_tier(
+                body.get("value", 1), body.get("level"),
+                force=bool(body.get("force", False)),
+            )
         elif cmd == "loadouts":
             match.set_loadouts(body.get("cpu"), body.get("player"))
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
@@ -295,7 +304,7 @@ def main():
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     print("Rival Minds - live self-play RL arena")
     print(f"Running at {url}")
-    print("Two models are training live. R = new world + reset, M = panel.")
+    print("Two models are training live. R = reset models, C = control panel.")
     print("Keep this window open. Press Ctrl+C to stop.")
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:

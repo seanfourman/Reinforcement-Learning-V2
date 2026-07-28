@@ -112,7 +112,7 @@ class World:
                        "exit": list(p["exit"]) if p.get("exit") else None,
                        "requiresStar": p.get("requiresStar")}
                       for p in self.pipes],
-            # Round-2 PER-AGENT Power Stars (mirror pairs) - the collect-3-then-goal game.
+            # Round-2 PER-AGENT tomatoes (mirror pairs) - collect three, then reach goal.
             "redStars": [list(s) for s in self.red_stars],
             "blueStars": [list(s) for s in self.blue_stars],
             "hedgeCells": [list(c) for c in self.hedge_cells],

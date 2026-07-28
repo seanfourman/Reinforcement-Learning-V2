@@ -24,7 +24,7 @@ from collections import deque
 
 from env import (GridWorld, N_ACTIONS,
                  COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
-                 SLIP_PROB, R2_SLIP_PROB)
+                 SLIP_PROB, R2_SLIP_PROB, STAR_REWARD)
 from continuous import ContinuousArena
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
@@ -37,6 +37,13 @@ import worlds
 # family labels work without importing the torch modules.
 DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
 PG_ALGOS = ("reinforce", "actor_critic", "ppo")
+ROUND_ALGO_FAMILIES = {
+    1: {"value_iteration", "policy_iteration"},
+    2: {"monte_carlo", "first_visit_mc"},
+    3: {"qlearning", "sarsa", "expected_sarsa"},
+    4: set(DQN_ALGOS),
+    5: set(PG_ALGOS),
+}
 
 
 def is_dqn(algo):
@@ -87,32 +94,83 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
     return max(lo, min(hi, n))
 
 
+def _unique_argmax(values, valid=None):
+    """Return the sole maximizing index, or None for a genuine policy tie."""
+    choices = list(valid if valid is not None else range(len(values)))
+    if not choices:
+        choices = list(range(len(values)))
+    best = max(values[i] for i in choices)
+    tied = [i for i in choices if values[i] == best]
+    return tied[0] if len(tied) == 1 else None
+
+
 # 10 CPU hyperparameter MODELS, one PER CHARACTER (level 0 = Mario, easiest .. 9 =
-# Parabones, hardest). Each is strictly better than the last, so beating an opponent takes
-# increasingly good play. On the DP round (R1) a higher plan_speed makes the CPU reach the
-# converged policy in FEWER ticks (converges faster -> harder to out-race, verified). On the
-# learning rounds (2-5) a higher alpha + lower final epsilon + fewer decay episodes make it
-# learn a stronger policy sooner. gamma is fixed at RED_GAMMA. To retune a single
-# opponent, edit its row here.
+# Parabones, hardest). Stage 1 reads plan_speed. The generic learning values remain
+# the defaults for later TD/deep arenas. Arena 2 has its own empirically tuned MC
+# block because long, full-return learning FAILS when epsilon is driven toward zero:
+# Every-visit needs a floor around .20 and First-visit tolerates about .16. Rows are
+# monotonic within each alternating MC family (even levels Every-visit, odd levels
+# First-visit), and gamma=.98 won the long-course benchmark over .995.
 RED_MODELS = [
-    #  Stage 1 ----  |  Later learning arenas ------------------------------
-    #  plan_speed    |  alpha  eps_start  eps_end  eps_episodes
-    {"plan_speed": 0.15, "alpha": 0.08, "eps_start": 1.00, "eps_end": 0.35, "eps_episodes": 9000},  # 0 Mario
-    {"plan_speed": 0.30, "alpha": 0.12, "eps_start": 0.96, "eps_end": 0.30, "eps_episodes": 8000},  # 1 Luigi
-    {"plan_speed": 0.50, "alpha": 0.16, "eps_start": 0.92, "eps_end": 0.26, "eps_episodes": 7000},  # 2 Yoshi
-    {"plan_speed": 0.75, "alpha": 0.20, "eps_start": 0.88, "eps_end": 0.22, "eps_episodes": 6000},  # 3 Toadette
-    {"plan_speed": 1.05, "alpha": 0.24, "eps_start": 0.84, "eps_end": 0.18, "eps_episodes": 5000},  # 4 Pauline
-    {"plan_speed": 1.40, "alpha": 0.28, "eps_start": 0.80, "eps_end": 0.14, "eps_episodes": 4000},  # 5 Koopa
-    {"plan_speed": 1.80, "alpha": 0.31, "eps_start": 0.75, "eps_end": 0.10, "eps_episodes": 3000},  # 6 Bowser
-    {"plan_speed": 2.25, "alpha": 0.34, "eps_start": 0.70, "eps_end": 0.07, "eps_episodes": 2000},  # 7 Peach
-    {"plan_speed": 2.80, "alpha": 0.37, "eps_start": 0.65, "eps_end": 0.04, "eps_episodes": 1000},  # 8 Toad
-    {"plan_speed": 3.40, "alpha": 0.40, "eps_start": 0.60, "eps_end": 0.01, "eps_episodes": 400},   # 9 Parabones
+    # Generic later arenas ------------------------------  Arena 2 MC -------------------------------------------
+    # plan     alpha  eps0   eps1  decay                    alpha gamma eps0  eps1  decay
+    {"plan_speed": .15, "alpha": .08, "eps_start": 1.00, "eps_end": .35, "eps_episodes": 9000,
+     "r2": {"alpha": .14, "gamma": .98, "eps_start": 1.00, "eps_end": .40, "eps_episodes": 11000}},  # 0 Mario
+    {"plan_speed": .30, "alpha": .12, "eps_start": .96, "eps_end": .30, "eps_episodes": 8000,
+     "r2": {"alpha": .15, "gamma": .98, "eps_start": .98, "eps_end": .36, "eps_episodes": 10000}},  # 1 Luigi
+    {"plan_speed": .50, "alpha": .16, "eps_start": .92, "eps_end": .26, "eps_episodes": 7000,
+     "r2": {"alpha": .16, "gamma": .98, "eps_start": .96, "eps_end": .33, "eps_episodes": 9500}},   # 2 Yoshi
+    {"plan_speed": .75, "alpha": .20, "eps_start": .88, "eps_end": .22, "eps_episodes": 6000,
+     "r2": {"alpha": .17, "gamma": .98, "eps_start": .94, "eps_end": .29, "eps_episodes": 8500}},   # 3 Toadette
+    {"plan_speed": 1.05, "alpha": .24, "eps_start": .84, "eps_end": .18, "eps_episodes": 5000,
+     "r2": {"alpha": .18, "gamma": .98, "eps_start": .92, "eps_end": .27, "eps_episodes": 8000}},   # 4 Pauline
+    {"plan_speed": 1.40, "alpha": .28, "eps_start": .80, "eps_end": .14, "eps_episodes": 4000,
+     "r2": {"alpha": .19, "gamma": .98, "eps_start": .90, "eps_end": .23, "eps_episodes": 7200}},   # 5 Koopa
+    {"plan_speed": 1.80, "alpha": .31, "eps_start": .75, "eps_end": .10, "eps_episodes": 3000,
+     "r2": {"alpha": .20, "gamma": .98, "eps_start": .88, "eps_end": .23, "eps_episodes": 7000}},   # 6 Bowser
+    {"plan_speed": 2.25, "alpha": .34, "eps_start": .70, "eps_end": .07, "eps_episodes": 2000,
+     "r2": {"alpha": .21, "gamma": .98, "eps_start": .87, "eps_end": .19, "eps_episodes": 6500}},   # 7 Peach
+    {"plan_speed": 2.80, "alpha": .37, "eps_start": .65, "eps_end": .04, "eps_episodes": 1000,
+     "r2": {"alpha": .22, "gamma": .98, "eps_start": .86, "eps_end": .20, "eps_episodes": 6000}},   # 8 Toad
+    {"plan_speed": 3.40, "alpha": .40, "eps_start": .60, "eps_end": .01, "eps_episodes": 400,
+     "r2": {"alpha": .22, "gamma": .98, "eps_start": .86, "eps_end": .16, "eps_episodes": 6000}},   # 9 Parabones
 ]
 
+# Blue is user-tunable, but every arena starts from a profile that is actually
+# suitable for that algorithm. The generic schedule remains the default for
+# later one-step/deep arenas; Arena 2 needs sustained exploration because a
+# Monte-Carlo update only arrives after a long three-room return.
+BLUE_MODEL = {
+    "alpha": .20, "gamma": .98,
+    "eps_start": 1.00, "eps_end": .05, "eps_episodes": 3000,
+    "r2": {
+        "alpha": .19, "gamma": .98,
+        "eps_start": .90, "eps_end": .23, "eps_episodes": 7200,
+    },
+}
 
-def red_params(level):
-    """The CPU hyperparameter MODEL for a character level (0..9); higher = stronger."""
-    return dict(RED_MODELS[max(0, min(len(RED_MODELS) - 1, int(round(level))))])
+
+def red_params(level, round_id=None):
+    """Resolved CPU profile for a character and arena.
+
+    Arena-specific values override the generic learning profile without leaking
+    into the other rounds.
+    """
+    raw = RED_MODELS[
+        max(0, min(len(RED_MODELS) - 1, int(round(level))))
+    ]
+    resolved = {k: v for k, v in raw.items() if k != "r2"}
+    if round_id == 2:
+        resolved.update(raw["r2"])
+    return resolved
+
+
+def blue_params(round_id=None):
+    """Resolve the user model's safe per-arena starting profile."""
+    resolved = {k: v for k, v in BLUE_MODEL.items() if k != "r2"}
+    if round_id == 2:
+        resolved.update(BLUE_MODEL["r2"])
+    return resolved
 
 
 class Match:
@@ -147,17 +205,17 @@ class Match:
         self.block_ghost_prob = 0.5             # P(Ghost) on a Mystery Block
         self.coin_reward = COIN_REWARD          # value of an optional coin
         self.block_reward = BLOCK_REWARD        # bonus on a Ghost roll
-        # Round-2 game mechanics (New Donk City): three hedge-maze hazards,
-        # applied at WORLD GEN.
-        self.r2_plants = 3                      # one piranha shortcut trap in each stage
-        self.r2_slip = 3                        # slippery puddles per side (mirrored)
+        # Round-2 game mechanics (New Donk City). Hazard placement/counts are part
+        # of the validated seeded course; only their stochastic risk and shaping
+        # reward are live controls.
+        self.r2_slip_prob = R2_SLIP_PROB
+        self.r2_tomato_reward = STAR_REWARD
         # Round-4 game-feel overrides (None = the arena's own default), applied to
         # the env after any (re)build and live from the panel's World card.
         self.r4_missile_speed = None
         self.r4_missile_homing = None
         self.r4_hearts = None
         self.r4_hit_penalty = None
-        self.r2_slip_prob = R2_SLIP_PROB        # independent of Round-1 ice
         # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
         # Red each train fully independently (different brain AND different training
         # regime). batch/warmup/target-sync apply live; buffer/width/depth rebuild.
@@ -194,6 +252,7 @@ class Match:
         self.eps_start, self.eps_end, self.eps_episodes = 1.0, 0.05, 3000
         self.r4_eps_episodes = None             # explicit panel override, else cap at 1,000
         self.r4_red_eps_episodes = None         # same for a manual CPU override
+        self._blue_from_round()
         self.target_episodes = None            # auto-pause after N episodes (None = run forever)
         self.red_tier = 1                      # CPU display tier (1-5), from the chosen character
         self.red_level = 0                     # CPU hyperparameter model 0..9 (per-character)
@@ -220,10 +279,7 @@ class Match:
         if getattr(mod, "CONTINUOUS", False):
             return ContinuousArena(seed, round_id=round_id,
                                    theme=getattr(mod, "THEME", "ruined"))
-        gen_cfg = {}
-        if round_id == 2:                       # New Donk City maze knobs
-            gen_cfg = {"n_plants": self.r2_plants, "n_slip": self.r2_slip}
-        return GridWorld(seed, round_id=round_id, gen_cfg=gen_cfg)
+        return GridWorld(seed, round_id=round_id)
 
     def _apply_env_config(self):
         """Apply the step-cap override + the Round-1 mechanic params onto the current env,
@@ -241,7 +297,8 @@ class Match:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
                         r2_slip_prob=self.r2_slip_prob,
                         freeze_len=self.freeze_len, block_ghost_prob=self.block_ghost_prob,
-                        coin_reward=self.coin_reward, block_reward=self.block_reward)
+                        coin_reward=self.coin_reward, block_reward=self.block_reward,
+                        star_reward=self.r2_tomato_reward)
         return False
 
     def _rebuild_world(self):
@@ -325,15 +382,26 @@ class Match:
     def _red_from_tier(self):
         """(Re)derive Red's params from its per-character DIFFICULTY. Manual overrides via
         set_red_params replace these until the character (difficulty) changes again."""
-        rp = red_params(self.red_level)
+        rp = red_params(self.red_level, self.round_id)
         self.red_alpha = rp["alpha"]
-        self.red_gamma = RED_GAMMA
+        self.red_gamma = rp.get("gamma", RED_GAMMA)
         self.red_eps_start = rp["eps_start"]
         self.red_eps_end = rp["eps_end"]
         self.red_eps_episodes = rp["eps_episodes"]
         self.r4_red_eps_episodes = None
         self.red_epsilon = rp["eps_start"]
         self.red_plan_speed = rp["plan_speed"]    # DP (R1): Red's sweeps per tick
+
+    def _blue_from_round(self):
+        """Restore Blue's validated default profile for the active arena."""
+        bp = blue_params(self.round_id)
+        self.alpha = bp["alpha"]
+        self.gamma = bp["gamma"]
+        self.eps_start = bp["eps_start"]
+        self.eps_end = bp["eps_end"]
+        self.eps_episodes = bp["eps_episodes"]
+        self.r4_eps_episodes = None
+        self.epsilon = bp["eps_start"]
 
     def _build_agents(self):
         # Red = CPU (params from its tier, or a manual override); Blue = ours, panel-tunable.
@@ -474,6 +542,8 @@ class Match:
             # no terminal blast from the discarded run should survive it forever.
             self.env.explosions = []
         self.episode = 0
+        self.full_course_episodes = 0
+        self.curriculum_episodes = 0
         self.total_steps = 0
         self.wins = {"red": 0, "blue": 0, "draw": 0}
         self.recent = deque(maxlen=200)      # recent winners, for a rolling rate
@@ -544,43 +614,94 @@ class Match:
             set_curriculum_episode(self.episode)
         (self.s_red, self.s_blue), _ = self.env.reset()
         self._full_course_episode = True
+        self._curriculum_stage = 0
         if self.round_id == 2 and getattr(self.env, "star_mode", False):
             # Exploring starts are the standard way to make long-horizon Monte
-            # Carlo control visit later state/action pairs. Cycle through the
-            # three section starts; the star mask makes each start a legitimate
-            # state of the same MDP. Only stage 0 is a full-course replay.
-            stage = self.episode % 3
+            # Carlo control visit later state/action pairs. Collecting a tomato
+            # changes the state mask, so the route FROM each tomato belongs to a
+            # different Q slice than the route TO it. Keep every post-pickup slice
+            # alive for the whole run: seven episodes out of ten are genuine
+            # bottom-spawn races, then one mirrored random start in each of masks
+            # 1, 3 and 7. Retiring the later slices made tiny constant-step MC
+            # estimation noise harden into deterministic two-cell greedy loops.
+            stage = (0, 0, 0, 0, 0, 0, 0, 3, 4, 5)[self.episode % 10]
+            self._curriculum_stage = stage
             self._full_course_episode = stage == 0
-            if stage == 1:
-                shared = next(
-                    p for p in self.env.world.pipes
-                    if p.get("requiresStar") == 0
+            if stage in (3, 4, 5):
+                # Explore the whole post-pickup state slice for room 1/2/3, not
+                # just one checkpoint. Classic MC exploring starts need every
+                # state-action pair to remain reachable; this is what breaks a
+                # locally greedy two-cell loop instead of waiting for ε to rescue
+                # it by luck. Starts are mirrored and never placed in a hazard,
+                # Pipe, goal, or wall.
+                tomato_idx = stage - 3
+                held = (1 << (tomato_idx + 1)) - 1
+                row_bands = ((13, 18), (6, 10), (0, 3))
+                r0, r1 = row_bands[tomato_idx]
+                blocked = (
+                    set(self.env.plant_cells)
+                    | set(self.env.plant_lethal)
+                    | set(self.env.pipe_map)
+                    | set(self.env.goal_set)
                 )
-                landing = tuple(shared["exit"])
-                self.env.red_pos = self.env.blue_pos = landing
-                self.env.stars_collected = {"red": 1, "blue": 1}
-            elif stage == 2:
-                side_pipes = [
-                    p for p in self.env.world.pipes
-                    if p.get("requiresStar") == 1
-                ]
-                exits = sorted(tuple(p["exit"]) for p in side_pipes)
-                self.env.blue_pos, self.env.red_pos = exits[0], exits[-1]
-                self.env.stars_collected = {"red": 3, "blue": 3}
+                candidates = sorted(
+                    cell for cell in self.env.floor_cells
+                    if r0 <= cell[0] <= r1 and cell[1] < self.env.W // 2
+                    and cell not in blocked
+                    and (cell[0], self.env.W - 1 - cell[1])
+                    in self.env.cell_index
+                    and (cell[0], self.env.W - 1 - cell[1]) not in blocked
+                )
+                if candidates:
+                    pick = (
+                        self.episode * 37
+                        + (0 if self.train_seed is None else int(self.train_seed)) * 101
+                    ) % len(candidates)
+                    self.env.blue_pos = candidates[pick]
+                    self.env.red_pos = (
+                        self.env.blue_pos[0], self.env.W - 1 - self.env.blue_pos[1]
+                    )
+                else:
+                    # A validated city always has candidates, but keep custom/test
+                    # worlds safe: the collected tomato tile is a valid mirrored
+                    # post-pickup state and avoids a modulo-by-zero reset failure.
+                    self.env.blue_pos = self.env.star_cells["blue"][tomato_idx]
+                    self.env.red_pos = self.env.star_cells["red"][tomato_idx]
+                self.env.stars_collected = {"red": held, "blue": held}
             if stage:
                 self.s_red = self.env.observe("red")
                 self.s_blue = self.env.observe("blue")
+        if self.env.objective != "arena":
+            # Align the live visit map with replay frame 0: an episode's actual
+            # starting tile is a visit too (including sectional curriculum starts).
+            for pos, vis in ((self.env.red_pos, self.red_visits),
+                             (self.env.blue_pos, self.blue_visits)):
+                if pos in self.env.cell_index:
+                    vis[pos[0]][pos[1]] += 1
         self.a_red = self.red.policy_action(self.s_red, self._amask("red"))
         self.a_blue = self.blue.policy_action(self.s_blue, self._amask("blue"))
+        if self.round_id == 2 and getattr(self, "_curriculum_stage", 0) >= 3:
+            # Exploring-start episodes force the first action as well as the
+            # state. Subsequent actions follow the normal ε-greedy MC policy.
+            rm, bm = self._amask("red"), self._amask("blue")
+            rv = [a for a, ok in enumerate(rm) if ok] or list(range(self.env.n_actions))
+            bv = [a for a, ok in enumerate(bm) if ok] or list(range(self.env.n_actions))
+            self.a_red = self.red.rng.choice(rv)
+            self.a_blue = self.blue.rng.choice(bv)
         self.ep_return = {"red": 0.0, "blue": 0.0}
         # frame 0 = the TRUE start (spawn positions, before any move). tick() records
         # snapshots AFTER stepping, so without this seed the replay began one move in
         # and agents appeared to start a square off their real spawn.
         self._frames = [self._replay_snapshot()]
 
-    def _replay_snapshot(self):
+    def _replay_snapshot(self, actions=None):
         """Environment frame plus the tiny DP progress marker needed by replay."""
         frame = self.env.snapshot()
+        if actions:
+            for side in ("red", "blue"):
+                action = actions.get(side)
+                if action is not None:
+                    frame[f"{side}Action"] = int(action)
         if getattr(self.env, "missile_game", False):
             # Terminal explosions are carried briefly across the automatic reset so
             # live polling cannot miss them. They belong to the previous episode and
@@ -608,28 +729,64 @@ class Match:
             # post-step here): used both to pick the next action AND to bootstrap the
             # TD target over valid actions only (never over a never-updated wall-bump).
             nmask_red, nmask_blue = self._amask("red"), self._amask("blue")
-            na_red = self.red.policy_action(ns_red, nmask_red) if not done else 0
-            na_blue = self.blue.policy_action(ns_blue, nmask_blue) if not done else 0
+            active_before = info.get(
+                "agentActiveBefore", {"red": True, "blue": True}
+            )
+            agent_done = info.get("agentDone", {"red": done, "blue": done})
+            agent_terminated = info.get(
+                "agentTerminated", {"red": False, "blue": False}
+            )
+            na_red = (
+                self.red.policy_action(ns_red, nmask_red)
+                if not done and not agent_done.get("red", False) else 0
+            )
+            na_blue = (
+                self.blue.policy_action(ns_blue, nmask_blue)
+                if not done and not agent_done.get("blue", False) else 0
+            )
 
             # a max-steps TIMEOUT is truncation, not a true terminal: the next state is
             # not absorbing, so the value backup must still bootstrap through it. Only a
             # real win/lose/draw (done and not truncated) cuts the bootstrap.
             terminated = done and not truncated
-            self.red.learn_step(self.s_red, self.a_red, reward["red"], ns_red, na_red,
-                                terminated, nmask_red)
-            self.blue.learn_step(self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue,
-                                 terminated, nmask_blue)
+            hazardous = bool(getattr(self.env, "hazardous", False))
+            if active_before.get("red", True):
+                red_terminal = (
+                    bool(agent_terminated.get("red", False))
+                    if hazardous else terminated
+                )
+                self.red.learn_step(
+                    self.s_red, self.a_red, reward["red"], ns_red, na_red,
+                    red_terminal, nmask_red
+                )
+            if active_before.get("blue", True):
+                blue_terminal = (
+                    bool(agent_terminated.get("blue", False))
+                    if hazardous else terminated
+                )
+                self.blue.learn_step(
+                    self.s_blue, self.a_blue, reward["blue"], ns_blue, na_blue,
+                    blue_terminal, nmask_blue
+                )
 
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
             self.total_steps += 1
-            if self.a_red < len(self.act_counts["red"]):
+            if active_before.get("red", True) and self.a_red < len(self.act_counts["red"]):
                 self.act_counts["red"][self.a_red] += 1
-            if self.a_blue < len(self.act_counts["blue"]):
+            if active_before.get("blue", True) and self.a_blue < len(self.act_counts["blue"]):
                 self.act_counts["blue"][self.a_blue] += 1
             if self.env.objective != "arena":
-                for pos, vis in ((self.env.red_pos, self.red_visits),
-                                 (self.env.blue_pos, self.blue_visits)):
+                warp_from = getattr(self.env, "_warp_from", {}) or {}
+                for side, pos, vis in (
+                    ("red", self.env.red_pos, self.red_visits),
+                    ("blue", self.env.blue_pos, self.blue_visits),
+                ):
+                    if not active_before.get(side, True):
+                        continue
+                    entry = warp_from.get(side)
+                    if entry in self.env.cell_index:
+                        vis[entry[0]][entry[1]] += 1
                     # count FLOOR cells only; a ghosting agent can sit on a wall cell,
                     # which the travel heatmap (floor-only) never reads (skip dead writes)
                     if pos in self.env.cell_index:
@@ -639,11 +796,16 @@ class Match:
                 n = self.arena_visit_n
                 for side, pos in (("red", self.env.red_pos),
                                   ("blue", self.env.blue_pos)):
+                    if not active_before.get(side, True):
+                        continue
                     i = max(0, min(n - 1, int(float(pos[0]) / A * n)))
                     j = max(0, min(n - 1, int(float(pos[1]) / A * n)))
                     self.arena_visits[side][j][i] += 1
             if len(self._frames) < FRAME_CAP:
-                self._frames.append(self._replay_snapshot())
+                self._frames.append(self._replay_snapshot({
+                    "red": self.a_red if active_before.get("red", True) else None,
+                    "blue": self.a_blue if active_before.get("blue", True) else None,
+                }))
             self.s_red, self.s_blue = ns_red, ns_blue
             self.a_red, self.a_blue = na_red, na_blue
 
@@ -654,42 +816,57 @@ class Match:
                         field = self._capture_replay_fields(side)
                         if field:
                             replay_fields[side] = field
-                died = set(info.get("died") or [])
-                finishers = set(info.get("finishers") or [])
-                for side, learner in (("red", self.red), ("blue", self.blue)):
-                    if died and side not in died and side not in finishers:
-                        # The rival's death interrupted this model before it had
-                        # its own terminal outcome. In Arena 2, MC must discard
-                        # that unrelated partial return instead of learning from
-                        # a fake short victory.
-                        learner.discard_episode()
-                    else:
-                        learner.end_episode()
+                # Arena 2 now lets each racer reach its own terminal state. A
+                # terminal racer contributes no frozen self-loops while its rival
+                # continues, so both complete trajectories are valid MC samples.
+                # At a timeout an unresolved trajectory is a finite-horizon sample.
+                self.red.end_episode()
+                self.blue.end_episode()
                 w = info["winner"] or "draw"
-                self.wins[w] += 1
-                self.recent.append(w)
-                # a None winner is a genuine draw only if the episode ended naturally;
-                # a max-steps cutoff (truncated) is a timeout, not a dead-heat
-                out = info["winner"] if info["winner"] in ("red", "blue") else ("timeout" if truncated else "draw")
-                self.outcomes[out] += 1
-                self.recent_out.append(out)
-                self.ep_lengths.append(self.env.steps)
-                self.last_return = dict(self.ep_return)
-                self.ret_hist["red"].append(self.ep_return["red"])
-                self.ret_hist["blue"].append(self.ep_return["blue"])
+                full_course = bool(getattr(self, "_full_course_episode", True))
+                if full_course:
+                    # Only genuine bottom-spawn races belong in the public
+                    # contest. Later-section/exploring starts are an internal MC
+                    # curriculum, not shorter games that may award the arena.
+                    self.full_course_episodes += 1
+                    self.wins[w] += 1
+                    self.recent.append(w)
+                    # A None winner is a genuine draw only if the episode ended
+                    # naturally; max-steps is a timeout, not a dead heat.
+                    out = (
+                        info["winner"]
+                        if info["winner"] in ("red", "blue")
+                        else ("timeout" if truncated else "draw")
+                    )
+                    self.outcomes[out] += 1
+                    self.recent_out.append(out)
+                    self.ep_lengths.append(self.env.steps)
+                    self.last_return = dict(self.ep_return)
+                    self.ret_hist["red"].append(self.ep_return["red"])
+                    self.ret_hist["blue"].append(self.ep_return["blue"])
+                else:
+                    self.curriculum_episodes += 1
                 self.episode += 1
-                self._finish_episode(
-                    w,
-                    truncated=truncated,
-                    finishers=info.get("finishers"),
-                    replay_fields=replay_fields,
-                )
+                if full_course:
+                    self._finish_episode(
+                        w,
+                        truncated=truncated,
+                        finishers=info.get("finishers"),
+                        finish_steps=info.get("finishSteps"),
+                        replay_fields=replay_fields,
+                    )
+                else:
+                    # Still sample the learned spawn value after each curriculum
+                    # update, but keep partial-room returns/lengths/replays out of
+                    # the full-course dashboard.
+                    self._record_probe()
                 self.save_checkpoint(force=False)
                 self._new_episode()
             return done
 
     def _finish_episode(
-            self, winner, truncated=False, finishers=None, replay_fields=None):
+            self, winner, truncated=False, finishers=None, finish_steps=None,
+            replay_fields=None):
         """Snapshot the finished episode for replay + log a learning-curve point."""
         parts = getattr(self.env, "ep_parts", None)   # grid env's reward decomposition
         if parts is not None:
@@ -698,10 +875,6 @@ class Match:
         self.last_episode = {"winner": winner, "steps": self.env.steps,
                              "frames": self._frames}
         survival = bool(getattr(self.env, "missile_game", False))
-        is_best = (
-            self.env.steps > self._best_len if survival
-            else self.env.steps < self._best_len
-        )
         if survival:
             replay_sides = (
                 [winner] if winner in ("red", "blue")
@@ -720,15 +893,42 @@ class Match:
             replay_sides = [winner] if winner in ("red", "blue") else []
         if not getattr(self, "_full_course_episode", True):
             replay_sides = []
+        side_steps = {
+            side: (
+                self.env.steps if survival
+                else int((finish_steps or {}).get(side, self.env.steps))
+            )
+            for side in replay_sides
+        }
+        candidate_len = (
+            max(side_steps.values()) if survival and side_steps
+            else min(side_steps.values()) if side_steps
+            else self.env.steps
+        )
+        is_best = (
+            candidate_len > self._best_len if survival
+            else candidate_len < self._best_len
+        )
         if replay_sides and is_best:
-            self._best_len = self.env.steps
-            self.best_episode = self.last_episode
+            self._best_len = candidate_len
+            best_side = (
+                max(side_steps, key=side_steps.get) if survival
+                else min(side_steps, key=side_steps.get)
+            )
+            best_n = side_steps[best_side]
+            self.best_episode = {
+                "winner": best_side,
+                "steps": best_n,
+                "frames": self._frames[:best_n + 1],
+            }
         for replay_side in replay_sides:
             lst = self._top[replay_side]
             replay_policy = self._replay_policy_frames(replay_side)
-            lst.append({"steps": self.env.steps, "episode": self.episode,
+            steps = side_steps[replay_side]
+            frames = self._frames[:steps + 1]
+            lst.append({"steps": steps, "episode": self.episode,
                         "winner": replay_side,
-                        "frames": self._frames,
+                        "frames": frames,
                         "policyFrames": replay_policy,
                         "replayFields": (replay_fields or {}).get(replay_side)})
             lst.sort(key=lambda e: e["steps"], reverse=survival)
@@ -784,6 +984,7 @@ class Match:
         floor = [list(cell) for cell in self.env.floor_cells]
         for star_mask in masks:
             q_grid = [[None] * self.env.W for _ in range(self.env.H)]
+            value_grid = [[None] * self.env.W for _ in range(self.env.H)]
             policy = [[None] * self.env.W for _ in range(self.env.H)]
             effective = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
@@ -797,10 +998,14 @@ class Match:
                     action for action in range(len(q)) if allowed[action]
                 ] or list(range(len(q)))
                 q_grid[r][c] = [round(float(value), 4) for value in q]
-                policy[r][c] = int(max(valid, key=lambda action: q[action]))
+                value_grid[r][c] = round(
+                    float(max(q[action] for action in valid)), 4
+                )
+                policy[r][c] = _unique_argmax(q, valid)
                 effective[r][c] = [bool(value) for value in allowed]
             fields[str(star_mask)] = {
                 "q": q_grid,
+                "value": value_grid,
                 "policy": policy,
                 "effective": effective,
             }
@@ -831,7 +1036,7 @@ class Match:
 
     # --------------------------------------------------------------- controls
     def regenerate(self, seed=None):
-        """Install a newly-seeded world and wipe both models (what R does).
+        """Install a newly-seeded world and wipe both models (New World control).
 
         With no explicit seed, advance the current training seed so repeated
         ``New World`` clicks produce different but reproducible layouts.  An
@@ -882,7 +1087,8 @@ class Match:
             sync/width) -> BOTH agents; buffer+width need an agent rebuild;
           * GLOBAL world dynamics (thrust/drag/speed cap/sand/slip) apply live, and
             structural world knobs (hazard counts, train seed) rebuild the scene.
-        Learning + dynamics apply instantly; structural changes restart the contest."""
+        Learning knobs apply instantly. Structural changes restart the contest;
+        Arena-2 MDP changes also reset its learners so returns are never mixed."""
         with self.lock:
             old_gamma = self.gamma
             need_env_rebuild = False   # scene layout moved (counts / seed)
@@ -891,6 +1097,7 @@ class Match:
             replan_blue = False         # per-side (Blue's discount / speed): only Blue re-solves
             r4_dyn = False              # Round-4 game-feel change (apply live to the env)
             r4_hearts_reset = False     # a heart-count change needs a fresh episode
+            r2_mdp_reset = False        # changed Arena-2 transition/reward function
 
             # ---- per-side LEARNING (Blue) ----
             if "alpha" in p:
@@ -911,7 +1118,7 @@ class Match:
                 t = int(p["targetEpisodes"])
                 self.target_episodes = t if t > 0 else None
             if "maxSteps" in p:
-                self.max_steps_override = max(10, int(p["maxSteps"]))
+                self.max_steps_override = max(50, min(10_000, int(p["maxSteps"])))
                 self.env.max_steps = self.max_steps_override
 
             # ---- GLOBAL: DP internals (both planners re-solve) ----
@@ -952,13 +1159,15 @@ class Match:
                 self.block_reward = max(0.0, min(2.0, float(p["blockReward"])))
                 replan = True
 
-            # ---- GLOBAL: Round-2 maze knobs (regenerate the New Donk City maze) ----
-            if "r2Plants" in p:
-                self.r2_plants = max(0, min(3, int(p["r2Plants"])))
-                need_env_rebuild = True
-            if "r2Slip" in p:
-                self.r2_slip = max(0, min(3, int(p["r2Slip"])))
-                need_env_rebuild = True
+            # ---- GLOBAL: Round-2 dynamics (the validated seeded layout stays fixed) ----
+            if "r2SlipProb" in p:
+                value = max(0.0, min(0.9, float(p["r2SlipProb"])))
+                r2_mdp_reset |= value != self.r2_slip_prob
+                self.r2_slip_prob = value
+            if "r2TomatoReward" in p:
+                value = max(0.0, min(2.0, float(p["r2TomatoReward"])))
+                r2_mdp_reset |= value != self.r2_tomato_reward
+                self.r2_tomato_reward = value
 
             # ---- Round-4 game feel (World card; applied live to the arena) ----
             if "r4MissileSpeed" in p:
@@ -1023,6 +1232,15 @@ class Match:
                 self._build_agents()
                 self._reset_stats()
                 self._new_episode()
+            elif r2_mdp_reset and self.round_id == 2:
+                # Slip probability changes P(s'|s,a), and tomato reward changes
+                # R(s,a,s'). Mixing either with old returns/Q fields/replays would
+                # no longer describe one MDP, so restart both MC learners cleanly.
+                self._apply_env_config()
+                self._build_agents()
+                self.finish_event = None
+                self._reset_stats()
+                self._new_episode()
             else:
                 space_moved = self._apply_env_config()
                 # A ghost/freeze LENGTH change re-sizes the DP state space (the planners
@@ -1077,8 +1295,8 @@ class Match:
             "freezeLen": self.freeze_len,
             "coinReward": round(self.coin_reward, 2),
             "blockReward": round(self.block_reward, 2),
-            "r2Plants": self.r2_plants,
-            "r2Slip": self.r2_slip,
+            "r2SlipProb": round(self.r2_slip_prob, 2),
+            "r2TomatoReward": round(self.r2_tomato_reward, 2),
             # round-4 game feel (only shown on R4; safe defaults on other rounds)
             "r4MissileSpeed": round(getattr(self.env, "missile_max_speed", 5.4), 2),
             "r4MissileHoming": round(getattr(self.env, "missile_turn", 0.5), 2),
@@ -1185,16 +1403,17 @@ class Match:
             "targetEpisodes": self.target_episodes or 0,
         }
 
-    def set_cpu_tier(self, tier, level=None):
+    def set_cpu_tier(self, tier, level=None, force=False):
         """Set the CPU (Red) difficulty from the chosen character. ``tier`` (1..5) is the
         display tier; ``level`` (0..9) picks the PER-CHARACTER hyperparameter model in
         RED_MODELS that actually drives Red's strength (defaults from the tier if not
         given). Rebuilds Red and restarts fresh; no-op if unchanged, so the frontend can
-        send it freely on start."""
+        send it freely on start. ``force`` deliberately restores the character's
+        profile even when the same character was already selected (new tournament)."""
         with self.lock:
             t = max(1, min(5, int(tier)))
             lv = int(round((t - 1) / 4.0 * 9)) if level is None else max(0, min(9, int(round(level))))
-            if t == self.red_tier and lv == self.red_level:
+            if not force and t == self.red_tier and lv == self.red_level:
                 return
             self.red_tier = t
             self.red_level = lv
@@ -1207,7 +1426,8 @@ class Match:
     def set_side_algo(self, side, algo):
         with self.lock:
             valid = algo in ALGORITHMS or is_dp(algo) or is_deep(algo)
-            if not valid:
+            if not valid or algo not in ROUND_ALGO_FAMILIES.get(
+                    self.round_id, set()):
                 return
             if side == "red":
                 self.algo_red = algo
@@ -1225,8 +1445,7 @@ class Match:
         wrong agent for the env."""
         if not algo:
             return default
-        arena = getattr(self.env, "objective", "") == "arena"
-        ok = is_deep(algo) if arena else (algo in ALGORITHMS or is_dp(algo))
+        ok = algo in ROUND_ALGO_FAMILIES.get(self.round_id, set())
         return algo if ok else default
 
     def _round_matchup(self, round_id):
@@ -1269,6 +1488,10 @@ class Match:
             self._apply_env_config()              # carry dynamics/slip/step-cap across
             self.world_version += 1
             self.algo_red, self.algo_blue = self._round_matchup(round_id)
+            # Manual tuning belongs to the arena where it was entered. Switching
+            # arenas reinstalls each algorithm's validated starting profile.
+            self._blue_from_round()
+            self._red_from_tier()
             if not keep_score:
                 self.score = {"red": 0, "blue": 0}
                 self.awarded_rounds.clear()
@@ -1395,7 +1618,9 @@ class Match:
         lb = worlds.ALGO_LABELS.get(self.algo_blue, self.algo_blue)
         m["algoRed"], m["algoBlue"] = self.algo_red, self.algo_blue
         m["labelRed"], m["labelBlue"] = lr, lb
-        m["matchup"] = f"{lr} vs {lb}"
+        # Blue (the player's model) reads on the LEFT, matching the HUD, the panel
+        # header and the Head-to-head table (all Blue-left / Red-right).
+        m["matchup"] = f"{lb} vs {lr}"
         return m
 
     def _family(self):
@@ -1418,6 +1643,12 @@ class Match:
             arena = env.objective == "arena"
             meta = self._matchup()
             slip_prob = 0.0
+            observation_tuple = "(state)"
+            state_groups = None   # optional VISUAL breakdown of a continuous obs vector
+            reward_note = (
+                "Only the listed rewards are used; there is no hidden "
+                "closer-to-goal bonus."
+            )
             if not arena and getattr(env, "rich", False):
                 # Round 1's real game: a stochastic maze with optional coins + Mystery Blocks
                 actions = ["North", "South", "West", "East"]
@@ -1436,6 +1667,7 @@ class Match:
                 observation = ("Each model sees its own tile, its collected coins/Mystery Blocks, and "
                                "any active ghost or freeze timer - the rival stays invisible, so "
                                "it still plans as a single agent.")
+                observation_tuple = "(cell, collected mask, status)"
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model owns a "
                             "mirror-image set of coins/Mystery Blocks, so the race is fair but solo.")
@@ -1452,7 +1684,7 @@ class Match:
                        "simultaneous arrival is a draw.")
                 slip_prob = sp
             elif not arena and getattr(env, "hazardous", False):
-                # Round 2 (New Donk City): the COLLECT-3-STARS race - the Monte-Carlo tour.
+                # Round 2 (New Donk City): the collect-three-tomatoes MC tour.
                 actions = ["North", "South", "West", "East"]
                 n_stars = getattr(env, "n_stars", 0)
                 star_mode = getattr(env, "star_mode", False)
@@ -1461,23 +1693,25 @@ class Match:
                 n_slip = len(getattr(env, "slip_cells", ()))
                 n_plants = len(getattr(env, "plant_cells", ()))
                 if star_mode:
-                    state_desc = (f"your tile AND which of your {n_stars} Power Stars you already "
-                                  f"hold - the cell index x a {n_stars}-bit star mask")
+                    state_desc = (f"your tile AND which of your {n_stars} tomatoes you already "
+                                  f"hold - the cell index x a {n_stars}-bit tomato mask")
                     state_size = (n_floor * (1 << n_stars)) if n_floor else None
                 else:
                     state_desc = "your tile only: the (row, column) cell index"
                     state_size = n_floor
-                observation = (f"Each model sees its own tile and its own {n_stars}-star progress - a "
+                observation = (f"Each model sees its own tile and its own {n_stars}-tomato progress - a "
                                "single-agent navigator. The maze walls and pipes are FIXED map "
-                               "features, so (tile, stars-held) stays Markov; the rival is invisible.")
+                               "features, so (tile, tomatoes-held) stays Markov; the rival is invisible.")
+                observation_tuple = "(cell, tomato mask)" if star_mode else "(cell)"
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state; each model races its "
-                            "own mirror-image copy of the same star-collecting maze.")
+                            "own mirror-image copy of the same tomato-collection course.")
                 stage_pipes = len({
                     req for req in getattr(env, "pipe_req", {}).values()
                     if req is not None
                 })
                 skid = getattr(env, "r2_slip_prob", R2_SLIP_PROB)
+                slip_prob = skid
                 if star_mode:
                     dynamics = (
                         f"The generated bottom room offers a SHORT mandatory-puddle shortcut beside "
@@ -1487,21 +1721,35 @@ class Match:
                         f"or a longer safe route to each racer's side Pipe. The final tomato also "
                         f"offers wet-short versus dry-long approaches before seeded bush corridors, "
                         f"another plant, and the shared goal. "
-                        f"Training cycles through textbook MC exploring starts in all three "
-                        f"sections; only complete bottom-spawn runs qualify for top replays. "
+                        f"Training keeps 70% full bottom-spawn races and 10% mirrored random "
+                        f"post-tomato exploring starts in each collected-mask slice, so Monte "
+                        f"Carlo continues to cover the whole long course. Only complete bottom-"
+                        f"spawn races count in contest statistics or qualify for top replays. "
                         f"While standing on a puddle, movement skids perpendicular with probability "
-                        f"{round(skid * 100)}% total. There are "
+                        f"{round(skid * 100)}% total. The 19x19 course contains {n_slip} puddles "
+                        f"and {n_plants} plants. There are "
                         f"{stage_pipes} required deterministic WARP PIPE transfers per racer. "
-                        f"Entering any of the eight cells around a plant ends the episode immediately."
+                        f"Entering any of the eight cells around a plant eliminates that racer. "
+                        f"Its MC trajectory ends there and it stays out until the next episode; "
+                        f"the rival continues until it also resolves or the time limit expires."
                     )
                     rewards = [
                         ["Step", -0.01],
-                        ["Collect a Power Star", round(getattr(env, "star_reward", 0.35), 2)],
-                        ["Win (all 3 stars, then the goal)", 1.0],
+                        ["Collect a tomato (first time only)",
+                         round(getattr(env, "star_reward", STAR_REWARD), 2)],
+                        ["Win (all 3 tomatoes, then the goal)", 1.0],
                         ["Die in a plant attack zone", -1.0],
                     ]
-                    win = (f"Gather all {n_stars} Power Stars and reach the top goal first. "
-                           "A plant death ends the episode; a simultaneous finish is a draw.")
+                    win = (
+                        f"Gather all {n_stars} tomatoes and reach the top goal first. "
+                        "A racer eaten by a plant remains out until the next episode while "
+                        "the other can finish; a simultaneous finish is a draw."
+                    )
+                    reward_note = (
+                        "Each tomato pays its bonus once when collected. Step cost, "
+                        "tomato bonuses, the goal reward, and plant-death penalty are "
+                        "the complete reward function."
+                    )
                 else:
                     observation = ("Each model sees only its own tile. The seeded bush maze, "
                                    "puddle, plant attack zone, and Pipe are fixed map features.")
@@ -1511,13 +1759,16 @@ class Match:
                         f"The bottom section forks into a SHORT slippery route and a LONG safe "
                         f"route to a deterministic Pipe. On the puddle, movement skids sideways "
                         f"with probability {round(skid * 100)}% total; one skid enters one of the "
-                        f"eight lethal cells surrounding the Piranha Plant. Death ends the episode "
-                        f"immediately, and the racer respawns only when the next episode begins."
+                        f"eight lethal cells surrounding the Piranha Plant. Death terminates only "
+                        f"that racer's trajectory; it stays out and respawns only when the next "
+                        f"episode begins, while the rival keeps moving."
                     )
                     rewards = [["Step", -0.01], ["Opponent dies", 1.0],
                                ["Die in a plant attack zone", -1.0]]
-                    win = ("This construction stage tests the bottom decision room. A plant death "
-                           "ends the current race; the remaining two sections will be added next.")
+                    win = (
+                        "This construction stage tests the bottom decision room. A plant death "
+                        "eliminates that racer until the next episode while the rival continues."
+                    )
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
@@ -1525,6 +1776,7 @@ class Match:
                 state_size = getattr(env, "n_cells", None)
                 observation = ("Each model sees ONLY its own tile. It learns as a single-agent "
                                "navigator: the maze is shared, but neither model perceives the other.")
+                observation_tuple = "(cell)"
                 sees_opp = False
                 opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
                             "invisible to the agent.")
@@ -1544,6 +1796,19 @@ class Match:
                     "aimed-at-me, time-to-impact, predicted miss) + "
                     "3 nearest pickups x 7 (present, relative x/z, 4-way type one-hot)"
                 )
+                # a VISUAL segmented breakdown of the same vector (dims sum to obs_dim),
+                # rendered as a stacked bar + legend instead of the run-on sentence above
+                state_groups = [
+                    {"label": "Self", "dim": 5, "color": "#3f7fe0",
+                     "detail": "position x/z, velocity x/z, rim clearance"},
+                    {"label": "Effects", "dim": 5, "color": "#22a39f",
+                     "detail": "speed, shield, slow, freeze and post-hit mercy timers"},
+                    {"label": "Missiles", "dim": 24, "count": 3, "each": 8, "color": "#e0563f",
+                     "detail": "3 nearest x (present, rel x/z, vel x/z, aimed-at-me, "
+                               "time-to-impact, predicted miss)"},
+                    {"label": "Pickups", "dim": 21, "count": 3, "each": 7, "color": "#8b5cf6",
+                     "detail": "3 nearest x (present, rel x/z, 4-way type one-hot)"},
+                ]
                 observation = (
                     "Each agent sees ONLY itself and its immediate surroundings: its own "
                     "position / velocity and clearance to the rim, its own power-up and "
@@ -1551,6 +1816,7 @@ class Match:
                     "reach it (each with a targets-me flag, a time-to-impact and a "
                     "predicted miss distance), and the 3 nearest pickups with their type."
                 )
+                observation_tuple = "(self, effects, missiles x3, pickups x3)"
                 opp_info = (
                     "Nothing - the rival is not in the observation. Each agent just "
                     "survives its own share of the shared missiles; a targets-me flag "
@@ -1585,6 +1851,7 @@ class Match:
                 state_desc = "continuous 6-vector: position, velocity, goal offset (all normalized)"
                 observation = ("Its own position and velocity, and the vector to the goal - all "
                                "normalized to the arena size.")
+                observation_tuple = "(x, z, vx, vz, goal dx, goal dz)"
                 opp_info = ("Nothing. Each model flies its own copy of the physics; the opponent "
                             "is not part of the observation.")
                 dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
@@ -1600,8 +1867,9 @@ class Match:
                 "missileGame": bool(getattr(env, "missile_game", False)),
                 "matchup": meta["matchup"], "labelRed": meta["labelRed"], "labelBlue": meta["labelBlue"],
                 "family": self._family(),
-                "stateDesc": state_desc, "stateSize": state_size,
-                "observation": observation, "seesOpponent": sees_opp, "opponentInfo": opp_info,
+                "stateDesc": state_desc, "stateSize": state_size, "stateGroups": state_groups,
+                "observation": observation, "observationTuple": observation_tuple,
+                "seesOpponent": sees_opp, "opponentInfo": opp_info,
                 "dynamics": dynamics,
                 "actions": actions, "nActions": env.n_actions,
                 "maxSteps": env.max_steps,
@@ -1611,6 +1879,7 @@ class Match:
                 "horizon": horizon(g),
                 "winCondition": win,
                 "rewards": rewards,
+                "rewardNote": reward_note,
             }
 
     def stats(self):
@@ -1632,6 +1901,9 @@ class Match:
                 "finishEvent": copy.deepcopy(self.finish_event) if self.finish_event else None,
                 "algoRed": self.algo_red, "algoBlue": self.algo_blue,
                 "episode": self.episode,
+                "fullCourseEpisodes": self.full_course_episodes,
+                "curriculumEpisodes": self.curriculum_episodes,
+                "curriculumStage": getattr(self, "_curriculum_stage", 0),
                 "totalSteps": self.total_steps,
                 "epsilon": round(self.epsilon, 3),
                 "wins": dict(self.wins),
@@ -1646,6 +1918,7 @@ class Match:
                 "redEpsilon": round(self.red_epsilon, 3),
                 "targetEpisodes": self.target_episodes or 0,
                 "cpuTier": self.red_tier,
+                "cpuLevel": self.red_level,
                 "outcomes": dict(self.outcomes),
                 "recentOutcome": self._recent_outcome(),
                 "actionDist": self.action_dist(),
@@ -1670,14 +1943,26 @@ class Match:
         with self.lock:
             return {"round": self.round_id, "points": list(self.hist)}
 
-    def replay(self, which="last", agent=None, rank=0):
+    def replay(self, which="last", agent=None, rank=0, episode=None):
         with self.lock:
             metric = "longest" if getattr(self.env, "missile_game", False) else "fastest"
             if which == "top":
                 lst = self._top.get(agent, [])
-                if not (0 <= rank < len(lst)):
-                    return {"available": False}
-                ep = lst[rank]
+                if episode is not None:
+                    found = next(
+                        (
+                            (i, item) for i, item in enumerate(lst)
+                            if item.get("episode") == episode
+                        ),
+                        None,
+                    )
+                    if found is None:
+                        return {"available": False}
+                    rank, ep = found
+                else:
+                    if not (0 <= rank < len(lst)):
+                        return {"available": False}
+                    ep = lst[rank]
                 return {"available": True, "which": "top", "agent": agent,
                         "metric": metric,
                         "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
@@ -1697,7 +1982,8 @@ class Match:
             lst = self._top.get(agent, [])
             return {"agent": agent, "count": len(lst),
                     "metric": "longest" if getattr(self.env, "missile_game", False) else "fastest",
-                    "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"]}
+                    "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"],
+                               "id": f"{self.round_id}:{agent}:{e['episode']}"}
                               for i, e in enumerate(lst)]}
 
     def dp_report(self, agent):
@@ -1837,7 +2123,7 @@ class Match:
                 # agent would actually do (never an arrow pointing into a wall)
                 m = self.env.effective_actions(agent, (r, c))
                 valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
-                grid[r][c] = max(valid, key=lambda i: q[i])
+                grid[r][c] = _unique_argmax(q, valid)
             # while this agent is GHOSTING, also expose its phase-direction on each
             # interior WALL cell (its through-wall plan) - rendered as raised arrows;
             # empty otherwise, so the arrows show only during the power-up.
@@ -1862,7 +2148,9 @@ class Match:
             q = a.q_values(state)
             m = self.env.effective_actions(agent, cell)
             valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
-            out.append([cell[0], cell[1], int(max(valid, key=lambda i: q[i]))])
+            best = _unique_argmax(q, valid)
+            if best is not None:
+                out.append([cell[0], cell[1], int(best)])
         return out
 
     def visit_stats(self, agent):
@@ -1921,8 +2209,12 @@ class Match:
             grid = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
                 state = self.env.full_state(agent, (r, c))
-                v = a.state_value(state)
-                grid[r][c] = round(v, 4) if v is not None else None
+                if a.state_value(state) is None:
+                    continue
+                q = a.q_values(state)
+                mask = self.env.effective_actions(agent, (r, c))
+                valid = [i for i in range(len(q)) if mask[i]] or list(range(len(q)))
+                grid[r][c] = round(max(q[i] for i in valid), 4)
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
 
     def arena_field(self, agent, n=22, mode="value"):
@@ -2006,13 +2298,23 @@ class Match:
             return {"available": True, "agent": agent, "v": out["v"], "a": out["a"]}
 
     def reward_decomp(self):
-        """Average per-episode reward decomposition (terminal / shaping / other)
+        """Average per-episode reward decomposition (terminal / bonuses / other)
         per side over recent episodes. Grid rounds only (arena envs don't track it)."""
         with self.lock:
             h = list(self.reward_parts_hist)
             if not h:
                 return {"available": False}
-            out = {"available": True, "episodes": len(h)}
+            if getattr(self.env, "star_mode", False):
+                shape_label = "Tomato rewards"
+            elif getattr(self.env, "rich", False):
+                shape_label = "Collectible rewards"
+            else:
+                shape_label = "Bonuses"
+            out = {
+                "available": True,
+                "episodes": len(h),
+                "shapeLabel": shape_label,
+            }
             for side in ("red", "blue"):
                 out[side] = {k: round(sum(p[side][k] for p in h) / len(h), 3)
                              for k in ("terminal", "shape", "other")}
@@ -2025,22 +2327,37 @@ class Match:
         if self.env.objective == "arena":
             return
         ci = getattr(self.env, "cell_index", None)
-        sp = getattr(getattr(self.env, "world", None), "blue_spawn", None)
-        if ci is None or sp is None or tuple(sp) not in ci:
+        world = getattr(self.env, "world", None)
+        if ci is None or world is None:
             return
-        idx = ci[tuple(sp)]
-        # probe the spawn value in the CANONICAL slice (no coins, normal status) so the
-        # "start-state value climbs as it learns a path" curve stays a clean scalar.
-        if getattr(self.env, "rich", False):
-            state = (idx, 0, 0)
-        elif getattr(self.env, "star_mode", False):
-            state = (idx, 0)
-        else:
-            state = (idx,)
         pt = {"ep": self.episode}
         for side in ("red", "blue"):
+            spawn = tuple(
+                world.red_spawn if side == "red" else world.blue_spawn
+            )
+            if spawn not in ci:
+                continue
+            idx = ci[spawn]
+            # Probe each model at ITS OWN mirrored spawn in the canonical slice
+            # (no collectibles, normal status).
+            if getattr(self.env, "rich", False):
+                state = (idx, 0, 0)
+            elif getattr(self.env, "star_mode", False):
+                state = (idx, 0)
+            else:
+                state = (idx,)
             a = self._agent(side)
-            v = a.state_value(state)
+            known = a.state_value(state)
+            if known is None:
+                v = None
+            else:
+                q = a.q_values(state)
+                mask = self.env.effective_actions(
+                    side, spawn,
+                    star_mask=0 if getattr(self.env, "star_mode", False) else None,
+                )
+                valid = [i for i in range(len(q)) if mask[i]] or list(range(len(q)))
+                v = max(q[i] for i in valid)
             pt[side + "V"] = round(v, 4) if v is not None else 0.0
         self.q_probe.append(pt)
 
@@ -2049,28 +2366,39 @@ class Match:
             return {"available": bool(self.q_probe), "points": list(self.q_probe)}
 
     def policy_agreement(self):
-        """Fraction of learned cells where Red's and Blue's greedy actions match.
-        NOTE: VI and PI converge to the SAME optimal policy only for the SAME MDP; on
-        Round 1 Red and Blue own MIRRORED coin/block layouts, so their optimal policies
-        legitimately DIFFER (this reads well below 100%, and that is not a convergence
-        bug). Grid rounds only."""
+        """Fraction of comparable learned cells where the two greedy policies agree.
+
+        Symmetric race boards compare Red at (r,c) with Blue at its reflected tile,
+        including the West/East action reflection. Comparing raw coordinates made
+        mirror-correct Arena-2 policies look unrelated.
+        """
         with self.lock:
             if self.env.objective == "arena":
                 return {"available": False}
             rg = self.policy_grid("red")["grid"]
             bg = self.policy_grid("blue")["grid"]
+            world = getattr(self.env, "world", None)
+            mirrored = bool(
+                world
+                and tuple(world.red_spawn)
+                == (world.blue_spawn[0], self.env.W - 1 - world.blue_spawn[1])
+            )
+            mirror_action = {0: 0, 1: 1, 2: 3, 3: 2}
             cells = same = 0
             for r in range(len(rg)):
                 for c in range(len(rg[r])):
-                    ra, ba = rg[r][c], bg[r][c]
+                    bc = self.env.W - 1 - c if mirrored else c
+                    ra, ba = rg[r][c], bg[r][bc]
                     if ra is None or ba is None:
                         continue
                     cells += 1
-                    same += (ra == ba)
+                    same += (
+                        ra == mirror_action.get(ba, ba) if mirrored else ra == ba
+                    )
             if not cells:
                 return {"available": False}
             return {"available": True, "cells": cells, "agree": same,
-                    "rate": round(same / cells, 3)}
+                    "rate": round(same / cells, 3), "mirrored": mirrored}
 
     def visit_grid(self, agent):
         """Per-cell visit counts for the agent (the 'where do they travel' heatmap).
@@ -2105,7 +2433,7 @@ class Match:
                 # the policy arrows + tile inspector + the agent's actual masked behavior
                 m = self.env.effective_actions(agent, (r, c))
                 valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
-                best[r][c] = max(valid, key=lambda i: q[i])
+                best[r][c] = _unique_argmax(q, valid)
             return {"agent": agent, "grid": grid, "best": best,
                     "H": self.env.H, "W": self.env.W, "mode": "q"}
 
@@ -2124,6 +2452,11 @@ class Match:
             # can star the real choice, not a higher-Q move that walks into a wall.
             m = self.env.effective_actions(agent, (r, c))
             valid = [i for i in range(len(q)) if m[i]] or list(range(len(q)))
-            best = max(valid, key=lambda i: q[i])
+            best = _unique_argmax(q, valid)
+            ties = [
+                i for i in valid
+                if q[i] == max(q[j] for j in valid)
+            ]
             return {"agent": agent, "cell": [r, c], "q": q, "best": best,
+                    "ties": ties,
                     "mask": m, "labels": self._action_labels(full=True)}
