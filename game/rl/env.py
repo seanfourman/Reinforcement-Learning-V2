@@ -533,6 +533,7 @@ class GridWorld(gym.Env):
         self._dead_at, self._warp_from = dead_at, warp_from
 
         terminal = {"red": 0.0, "blue": 0.0}
+        finishers = []
         if self.hazardous:
             # Round 2: death ends the whole race immediately.  The dead racer
             # remains on the lethal cell for the final frame and returns to its
@@ -550,9 +551,9 @@ class GridWorld(gym.Env):
                     winner = "blue" if loser == "red" else "red"
                     self.winner = winner
                     terminal[loser] += LOSE
-                    terminal[winner] += WIN
                     reward[loser] += LOSE
-                    reward[winner] += WIN
+                    # The survivor wins the head-to-head result, but did not
+                    # complete the course. Only reaching the goal earns WIN.
             else:
                 # With tomatoes restored later, the goal will remain locked
                 # until its progress mask is complete.
@@ -562,6 +563,7 @@ class GridWorld(gym.Env):
                 else:
                     reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
                 if reached:
+                    finishers = list(reached)
                     self.done = True
                     self.winner = None if len(reached) == 2 else reached[0]
                     for a in reached:
@@ -573,6 +575,7 @@ class GridWorld(gym.Env):
             reached = [a for a in ("red", "blue") if self._pos(a) in self.goal_set]
             died = [a for a in ("red", "blue") if dead[a]]
             if reached or died:
+                finishers = list(reached)
                 self.done = True
                 rank = {a: (2 if self._pos(a) in self.goal_set else (0 if dead[a] else 1))
                         for a in ("red", "blue")}
@@ -596,7 +599,11 @@ class GridWorld(gym.Env):
             truncated = True
             self.winner = None
         obs = (self.observe("red"), self.observe("blue"))
-        return obs, reward, self.done, truncated, {"winner": self.winner}
+        return obs, reward, self.done, truncated, {
+            "winner": self.winner,
+            "finishers": finishers,
+            "died": died,
+        }
 
     def to_json(self):
         """World descriptor for the viewer (/api/world). Grid rounds delegate to the

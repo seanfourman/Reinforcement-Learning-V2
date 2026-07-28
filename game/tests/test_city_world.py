@@ -1,8 +1,10 @@
 """Focused invariants for the stripped-down New Donk City foundation."""
 
+import copy
 from collections import deque
 
 from rl.env import GridWorld
+from rl.match import Match
 from rl.worlds import city
 from rl.worlds.grid import World, SIZE, WALL, FLOOR, ESCAPE, ORTHO
 
@@ -196,6 +198,7 @@ def test_top_room_has_final_tomatoes_plants_puddles_and_bush_routes():
     _, _, done, _, info = env.step(0, 0)
     assert done
     assert info["winner"] == "blue"
+    assert info["finishers"] == ["blue"]
 
 
 def test_second_room_puddle_pair_creates_a_tomato_shortcut():
@@ -225,11 +228,59 @@ def test_plant_death_ends_episode_and_respawns_only_on_reset():
     _, rewards, done, truncated, info = env.step(0, 1)
     assert done and not truncated
     assert info["winner"] == "red"
+    assert info["finishers"] == []
+    assert info["died"] == ["blue"]
     assert rewards["blue"] < 0
+    assert rewards["red"] == -0.01
     assert env.blue_pos == lethal_cell
 
     env.reset()
     assert env.blue_pos == (18, 0)
+
+
+def test_death_is_not_saved_as_a_fast_replay_or_learned_as_a_survivor_win(tmp_path):
+    match = Match(seed=7, round_id=2, checkpoint_dir=tmp_path)
+    plant = next(
+        cell for cell in match.env.world.plants
+        if cell[0] == 18 and cell[1] < 9
+    )
+    match.env.blue_pos = (plant[0] - 2, plant[1])
+    match.env.r2_slip_prob = 0.0
+    match.a_red, match.a_blue = 0, 1
+    survivor_q_before = copy.deepcopy(match.red.Q)
+
+    assert match.tick()
+    assert match._top == {"red": [], "blue": []}
+    assert match.best_episode is None
+    assert match.red.Q == survivor_q_before
+
+    match.env.blue_pos = (1, 9)
+    match.env.stars_collected["blue"] = match.env.star_full
+    match._full_course_episode = True
+    match.a_red, match.a_blue = 0, 0
+
+    assert match.tick()
+    assert match._top["red"] == []
+    assert len(match._top["blue"]) == 1
+
+
+def test_mc_exploring_starts_cover_later_sections_but_not_top_replays(tmp_path):
+    match = Match(seed=7, round_id=2, checkpoint_dir=tmp_path)
+    assert match._full_course_episode
+    assert match.env.blue_pos == (18, 0)
+
+    match.episode = 1
+    match._new_episode()
+    assert not match._full_course_episode
+    assert match.env.blue_pos == match.env.red_pos == (9, 9)
+    assert match.env.stars_collected == {"red": 1, "blue": 1}
+
+    match.episode = 2
+    match._new_episode()
+    assert not match._full_course_episode
+    assert match.env.blue_pos == (2, 1)
+    assert match.env.red_pos == (2, 17)
+    assert match.env.stars_collected == {"red": 3, "blue": 3}
 
 
 def test_tomato_is_required_before_bottom_pipe_activates():

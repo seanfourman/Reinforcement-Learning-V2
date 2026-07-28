@@ -152,12 +152,13 @@ class ContinuousArena:
         self.arena = ROUND4_ARENA if round_id == 4 else ARENA
         self.shape = "circle" if round_id == 4 else "square"
         self.missile_game = round_id == 4
-        # Round 4 follows the project spec: a 0.02 s decision step and DIRECT discrete
-        # velocity (no momentum). Round 5 (the race) keeps the original 0.05 s thrust
-        # + drag physics. All the Round-4 schedules below are time-based, so the tiny
-        # dt does not change how the game feels.
+        # Round 4 uses the spec's 0.02 s decision step, but WITH momentum (thrust +
+        # drag): velocity is a genuine state variable (Vx,Vy) - which is what makes the
+        # problem learnable (direct discrete velocity flip-flops). Round 5 keeps its
+        # 0.05 s step. All Round-4 schedules below are time-based, so the fine dt does
+        # not change how the game feels.
         self.dt = 0.02 if round_id == 4 else DT
-        self.momentum = not self.missile_game   # R5 accumulates velocity; R4 sets it
+        self.momentum = True   # both continuous rounds accumulate velocity (inertia)
         self.rng = random.Random(seed)
         self.max_steps = SURVIVAL_MAX_STEPS if self.missile_game else MAX_STEPS
         # movement physics (module constants are the defaults)

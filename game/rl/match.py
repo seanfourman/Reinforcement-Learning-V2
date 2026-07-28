@@ -543,6 +543,33 @@ class Match:
         if self._is_round4_missile() and set_curriculum_episode is not None:
             set_curriculum_episode(self.episode)
         (self.s_red, self.s_blue), _ = self.env.reset()
+        self._full_course_episode = True
+        if self.round_id == 2 and getattr(self.env, "star_mode", False):
+            # Exploring starts are the standard way to make long-horizon Monte
+            # Carlo control visit later state/action pairs. Cycle through the
+            # three section starts; the star mask makes each start a legitimate
+            # state of the same MDP. Only stage 0 is a full-course replay.
+            stage = self.episode % 3
+            self._full_course_episode = stage == 0
+            if stage == 1:
+                shared = next(
+                    p for p in self.env.world.pipes
+                    if p.get("requiresStar") == 0
+                )
+                landing = tuple(shared["exit"])
+                self.env.red_pos = self.env.blue_pos = landing
+                self.env.stars_collected = {"red": 1, "blue": 1}
+            elif stage == 2:
+                side_pipes = [
+                    p for p in self.env.world.pipes
+                    if p.get("requiresStar") == 1
+                ]
+                exits = sorted(tuple(p["exit"]) for p in side_pipes)
+                self.env.blue_pos, self.env.red_pos = exits[0], exits[-1]
+                self.env.stars_collected = {"red": 3, "blue": 3}
+            if stage:
+                self.s_red = self.env.observe("red")
+                self.s_blue = self.env.observe("blue")
         self.a_red = self.red.policy_action(self.s_red, self._amask("red"))
         self.a_blue = self.blue.policy_action(self.s_blue, self._amask("blue"))
         self.ep_return = {"red": 0.0, "blue": 0.0}
@@ -621,8 +648,17 @@ class Match:
             self.a_red, self.a_blue = na_red, na_blue
 
             if done:
-                self.red.end_episode()
-                self.blue.end_episode()
+                died = set(info.get("died") or [])
+                finishers = set(info.get("finishers") or [])
+                for side, learner in (("red", self.red), ("blue", self.blue)):
+                    if died and side not in died and side not in finishers:
+                        # The rival's death interrupted this model before it had
+                        # its own terminal outcome. In Arena 2, MC must discard
+                        # that unrelated partial return instead of learning from
+                        # a fake short victory.
+                        learner.discard_episode()
+                    else:
+                        learner.end_episode()
                 w = info["winner"] or "draw"
                 self.wins[w] += 1
                 self.recent.append(w)
@@ -636,12 +672,16 @@ class Match:
                 self.ret_hist["red"].append(self.ep_return["red"])
                 self.ret_hist["blue"].append(self.ep_return["blue"])
                 self.episode += 1
-                self._finish_episode(w, truncated=truncated)
+                self._finish_episode(
+                    w,
+                    truncated=truncated,
+                    finishers=info.get("finishers"),
+                )
                 self.save_checkpoint(force=False)
                 self._new_episode()
             return done
 
-    def _finish_episode(self, winner, truncated=False):
+    def _finish_episode(self, winner, truncated=False, finishers=None):
         """Snapshot the finished episode for replay + log a learning-curve point."""
         parts = getattr(self.env, "ep_parts", None)   # grid env's reward decomposition
         if parts is not None:
@@ -654,11 +694,24 @@ class Match:
             self.env.steps > self._best_len if survival
             else self.env.steps < self._best_len
         )
-        replay_sides = (
-            [winner] if winner in ("red", "blue")
-            else ["red", "blue"] if survival and truncated
-            else []
-        )
+        if survival:
+            replay_sides = (
+                [winner] if winner in ("red", "blue")
+                else ["red", "blue"] if truncated
+                else []
+            )
+        elif finishers is not None:
+            # Grid environments report physical goal arrivals. Arena 2 may name
+            # the survivor as match winner after its rival dies, but that is not
+            # a completed-course replay.
+            replay_sides = [
+                side for side in ("red", "blue") if side in finishers
+            ]
+        else:
+            # Continuous goal races predate explicit finisher metadata.
+            replay_sides = [winner] if winner in ("red", "blue") else []
+        if not getattr(self, "_full_course_episode", True):
+            replay_sides = []
         if replay_sides and is_best:
             self._best_len = self.env.steps
             self.best_episode = self.last_episode
@@ -666,7 +719,7 @@ class Match:
             lst = self._top[replay_side]
             replay_policy = self._replay_policy_frames(replay_side)
             lst.append({"steps": self.env.steps, "episode": self.episode,
-                        "winner": winner if winner in ("red", "blue") else "timeout",
+                        "winner": replay_side,
                         "frames": self._frames,
                         "policyFrames": replay_policy})
             lst.sort(key=lambda e: e["steps"], reverse=survival)
@@ -1381,6 +1434,8 @@ class Match:
                         f"or a longer safe route to each racer's side Pipe. The final tomato also "
                         f"offers wet-short versus dry-long approaches before seeded bush corridors, "
                         f"another plant, and the shared goal. "
+                        f"Training cycles through textbook MC exploring starts in all three "
+                        f"sections; only complete bottom-spawn runs qualify for top replays. "
                         f"While standing on a puddle, movement skids perpendicular with probability "
                         f"{round(skid * 100)}% total. There are "
                         f"{stage_pipes} required deterministic WARP PIPE transfers per racer. "
