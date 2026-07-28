@@ -148,12 +148,14 @@ WIN, LOSE = 1.0, -1.0
 # same agent must EVADE while carrying and PURSUE while chasing, and time its crate
 # detours - and the best evasion is unpredictable, exactly where a stochastic
 # (policy-gradient) policy beats a deterministic one.
-# Per-episode cap. A decisive first-to-3-captures game resolves in ~300-900 steps, but
-# this cap must also cover EVENLY-MATCHED / defensive games (and, early in training,
-# untrained agents that never capture and run to the cap). 3000 steps (150 s) matches
-# Round 4's cap and leaves ample room without cutting real games short at a timeout.
-# It is live-tunable from the panel's Max-steps control.
-CTF_MAX_STEPS = 3000
+# Per-episode cap. A TRAINED game resolves in ~300-900 steps, so a bigger cap gives no
+# viewing benefit - it only matters for UNTRAINED / timeout episodes early in training.
+# And a big cap HURTS the per-episode learners (REINFORCE, Actor-Critic update ONCE per
+# episode, so a 3x-longer episode = 3x fewer updates per unit time, i.e. ~3x slower to
+# learn in wall-clock; PPO is unaffected, it updates per horizon). 1500 covers close /
+# learning-phase games with margin while keeping the MC learners quick. Live-tunable
+# from the panel's Max-steps control (raise it for watching long trained games).
+CTF_MAX_STEPS = 1500
 FLAG_R = 0.75               # reach for grabbing the FREE flag at the pole
 TAG_R = 0.95                # chaser's tag reach vs the carrier (the steal)
 HOME_R = 1.5                # distance to your own base that CAPTURES (scores) the flag
