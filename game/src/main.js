@@ -602,38 +602,35 @@ async function poll() {
     applyStats(snap);
     // value (numbers) / visits (colours) overlay is heavier - refresh a few times a second
     if (heatAgent && pollCount % 5 === 0) {
-      if (replayActive && heatMode === "policy" && replay.renderPolicy()) {
-        // A replay must show the policy from its recorded sweep, not today's live model.
+      if (replayActive && replay.renderOverlay()) {
+        // Historical motion must use the model field frozen with that replay.
+      } else if (replayActive) {
+        // Never place today's live model or cumulative training visits over an
+        // older replay when that run has no compatible recorded field.
+        heatmap.hide();
       } else if (arenaMode) {
-        if (replayActive) {
-          // A DQN arena field is conditioned on the current missiles. The server
-          // cannot reconstruct that field for an old replay frame, so do not show
-          // a confidently wrong live-state overlay over historical motion.
-          heatmap.hide();
-        } else {
-          // Continuous rounds have no board cells. Value/Policy are sampled slices
-          // through the network; Visits is a continuous position-density field.
-          const requestedAgent = heatAgent;
-          const requestedMode = heatMode;
-          const requestedGeneration = heatGeneration;
-          const f = await (
-            await fetch(
-              `${API}/api/field?agent=${requestedAgent}&mode=${requestedMode}`,
-              { cache: "no-store" },
-            )
-          ).json();
-          if (
-            holdUI ||
-            menuIdle ||
-            requestedGeneration !== heatGeneration ||
-            requestedAgent !== heatAgent ||
-            requestedMode !== heatMode
+        // Continuous rounds have no board cells. Value/Policy are sampled slices
+        // through the network; Visits is a continuous position-density field.
+        const requestedAgent = heatAgent;
+        const requestedMode = heatMode;
+        const requestedGeneration = heatGeneration;
+        const f = await (
+          await fetch(
+            `${API}/api/field?agent=${requestedAgent}&mode=${requestedMode}`,
+            { cache: "no-store" },
           )
-            return;
-          if (f.available) {
-            heatmap.setArenaField(f, requestedMode);
-            heatmap.showArena(requestedMode);
-          }
+        ).json();
+        if (
+          holdUI ||
+          menuIdle ||
+          requestedGeneration !== heatGeneration ||
+          requestedAgent !== heatAgent ||
+          requestedMode !== heatMode
+        )
+          return;
+        if (f.available) {
+          heatmap.setArenaField(f, requestedMode);
+          heatmap.showArena(requestedMode);
         }
       } else {
         const requestedAgent = heatAgent;
@@ -703,6 +700,13 @@ renderer.domElement.addEventListener("click", async (e) => {
   const gridH = lastWorldJson?.rows?.length || GRID;
   const gridW = lastWorldJson?.rows?.[0]?.length || GRID;
   if (r < 0 || c < 0 || r >= gridH || c >= gridW) return;
+  if (replayActive) {
+    const recorded = replay.inspectQ(r, c);
+    window.dispatchEvent(
+      new CustomEvent("rl-qinspect", { detail: recorded || {} }),
+    );
+    return;
+  }
   try {
     const q = await (
       await fetch(`${API}/api/values?agent=${heatAgent}&cell=${r},${c}`, {
@@ -739,6 +743,7 @@ const replay = {
   label: "",
   agent: "blue", // which model this run belongs to (colours the scrubber)
   policyFrames: [], // Stage-1 canonical policies, indexed by recorded DP sweep
+  modelFields: null, // historical Arena-2 Q/policy fields keyed by tomato mask
   _timer: null,
   active() {
     return this.frames.length > 0;
@@ -748,8 +753,74 @@ const replay = {
     if (f) {
       latestFrame = f;
       actors.onFrame(f);
-      if (heatMode === "policy") this.renderPolicy();
+      if (heatAgent) this.renderOverlay();
     }
+  },
+  _field() {
+    if (!this.modelFields || !this.frames.length) return null;
+    const f = this.frames[this.idx] || {};
+    const mask = f[this.agent + "Stars"] || 0;
+    return this.modelFields.masks?.[String(mask)] || null;
+  },
+  _visitGrid() {
+    if (!this.modelFields || !this.frames.length) return null;
+    const H = this.modelFields.H | 0;
+    const W = this.modelFields.W | 0;
+    if (!H || !W) return null;
+    const grid = Array.from({ length: H }, () => Array(W).fill(null));
+    for (const cell of this.modelFields.floor || []) {
+      if (cell && grid[cell[0]]) grid[cell[0]][cell[1]] = 0;
+    }
+    for (let i = 0; i <= this.idx; i++) {
+      const cell = this.frames[i]?.[this.agent];
+      if (cell && grid[cell[0]] && grid[cell[0]][cell[1]] != null)
+        grid[cell[0]][cell[1]] += 1;
+    }
+    return grid;
+  },
+  renderOverlay() {
+    if (!this.frames.length) return false;
+    if (heatMode === "policy" && this.policyFrames.length) {
+      return this.renderPolicy();
+    }
+    const field = this._field();
+    if (heatMode === "policy" && field?.policy) {
+      heatmap.setPolicy(field.policy, this.agent);
+      heatmap.setGhostArrows([], this.agent);
+      heatmap.showPolicy();
+      return true;
+    }
+    if (heatMode === "value" && field?.q) {
+      heatmap.setNumbers(field.q, field.policy, this.agent);
+      heatmap.setGhostArrows([]);
+      heatmap.showNumbers();
+      return true;
+    }
+    if (heatMode === "visits") {
+      const visits = this._visitGrid();
+      if (visits) {
+        heatmap.setGrid(visits);
+        heatmap.setGhostArrows([]);
+        heatmap.showColors();
+        return true;
+      }
+    }
+    return false;
+  },
+  inspectQ(r, c) {
+    const field = this._field();
+    const q = field?.q?.[r]?.[c];
+    if (!q) return null;
+    const allowed = field.effective?.[r]?.[c] || q.map(() => true);
+    return {
+      agent: this.agent,
+      cell: [r, c],
+      q,
+      best: field.policy?.[r]?.[c],
+      mask: allowed,
+      labels: ["North", "South", "West", "East"],
+      replay: true,
+    };
   },
   renderPolicy() {
     if (!this.policyFrames.length || !this.frames.length) return false;
@@ -798,7 +869,7 @@ const replay = {
   // Load a run PAUSED at frame 0 (the user presses play). Entering the first
   // replay also pauses live training; replacing one loaded replay with another
   // keeps the same saved live state on the server.
-  async load(frames, label, agent, policyFrames = []) {
+  async load(frames, label, agent, policyFrames = [], modelFields = null) {
     const nextFrames = Array.isArray(frames) ? frames : [];
     if (!nextFrames.length) return;
     if (!this.active()) await control({ cmd: "replayEnter" });
@@ -808,6 +879,9 @@ const replay = {
     this.label = label || "";
     this.agent = agent === "red" ? "red" : "blue";
     this.policyFrames = Array.isArray(policyFrames) ? policyFrames : [];
+    this.modelFields = modelFields && typeof modelFields === "object"
+      ? modelFields
+      : null;
     this.playing = false;
     replayActive = this.frames.length > 0;
     resetArenaReplayEffects();
@@ -859,6 +933,7 @@ const replay = {
     this.playing = false;
     this.label = "";
     this.policyFrames = [];
+    this.modelFields = null;
     replayActive = false;
     latestFrame = latestLiveFrame;
     resetArenaReplayEffects(latestLiveFrame);
@@ -879,7 +954,8 @@ window.RL = {
     if (!agent) heatmap.hide();
     else if (arenaMode) heatmap.showArena(heatMode);
     else if (heatMode === "value") heatmap.showNumbers();
-    else if (heatMode === "policy" && replayActive && replay.renderPolicy()) {}
+    else if (replayActive && replay.renderOverlay()) {}
+    else if (replayActive) heatmap.hide();
     else if (heatMode === "policy") heatmap.showPolicy();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)

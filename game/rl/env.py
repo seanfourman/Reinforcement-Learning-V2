@@ -318,7 +318,7 @@ class GridWorld(gym.Env):
             return [(1.0, pos)]
         return [(1.0, self._resolve(agent, pos, action, passable))]
 
-    def effective_actions(self, agent, pos=None):
+    def effective_actions(self, agent, pos=None, star_mask=None):
         """Boolean mask over the action space: which actions actually DO something
         from ``pos`` (default: the agent's CURRENT cell). A move counts only if it
         lands on a different cell (does not bump a wall). Action selection masks to
@@ -334,7 +334,8 @@ class GridWorld(gym.Env):
             # A Round-2 pipe is a real progression gate.  Until this room's
             # tomato is held, treat its entrance like a wall for exploration
             # and greedy action masking as well as for the live transition.
-            if land in self.pipe_map and not self._pipe_unlocked(agent, land):
+            if land in self.pipe_map and not self._pipe_unlocked(
+                    agent, land, held=star_mask):
                 land = pos
             if land != pos:
                 mask[a] = True
@@ -354,12 +355,13 @@ class GridWorld(gym.Env):
         else:
             self.blue_pos = pos
 
-    def _pipe_unlocked(self, agent, entry):
+    def _pipe_unlocked(self, agent, entry, held=None):
         """Whether ``agent`` has the tomato required by this pipe, if any."""
         required = self.pipe_req.get(entry)
         if required is None:
             return True
-        held = getattr(self, "stars_collected", {}).get(agent, 0)
+        if held is None:
+            held = getattr(self, "stars_collected", {}).get(agent, 0)
         return bool(held & (1 << required))
 
     # ------------------------------------------------- the shared KNOWN model

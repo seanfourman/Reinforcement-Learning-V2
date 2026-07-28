@@ -257,11 +257,27 @@ def test_death_is_not_saved_as_a_fast_replay_or_learned_as_a_survivor_win(tmp_pa
     match.env.blue_pos = (1, 9)
     match.env.stars_collected["blue"] = match.env.star_full
     match._full_course_episode = True
+    replay_state = (
+        match.env.cell_index[(1, 9)],
+        match.env.star_full,
+    )
+    match.blue.Q[replay_state] = [0.8, -0.2, -0.3, -0.4]
     match.a_red, match.a_blue = 0, 0
 
     assert match.tick()
     assert match._top["red"] == []
     assert len(match._top["blue"]) == 1
+    replay = match.replay("top", "blue", 0)
+    fields = replay["replayFields"]
+    assert fields["epsilon"] >= 0
+    assert str(match.env.star_full) in fields["masks"]
+    assert fields["masks"]["7"]["q"][1][9] == [0.8, -0.2, -0.3, -0.4]
+    assert fields["masks"]["7"]["policy"][1][9] == 0
+
+    # Later learning cannot mutate the historical overlay stored with the run.
+    match.blue.Q[replay_state][0] = -99
+    replay_again = match.replay("top", "blue", 0)
+    assert replay_again["replayFields"]["masks"]["7"]["q"][1][9][0] == 0.8
 
 
 def test_mc_exploring_starts_cover_later_sections_but_not_top_replays(tmp_path):

@@ -648,6 +648,12 @@ class Match:
             self.a_red, self.a_blue = na_red, na_blue
 
             if done:
+                replay_fields = {}
+                if getattr(self, "_full_course_episode", True):
+                    for side in info.get("finishers") or []:
+                        field = self._capture_replay_fields(side)
+                        if field:
+                            replay_fields[side] = field
                 died = set(info.get("died") or [])
                 finishers = set(info.get("finishers") or [])
                 for side, learner in (("red", self.red), ("blue", self.blue)):
@@ -676,12 +682,14 @@ class Match:
                     w,
                     truncated=truncated,
                     finishers=info.get("finishers"),
+                    replay_fields=replay_fields,
                 )
                 self.save_checkpoint(force=False)
                 self._new_episode()
             return done
 
-    def _finish_episode(self, winner, truncated=False, finishers=None):
+    def _finish_episode(
+            self, winner, truncated=False, finishers=None, replay_fields=None):
         """Snapshot the finished episode for replay + log a learning-curve point."""
         parts = getattr(self.env, "ep_parts", None)   # grid env's reward decomposition
         if parts is not None:
@@ -721,7 +729,8 @@ class Match:
             lst.append({"steps": self.env.steps, "episode": self.episode,
                         "winner": replay_side,
                         "frames": self._frames,
-                        "policyFrames": replay_policy})
+                        "policyFrames": replay_policy,
+                        "replayFields": (replay_fields or {}).get(replay_side)})
             lst.sort(key=lambda e: e["steps"], reverse=survival)
             del lst[TOP_N:]
         recent = list(self.recent)
@@ -758,6 +767,50 @@ class Match:
                     grid[r][c] = int(action)
             out.append(grid)
         return out
+
+    def _capture_replay_fields(self, agent):
+        """Freeze Arena-2 Q/value/policy fields before MC learns from the run.
+
+        A replay frame carries the collected-tomato mask, so store one field for
+        every mask visited during this episode. This is the historical model that
+        selected the replay's actions; future training must not alter it.
+        """
+        if not getattr(self.env, "star_mode", False):
+            return None
+        learner = self._agent(agent)
+        star_key = agent + "Stars"
+        masks = sorted({int(frame.get(star_key, 0)) for frame in self._frames})
+        fields = {}
+        floor = [list(cell) for cell in self.env.floor_cells]
+        for star_mask in masks:
+            q_grid = [[None] * self.env.W for _ in range(self.env.H)]
+            policy = [[None] * self.env.W for _ in range(self.env.H)]
+            effective = [[None] * self.env.W for _ in range(self.env.H)]
+            for (r, c), idx in self.env.cell_index.items():
+                state = (idx, star_mask)
+                if learner.state_value(state) is None:
+                    continue
+                q = learner.q_values(state)
+                allowed = self.env.effective_actions(
+                    agent, (r, c), star_mask=star_mask)
+                valid = [
+                    action for action in range(len(q)) if allowed[action]
+                ] or list(range(len(q)))
+                q_grid[r][c] = [round(float(value), 4) for value in q]
+                policy[r][c] = int(max(valid, key=lambda action: q[action]))
+                effective[r][c] = [bool(value) for value in allowed]
+            fields[str(star_mask)] = {
+                "q": q_grid,
+                "policy": policy,
+                "effective": effective,
+            }
+        return {
+            "H": self.env.H,
+            "W": self.env.W,
+            "floor": floor,
+            "masks": fields,
+            "epsilon": round(float(learner.epsilon), 4),
+        }
 
     def _ceremony_frame(self, side):
         frame = copy.deepcopy(self._frames[-1]) if self._frames else self.env.snapshot()
@@ -1629,7 +1682,8 @@ class Match:
                         "metric": metric,
                         "rank": rank, "winner": ep["winner"], "steps": ep["steps"],
                         "episode": ep["episode"], "frames": ep["frames"],
-                        "policyFrames": ep.get("policyFrames", [])}
+                        "policyFrames": ep.get("policyFrames", []),
+                        "replayFields": ep.get("replayFields")}
             ep = self.best_episode if which == "best" else self.last_episode
             if not ep:
                 return {"available": False}
