@@ -1052,14 +1052,6 @@ window.RL = {
     );
   },
   replay,
-  playFrame: (frame) => {
-    latestFrame = frame;
-    actors.onFrame(frame);
-  },
-  setReplay: (on) => {
-    replayActive = !!on;
-    replayGeneration++;
-  },
 };
 // ---- the single docked control menu (#rl-panel). C toggles it; the header's model
 // selector switches the your-model / CPU views WITHIN it (handled in panel.js). ----

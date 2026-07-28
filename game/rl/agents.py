@@ -118,10 +118,6 @@ class Tabular:
     def end_episode(self):
         pass
 
-    def discard_episode(self):
-        """Drop an externally interrupted trajectory without learning from it."""
-        pass
-
 
 class QLearning(Tabular):
     name = "Q-learning"
@@ -201,13 +197,6 @@ class MonteCarlo(Tabular):
             td = G - row[a]
             row[a] += step * td
             self._record_td(td)
-        self._episode = []
-
-    def discard_episode(self):
-        # In the head-to-head city race, the rival can die and end the shared
-        # episode while this model is still navigating. That partial trajectory
-        # has no terminal outcome belonging to this agent, so MC must not turn it
-        # into a return sample.
         self._episode = []
 
     def reset_learning(self):

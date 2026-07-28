@@ -577,10 +577,15 @@ export function initReplay(parent) {
     loadTop(+row.dataset.rank, +row.dataset.episode);
   });
   // when the panel exits replay (Back to live / arena change), drop the highlight
+  // AND re-pull the list: an arena change wipes the backend's per-round top-30, so the
+  // browser must refresh immediately instead of showing the previous round's stale rows.
   window.addEventListener("rl-replay-state", (e) => {
-    if (!e.detail?.active && selEpisode !== null) {
-      selEpisode = null;
-      [...listEl.children].forEach((el) => el.classList.remove("sel"));
+    if (!e.detail?.active) {
+      if (selEpisode !== null) {
+        selEpisode = null;
+        [...listEl.children].forEach((el) => el.classList.remove("sel"));
+      }
+      refreshList();
     }
   });
 
@@ -617,6 +622,9 @@ export function initDP(parent) {
   const q = (s) => parent.querySelector(s);
   const sec = q("#rl-dp");
   let dpAgent = "blue";
+  // request-generation guards: an out-of-order /api/dpsweeps or /api/dp response must
+  // not overwrite the newer planner's propagation frames / convergence pin.
+  let sweepReq = 0, dpReq = 0;
   // plain decimal string, NEVER scientific notation (e.g. 0.00001, not 1e-5),
   // trimmed of trailing zeros. Keeps ~3 significant figures.
   const plainDec = (x) => {
@@ -693,9 +701,11 @@ export function initDP(parent) {
   }
   async function loadSweeps() {
     try {
+      const requested = dpAgent, gen = ++sweepReq;
       const sw = await (
         await fetch(`/api/dpsweeps?agent=${dpAgent}`, { cache: "no-store" })
       ).json();
+      if (gen !== sweepReq || requested !== dpAgent) return; // a newer request superseded us
       if (sw.available && sw.frames && sw.frames.length) {
         anim.hidden = false;
         vframes = sw.frames;
@@ -742,6 +752,7 @@ export function initDP(parent) {
   };
   async function refresh() {
     try {
+      const gen = ++dpReq;
       const [red, blue] = await Promise.all(
         ["red", "blue"].map((agent) =>
           fetch(`/api/dp?agent=${agent}`, { cache: "no-store" }).then((r) =>
@@ -749,6 +760,7 @@ export function initDP(parent) {
           ),
         ),
       );
+      if (gen !== dpReq) return; // a newer refresh() started; drop this stale pair
       const reports = { red, blue };
       const d = reports[dpAgent];
       const redState = completionState(red);
@@ -777,7 +789,7 @@ export function initDP(parent) {
       status.className = "dp-status";
       const { converged, hitLimit } = completionState(d);
       if (hitLimit) {
-        status.textContent = "Stopped at sweep limit — not converged";
+        status.textContent = "Stopped at sweep limit, not converged";
         status.classList.add("limit");
       } else if (converged) {
         status.textContent = "Converged";

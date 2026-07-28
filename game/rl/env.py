@@ -490,9 +490,10 @@ class GridWorld(gym.Env):
 
     def _r2_resolve(self, agent, action):
         """Round-2 move: walk one tile (walls block), then apply hazards. Returns
-        ``(final_cell, death, warp_dest)`` - ``death`` is "spike"/"plant"/None and
-        ``warp_dest`` is the tile a pipe teleported the agent onto (else None).
-        Stepping INTO either end of a pipe applies its fixed transfer;
+        ``(final_cell, death, warp_dest, warp_from)``: ``death`` is "spike"/"plant"/None,
+        ``warp_dest`` is the tile a pipe teleported the agent onto (else None), and
+        ``warp_from`` is the pipe ENTRANCE (dive) cell used for the warp-from FX cue
+        (else None). Stepping INTO either end of a pipe applies its fixed transfer;
         a spike or any of the eight cells around a plant is lethal."""
         cur = self._pos(agent)
         move = action

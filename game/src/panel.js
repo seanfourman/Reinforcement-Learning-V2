@@ -5,7 +5,7 @@
 //
 // Talks to the backend through window.RL (set up in main.js):
 //   RL.control({cmd,...})  RL.setHeatmap('red'|'blue'|null)
-//   RL.playFrame(frame)    RL.setReplay(bool)
+//   RL.replay.{load,seek,toggle,stop,setFps,active}  (episode replay contract)
 // and listens for 'rl-snapshot' (live stats) and 'rl-qinspect' (clicked tile Q).
 
 import { initGraphs } from './graphs.js';
@@ -58,7 +58,7 @@ export const PARAMS = [
   { key: 'gamma', label: 'Discount γ', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'always', desc: 'How much future rewards matter. Higher values make the model plan farther ahead.', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsStart', label: 'ε start', min: 0, max: 1, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Chance of a random action at the start of training.', fmt: (v) => (+v).toFixed(2) },
   { key: 'epsEnd', label: 'ε end', min: 0, max: 0.5, step: 0.01, color: C_OURS, scope: 'eps', desc: 'Final random-action chance after decay. It does not have to reach zero.', fmt: (v) => (+v).toFixed(2) },
-  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'eps', desc: 'Episodes needed to move linearly from ε start to ε end—not to zero.', fmt: (v) => (+v).toLocaleString() },
+  { key: 'epsEpisodes', label: 'ε decay (episodes)', min: 100, max: 20000, step: 100, color: C_OURS, scope: 'eps', desc: 'Episodes needed to move linearly from ε start to ε end, not to zero.', fmt: (v) => (+v).toLocaleString() },
 ];
 
 // shared display + reset helpers
@@ -80,8 +80,8 @@ export const GLOBAL_PARAMS = [
     fmt: (e) => (10 ** Math.round(e)).toFixed(-Math.round(e)) },
   { key: 'dpMaxIters', label: 'Maximum Bellman sweeps', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dp', def: 2000,
     desc: 'One sweep updates every state once. This is only a safety ceiling: reaching it stops planning without proving convergence.', fmt: fLoc },
-  { key: 'dpPlanning', label: 'Planning speed (sweeps / step)', min: 0.1, max: 5, step: 0.1, color: C_OURS, sect: 'algo', scope: 'dp', def: 0.6,
-    desc: 'How much planning happens between moves. 1.0 = one full pass over all states per game step; 0.5 = one pass every two steps; 2.0 = two passes per step. It changes planning speed, not the final solution.', fmt: (v) => (+v).toFixed(1) },
+  { key: 'dpPlanning', label: 'Planning speed (sweeps / step)', min: 0.1, max: 5, step: 0.05, color: C_OURS, sect: 'algo', scope: 'dp', def: 0.6,
+    desc: 'How much planning happens between moves. 1.0 = one full pass over all states per game step; 0.5 = one pass every two steps; 2.0 = two passes per step. It changes planning speed, not the final solution.', fmt: (v) => (+v).toFixed(2) },
   // Network architecture first, then the training-loop knobs - all per-side, grouped.
   { key: 'dqnHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'dqn', def: 128, color: C_OURS, desc: "Neurons per hidden layer of this model's Q-network.", fmt: fLoc },
   { key: 'dqnLayers', label: 'Hidden layers', min: 1, max: 5, step: 1, sect: 'algo', scope: 'dqn', def: 2, color: C_OURS, desc: "How many hidden layers deep this model's Q-network is.", fmt: fLoc },
