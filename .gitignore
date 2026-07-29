@@ -5,10 +5,15 @@
 /docs/
 /levels/
 /characters/
+/assets/
 .DS_Store
 __pycache__/
 *.py[cod]
 /.claude/
+# Local dev scratch: server logs + temp preview pages (never needed to run).
+/tmp/
+game/_*_tmp.html
+game/*preview*.html
 
 # Runtime-trained Round 4 models (local learning state, potentially large).
 /checkpoints/*.pt
