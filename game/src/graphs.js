@@ -1153,6 +1153,197 @@ export function initDiag(parent) {
   refresh();
 }
 
+// A complete, self-contained explanation of every algorithm, keyed by its display
+// label (the backend's ALGO_LABELS). Written for someone who has never seen RL:
+//   fam  = the family it belongs to           cat  = the big category chip (Tabular / Deep / Planning)
+//   tags = classification chips (model-free? on/off-policy? when it learns?)
+//   is   = one-line "what it is"               how  = the real mechanism, from scratch
+//   key  = the single defining idea to remember
+const ALGO_INFO = {
+  "Value Iteration": { fam: "Dynamic Programming", cat: "Planning", tags: ["Knows the rules", "Uses a table", "No exploration"],
+    is: "A planner that computes the perfect policy from a fully known map, without ever playing a game.",
+    how: "It keeps one number (a VALUE) for every state, meaning 'how much total reward can I still collect from here'. Then it sweeps over all states again and again. On each sweep it sets a state's value to: the best move's immediate reward, plus the discounted value of wherever that move leads. Each pass makes the numbers more accurate; when a sweep barely changes anything, they have converged, and the best move in any state is simply the one pointing to the highest-valued neighbour.",
+    key: "Because it already knows the world's rules, it never has to try things - it solves the maze by pure calculation. That is Dynamic Programming." },
+  "Policy Iteration": { fam: "Dynamic Programming", cat: "Planning", tags: ["Knows the rules", "Uses a table", "No exploration"],
+    is: "Another planner for a known map that repeatedly EVALUATES a plan and then IMPROVES it.",
+    how: "Start with any policy (any set of moves). Step 1, EVALUATION: work out the value of every state assuming you follow that exact policy, by sweeping until the numbers settle. Step 2, IMPROVEMENT: at every state, switch to whichever move now looks best given those values. Repeat. The policy can only get better each round, and when a round changes nothing, it is provably optimal.",
+    key: "Fewer big rounds than Value Iteration, but each round does a full evaluation before improving." },
+  "Every-visit MC": { fam: "Monte Carlo (MC)", cat: "Tabular", tags: ["Model-free", "On-policy", "Learns from full games"],
+    is: "Learns the value of each move purely by playing whole games and averaging what really happened - no map of the world needed.",
+    how: "It stores a Q-VALUE (expected total reward) for every state-and-move, in a big table. It plays an entire episode to the end, recording every state-move it took and the rewards. Then it looks back and computes the RETURN (the actual total reward that followed) from each step, and nudges that move's Q-value toward the return it just saw. Over thousands of games each Q-value becomes the AVERAGE real return, which is the truth. 'Every-visit' means every time a square was entered in a game contributes to the average.",
+    key: "Monte Carlo = learn by AVERAGING the real outcomes of many complete playthroughs. It is model-free (learns by trial, no rules given) and can only learn once a game finishes." },
+  "First-visit MC": { fam: "Monte Carlo (MC)", cat: "Tabular", tags: ["Model-free", "On-policy", "Learns from full games"],
+    is: "The Monte Carlo method (learn by averaging real game outcomes), but each square counts only the FIRST time it was entered in a game.",
+    how: "Like every-visit Monte Carlo, it plays a full episode, then averages the RETURNS (actual total reward that followed) into a Q-value table. The only difference: within a single game it uses just the FIRST visit to each state-move. If a path loops back through a square, that square is not counted twice, which removes a bias and lowers the noise in the averages.",
+    key: "A cleaner statistical estimate than every-visit, using slightly less of each game. Still tabular and model-free: it learns only from finished games." },
+  "SARSA": { fam: "Temporal Difference (TD)", cat: "Tabular", tags: ["Model-free", "On-policy", "Learns every step"],
+    is: "Learns Q-values one step at a time, from the move it actually takes next.",
+    how: "After every single move it makes a small update: nudge Q(state, move) toward [reward now + discounted Q(next state, the move it ACTUALLY chose next)]. Notice it does not wait for the game to end - it BOOTSTRAPS, using its own current estimate of the next step as a stand-in for the whole future. Because it learns from its own next move (which is sometimes a random exploration), it accounts for its own mistakes and plays safer near danger.",
+    key: "On-policy Temporal Difference: it learns the value of the policy it is actually following. The name is literally the tuple it uses - State, Action, Reward, next State, next Action." },
+  "Q-Learning": { fam: "Temporal Difference (TD)", cat: "Tabular", tags: ["Model-free", "Off-policy", "Learns every step"],
+    is: "Learns Q-values one step at a time, always assuming the BEST possible next move.",
+    how: "After every move it updates: nudge Q(state, move) toward [reward now + discounted MAX over next moves of Q(next state, .)] - the value of the best next move, even if it did not take it. Like SARSA it bootstraps (learns each step from its own estimate rather than waiting for the end), but its target always aims at optimal future play.",
+    key: "Off-policy Temporal Difference: it learns the OPTIMAL policy while still exploring randomly. It reaches the best route faster than SARSA, but can be bolder near danger because it assumes best-case play." },
+  "Expected-SARSA": { fam: "Temporal Difference (TD)", cat: "Tabular", tags: ["Model-free", "Learns every step"],
+    is: "A steadier SARSA that aims at the AVERAGE next move instead of the single one it happened to take.",
+    how: "Same one-step bootstrapped update as SARSA, but the target uses the EXPECTED next Q-value: the average of all next moves' Q-values, weighted by how likely the policy is to pick each. Averaging cancels the randomness of which exploratory move came next, so every update is less noisy.",
+    key: "Sits between SARSA and Q-Learning: smoother, often more stable learning." },
+  "DQN": { fam: "Deep value learning", cat: "Deep (neural net)", tags: ["Model-free", "Off-policy", "Learns every step"],
+    is: "Q-Learning for when there are far too many states to fit in a table, so a NEURAL NETWORK estimates the Q-values instead.",
+    how: "This arena has endless possible states (continuous positions), so no table fits. A neural network takes the observation numbers in and outputs a Q-value for each move. It trains toward the same Q-Learning target (reward + best next Q), but two tricks are needed to keep a network stable: a REPLAY BUFFER stores past experiences and trains on random batches of them, so it is not thrown off by the latest few correlated moves; and a TARGET NETWORK, a slow-updating copy, computes the learning target so the network is not chasing its own constantly-shifting output.",
+    key: "Deep Q-Network = Q-Learning + a neural network + replay buffer + target network. This is what first made RL work on huge, continuous problems." },
+  "Double-DQN": { fam: "Deep value learning", cat: "Deep (neural net)", tags: ["Model-free", "Off-policy", "Learns every step"],
+    is: "DQN fixed so it stops over-estimating how good its moves are.",
+    how: "Plain DQN uses one network both to PICK the best next move and to SCORE it, so any lucky over-estimate feeds back on itself and inflates the values. Double-DQN splits those two jobs: the main network picks the best next move, and the separate target network scores that move. Decoupling them cancels most of the optimistic bias, giving more accurate values and steadier learning.",
+    key: "Everything in DQN, with one small change to the learning target: less overconfidence." },
+  "Dueling-DQN": { fam: "Deep value learning", cat: "Deep (neural net)", tags: ["Model-free", "Off-policy", "Learns every step"],
+    is: "A DQN whose network separately estimates 'how good is this state' and 'how much does each move matter'.",
+    how: "Before its final layer the network splits into two streams: a VALUE stream (how good is this state overall) and an ADVANTAGE stream (how much better or worse each move is than average, right here). They recombine into the Q-values. In states where the move barely matters, it can still learn the state is good or bad without having to pin down every move's exact value.",
+    key: "A smarter network shape for DQN, especially helpful when many moves lead to similar outcomes." },
+  "REINFORCE": { fam: "Policy Gradient", cat: "Deep (neural net)", tags: ["Model-free", "On-policy", "Learns from full games"],
+    is: "Learns the POLICY directly - a network that outputs action probabilities - instead of learning values at all.",
+    how: "The network outputs a probability for each move. It plays a full game, sees the total reward, then adjusts the network so moves taken in a HIGH-reward game become more likely and moves in a low-reward game become less likely. That adjustment direction is the 'policy gradient'. Repeat over many games and the good behaviours get reinforced.",
+    key: "The simplest policy-gradient method: it optimises behaviour directly. Direct but noisy, because a whole game's reward is blamed or credited to every move in it." },
+  "Actor-Critic": { fam: "Policy Gradient", cat: "Deep (neural net)", tags: ["Model-free", "Learns every step"],
+    is: "Two networks working together: an ACTOR that chooses moves, and a CRITIC that judges how good the situation is.",
+    how: "The ACTOR is the policy (it outputs move probabilities). The CRITIC learns the VALUE of states, just like the value methods above. After each step the critic reports whether the outcome was better or worse than it expected (the 'advantage'), and the actor uses that signal to push the move's probability up or down. Because the critic gives feedback every single step, the actor learns far more smoothly than REINFORCE, which must wait for the whole game.",
+    key: "Actor acts, critic critiques. It fuses policy gradients with a learned value to cut the noise." },
+  "PPO": { fam: "Policy Gradient", cat: "Deep (neural net)", tags: ["Model-free", "On-policy", "Learns every step"],
+    is: "A modern, very stable Actor-Critic - the default algorithm in most of today's real-world RL.",
+    how: "It is an Actor-Critic with one crucial safety trick: CLIPPING. Each update is only allowed to change the policy's move probabilities by a small, capped amount, so one unlucky batch of experience can never lurch the policy into something terrible. It also reuses each batch of collected experience for several optimisation passes, which makes it efficient with data.",
+    key: "Proximal Policy Optimisation: stable because it only takes small, safe steps. Reliable and sample-efficient, the workhorse of modern deep RL." },
+};
+
+// A one-time primer of the words every algorithm above uses, shown atop the Algorithm tab.
+const RL_PRIMER = [
+  ["State", "the situation the agent is in (here: which square, and what it is carrying)."],
+  ["Action", "a move it can make."],
+  ["Reward", "the points it gets right after a move (for example +1 for reaching the goal)."],
+  ["Return", "the TOTAL reward from now until the game ends - what it really wants to maximise."],
+  ["Value / Q-value", "how much return a state (Value) or a state-plus-move (Q-value) is expected to give. Learning good values means knowing which moves are good."],
+  ["Policy", "the agent's rule for which move to pick in each state - the thing it is ultimately learning."],
+  ["Discount &gamma;", "how much a future reward counts versus an immediate one (near 1 = plans far ahead)."],
+];
+
+// Small inline icons for the Items / Enemies cards (kept simple + recognizable).
+const BICONS = {
+  coin: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6" fill="#fff" fill-opacity=".35"/><rect x="10.7" y="7.5" width="2.6" height="9" rx="1.3" fill="#fff" fill-opacity=".8"/></svg>',
+  block: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M9 9.5a3 3 0 1 1 3.6 2.94c-.6.15-.6.56-.6 1.06"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 14.9 8.6 21.5 9.5l-4.8 4.6 1.2 6.6L12 17.6 6.1 20.7l1.2-6.6L2.5 9.5l6.6-.9z"/></svg>',
+  cage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M5 20V9a7 7 0 0 1 14 0v11"/><path d="M9 20V9M15 20V9M12 20V4.2"/></svg>',
+  plant: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-6"/><path d="M8 8a4 4 0 0 1 8 0v1.5a4 4 0 0 1-8 0z"/><path d="M8.5 8.6 7 7.4M15.5 8.6 17 7.4M8.5 9.6 7 10.4M15.5 9.6 17 10.4"/><path d="M12 16c-3 0-4-2-4-2M12 16c3 0 4-2 4-2"/></svg>',
+  spike: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20 8 8l4 12zM12 20 16 8l4 12z" fill-opacity=".85"/><rect x="2" y="20" width="20" height="2" rx="1"/></svg>',
+  pipe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="6" width="18" height="4" rx="1"/><rect x="6" y="10" width="12" height="11" rx="1"/></svg>',
+  goomba: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 0 1 17 0z"/><path d="M5 12c0 3.5 3 6 7 6s7-2.5 7-6"/><path d="M9 11.5 10.6 13M9 13l1.6-1.5M15 11.5 13.4 13M15 13l-1.6-1.5"/><path d="M9 17h6"/></svg>',
+  bill: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4M2 9l2 3-2 3"/><path d="M15 6a7 7 0 0 1 0 12H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><circle cx="10" cy="10" r="1" fill="currentColor"/><circle cx="10" cy="14" r="1" fill="currentColor"/></svg>',
+  cannon: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="13" r="8"/><path d="M13 5.5 15.5 3l1.5 1.5-2.4 2.6z" /><circle cx="9.5" cy="10.5" r="2" fill="#fff" fill-opacity=".4"/></svg>',
+  water: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4"/><path d="M6 4h11l-2.5 3.5L17 11H6" fill="currentColor" fill-opacity=".18"/></svg>',
+  door: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="1"/><circle cx="14.5" cy="12" r="1" fill="currentColor"/></svg>',
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21 4.3 13.3a5 5 0 0 1 7.1-7 .8.8 0 0 0 1.1 0 5 5 0 0 1 7.1 7z"/></svg>',
+  bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
+  trend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+  brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4a3.5 3.5 0 0 0-3.5 3.5 3 3 0 0 0-1 5.7V16a3 3 0 0 0 4.5 2.6 3 3 0 0 0 4.5-2.6v-2.8a3 3 0 0 0-1-5.7A3.5 3.5 0 0 0 12 4z"/><path d="M12 4v14.6"/></svg>',
+  trophy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v4a4 4 0 0 1-8 0z"/><path d="M8 5H5v1a3 3 0 0 0 3 3M16 5h3v1a3 3 0 0 1-3 3"/><path d="M12 12v3M9 20h6M10 20l.4-3.2h3.2L14 20"/></svg>',
+  crate: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 8.5h17M3.5 15.5h17M8.5 3.5v17M15.5 3.5v17"/></svg>',
+};
+
+// Per-round Items (collectibles) and Enemies/hazards, as visual cards. R4 uses the
+// spec's `pickups` and R5 uses the spec's `weapons` (real art), so those rounds add
+// only their objective item here. tone: good = seek, bad = avoid, info = neutral.
+const BESTIARY = {
+  1: {
+    items: [
+      { ic: "coin", tone: "good", name: "Coin", desc: "A small one-time reward for grabbing your own coin along the way." },
+      { ic: "block", tone: "info", name: "Mystery Block", desc: "Hitting one randomly grants Ghost (walk through walls for a few tiles) OR Freeze (lose a few turns stuck)." },
+    ],
+    foes: [
+      { ic: "water", tone: "bad", name: "Ice Puddle", desc: "Stepping off an icy tile can skid you sideways instead of where you aimed. Pure chance, so plan around it." },
+    ],
+  },
+  2: {
+    items: [
+      { ic: "star", tone: "good", name: "Star", desc: "The goal. Collect all of your stars to win the race through the park." },
+    ],
+    foes: [
+      { ic: "plant", tone: "bad", name: "Piranha Plant", desc: "Its zone is instant death: wander into the tiles around a plant and you are out of the race until the next episode." },
+      { ic: "spike", tone: "bad", name: "Spike Trap", desc: "Stepping on a spike is instant death, same as a plant. Route around them." },
+      { ic: "pipe", tone: "info", name: "Warp Pipe", desc: "Diving into a pipe teleports you across the board - a shortcut you must learn to use." },
+      { ic: "water", tone: "bad", name: "Puddle", desc: "A move made while standing on a puddle can skid sideways. Adds risk to tight paths." },
+    ],
+  },
+  3: {
+    items: [
+      { ic: "cage", tone: "good", name: "Cage", desc: "Grab it WHILE BEHIND to drop a cage on the rival, freezing them so you can catch up. Grabbing while ahead does nothing." },
+      { ic: "door", tone: "info", name: "Secret Door", desc: "Push the boulder onto the pressure plate to hold a shortcut door open." },
+    ],
+    foes: [
+      { ic: "goomba", tone: "bad", name: "Goomba", desc: "Patrols a fixed route back and forth. Touching one is death, so time your crossing." },
+      { ic: "water", tone: "bad", name: "Wet Cell", desc: "A move from a wet tile can skid sideways. This is the variance that lets one racer fall behind (and the cage catch up)." },
+    ],
+  },
+  4: {
+    items: [],  // uses the spec's four power-ups (Speed / Shield / Slow / Freeze)
+    foes: [
+      { ic: "bill", tone: "bad", name: "Banzai Bill", desc: "A giant homing missile that hunts you and explodes on contact. A hit costs one heart; more of them spawn the longer you survive." },
+    ],
+  },
+  5: {
+    items: [
+      { ic: "flag", tone: "good", name: "The Flag", desc: "Grab the flag from the centre and carry it to your base to score. First to the capture target wins." },
+    ],  // plus the spec's crate weapons, rendered below
+    foes: [
+      { ic: "cannon", tone: "bad", name: "Bowser's Airship", desc: "Circles overhead and rains cannonballs onto the board. Dodge the incoming shots while you fight for the flag." },
+    ],
+  },
+};
+
+// Per-round STORY: a distilled goal line + a short illustrated "how it works" beat list,
+// shown ALWAYS (not hidden) so the Game tab reads like a quick storyboard of the round.
+const STORY = {
+  1: { goal: "Race your rival through the castle maze - first one to the goal wins.",
+    beats: [
+      ["target", "Two racers start apart and sprint for the same goal square."],
+      ["coin", "Coins picked up along the way give a small reward bonus."],
+      ["block", "Mystery Blocks are a gamble: phase through walls for a bit, or freeze for a few turns."],
+      ["water", "Ice puddles are slippery - a move can skid you sideways."],
+      ["brain", "The two planners already KNOW the maze, so they solve it by pure calculation."],
+    ] },
+  2: { goal: "Collect all 3 tomatoes, then reach the goal first.",
+    beats: [
+      ["star", "Three tomatoes are spread across the city park - grab them all."],
+      ["plant", "Piranha Plants and spikes are instant death: one wrong step and you are out for the round."],
+      ["pipe", "Warp Pipes teleport you across the board - learn which shortcut to take."],
+      ["water", "Puddles can skid your move off course."],
+      ["brain", "The two learners have NO map - they figure it all out by playing thousands of full games."],
+    ] },
+  3: { goal: "Escape the fossil maze first.",
+    beats: [
+      ["target", "Both racers spawn in the bottom corners and race for the exit at the top."],
+      ["goomba", "Goombas patrol fixed routes back and forth - touching one is death."],
+      ["cage", "Falling behind? Grab the Cage to freeze your rival and catch up."],
+      ["door", "Push a boulder onto a pressure plate to open a secret shortcut door."],
+      ["water", "Wet tiles are slippery - the variance that lets one racer fall behind."],
+    ] },
+  4: { goal: "Survive the missile storm - the last one standing wins.",
+    beats: [
+      ["bill", "Banzai Bills relentlessly home in on you and explode on contact."],
+      ["heart", "Each hit costs one of your 3 hearts. Lose them all and you are out."],
+      ["bolt", "Grab Speed and Shield power-ups; avoid the Slow and Freeze ones."],
+      ["trend", "The longer you last, the more Bills spawn - it never stops getting harder."],
+      ["brain", "The neural-network learners get better at dodging the more they play."],
+    ] },
+  5: { goal: "Capture the flag - first to the target number of captures wins.",
+    beats: [
+      ["flag", "Grab the flag from the centre and carry it back to your base to score."],
+      ["target", "Tag the carrier to instantly steal the flag back."],
+      ["crate", "Smash crates for Mario-Kart weapons: shells, bananas, oil, a Chain Chomp."],
+      ["cannon", "Bowser's airship rains cannonballs on the board - dodge while you fight."],
+      ["brain", "The policy-gradient learners refine their whole strategy, getting sharper each game."],
+    ] },
+};
+
 // ---- BRIEFING: the round's MDP tuple, reward table + win condition ----
 export function initBriefing(parent) {
   const html = `
@@ -1165,6 +1356,15 @@ export function initBriefing(parent) {
   else parent.insertAdjacentHTML("beforeend", html);
   const body = parent.querySelector("#rl-brief-body");
   let lastSpecKey = "";
+  let activeSub = "game";  // which sub-tab is open inside the Challenge card (persists across rebuilds)
+  // sub-tab switching, delegated once so it survives every innerHTML rebuild
+  body.addEventListener("click", (e) => {
+    const chip = e.target.closest(".bsub-chip");
+    if (!chip) return;
+    activeSub = chip.dataset.sub;
+    body.querySelectorAll(".bsub-chip").forEach((c) => c.classList.toggle("on", c.dataset.sub === activeSub));
+    body.querySelectorAll(".bsub-panel").forEach((p) => p.classList.toggle("on", p.dataset.sub === activeSub));
+  });
   const horizon = (g) => (g != null && g < 1 ? (1 / (1 - g)).toFixed(1) : "∞");
   // keep the live discount/horizon in sync with the training stream (params carry live γ)
   function updateLive(gb, gr) {
@@ -1365,11 +1565,71 @@ export function initBriefing(parent) {
             `<div><b>${w.name}</b>: ${w.desc}</div></div>`,
           ).join("")
         : "";
-      body.innerHTML =
-        `<div class="brief-matchup">${s.matchup}</div>` +
-        `<p class="hint">${s.family}. ${s.winCondition}</p>` +
+      // ---- assemble the sub-tabbed briefing (Game / Algorithm / State / Rewards / Items / Enemies) ----
+      const TAB_ICONS = {
+        game: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
+        algo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a4 4 0 0 0-4 4 3 3 0 0 0-1 5.8V17a3 3 0 0 0 5 2 3 3 0 0 0 5-2v-4.2A3 3 0 0 0 16 7a4 4 0 0 0-4-4z"/><path d="M12 3v16"/></svg>',
+        state: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>',
+        rewards: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v3a4 4 0 0 1-8 0z"/><path d="M8 5H5v1a3 3 0 0 0 3 3M16 5h3v1a3 3 0 0 1-3 3"/><path d="M12 11v4M9 20h6M10 20l.5-3h3l.5 3"/></svg>',
+        items: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 12h18M12 8v13M8 8 12 4l4 4"/></svg>',
+        enemies: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-8a7 7 0 0 1 14 0v8l-2-1.5-2 1.5-3-1.5-3 1.5-2-1.5z"/><circle cx="9.5" cy="11" r="1" fill="currentColor"/><circle cx="14.5" cy="11" r="1" fill="currentColor"/></svg>',
+      };
+      const round = s.round || 0;
+      const best = BESTIARY[round] || { items: [], foes: [] };
+      const foeCard = (e) =>
+        `<div class="be-card ${e.tone || "info"}"><span class="be-ic">${BICONS[e.ic] || ""}</span>` +
+        `<div class="be-txt"><b>${e.name}</b><span>${e.desc}</span></div></div>`;
+      const algoCard = (who, label, color) => {
+        const info = ALGO_INFO[label] || {};
+        const tags = (info.tags || []).map((t) => `<span class="alg-tg">${t}</span>`).join("");
+        return `<div class="alg-card" style="--ac:${color}">` +
+          `<div class="alg-head"><span class="alg-who" style="background:${color}">${who}</span>` +
+          `<b class="alg-name">${label}</b>${info.fam ? `<span class="alg-fam">${info.fam}</span>` : ""}</div>` +
+          `<div class="alg-tags">${info.cat ? `<span class="alg-cat">${info.cat}</span>` : ""}${tags}</div>` +
+          (info.is ? `<p class="alg-is">${info.is}</p>` : "") +
+          (info.how ? `<div class="alg-lbl">How it learns</div><p class="alg-how">${info.how}</p>` : "") +
+          (info.key ? `<div class="alg-lbl">Key idea</div><p class="alg-how">${info.key}</p>` : "") +
+          `</div>`;
+      };
 
-        `<h3 class="brief-sub">State &amp; observation</h3>` +
+      const story = STORY[s.round] || null;
+      const gamePanel =
+        // GOAL hero card - the single most important line, up top
+        `<div class="goal-card"><span class="goal-ic">${BICONS.trophy}</span>` +
+        `<div class="goal-body"><span class="goal-lbl">The goal</span>` +
+        `<span class="goal-txt">${story ? story.goal : s.winCondition}</span></div></div>` +
+        // HOW IT WORKS - an always-visible illustrated storyboard of the round
+        (story
+          ? `<h3 class="brief-sub">How it works</h3>` +
+            `<div class="story">` +
+            story.beats
+              .map(([ic, t]) => {
+                const tn = /^(plant|spike|goomba|bill|cannon|water)$/.test(ic) ? "bad"
+                  : /^(coin|star|cage|flag|bolt)$/.test(ic) ? "good" : "info";
+                return `<div class="story-beat"><span class="story-ic ${tn}">${BICONS[ic] || ""}</span>` +
+                  `<span class="story-tx">${t}</span></div>`;
+              })
+              .join("") +
+            `</div>`
+          : (s.dynamics ? `<h3 class="brief-sub">How it works</h3><p class="hint">${s.dynamics}</p>` : "")) +
+        // THE MOVES
+        `<h3 class="brief-sub">The moves - ${s.nActions}</h3>` + actionsVisual +
+        // quick stats
+        `<div class="dyn-chips" style="margin-top:11px">` +
+        (s.slipProb ? `<span class="dyn-chip"><b>${Math.round(100 * s.slipProb)}%</b>slip chance</span>` : "") +
+        `<span class="dyn-chip"><b>${s.maxSteps}</b>max steps</span></div>`;
+
+      const primerBlock =
+        `<details class="alg-primer" open><summary>New to this? Start here: the words every method uses</summary>` +
+        `<dl>` + RL_PRIMER.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("") + `</dl></details>`;
+      const algoPanel = (s.learning
+        ? primerBlock +
+          `<p class="note" style="margin:11px 0 9px">Two rival methods race to solve the SAME room. Each learns very differently - here is exactly how:</p>` +
+          algoCard("BLUE", s.learning.blue.algo, "#1f5fd0") +
+          algoCard("RED", s.learning.red.algo, "#e60012")
+        : "") + learnBlock;
+
+      const statePanel =
         `<div class="so-card">` +
         `<div class="so-hero"><div class="so-big">${heroBig}</div><div class="so-unit">${heroUnit}</div></div>` +
         stateRow +
@@ -1377,29 +1637,34 @@ export function initBriefing(parent) {
         `<span class="so-tuple">${obsTuple}</span></div>` +
         `<div class="so-row"><span class="so-k">Sees the opponent?</span>` +
         `<div class="so-opp"><span class="so-sq ${sqCls}"><b>RIVAL</b><b>${sqLabel}</b></span>` +
-        `<span class="so-opp-txt">${s.opponentInfo}</span></div></div>` +
+        `<span class="so-opp-txt">${s.opponentInfo}</span></div></div></div>`;
+
+      const rewardsPanel = rewards + (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
+
+      const itemsPanel =
+        (best.items.length ? `<div class="be-grid">${best.items.map(foeCard).join("")}</div>` : "") +
+        pickupsBlock + weaponsBlock;
+
+      const enemiesPanel = best.foes.length
+        ? `<div class="be-grid">${best.foes.map(foeCard).join("")}</div>` : "";
+
+      const hasItems = best.items.length || pkList.length || (s.weapons && s.weapons.length);
+      const hasFoes = best.foes.length;
+      const TABS = [["game", "Game"], ["algo", "Algorithm"], ["state", "State"], ["rewards", "Rewards"]];
+      if (hasItems) TABS.push(["items", "Items"]);
+      if (hasFoes) TABS.push(["enemies", "Enemies"]);
+      if (!TABS.some(([k]) => k === activeSub)) activeSub = "game";
+      const PANELS = { game: gamePanel, algo: algoPanel, state: statePanel,
+                       rewards: rewardsPanel, items: itemsPanel, enemies: enemiesPanel };
+
+      body.innerHTML =
+        `<div class="bsub-bar">` +
+        TABS.map(([k, lab]) =>
+          `<button type="button" class="bsub-chip${k === activeSub ? " on" : ""}" data-sub="${k}">` +
+          `<span class="bsub-ic">${TAB_ICONS[k] || ""}</span>${lab}</button>`).join("") +
         `</div>` +
-
-        `<h3 class="brief-sub">Actions (A) - ${s.nActions}</h3>` +
-        actionsVisual +
-
-        `<h3 class="brief-sub">Reward structure (R)</h3>${rewards}` +
-        (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "") +
-
-        weaponsBlock +
-
-        pickupsBlock +
-
-        learnBlock +
-
-        `<h3 class="brief-sub">Dynamics</h3>` +
-        (s.dynamics ? `<p class="hint" style="margin:0 0 8px;">${s.dynamics}</p>` : "") +
-        `<div class="dyn-chips">` +
-        (s.slipProb
-          ? `<span class="dyn-chip"><b>${Math.round(100 * s.slipProb)}%</b>slip chance</span>`
-          : "") +
-        `<span class="dyn-chip"><b>${s.maxSteps}</b>max steps / episode</span>` +
-        `</div>`;
+        TABS.map(([k]) =>
+          `<div class="bsub-panel${k === activeSub ? " on" : ""}" data-sub="${k}">${PANELS[k]}</div>`).join("");
     } catch (e) {
       /* warming up */
     }

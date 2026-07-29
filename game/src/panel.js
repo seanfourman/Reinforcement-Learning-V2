@@ -482,6 +482,83 @@ const STYLE = `
   padding:3px 7px;border-radius:20px;}
 #rl-panel #rl-brief .pk-card.good .pk-tag{background:#e7f6ec;color:#1f9d55;}
 #rl-panel #rl-brief .pk-card.bad .pk-tag{background:#fdeceb;color:#dc4a45;}
+/* ===== Challenge card SUB-TABS: a chip row that swaps panels inside the briefing ===== */
+#rl-panel #rl-brief .bsub-bar{display:flex;gap:5px;flex-wrap:wrap;margin:1px 0 12px;}
+#rl-panel #rl-brief .bsub-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 9px;
+  border:1px solid #e2e5ea;border-radius:20px;background:#f6f7f9;color:#6b7280;font-size:11.5px;font-weight:700;
+  cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
+#rl-panel #rl-brief .bsub-chip .bsub-ic,#rl-panel #rl-brief .bsub-chip .bsub-ic svg{width:15px;height:15px;display:block;}
+#rl-panel #rl-brief .bsub-chip:hover{background:#eef0f3;color:#3a3c42;}
+#rl-panel #rl-brief .bsub-chip.on{background:var(--hue);border-color:var(--hue);color:#fff;}
+#rl-panel #rl-brief .bsub-panel{display:none;}
+#rl-panel #rl-brief .bsub-panel.on{display:block;animation:bsubIn .18s ease;}
+#rl-panel #rl-brief .bsub-panel .brief-sub:first-child{margin-top:2px;}
+@keyframes bsubIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+/* ===== GAME tab: goal hero card + illustrated story timeline ===== */
+#rl-panel #rl-brief .goal-card{display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:15px;margin:2px 0 6px;
+  background:var(--hue);color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.13);}
+#rl-panel #rl-brief .goal-ic{width:42px;height:42px;flex:none;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.18);}
+#rl-panel #rl-brief .goal-ic svg{width:24px;height:24px;color:#fff;}
+#rl-panel #rl-brief .goal-body{min-width:0;}
+#rl-panel #rl-brief .goal-lbl{display:block;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.72);}
+#rl-panel #rl-brief .goal-txt{display:block;font-size:14px;font-weight:800;line-height:1.35;margin-top:3px;}
+#rl-panel #rl-brief .story{display:flex;flex-direction:column;margin:5px 0 2px;}
+#rl-panel #rl-brief .story-beat{display:flex;align-items:flex-start;gap:12px;padding:8px 0;}
+#rl-panel #rl-brief .story-beat:not(:last-child){border-bottom:1px solid #f1f2f4;}
+#rl-panel #rl-brief .story-ic{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;margin-top:1px;
+  background:#eef3fc;color:#1f5fd0;}
+#rl-panel #rl-brief .story-ic.bad{background:#fdecea;color:#e0563f;}
+#rl-panel #rl-brief .story-ic.good{background:#e9f7ef;color:#1f9d55;}
+#rl-panel #rl-brief .story-ic svg{width:19px;height:19px;display:block;}
+#rl-panel #rl-brief .story-tx{font-size:12.5px;color:#3a3c42;line-height:1.5;padding-top:7px;}
+/* Algorithm explanation cards (one per rival), accent-coloured by side */
+#rl-panel #rl-brief .alg-card{border:1px solid #e6e8ec;border-radius:13px;padding:12px 13px;margin:9px 0;
+  background:#fff;border-left:4px solid var(--ac);}
+#rl-panel #rl-brief .alg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+#rl-panel #rl-brief .alg-who{font-size:8.5px;font-weight:800;letter-spacing:.6px;color:#fff;padding:2px 7px;border-radius:20px;}
+#rl-panel #rl-brief .alg-name{font-size:15px;font-weight:800;color:#1f1f21;}
+#rl-panel #rl-brief .alg-fam{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#9a9da4;}
+#rl-panel #rl-brief .alg-tags{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px;}
+#rl-panel #rl-brief .alg-cat{font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:20px;
+  background:var(--ac);color:#fff;}
+#rl-panel #rl-brief .alg-tg{font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:#eef0f3;color:#5a5d63;}
+#rl-panel #rl-brief .alg-is{font-size:12.5px;font-weight:700;color:#1f1f21;line-height:1.5;margin:9px 0 2px;}
+#rl-panel #rl-brief .alg-lbl{font-size:8.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--ac);margin:11px 0 3px;}
+#rl-panel #rl-brief .alg-how{font-size:12px;color:#4b4d53;line-height:1.55;margin:0;}
+/* the RL glossary primer at the top of the Algorithm tab */
+#rl-panel #rl-brief .alg-primer{border:1px solid #e6e8ec;border-radius:13px;background:#fafbfc;padding:11px 13px;margin:2px 0 4px;}
+#rl-panel #rl-brief .alg-primer summary{cursor:pointer;list-style:none;font-size:11.5px;font-weight:800;color:#3a3c42;display:flex;align-items:center;gap:7px;}
+#rl-panel #rl-brief .alg-primer summary::-webkit-details-marker{display:none;}
+#rl-panel #rl-brief .alg-primer summary::before{content:"";width:7px;height:7px;flex:none;border-right:2px solid #9aa0a8;border-bottom:2px solid #9aa0a8;transform:rotate(-45deg);transition:transform .15s;}
+#rl-panel #rl-brief .alg-primer[open] summary::before{transform:rotate(45deg);}
+#rl-panel #rl-brief .alg-primer dl{margin:9px 0 0;display:grid;grid-template-columns:auto 1fr;gap:5px 10px;}
+#rl-panel #rl-brief .alg-primer dt{font-size:11.5px;font-weight:800;color:#1f5fd0;white-space:nowrap;}
+#rl-panel #rl-brief .alg-primer dd{margin:0;font-size:11.5px;color:#4b4d53;line-height:1.45;}
+/* Items / Enemies bestiary cards (icon + name + description), toned good/bad/info */
+#rl-panel #rl-brief .be-grid{display:flex;flex-direction:column;gap:8px;margin:8px 0 2px;}
+#rl-panel #rl-brief .be-card{display:flex;align-items:flex-start;gap:12px;padding:11px 13px;border:1px solid #e6e8ec;
+  border-radius:13px;background:#fff;border-left:4px solid #9aa0a8;}
+#rl-panel #rl-brief .be-card.good{border-left-color:#1f9d55;}
+#rl-panel #rl-brief .be-card.bad{border-left-color:#e0563f;}
+#rl-panel #rl-brief .be-card.info{border-left-color:#3f7fe0;}
+#rl-panel #rl-brief .be-ic{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:#f4f6f8;color:#5a5d63;}
+#rl-panel #rl-brief .be-card.good .be-ic{color:#1f9d55;}
+#rl-panel #rl-brief .be-card.bad .be-ic{color:#e0563f;}
+#rl-panel #rl-brief .be-card.info .be-ic{color:#3f7fe0;}
+#rl-panel #rl-brief .be-ic svg{width:23px;height:23px;display:block;}
+#rl-panel #rl-brief .be-txt{min-width:0;}
+#rl-panel #rl-brief .be-txt b{display:block;font-size:13px;font-weight:800;color:#1f1f21;margin-bottom:2px;}
+#rl-panel #rl-brief .be-txt span{font-size:11.5px;color:#4b4d53;line-height:1.5;}
+/* collapsible "how this world works" - keeps the long procedural blurb out of sight by default */
+#rl-panel #rl-brief .dyn-more{margin:11px 0 2px;border-top:1px solid #eceef1;padding-top:9px;}
+#rl-panel #rl-brief .dyn-more summary{cursor:pointer;list-style:none;font-size:11.5px;font-weight:700;color:#6b7280;
+  display:flex;align-items:center;gap:7px;}
+#rl-panel #rl-brief .dyn-more summary::-webkit-details-marker{display:none;}
+#rl-panel #rl-brief .dyn-more summary::before{content:"";width:7px;height:7px;flex:none;
+  border-right:2px solid #9aa0a8;border-bottom:2px solid #9aa0a8;transform:rotate(-45deg);transition:transform .15s;}
+#rl-panel #rl-brief .dyn-more[open] summary::before{transform:rotate(45deg);}
+#rl-panel #rl-brief .dyn-more summary:hover{color:#3a3c42;}
+#rl-panel #rl-brief .dyn-more p{font-size:11.5px;color:#6b7280;line-height:1.55;margin:8px 0 0;}
 /* Reward structure - signed proportional bars. The bar + value are FIXED-width on
    the right and the label flexes, so every bar lines up in the same column no matter
    how long the number is. */
