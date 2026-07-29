@@ -324,14 +324,21 @@ class Server(http.server.ThreadingHTTPServer):
 def main():
     global _alive
     httpd = None
-    for port in range(8008, 8028):          # 8000-8007 are left for other apps
-        try:
-            httpd = Server(("127.0.0.1", port), Handler)
-            break
-        except OSError:
-            continue
-    if httpd is None:
-        raise SystemExit("Could not find a free port between 8008 and 8027.")
+    # Cloud hosts (Render etc.) inject a PORT env var and route external traffic
+    # to it, so bind all interfaces on exactly that port. Locally there is no
+    # PORT: scan loopback for a free one and pop a browser tab as before.
+    env_port = os.environ.get("PORT")
+    if env_port:
+        httpd = Server(("0.0.0.0", int(env_port)), Handler)
+    else:
+        for port in range(8008, 8028):      # 8000-8007 are left for other apps
+            try:
+                httpd = Server(("127.0.0.1", port), Handler)
+                break
+            except OSError:
+                continue
+        if httpd is None:
+            raise SystemExit("Could not find a free port between 8008 and 8027.")
 
     t = threading.Thread(target=trainer, daemon=True)
     t.start()
@@ -340,7 +347,8 @@ def main():
     print("Rival Minds - live self-play RL arena")
     print(f"Running at {url}")
     print("Keep this window open. Press Ctrl+C to stop.")
-    threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    if not env_port:
+        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

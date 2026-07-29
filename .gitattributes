@@ -22,3 +22,6 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.fbx filter=lfs diff=lfs merge=lfs -text
 *.jpeg filter=lfs diff=lfs merge=lfs -text
+# shell scripts must reach Linux build machines (Render) with LF endings,
+# even when committed from Windows
+*.sh text eol=lf

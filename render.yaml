@@ -1,0 +1,18 @@
+# Render blueprint: one persistent web service running game/serve.py.
+# Connect the repo at https://dashboard.render.com -> New -> Blueprint.
+#
+# autoDeploy is OFF on purpose: every deploy re-downloads ~650 MB of Git-LFS
+# assets from GitHub, and GitHub's free LFS bandwidth is limited per month.
+# Deploy manually from the Render dashboard only when you actually need to.
+services:
+  - type: web
+    name: rival-minds
+    runtime: python
+    plan: free
+    rootDir: game
+    autoDeploy: false
+    buildCommand: bash render-build.sh
+    startCommand: python serve.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
