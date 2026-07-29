@@ -59,6 +59,7 @@ export function createLiveActors(scene, walkers) {
   const appliedStatus = { red: null, blue: null };
   const lastFxStep = { red: -1, blue: -1 };   // dedup the one-shot Round-2 FX per sim step
   const lastMissileHit = { red: 0, blue: 0 }; // dedup persistent Round-4 blast events
+  const seenOilEvents = new Set(); // dedup Round-5 oil-slick spin one-shots (ctf event ids)
   const FROZEN_TINT = new THREE.Color(0x8fd0ff);
   let frame = null;
   let layout = null;
@@ -244,6 +245,7 @@ export function createLiveActors(scene, walkers) {
     if (!on) return;
     lastMissileHit.red = 0;
     lastMissileHit.blue = 0;
+    seenOilEvents.clear();
 
     const arenaSize = world?.arena || 20;
     arenaScale = Math.max(0.01, Number(world?.sceneScale) || 1);
@@ -295,6 +297,28 @@ export function createLiveActors(scene, walkers) {
       };
       velocity.red = { x: f.redVel?.[0] || 0, z: f.redVel?.[1] || 0 };
       velocity.blue = { x: f.blueVel?.[0] || 0, z: f.blueVel?.[1] || 0 };
+      // Round-5 OIL SLICK: the sim knocks the victim back INSTANTLY (this frame's
+      // position is already the landing spot). Instead of letting the walker snap
+      // there, play a one-shot SPIN-AND-FLY tween from where it stood to wherever
+      // the sim says it landed (see playFx's 'oilspin').
+      for (const ev of f.ctfEvents || []) {
+        if (ev.type !== 'traphit' || ev.kind !== 'oil') continue;
+        const side = ev.target === 'red' || ev.target === 'blue' ? ev.target : null;
+        if (!side || seenOilEvents.has(ev.id)) continue;
+        seenOilEvents.add(ev.id);
+        if (fx[side]) continue;            // never interrupt a death / win one-shot
+        // A replay seek (or joining mid-episode) can park `rendered` far from the
+        // event. Beyond any real knock-back distance, spin in place at the landing
+        // instead of arcing across the map (the missile fx makes the same replay
+        // distinction via blast.carryover).
+        const start = { ...rendered[side] };
+        const to = target[side];
+        if (Math.hypot(to.x - start.x, to.z - start.z) > 4.5 * arenaScale) {
+          start.x = to.x;
+          start.z = to.z;
+        }
+        fx[side] = { type: 'oilspin', t: 0, start };
+      }
       // A terminal explosion survives the backend's automatic episode reset for
       // several snapshots. Play the hit once, holding the victim at the blast
       // before the newly reset spawn is allowed to take over.
@@ -465,6 +489,34 @@ export function createLiveActors(scene, walkers) {
       g.rotation.y = heading[key];
       return false;
     }
+    if (f.type === 'oilspin') {
+      // OIL SLICK (Round 5): flung across the sand - an airborne up-and-over arc
+      // with a helpless spin, landing wherever the sim's knock-back put it
+      // (tracked live via target, so a moving snapshot never desyncs the landing).
+      const DUR = 0.55;
+      if (f.t < DUR) {
+        const u = f.t / DUR;
+        const ease = 1 - Math.pow(1 - u, 2);        // launched fast, skids to a stop
+        const to = target[key];
+        g.position.set(
+          f.start.x + (to.x - f.start.x) * ease,
+          baseY + Math.sin(u * Math.PI) * 1.15,     // the flight arc
+          f.start.z + (to.z - f.start.z) * ease,
+        );
+        g.rotation.y += dt * (24 - u * 14);         // wild spin that eases off
+        g.rotation.z = Math.sin(u * Math.PI) * 0.4; // tips over while airborne
+        walker.moveAmt = 0;
+        return false;
+      }
+      g.rotation.z = 0;
+      g.rotation.y = heading[key];
+      rendered[key] = { ...target[key] };
+      g.position.set(target[key].x, baseY, target[key].z);
+      g.scale.setScalar(agentScale);
+      fx[key] = null;
+      warpSettle[key] = 0.35;   // glide (never snap) as live positions resume
+      return true;
+    }
     if (f.type === 'missile') {
       const DUR = 0.78;
       if (f.t < DUR) {
@@ -563,16 +615,27 @@ export function createLiveActors(scene, walkers) {
 
     const k = 1 - Math.exp(-dt * 12); // smoothing toward the latest target
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
-      if (appliedStatus[key] !== status[key]) {
-        applyWalkerStatus(walker, status[key]);   // ghost/frozen power-up tint on change
-        appliedStatus[key] = status[key];
+      // Round 4's freeze PICKUP reuses Round 1's frozen look (icy tint + the
+      // rotating ice crystal + locked pose): an active frozen effect is treated
+      // exactly like the "?" block's frozen status.
+      const effSt = (arena && (frame?.effects?.[key]?.frozen || 0) > 0)
+        ? 'frozen' : status[key];
+      if (appliedStatus[key] !== effSt) {
+        applyWalkerStatus(walker, effSt);         // ghost/frozen power-up tint on change
+        appliedStatus[key] = effSt;
       }
-      if (fx[key]) { if (!playFx(key, walker, dt)) continue; }   // Round-2 dive / death FX
+      if (fx[key]) {                       // Round-2 dive / death FX + arena one-shots
+        if (!playFx(key, walker, dt)) {
+          updateIce(key, walker, false, t); // a one-shot owns the body: no ice shell
+          continue;
+        }
+      }
       if (celebration && celebration.side === key) {
         updateVictoryPose(walker, celebration);
+        updateIce(key, walker, false, t);
         continue;
       }
-      const st = status[key];
+      const st = effSt;
       const r = rendered[key], tg = target[key];
       const dx = tg.x - r.x, dz = tg.z - r.z;
       const moving = Math.abs(dx) + Math.abs(dz) > 0.02;
@@ -654,6 +717,9 @@ export function createLiveActors(scene, walkers) {
   function resetArenaEffects(frameToSuppress = null) {
     lastMissileHit.red = 0;
     lastMissileHit.blue = 0;
+    seenOilEvents.clear();
+    // events still riding the restored frame were already seen live - never replay them
+    for (const ev of frameToSuppress?.ctfEvents || []) seenOilEvents.add(ev.id);
     for (const blast of frameToSuppress?.explosions || []) {
       if (!blast.hit) continue;
       // A single hit creates both a victim and winner animation, so baseline
@@ -662,8 +728,9 @@ export function createLiveActors(scene, walkers) {
       lastMissileHit.blue = Math.max(lastMissileHit.blue, blast.id || 0);
     }
     for (const [key, walker] of [['red', king], ['blue', princess]]) {
-      if (fx[key]?.type?.startsWith('missile')) fx[key] = null;
+      if (fx[key]?.type?.startsWith('missile') || fx[key]?.type === 'oilspin') fx[key] = null;
       walker.group.scale.setScalar(agentScale);
+      walker.group.rotation.z = 0;   // a cancelled mid-flight oilspin must not leave a tilt
     }
   }
 

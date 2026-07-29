@@ -2063,9 +2063,25 @@ export const tostarena = {
       for (const side of ["red", "blue"]) {
         const p = frame?.[side];
         const a = aura[side];
+        const wasVisible = a.stars.visible;
         a.stars.visible = (stun[side] || 0) > 0 && !!p;
         if (a.stars.visible) {
-          a.stars.position.set(p[0], 2.35, p[1]);
+          // An oil-slick stun BEGINS with a knock-back: live.js is still flying the
+          // character over from where it stood, so appear THERE and glide to the
+          // landing with it, instead of popping up over empty sand. A jump beyond
+          // any real knock-back means a replay seek - appear in place instead.
+          if (!wasVisible) {
+            const from =
+              a.lastPos &&
+              Math.hypot(p[0] - a.lastPos[0], p[1] - a.lastPos[1]) <= 4.5
+                ? a.lastPos
+                : p;
+            a.stars.position.set(from[0], 2.35, from[1]);
+          } else {
+            const follow = 1 - Math.exp(-dt * 7); // ~the walker's 0.55s flight
+            a.stars.position.x += (p[0] - a.stars.position.x) * follow;
+            a.stars.position.z += (p[1] - a.stars.position.z) * follow;
+          }
           a.stars.rotation.y += dt * 5.5; // whirl the dizzy ring
           a.stars.children.forEach(
             (
@@ -2074,6 +2090,7 @@ export const tostarena = {
             ) => (s.position.y = Math.sin(t * 6 + i * 2.1) * 0.12),
           );
         }
+        if (p) a.lastPos = [p[0], p[1]];
       }
 
       // crates, flying shells, laid traps, thrown chains, Bowser + his objects

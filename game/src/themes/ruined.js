@@ -1851,7 +1851,11 @@ export const ruined = {
 
         const effects = frame?.effects?.[side];
         for (const type of ["speed", "invincible", "slow", "freeze"]) {
-          const active = effectRemaining(effects, type) > 0;
+          // "freeze" is deliberately never activated any more: a frozen character
+          // now reuses Round 1's ice-crystal + icy-tint look (driven by live.js
+          // from effects.frozen), replacing this rig's old shell-and-shards
+          // indicator. The layer is kept built so the rig shape stays uniform.
+          const active = type !== "freeze" && effectRemaining(effects, type) > 0;
           rig.blend[type] = THREE.MathUtils.clamp(
             rig.blend[type] + dt * (active ? 8 : -9),
             0,
@@ -1892,7 +1896,6 @@ export const ruined = {
             Math.sin(angle) * (0.78 + (i % 2) * 0.16),
           );
         });
-        rig.freeze.rotation.y = Math.sin(t * 0.8) * 0.12;
       }
     }
 
