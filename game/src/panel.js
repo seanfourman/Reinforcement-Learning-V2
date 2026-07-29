@@ -137,7 +137,7 @@ export const GLOBAL_PARAMS = [
 
 const STYLE = `
 @property --hue{syntax:'<color>';inherits:true;initial-value:#1f5fd0;}
-#rl-panel{position:fixed;top:0;left:0;height:100%;width:min(465px,100vw);z-index:62;--hue:#1f5fd0;
+#rl-panel{position:fixed;top:0;left:0;height:100%;width:min(465px,100vw);z-index:58;--hue:#1f5fd0;
   transform:translateX(calc(-100% - 24px));
   transition:transform .5s cubic-bezier(.19,1,.22,1),width .5s cubic-bezier(.16,1,.3,1),--hue .3s ease;
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
