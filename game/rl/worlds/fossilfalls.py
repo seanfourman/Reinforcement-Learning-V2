@@ -332,7 +332,7 @@ def _place_plate_puzzles(grid, rng, path, avoid, protect):
     # shortest path onto the ``protect`` cage (keeps the cage a real detour).
     for ridx, BO, PL, quad in lanes:
         for gap, near_idx, B in door_cands:
-            if gap < 7:
+            if gap < 6:                                         # a gap-6 shortcut still beats the push detour
                 break
             if near_idx <= ridx + 1:                            # door must open AHEAD of the push
                 continue

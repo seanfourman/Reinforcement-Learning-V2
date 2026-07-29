@@ -804,23 +804,12 @@ class GridWorld(gym.Env):
                 terminal[a] += WIN
                 reward[a] += WIN
 
-            # The head-to-head result is fixed by the FIRST decisive tick, even
-            # though training continues for the other racer afterward.
-            if not self._race_decided and (new_died or new_reached):
-                rank = {
-                    a: (
-                        2 if a in new_reached
-                        else 0 if a in new_died
-                        else 1
-                    )
-                    for a in ("red", "blue")
-                }
-                if rank["red"] == rank["blue"]:
-                    self._race_winner = None
-                else:
-                    self._race_winner = (
-                        "red" if rank["red"] > rank["blue"] else "blue"
-                    )
+            # The head-to-head WINNER is whoever REACHES the goal first. A death never
+            # wins the race for the survivor - it must still reach the goal itself; if
+            # nobody reaches (both die / time out), the round is a DRAW. So the result is
+            # fixed on the first REACH tick, not on a death. Both reaching at once = draw.
+            if not self._race_decided and new_reached:
+                self._race_winner = None if len(new_reached) == 2 else new_reached[0]
                 self._race_decided = True
 
             self.done = all(self._agent_done.values())
