@@ -6,13 +6,13 @@ each round pits two **rival algorithms** against each other in a themed arena.
 The table shows the defaults; the start menu accepts any algorithm from that
 round's compatible family:
 
-| Round | Arena                         | Red vs Blue                          |
-| ----- | ----------------------------- | ------------------------------------ |
-| 1     | Peach's Castle                | **Value Iteration** vs **Policy Iteration** (Dynamic Programming: a stochastic maze race) |
-| 2     | New Donk City                 | **Every-visit MC** vs **First-visit MC** (Monte-Carlo) |
-| 3     | Fossil Falls                  | **SARSA** vs **Q-Learning** (on-policy vs off-policy TD) |
-| 4     | Ruined Kingdom                | **DQN** vs **Double-DQN** (continuous, function approximation) |
-| 5     | Tostarena                     | **Actor-Critic** vs **PPO** (Policy Gradient) |
+| Round | Arena          | Red vs Blue                                                                               |
+| ----- | -------------- | ----------------------------------------------------------------------------------------- |
+| 1     | Peach's Castle | **Value Iteration** vs **Policy Iteration** (Dynamic Programming: a stochastic maze race) |
+| 2     | New Donk City  | **Every-visit MC** vs **First-visit MC** (Monte-Carlo)                                    |
+| 3     | Fossil Falls   | **SARSA** vs **Q-Learning** (on-policy vs off-policy TD)                                  |
+| 4     | Ruined Kingdom | **DQN** vs **Double-DQN** (continuous, function approximation)                            |
+| 5     | Tostarena      | **Actor-Critic** vs **PPO** (Policy Gradient)                                             |
 
 The two models are **real Python reinforcement learning** running in a background
 thread; the browser is a live 3D viewer that polls the match and renders it. Each
@@ -29,14 +29,14 @@ algorithm.
 
 Every room is a small **escape room**: reach its single terminal (the goal / final
 capture) to advance. The reward always includes a **per-step time cost**, so a faster
-solution earns a higher return - solving quickly *is* the objective. Difficulty rises
+solution earns a higher return - solving quickly _is_ the objective. Difficulty rises
 room to room (bigger state space, more actions, dynamic hazards). The "tuned" values
 below are the Blue defaults the app ships with (they solve each room reliably); every
 one is live-editable from the Control panel (`C`).
 
 ### Room 1 - Peach's Castle (Dynamic Programming: Value Iteration vs Policy Iteration)
 
-Model **known**, so we *plan* with the Bellman equations instead of sampling.
+Model **known**, so we _plan_ with the Bellman equations instead of sampling.
 
 - **State (|S| ~ 23,000; seed-dependent, e.g. 23,488 on seed 1 - the briefing card
   shows the exact live number):** `(your tile x collected-mask x status)` = ~140 floor
@@ -58,20 +58,20 @@ Model **known**, so we *plan* with the Bellman equations instead of sampling.
 strength is its **planning speed** (Bellman sweeps per tick); gamma 0.98 and
 theta 1e-5 are shared globals. Why speed is the whole ladder: every planner
 converges to the same optimal policy, so the only possible edge is converging
-*sooner*.
+_sooner_.
 
 | Level | Character | plan_speed (sweeps/tick) |
 | ----- | --------- | ------------------------ |
-| 0 | Mario | 0.15 |
-| 1 | Luigi | 0.30 |
-| 2 | Yoshi | 0.50 |
-| 3 | Toadette | 0.75 |
-| 4 | Pauline | 1.05 |
-| 5 | Koopa | 1.40 |
-| 6 | Bowser | 1.80 |
-| 7 | Peach | 2.25 |
-| 8 | Toad | 2.80 |
-| 9 | Parabones | 3.40 |
+| 0     | Mario     | 0.15                     |
+| 1     | Luigi     | 0.30                     |
+| 2     | Yoshi     | 0.50                     |
+| 3     | Toadette  | 0.75                     |
+| 4     | Pauline   | 1.05                     |
+| 5     | Koopa     | 1.40                     |
+| 6     | Bowser    | 1.80                     |
+| 7     | Peach     | 2.25                     |
+| 8     | Toad      | 2.80                     |
+| 9     | Parabones | 3.40                     |
 
 **The best measured settings (search + numbers).** Method: full tournament
 matches of 30 races against Parabones (level 9) over 3 world seeds, scored on
@@ -99,14 +99,14 @@ bootstrapping). A creative extra beyond the brief's SARSA/Q pair - Monte Carlo c
 the Sutton and Barto progression, and SARSA and Q-Learning both appear next door in Room 3.
 
 - **State (|S| ~ 2,100; seed-dependent, e.g. 2,088 on seed 1):** `(your tile x 3-bit
-  tomato mask)` = ~260 reachable cells x which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
+tomato mask)` = ~260 reachable cells x which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
   return-to-goal depends on what you still need to collect). **Puddles** add a 12% skid.
 - **Actions (4):** North / South / West / East.
 - **Rewards:** step `-0.01`; collect a tomato (first time) `+0.35`; gather all 3 + reach
   the goal `+1.0`; eaten in a plant zone `-1.0`.
 - **Terminal:** hold all 3 tomatoes, then reach the top goal.
 - **Tuned params:** **alpha = 0.19**, **gamma = 0.98**, epsilon **0.90 -> 0.05** decayed
-  over **7,200** episodes. MC needs *sustained* exploration because an update only lands
+  over **7,200** episodes. MC needs _sustained_ exploration because an update only lands
   after a long full-course return - hence the long decay.
 
 **The 10 CPU characters (Round 2).** The MC ladder holds a HIGH final epsilon
@@ -116,16 +116,16 @@ in the long-course benchmark).
 
 | Level | Character | alpha | gamma | eps start | eps end | decay episodes |
 | ----- | --------- | ----- | ----- | --------- | ------- | -------------- |
-| 0 | Mario | 0.14 | 0.98 | 1.00 | 0.40 | 11000 |
-| 1 | Luigi | 0.15 | 0.98 | 0.98 | 0.36 | 10000 |
-| 2 | Yoshi | 0.16 | 0.98 | 0.96 | 0.33 | 9500 |
-| 3 | Toadette | 0.17 | 0.98 | 0.94 | 0.29 | 8500 |
-| 4 | Pauline | 0.18 | 0.98 | 0.92 | 0.27 | 8000 |
-| 5 | Koopa | 0.19 | 0.98 | 0.90 | 0.23 | 7200 |
-| 6 | Bowser | 0.20 | 0.98 | 0.88 | 0.23 | 7000 |
-| 7 | Peach | 0.21 | 0.98 | 0.87 | 0.19 | 6500 |
-| 8 | Toad | 0.22 | 0.98 | 0.86 | 0.20 | 6000 |
-| 9 | Parabones | 0.22 | 0.98 | 0.86 | 0.16 | 6000 |
+| 0     | Mario     | 0.14  | 0.98  | 1.00      | 0.40    | 11000          |
+| 1     | Luigi     | 0.15  | 0.98  | 0.98      | 0.36    | 10000          |
+| 2     | Yoshi     | 0.16  | 0.98  | 0.96      | 0.33    | 9500           |
+| 3     | Toadette  | 0.17  | 0.98  | 0.94      | 0.29    | 8500           |
+| 4     | Pauline   | 0.18  | 0.98  | 0.92      | 0.27    | 8000           |
+| 5     | Koopa     | 0.19  | 0.98  | 0.90      | 0.23    | 7200           |
+| 6     | Bowser    | 0.20  | 0.98  | 0.88      | 0.23    | 7000           |
+| 7     | Peach     | 0.21  | 0.98  | 0.87      | 0.19    | 6500           |
+| 8     | Toad      | 0.22  | 0.98  | 0.86      | 0.20    | 6000           |
+| 9     | Parabones | 0.22  | 0.98  | 0.86      | 0.16    | 6000           |
 
 **The best measured settings (search + numbers).** Method: train Blue
 (First-visit MC) for 12,000 episodes against Parabones inside the real
@@ -174,35 +174,36 @@ random, Parabones a near-optimal 2%.
 
 | Level | Character | alpha | gamma | eps start | eps end | decay episodes |
 | ----- | --------- | ----- | ----- | --------- | ------- | -------------- |
-| 0 | Mario | 0.24 | 0.98 | 1.00 | 0.40 | 2200 |
-| 1 | Luigi | 0.26 | 0.98 | 1.00 | 0.35 | 2000 |
-| 2 | Yoshi | 0.28 | 0.98 | 1.00 | 0.30 | 1800 |
-| 3 | Toadette | 0.30 | 0.98 | 1.00 | 0.25 | 1600 |
-| 4 | Pauline | 0.32 | 0.98 | 1.00 | 0.20 | 1400 |
-| 5 | Koopa | 0.34 | 0.98 | 1.00 | 0.15 | 1200 |
-| 6 | Bowser | 0.36 | 0.98 | 1.00 | 0.11 | 1000 |
-| 7 | Peach | 0.38 | 0.98 | 1.00 | 0.08 | 850 |
-| 8 | Toad | 0.39 | 0.98 | 1.00 | 0.05 | 700 |
-| 9 | Parabones | 0.40 | 0.98 | 1.00 | 0.02 | 550 |
+| 0     | Mario     | 0.24  | 0.98  | 1.00      | 0.40    | 2200           |
+| 1     | Luigi     | 0.26  | 0.98  | 1.00      | 0.35    | 2000           |
+| 2     | Yoshi     | 0.28  | 0.98  | 1.00      | 0.30    | 1800           |
+| 3     | Toadette  | 0.30  | 0.98  | 1.00      | 0.25    | 1600           |
+| 4     | Pauline   | 0.32  | 0.98  | 1.00      | 0.20    | 1400           |
+| 5     | Koopa     | 0.34  | 0.98  | 1.00      | 0.15    | 1200           |
+| 6     | Bowser    | 0.36  | 0.98  | 1.00      | 0.11    | 1000           |
+| 7     | Peach     | 0.38  | 0.98  | 1.00      | 0.08    | 850            |
+| 8     | Toad      | 0.39  | 0.98  | 1.00      | 0.05    | 700            |
+| 9     | Parabones | 0.40  | 0.98  | 1.00      | 0.02    | 550            |
 
 **The best measured settings (search + numbers).** Method: train Blue
 (Q-Learning) for 5,000 episodes against Parabones (SARSA), score the last
 1,500 races; 2 seeds per candidate. Results: the generic Blue default (alpha
 .20, eps -> .05 over 3000) collapses to **1.8%** against a converged Parabones
+
 - it explores far too long against an opponent that is already optimal at
-episode 550. Cloning Parabones' own profile onto Q-Learning wins **98.3%**:
-**alpha 0.40, gamma 0.98, epsilon 1.0 -> 0.02 over 550 episodes** - the
-measured best set. Neighbors confirm the peak: alpha .30/eps .05 **90.5%**,
-alpha .50/eps .01/400 **79.3%** (decays slightly too fast), gamma 0.995
-**84.9%**, alpha .40/eps .05 **81.9%**, Expected-SARSA on the same profile
-**83.6%**. The 98%-vs-1% swing with identical settings on both sides is the
-round's lesson made measurable: off-policy Q-Learning learns the OPTIMAL
-policy while on-policy SARSA learns its own epsilon-tainted one, so at equal
-hyperparameters the Q-Learner simply outperforms. Why each value: alpha 0.40
-is safe because one-step TD targets are low-variance; the 550-episode decay
-matches how fast value propagates through a 19x19 maze; eps end 0.02 wins the
-endgame because in a head-to-head race every residual random step is a lost
-tempo; gamma 0.98 prices the ~40-step route without slowing propagation.
+  episode 550. Cloning Parabones' own profile onto Q-Learning wins **98.3%**:
+  **alpha 0.40, gamma 0.98, epsilon 1.0 -> 0.02 over 550 episodes** - the
+  measured best set. Neighbors confirm the peak: alpha .30/eps .05 **90.5%**,
+  alpha .50/eps .01/400 **79.3%** (decays slightly too fast), gamma 0.995
+  **84.9%**, alpha .40/eps .05 **81.9%**, Expected-SARSA on the same profile
+  **83.6%**. The 98%-vs-1% swing with identical settings on both sides is the
+  round's lesson made measurable: off-policy Q-Learning learns the OPTIMAL
+  policy while on-policy SARSA learns its own epsilon-tainted one, so at equal
+  hyperparameters the Q-Learner simply outperforms. Why each value: alpha 0.40
+  is safe because one-step TD targets are low-variance; the 550-episode decay
+  matches how fast value propagates through a 19x19 maze; eps end 0.02 wins the
+  endgame because in a head-to-head race every residual random step is a lost
+  tempo; gamma 0.98 prices the ~40-step route without slowing propagation.
 
 ### Room 4 - Ruined Kingdom (Deep RL / function approximation: DQN vs Double-DQN)
 
@@ -233,16 +234,16 @@ buffer 50k, warmup 500, target sync 500, 3-step returns).
 
 | Level | Character | alpha | gamma | eps start | eps end | decay episodes |
 | ----- | --------- | ----- | ----- | --------- | ------- | -------------- |
-| 0 | Mario | 0.20 | 0.980 | 1.00 | 0.30 | 4000 |
-| 1 | Luigi | 0.22 | 0.980 | 1.00 | 0.26 | 3600 |
-| 2 | Yoshi | 0.24 | 0.982 | 1.00 | 0.22 | 3200 |
-| 3 | Toadette | 0.26 | 0.984 | 0.98 | 0.18 | 2800 |
-| 4 | Pauline | 0.28 | 0.986 | 0.96 | 0.15 | 2400 |
-| 5 | Koopa | 0.30 | 0.988 | 0.94 | 0.12 | 2000 |
-| 6 | Bowser | 0.32 | 0.990 | 0.92 | 0.09 | 1600 |
-| 7 | Peach | 0.34 | 0.992 | 0.90 | 0.07 | 1200 |
-| 8 | Toad | 0.36 | 0.994 | 0.88 | 0.05 | 900 |
-| 9 | Parabones | 0.38 | 0.995 | 0.85 | 0.03 | 600 |
+| 0     | Mario     | 0.20  | 0.980 | 1.00      | 0.30    | 4000           |
+| 1     | Luigi     | 0.22  | 0.980 | 1.00      | 0.26    | 3600           |
+| 2     | Yoshi     | 0.24  | 0.982 | 1.00      | 0.22    | 3200           |
+| 3     | Toadette  | 0.26  | 0.984 | 0.98      | 0.18    | 2800           |
+| 4     | Pauline   | 0.28  | 0.986 | 0.96      | 0.15    | 2400           |
+| 5     | Koopa     | 0.30  | 0.988 | 0.94      | 0.12    | 2000           |
+| 6     | Bowser    | 0.32  | 0.990 | 0.92      | 0.09    | 1600           |
+| 7     | Peach     | 0.34  | 0.992 | 0.90      | 0.07    | 1200           |
+| 8     | Toad      | 0.36  | 0.994 | 0.88      | 0.05    | 900            |
+| 9     | Parabones | 0.38  | 0.995 | 0.85      | 0.03    | 600            |
 
 **The best measured settings (search + numbers).** Method: train Blue for 700
 episodes against Parabones (DQN, level 9) inside the real tournament loop
@@ -267,7 +268,7 @@ values were confirmed by the sync-250 probe changing nothing.
 
 ### Room 5 - Dry Dry Desert (Policy Gradient: Actor-Critic vs PPO, also REINFORCE)
 
-Model **unknown**, and the policy itself is a network (policy-*based*, not value-based) -
+Model **unknown**, and the policy itself is a network (policy-_based_, not value-based) -
 it **samples** its actions, so there is no epsilon; exploration comes from an **entropy
 bonus**. This is the brief's optional obstacle room: **Bowser's Airship** hurls dynamic
 objects the racers must **dodge**, and the observation exposes a **tunable sight range**
@@ -299,16 +300,16 @@ to a sharp policy.
 
 | Level | Character | alpha | gamma | entropy |
 | ----- | --------- | ----- | ----- | ------- |
-| 0 | Mario | 0.10 | 0.970 | 0.050 |
-| 1 | Luigi | 0.14 | 0.972 | 0.042 |
-| 2 | Yoshi | 0.18 | 0.974 | 0.035 |
-| 3 | Toadette | 0.22 | 0.976 | 0.028 |
-| 4 | Pauline | 0.26 | 0.978 | 0.022 |
-| 5 | Koopa | 0.30 | 0.980 | 0.017 |
-| 6 | Bowser | 0.34 | 0.983 | 0.013 |
-| 7 | Peach | 0.38 | 0.986 | 0.009 |
-| 8 | Toad | 0.42 | 0.988 | 0.006 |
-| 9 | Parabones | 0.46 | 0.990 | 0.004 |
+| 0     | Mario     | 0.10  | 0.970 | 0.050   |
+| 1     | Luigi     | 0.14  | 0.972 | 0.042   |
+| 2     | Yoshi     | 0.18  | 0.974 | 0.035   |
+| 3     | Toadette  | 0.22  | 0.976 | 0.028   |
+| 4     | Pauline   | 0.26  | 0.978 | 0.022   |
+| 5     | Koopa     | 0.30  | 0.980 | 0.017   |
+| 6     | Bowser    | 0.34  | 0.983 | 0.013   |
+| 7     | Peach     | 0.38  | 0.986 | 0.009   |
+| 8     | Toad      | 0.42  | 0.988 | 0.006   |
+| 9     | Parabones | 0.46  | 0.990 | 0.004   |
 
 **The best measured settings (search + numbers).** Method: train Blue for 450
 episodes against Parabones (Actor-Critic, level 9) inside the real tournament
@@ -349,13 +350,13 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
 
 ## Controls
 
-| Input         | Action                                            |
-| ------------- | ------------------------------------------------- |
-| `R`           | **Reset** both models (relearn from scratch)      |
-| `C`           | Open/close the shared **Control** panel           |
-| Mouse drag    | Pan the camera                                    |
-| WASD / arrows | Pan the camera                                    |
-| Scroll wheel  | Zoom                                              |
+| Input         | Action                                       |
+| ------------- | -------------------------------------------- |
+| `R`           | **Reset** both models (relearn from scratch) |
+| `C`           | Open/close the shared **Control** panel      |
+| Mouse drag    | Pan the camera                               |
+| WASD / arrows | Pan the camera                               |
+| Scroll wheel  | Zoom                                         |
 
 ## The Control panel (C)
 
@@ -373,21 +374,21 @@ browser. Keep the console window open. (Needs Python 3 + `gymnasium` + `numpy`;
   inspect the per-action **Q(s,·)**.
 - **Episode replay** - browse each model's top 30 complete winning runs. Arena 2
   replays use the policy, value, Q, and visit context frozen with that episode.
-The model selector in the panel header switches between your Blue model and the
-CPU's locked Red profile.
+  The model selector in the panel header switches between your Blue model and the
+  CPU's locked Red profile.
 
 ## How the RL concepts are captured
 
-| Concept                   | Where                                                       |
-| ------------------------- | ----------------------------------------------------------- |
-| Gymnasium env             | `rl/core/grid_env.py` / `rl/core/continuous_arena.py`       |
-| Dynamic Programming       | Value + Policy Iteration (`rl/arenas/r1_peach_castle/`)     |
-| Monte-Carlo control       | episode-return updates (`rl/arenas/r2_new_donk_city/`)      |
-| TD control                | Q-Learning / SARSA / Expected-SARSA (`rl/arenas/r3_fossil_falls/`) |
-| Function approximation    | DQN / Double-DQN / Dueling-DQN (`rl/arenas/r4_ruined_kingdom/`) |
-| Policy gradient           | Actor-Critic / PPO / REINFORCE (`rl/arenas/r5_tostarena/`)  |
-| Explore vs exploit        | ε-greedy with a decaying ε (shown live in the panel)        |
-| V & Q functions           | the value heatmap (V) + the click-a-tile Q inspector        |
+| Concept                | Where                                                              |
+| ---------------------- | ------------------------------------------------------------------ |
+| Gymnasium env          | `rl/core/grid_env.py` / `rl/core/continuous_arena.py`              |
+| Dynamic Programming    | Value + Policy Iteration (`rl/arenas/r1_peach_castle/`)            |
+| Monte-Carlo control    | episode-return updates (`rl/arenas/r2_new_donk_city/`)             |
+| TD control             | Q-Learning / SARSA / Expected-SARSA (`rl/arenas/r3_fossil_falls/`) |
+| Function approximation | DQN / Double-DQN / Dueling-DQN (`rl/arenas/r4_ruined_kingdom/`)    |
+| Policy gradient        | Actor-Critic / PPO / REINFORCE (`rl/arenas/r5_tostarena/`)         |
+| Explore vs exploit     | ε-greedy with a decaying ε (shown live in the panel)               |
+| V & Q functions        | the value heatmap (V) + the click-a-tile Q inspector               |
 
 ## Code map
 
@@ -396,34 +397,34 @@ The Python is organized as a shared **core** plus one package **per arena**, so
 in [`CODE_MAP.md`](CODE_MAP.md); the from-zero course guide is
 [`GUIDE_EN.md`](GUIDE_EN.md) / [`GUIDE_HE.md`](GUIDE_HE.md)):
 
-| File / folder                      | What it does                                              |
-| ---------------------------------- | --------------------------------------------------------- |
-| `serve.py`                         | Live RL server: static host + training thread + JSON API  |
-| `rl/core/grid_env.py`              | The shared two-agent grid engine (Rounds 1-3)             |
-| `rl/core/continuous_arena.py`      | The shared continuous physics engine (Rounds 4-5)         |
-| `rl/core/worldgen.py`              | The `World` container + tile alphabet + validator         |
-| `rl/core/base_agent.py`            | The base tabular agent (Q-table + ε-greedy)               |
-| `rl/core/registry.py`              | Round + algorithm registries (name -> class/env/world)    |
-| `rl/core/tournament.py`            | The `Match` driver (assembled from the mixins below)      |
-| `rl/core/match_loop.py`            | The episode lifecycle + `tick()`                          |
-| `rl/core/ladders.py`               | The 10-character CPU difficulty ladders per arena         |
-| `rl/core/controls.py` / `rounds.py` | Panel controls / round navigation + awards               |
-| `rl/core/replays.py`               | Episode recording, top-30 + milestone replays             |
-| `rl/core/briefing.py` / `telemetry.py` / `inspection.py` | The /api payloads (MDP card, stats, value grids) |
-| `rl/core/checkpoints.py`           | Round-4 DQN checkpoint persistence                        |
-| `rl/arenas/r1_peach_castle/`       | R1 world + env + `value_iteration.py` / `policy_iteration.py` |
-| `rl/arenas/r2_new_donk_city/`      | R2 world (+ course tools/checks) + env + `monte_carlo.py` / `first_visit_mc.py` |
-| `rl/arenas/r3_fossil_falls/`       | R3 world + env + `qlearning.py` / `sarsa.py` / `expected_sarsa.py` |
-| `rl/arenas/r4_ruined_kingdom/`     | R4 arena (+ missiles/pickups) + `dqn.py` / `double_dqn.py` / `dueling_dqn.py` |
-| `rl/arenas/r5_tostarena/`          | R5 arena (+ weapons) + `pg_base.py` / `reinforce.py` / `actor_critic.py` / `ppo.py` |
-| `src/main.js`                      | Live poll client: builds the scene, drives the render loop |
-| `src/live.js`                      | The two board agents, driven by polled frames             |
-| `src/themes/`                      | Per-round arena geometry, palette, sky and camera         |
-| `src/startmenu.js`                 | Character select + cinematic start menu                   |
-| `src/panel.js`                     | The shared model/control panel (C)                        |
-| `src/graphs.js`                    | Learning-curve / DP-convergence charts + episode replay   |
-| `src/heatmap.js`                   | The learned-value heatmap overlay                         |
-| `vendor/three/`                    | Bundled three.js (no package manager needed)              |
+| File / folder                                            | What it does                                                                        |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `serve.py`                                               | Live RL server: static host + training thread + JSON API                            |
+| `rl/core/grid_env.py`                                    | The shared two-agent grid engine (Rounds 1-3)                                       |
+| `rl/core/continuous_arena.py`                            | The shared continuous physics engine (Rounds 4-5)                                   |
+| `rl/core/worldgen.py`                                    | The `World` container + tile alphabet + validator                                   |
+| `rl/core/base_agent.py`                                  | The base tabular agent (Q-table + ε-greedy)                                         |
+| `rl/core/registry.py`                                    | Round + algorithm registries (name -> class/env/world)                              |
+| `rl/core/tournament.py`                                  | The `Match` driver (assembled from the mixins below)                                |
+| `rl/core/match_loop.py`                                  | The episode lifecycle + `tick()`                                                    |
+| `rl/core/ladders.py`                                     | The 10-character CPU difficulty ladders per arena                                   |
+| `rl/core/controls.py` / `rounds.py`                      | Panel controls / round navigation + awards                                          |
+| `rl/core/replays.py`                                     | Episode recording, top-30 + milestone replays                                       |
+| `rl/core/briefing.py` / `telemetry.py` / `inspection.py` | The /api payloads (MDP card, stats, value grids)                                    |
+| `rl/core/checkpoints.py`                                 | Round-4 DQN checkpoint persistence                                                  |
+| `rl/arenas/r1_peach_castle/`                             | R1 world + env + `value_iteration.py` / `policy_iteration.py`                       |
+| `rl/arenas/r2_new_donk_city/`                            | R2 world (+ course tools/checks) + env + `monte_carlo.py` / `first_visit_mc.py`     |
+| `rl/arenas/r3_fossil_falls/`                             | R3 world + env + `qlearning.py` / `sarsa.py` / `expected_sarsa.py`                  |
+| `rl/arenas/r4_ruined_kingdom/`                           | R4 arena (+ missiles/pickups) + `dqn.py` / `double_dqn.py` / `dueling_dqn.py`       |
+| `rl/arenas/r5_tostarena/`                                | R5 arena (+ weapons) + `pg_base.py` / `reinforce.py` / `actor_critic.py` / `ppo.py` |
+| `src/main.js`                                            | Live poll client: builds the scene, drives the render loop                          |
+| `src/live.js`                                            | The two board agents, driven by polled frames                                       |
+| `src/themes/`                                            | Per-round arena geometry, palette, sky and camera                                   |
+| `src/startmenu.js`                                       | Character select + cinematic start menu                                             |
+| `src/panel.js`                                           | The shared model/control panel (C)                                                  |
+| `src/graphs.js`                                          | Learning-curve / DP-convergence charts + episode replay                             |
+| `src/heatmap.js`                                         | The learned-value heatmap overlay                                                   |
+| `vendor/three/`                                          | Bundled three.js (no package manager needed)                                        |
 
 ## API (for the curious)
 
