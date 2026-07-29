@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)                      # static files are served from game/
 sys.path.insert(0, os.path.join(HERE, "rl"))
 
-from match import Match             # noqa: E402  (after sys.path tweak)
+from core.tournament import Match   # noqa: E402  (after sys.path tweak)
 
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")

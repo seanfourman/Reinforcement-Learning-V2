@@ -241,7 +241,9 @@ class Match:
         self.lock = threading.RLock()
         self.seed = seed
         self.round_id = round_id
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        # this file lives at game/rl/core/, so the repo root is three levels up
+        project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         self.checkpoint_dir = os.path.abspath(
             checkpoint_dir if checkpoint_dir is not None
             else os.path.join(project_root, "checkpoints")
