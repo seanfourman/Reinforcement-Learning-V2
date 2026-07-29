@@ -11,7 +11,9 @@ NOTE: the algorithm modules import PyTorch. They are imported LAZILY (by
 tabular rounds on a Python without torch installed.
 
     world.py         round metadata (the env is continuous; no grid World)
-    arena.py         the Round-4 missile-survival mechanics on the shared engine
+    arena.py         the Round-4 survival game rules on the shared engine
+    missiles.py      the Banzai Bill spawn/homing/impact + dodge-shaping mixin
+    pickups.py       the collectible power-up mixin
     dqn.py           the base deep Q-network agent (replay buffer, target net)
     double_dqn.py    decoupled action selection / evaluation in the target
     dueling_dqn.py   the V(s) + A(s,a) two-head network
