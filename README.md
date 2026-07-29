@@ -38,9 +38,11 @@ one is live-editable from the Control panel (`C`).
 
 Model **known**, so we *plan* with the Bellman equations instead of sampling.
 
-- **State (|S| = 23,488):** `(your tile x collected-mask x status)` = 225 board cells x
-  a 4-bit mask of which of your coins / Mystery Blocks you have claimed x an 8-value
-  power-up / frozen countdown. It is a genuine **stochastic MDP**: **ice tiles** slip
+- **State (|S| ~ 23,000; seed-dependent, e.g. 23,488 on seed 1 - the briefing card
+  shows the exact live number):** `(your tile x collected-mask x status)` = ~140 floor
+  tiles (plus the interior wall tiles reachable while ghosting) x a 4-bit mask of which
+  of your coins / Mystery Blocks you have claimed x an 8-value power-up / frozen
+  countdown. It is a genuine **stochastic MDP**: **ice tiles** slip
   (30% chance a move deflects sideways) and Mystery Blocks give a random Ghost/Freeze
   outcome, so the transition `P(s'|s,a)` is probabilistic and known to the planner.
 - **Actions (4):** North / South / West / East.
@@ -96,8 +98,8 @@ Model **unknown**; the agent learns only from **complete-episode returns** (no
 bootstrapping). A creative extra beyond the brief's SARSA/Q pair - Monte Carlo completes
 the Sutton and Barto progression, and SARSA and Q-Learning both appear next door in Room 3.
 
-- **State (|S| = 2,088):** `(your tile x 3-bit tomato mask)` = 261 reachable cells x
-  which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
+- **State (|S| ~ 2,100; seed-dependent, e.g. 2,088 on seed 1):** `(your tile x 3-bit
+  tomato mask)` = ~260 reachable cells x which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
   return-to-goal depends on what you still need to collect). **Puddles** add a 12% skid.
 - **Actions (4):** North / South / West / East.
 - **Rewards:** step `-0.01`; collect a tomato (first time) `+0.35`; gather all 3 + reach
@@ -154,10 +156,10 @@ Model **unknown**, learned online with **one-step TD** - **SARSA** (on-policy) r
 **Q-Learning** (off-policy) head-to-head, so the brief's Room-2 (SARSA) and Room-3
 (Q-Learning) requirements are both demonstrated here.
 
-- **State (|S| = 9,840):** `(your tile x Goomba patrol phase x rival flag x secret-door
-  flag)` = 205 cells x the 4-step patrol phase the Goombas cycle on x a compact
-  ahead/level/behind + cage-ready rival flag (6) x whether your pressure-plate door is
-  open. A **wet-cell skid** (tunable, ~20%) is the variance that lets a racer fall behind.
+- **State (|S| ~ 9,840 on most seeds; halves when a seed generates no plate puzzle):**
+  `(your tile x Goomba patrol phase x rival flag x secret-door flag)` = ~205 cells x the
+  patrol phase the Goombas cycle on (4 at the defaults) x a compact ahead/level/behind +
+  cage-ready rival flag (6) x whether your pressure-plate door is open. A **wet-cell skid** (tunable, ~20%) is the variance that lets a racer fall behind.
 - **Actions (5):** North / South / West / East / **Stay** (wait out a Goomba).
 - **Rewards:** step `-0.01`; reach the goal first `+1.0`; grab your cage (freeze the
   rival) `+0.2`; caught by a Goomba `-1.0`; rival finishes first `-1.0`.
@@ -223,6 +225,27 @@ from **action-repeat** (a chosen heading is held for 4 steps) rather than moment
   buffer **50,000**, **500**-step warmup, target-net sync every **500** steps, **3-step**
   returns, **action-repeat 4**.
 
+**The 10 CPU characters (Round 4).** A stronger character plays closer to
+optimal (lower final epsilon = it DODGES instead of wandering into a Bill),
+learns faster (fewer decay episodes), and looks further ahead (higher gamma).
+All levels share the same network and training internals (128 x 2, batch 64,
+buffer 50k, warmup 500, target sync 500, 3-step returns).
+
+| Level | Character | alpha | gamma | eps start | eps end | decay episodes |
+| ----- | --------- | ----- | ----- | --------- | ------- | -------------- |
+| 0 | Mario | 0.20 | 0.980 | 1.00 | 0.30 | 4000 |
+| 1 | Luigi | 0.22 | 0.980 | 1.00 | 0.26 | 3600 |
+| 2 | Yoshi | 0.24 | 0.982 | 1.00 | 0.22 | 3200 |
+| 3 | Toadette | 0.26 | 0.984 | 0.98 | 0.18 | 2800 |
+| 4 | Pauline | 0.28 | 0.986 | 0.96 | 0.15 | 2400 |
+| 5 | Koopa | 0.30 | 0.988 | 0.94 | 0.12 | 2000 |
+| 6 | Bowser | 0.32 | 0.990 | 0.92 | 0.09 | 1600 |
+| 7 | Peach | 0.34 | 0.992 | 0.90 | 0.07 | 1200 |
+| 8 | Toad | 0.36 | 0.994 | 0.88 | 0.05 | 900 |
+| 9 | Parabones | 0.38 | 0.995 | 0.85 | 0.03 | 600 |
+
+R4_BEST_PLACEHOLDER
+
 ### Room 5 - Dry Dry Desert (Policy Gradient: Actor-Critic vs PPO, also REINFORCE)
 
 Model **unknown**, and the policy itself is a network (policy-*based*, not value-based) -
@@ -248,6 +271,27 @@ layout can be generated any time ("New world") to test the learned policy.
   **0.01**, GAE **lambda = 0.95**, value-loss weight **0.5**, rollout **horizon** (64 for
   Actor-Critic, 512 for PPO), PPO **clip = 0.2**, PPO **epochs = 4**, minibatch **128**,
   network **128**. Decision step **0.05 s**; object sight range **6 m** (tunable).
+
+**The 10 CPU characters (Round 5).** Policy gradients have no epsilon (they
+explore via policy ENTROPY), so difficulty is the learning rate, the discount,
+and the entropy coefficient: a weak character learns slowly, plans
+short-sighted, and stays random forever; a strong one learns fast and commits
+to a sharp policy.
+
+| Level | Character | alpha | gamma | entropy |
+| ----- | --------- | ----- | ----- | ------- |
+| 0 | Mario | 0.10 | 0.970 | 0.050 |
+| 1 | Luigi | 0.14 | 0.972 | 0.042 |
+| 2 | Yoshi | 0.18 | 0.974 | 0.035 |
+| 3 | Toadette | 0.22 | 0.976 | 0.028 |
+| 4 | Pauline | 0.26 | 0.978 | 0.022 |
+| 5 | Koopa | 0.30 | 0.980 | 0.017 |
+| 6 | Bowser | 0.34 | 0.983 | 0.013 |
+| 7 | Peach | 0.38 | 0.986 | 0.009 |
+| 8 | Toad | 0.42 | 0.988 | 0.006 |
+| 9 | Parabones | 0.46 | 0.990 | 0.004 |
+
+R5_BEST_PLACEHOLDER
 
 The CPU (Red) reads the same knobs, but its values come from the chosen character's
 **difficulty tier** (10 characters, easy -> hard): a weaker character learns slower
