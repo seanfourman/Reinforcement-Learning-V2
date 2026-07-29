@@ -339,7 +339,6 @@ def main():
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     print("Rival Minds - live self-play RL arena")
     print(f"Running at {url}")
-    print("Two models are training live. R = reset models, C = control panel.")
     print("Keep this window open. Press Ctrl+C to stop.")
     threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
