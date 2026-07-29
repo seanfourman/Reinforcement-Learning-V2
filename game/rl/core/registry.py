@@ -35,6 +35,8 @@ from arenas.r5_tostarena import world as r5_world
 from arenas.r1_peach_castle.env import PeachCastleEnv
 from arenas.r2_new_donk_city.env import NewDonkCityEnv
 from arenas.r3_fossil_falls.env import FossilFallsEnv
+from arenas.r4_ruined_kingdom.arena import MissileArena
+from arenas.r5_tostarena.arena import CtfArena
 from arenas.r1_peach_castle.value_iteration import ValueIteration
 from arenas.r1_peach_castle.policy_iteration import PolicyIteration
 from arenas.r2_new_donk_city.monte_carlo import MonteCarlo
@@ -103,6 +105,19 @@ def make_grid_env(round_id, seed):
     """Build a grid round's live environment (its arena env over the engine)."""
     cls = GRID_ENVS.get(round_id, PeachCastleEnv)
     return cls(seed, round_id=round_id)
+
+
+# round id -> that continuous round's arena subclass
+CONTINUOUS_ENVS = {
+    4: MissileArena,
+    5: CtfArena,
+}
+
+
+def make_continuous_env(round_id, seed, theme):
+    """Build a continuous round's live arena (its subclass over the engine)."""
+    cls = CONTINUOUS_ENVS.get(round_id, MissileArena)
+    return cls(seed, round_id=round_id, theme=theme)
 
 
 def round_algos(round_id):

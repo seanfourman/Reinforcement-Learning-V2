@@ -26,8 +26,8 @@ from arenas.r1_peach_castle.env import (COIN_REWARD, BLOCK_REWARD,
                                         GHOST_LEN, FREEZE_LEN, SLIP_PROB)
 from arenas.r2_new_donk_city.env import R2_SLIP_PROB, STAR_REWARD
 from arenas.r3_fossil_falls.env import R3_SLIP_PROB, CAGE_REWARD, CAGE_LEN
-from continuous import (ContinuousArena, PICKUP_EFFECT_SECONDS,
-                        SPEED_MULTIPLIER, SLOW_MULTIPLIER)
+from arenas.r4_ruined_kingdom.arena import (PICKUP_EFFECT_SECONDS,
+                                            SPEED_MULTIPLIER, SLOW_MULTIPLIER)
 # All algorithm name -> class wiring lives in core/registry.py. The deep (R4/R5)
 # factories imported here are LAZY: make_dqn / make_pg import torch only when a
 # deep agent is actually built, so the server still boots and runs the tabular /
@@ -363,8 +363,8 @@ class Match:
         mod = registry.ROUND_MODULES.get(round_id)
         seed = self.train_seed
         if getattr(mod, "CONTINUOUS", False):
-            return ContinuousArena(seed, round_id=round_id,
-                                   theme=getattr(mod, "THEME", "ruined"))
+            return registry.make_continuous_env(round_id, seed,
+                                                getattr(mod, "THEME", "ruined"))
         return registry.make_grid_env(round_id, seed)
 
     def _apply_env_config(self):

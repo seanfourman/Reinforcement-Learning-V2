@@ -130,11 +130,12 @@ if __name__ == "__main__":
     from collections import deque
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-    from continuous import ContinuousArena, N_ACTIONS
+    from core.continuous_arena import N_ACTIONS
     from core.registry import make_pg
+    from arenas.r5_tostarena.arena import CtfArena
 
     which = sys.argv[1] if len(sys.argv) > 1 else "ppo"
-    env = ContinuousArena(seed=0, round_id=5, theme="tostarena")
+    env = CtfArena(seed=0, round_id=5, theme="tostarena")
     agent = make_pg(which, env.obs_dim, N_ACTIONS, alpha=0.2, gamma=0.99, seed=0)
     print(f"training {agent.name} on Capture the Flag (Red learns, Blue coasts) ...")
 

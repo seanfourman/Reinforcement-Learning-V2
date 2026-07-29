@@ -32,9 +32,10 @@ if __name__ == "__main__":
     from collections import deque
 
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-    from continuous import ContinuousArena, N_ACTIONS, OBS_DIM
+    from core.continuous_arena import N_ACTIONS
+    from arenas.r4_ruined_kingdom.arena import MissileArena, OBS_DIM
 
-    env = ContinuousArena(seed=0)
+    env = MissileArena(seed=0)
     agent = DoubleDQNAgent(OBS_DIM, N_ACTIONS, alpha=0.2, gamma=0.98, seed=0, warmup=500)
 
     EPISODES = 500
