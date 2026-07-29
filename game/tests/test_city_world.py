@@ -498,6 +498,13 @@ def test_arena2_cpu_profiles_are_variant_monotonic_and_reset_per_round(tmp_path)
         )
         assert all(p["gamma"] == 0.98 for p in family)
 
+    # Arena 3 (Fossil Falls) has its own ladder: one monotonic list 0..9 (no MC families).
+    r3 = [red_params(i, 3) for i in range(10)]
+    assert [p["alpha"] for p in r3] == sorted(p["alpha"] for p in r3)
+    assert [p["eps_end"] for p in r3] == sorted((p["eps_end"] for p in r3), reverse=True)
+    assert [p["eps_episodes"] for p in r3] == sorted((p["eps_episodes"] for p in r3), reverse=True)
+    assert all(p["gamma"] == 0.98 for p in r3)
+
     match = Match(seed=7, round_id=1, checkpoint_dir=tmp_path)
     match.set_cpu_tier(5, 9)
     assert match.red_alpha == 0.40
@@ -514,9 +521,10 @@ def test_arena2_cpu_profiles_are_variant_monotonic_and_reset_per_round(tmp_path)
     # Manual overrides never leak into a later stage or a fresh return to Arena 2.
     match.set_red_params({"alpha": 0.99, "epsEnd": 0.01})
     assert match.red_alpha == 0.99
-    match.set_round(3)
+    match.set_round(3)                       # Arena 3 resolves the character's R3_LADDER block
     assert match.red_alpha == 0.40
-    assert match.red_eps_end == 0.01
+    assert match.red_eps_end == 0.02
+    assert match.red_eps_episodes == 550
     match.set_round(2)
     assert match.red_alpha == 0.22
     assert match.red_eps_end == 0.16

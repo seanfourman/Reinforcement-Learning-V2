@@ -360,12 +360,11 @@ export function initHud() {
     '<svg class="fb-tomato" viewBox="0 0 24 24" aria-hidden="true">' +
     '<path d="M12 6.2c5.55-1.45 9.15 1.7 8.75 6.65-.42 5.2-4.12 8.15-8.75 8.15s-8.33-2.95-8.75-8.15C2.85 7.9 6.45 4.75 12 6.2z M12 7.65 9.55 5.5 6.35 6.1 8.2 3.45 7.6 1.4 11 3.25 13.75 1.2 13.45 4.05 17.65 4.65 14.3 6.05z"/>' +
     "</svg>";
-  // a waving flag on a rounded pole, filled per side like the hearts/tomatoes
+  // a pennant (triangle) flag on a rounded pole, filled per side like the hearts
   const FLAG_SVG =
     '<svg class="fb-flag" viewBox="0 0 24 24" aria-hidden="true">' +
-    '<path d="M5.5 2.5a.85.85 0 0 1 .85.85V20.65a.85.85 0 0 1-1.7 0V3.35A.85.85 0 0 1 5.5 2.5Z ' +
-    "M6.9 3.8C9.5 2.5 12 5 14.6 3.8 16.2 3.1 17.7 3.5 19.1 4.2V10.9C17.7 10.2 16.2 9.8 14.6 10.5 " +
-    '12 11.7 9.5 9.2 6.9 10.5Z"/>' +
+    '<path d="M6 2.6a.85.85 0 0 1 .85.85V20.55a.85.85 0 0 1-1.7 0V3.45A.85.85 0 0 1 6 2.6Z ' +
+    'M7.2 3.6 18.7 6.9a.6.6 0 0 1 0 1.1L7.2 11.2Z"/>' +
     "</svg>";
   const heartBox = { blue: $("#fb-hearts-blue"), red: $("#fb-hearts-red") };
   function setProgressPips(side, filled, max, kind) {

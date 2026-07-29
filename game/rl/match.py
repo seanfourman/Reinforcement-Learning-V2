@@ -170,6 +170,30 @@ R4_LADDER = [
 BLUE_R4 = {"alpha": .30, "gamma": .99, "eps_start": 1.00, "eps_end": .05, "eps_episodes": 2500}
 
 
+# Arena 3 (Fossil Falls, SARSA vs Q-Learning) CPU ladder. Retuned 2026-07-29 after the round
+# grew richer (patrolling Goombas + a WET-skid + an off-route CAGE + a boulder/pressure-plate
+# SECRET-DOOR, and a bigger state). The old generic RED_MODELS schedules (ε decaying over up to
+# 9000 episodes) left the easy characters non-functional at any realistic training budget - they
+# never even reached the exit. Here EVERY character learns a working policy within ~2k episodes
+# (ε_start=1.0, short decay, α high enough); the DIFFICULTY comes from the held final ε (the
+# random-move rate each character keeps playing at forever): Mario ~0.32 = a weak, dithering
+# opponent that mostly loses, down to Parabones ~0.02 = near-optimal. α also ramps up so the
+# stronger characters converge sooner. Monotonic; the player's default Blue holds ε=0.05, so it
+# out-plays everyone up to ~Koopa and must be tuned to beat Peach/Toad/Parabones. Index = level 0..9.
+R3_LADDER = [
+    {"alpha": .24, "gamma": .98, "eps_start": 1.00, "eps_end": .40, "eps_episodes": 2200},  # 0 Mario
+    {"alpha": .26, "gamma": .98, "eps_start": 1.00, "eps_end": .35, "eps_episodes": 2000},  # 1 Luigi
+    {"alpha": .28, "gamma": .98, "eps_start": 1.00, "eps_end": .30, "eps_episodes": 1800},  # 2 Yoshi
+    {"alpha": .30, "gamma": .98, "eps_start": 1.00, "eps_end": .25, "eps_episodes": 1600},  # 3 Toadette
+    {"alpha": .32, "gamma": .98, "eps_start": 1.00, "eps_end": .20, "eps_episodes": 1400},  # 4 Pauline
+    {"alpha": .34, "gamma": .98, "eps_start": 1.00, "eps_end": .15, "eps_episodes": 1200},  # 5 Koopa
+    {"alpha": .36, "gamma": .98, "eps_start": 1.00, "eps_end": .11, "eps_episodes": 1000},  # 6 Bowser
+    {"alpha": .38, "gamma": .98, "eps_start": 1.00, "eps_end": .08, "eps_episodes": 850},   # 7 Peach
+    {"alpha": .39, "gamma": .98, "eps_start": 1.00, "eps_end": .05, "eps_episodes": 700},   # 8 Toad
+    {"alpha": .40, "gamma": .98, "eps_start": 1.00, "eps_end": .02, "eps_episodes": 550},   # 9 Parabones
+]
+
+
 def red_params(level, round_id=None):
     """Resolved CPU profile for a character and arena.
 
@@ -181,6 +205,8 @@ def red_params(level, round_id=None):
     resolved = {k: v for k, v in raw.items() if k != "r2"}
     if round_id == 2:
         resolved.update(raw["r2"])
+    elif round_id == 3:
+        resolved.update(R3_LADDER[idx])
     elif round_id == 4:
         resolved.update(R4_LADDER[idx])
     return resolved
@@ -1889,14 +1915,17 @@ class Match:
                 # opposite bottom corners and hunt the shared top-centre exit; 6 Goombas patrol
                 # as sentries. A 5th action, STAY, lets a racer wait a beat to time the Goombas.
                 actions = ["North", "South", "West", "East", "Stay"]
+                has_puzzle = bool(getattr(env, "puzzle", {}) and any(env.puzzle.values()))
+                door_n = 2 if has_puzzle else 1
                 state_desc = (
                     f"your tile, the Goomba patrol PHASE (steps mod {env._phase_period}: the "
-                    "shared cycle on which every Goomba's position repeats), and a compact RIVAL "
+                    "shared cycle on which every Goomba's position repeats), a compact RIVAL "
                     "flag (ahead / level / behind, plus whether YOUR cage pickup is still ready)"
+                    + (", and whether YOUR pressure-plate door is open yet" if has_puzzle else "")
                 )
                 n_cells_r3 = getattr(env, "n_cells", 0)
                 phase_period = int(getattr(env, "_phase_period", 1))
-                state_size = (n_cells_r3 * phase_period * 6) or None
+                state_size = (n_cells_r3 * phase_period * 6 * door_n) or None
                 if n_cells_r3:
                     state_factors = [
                         {"label": "Your tile", "n": n_cells_r3,
@@ -1908,11 +1937,16 @@ class Match:
                          "detail": "ahead / level / behind x cage-ready",
                          "color": "#8b5cf6"},
                     ]
+                    if has_puzzle:
+                        state_factors.append(
+                            {"label": "Secret door", "n": 2,
+                             "detail": "open? (boulder pushed onto your plate) - a permanent shortcut",
+                             "color": "#c9862a"})
                 observation = (
                     "Its own tile, the patrol phase (so it can TIME the moving Goombas), where the "
                     "rival is, and whether its own cage pickup is still there to grab."
                 )
-                observation_tuple = "(cell, phase, rival_flag)"
+                observation_tuple = "(cell, phase, rival_flag, door)" if has_puzzle else "(cell, phase, rival_flag)"
                 sees_opp = True
                 opp_info = (
                     "The rival's RELATIVE position is in the state (ahead / level / behind), and a "
@@ -1925,8 +1959,10 @@ class Match:
                     "branch - a Goomba on your cell = DEATH, so wait for the gap and slip through. "
                     "WET puddles on the route can SKID your move sideways (the luck that lets one "
                     "racer fall behind). An OFF-route CAGE pickup per side: grab yours (worth it "
-                    "when you're behind) to freeze the rival for several steps and catch up. The "
-                    "maze is MIRROR-SYMMETRIC: both racers face an identical route to the top exit."
+                    "when you're behind) to freeze the rival for several steps and catch up. Some "
+                    "mazes add a PRESSURE-PLATE puzzle: shove a BOULDER onto your plate to open a "
+                    "sealed SECRET-DOOR shortcut (held open for the rest of the episode). The maze "
+                    "is MIRROR-SYMMETRIC: both racers face an identical route to the top exit."
                 )
                 rewards = [["Step", -0.01], ["Reach the goal first (win)", 1.0],
                            ["Grab your cage (freeze the rival)", round(getattr(env, "cage_reward", 0.2), 2)],

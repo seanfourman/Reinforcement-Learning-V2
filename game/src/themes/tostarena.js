@@ -867,6 +867,18 @@ export const tostarena = {
             lo: bb.min.getComponent(lenAxis),
             range: ext[lenAxis] || 1,
           };
+          // centre the POLE dead-centre: the cloth was offset to one side and skewed
+          // the model bbox, so fitObj left the pole off-centre. Shift the (now pole-
+          // only) model AND the cloth's home by the same offset so the cloth stays put.
+          wrap.updateMatrixWorld(true);
+          const pc = new THREE.Box3().setFromObject(wrap).getCenter(new THREE.Vector3());
+          const ox = pc.x - C, oz = pc.z - C;
+          wrap.position.x -= ox;
+          wrap.position.z -= oz;
+          cw.position.x -= ox;
+          cw.position.z -= oz;
+          flag.clothHome.x -= ox;
+          flag.clothHome.z -= oz;
         }
       }).catch(() => {});
     }
@@ -922,89 +934,15 @@ export const tostarena = {
       blue: makeBase(bases.blue, BLUE),
     };
 
-    // ---- carrier foot-ring (shows WHO is carrying) -------------------------
-    const carryRing = {};
-    for (const [side, color] of [["red", RED], ["blue", BLUE]]) {
-      const m = track(
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: 0.85,
-          side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        }),
-      );
-      const r = new THREE.Mesh(track(new THREE.RingGeometry(0.72, 0.98, 40)), m);
-      r.rotation.x = -Math.PI / 2;
-      r.position.y = 0.09;
-      r.visible = false;
-      group.add(r);
-      carryRing[side] = r;
-    }
-
-    // ---- one-shot grab/steal/capture/crate/chain/bomb bursts ---------------
+    // ---- one-shot event de-dup (so a transient effect fires once per event) --
     const seenEvents = new Set();
     const seenOrder = [];
-    const bursts = [];
     function rememberEvent(id) {
       if (seenEvents.has(id)) return false;
       seenEvents.add(id);
       seenOrder.push(id);
       if (seenOrder.length > 256) seenEvents.delete(seenOrder.shift());
       return true;
-    }
-    function spawnBurst(ev) {
-      const color =
-        ev.type === "capture"
-          ? ev.side === "red" ? 0xff7a4d : 0x4db0ff
-          : ev.type === "steal"
-            ? 0xffd24d
-            : ev.type === "crate"
-              ? POWER_COLOR[ev.powerup] ?? 0xc98a3a
-              : ev.type === "bomb"
-                ? 0xff6a4d
-                : ev.type === "chain"
-                  ? 0xffb347
-                  : 0xfff0b0;                    // grab
-      const big = ev.type === "capture";
-      const bg = new THREE.Group();
-      bg.position.set(ev.pos[0], 0.5, ev.pos[1]);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.42, 40), ringMat);
-      ring.rotation.x = -Math.PI / 2;
-      bg.add(ring);
-      const light = new THREE.PointLight(color, big ? 3.5 : 2.2, 8, 2);
-      bg.add(light);
-      group.add(bg);
-      bursts.push({ bg, ring, ringMat, light, t: 0, dur: big ? 0.9 : 0.55, big });
-    }
-    function disposeBurst(b) {
-      group.remove(b.bg);
-      b.ringMat.dispose();
-      b.ring.geometry.dispose();
-    }
-    function updateBursts(dt) {
-      for (let i = bursts.length - 1; i >= 0; i--) {
-        const b = bursts[i];
-        b.t += dt;
-        const u = b.t / b.dur;
-        b.ring.scale.setScalar(1 + u * (b.big ? 9 : 5));
-        b.ringMat.opacity = Math.max(0, 0.9 * (1 - u));
-        b.light.intensity = (b.big ? 3.5 : 2.2) * (1 - u);
-        b.bg.position.y = 0.5 + u * (b.big ? 1.6 : 0.8);
-        if (u >= 1) {
-          disposeBurst(b);
-          bursts.splice(i, 1);
-        }
-      }
     }
 
     // ---- breakable crates: the real FrailBox (deskinned), pooled by id ------
@@ -1169,19 +1107,6 @@ export const tostarena = {
         pos.needsUpdate = true;
       }
 
-      // carrier foot-ring
-      for (const side of ["red", "blue"]) {
-        const on = holder === side;
-        const r = carryRing[side];
-        r.visible = on;
-        if (on) {
-          const p = frame?.[side];
-          if (p) { r.position.x = p[0]; r.position.z = p[1]; }
-          r.rotation.z += dt * 2;
-          r.scale.setScalar(1 + Math.sin(t * 8) * 0.06);
-        }
-      }
-
       // home bases: just a gentle glow pulse (capture COUNT is shown in the HUD)
       for (const side of ["red", "blue"]) {
         const ph = side === "red" ? 0 : 1.5;
@@ -1209,25 +1134,21 @@ export const tostarena = {
         }
       }
 
-      // crates + one-shot event bursts + chain yanks
+      // crates + the transient chain-yank FX
       syncCrates(frame, t, dt);
       for (const ev of frame?.ctfEvents || []) {
         if (!rememberEvent(ev.id)) continue;
-        spawnBurst(ev);
         if (ev.type === "chain" && ev.target) {
           const to = frame?.[ev.target];
           if (ev.pos && to) spawnChain(ev.pos, to);
         }
       }
-      updateBursts(dt);
       updateChains(dt);
     }
 
     function resetEffects(frameToSuppress = null) {
       seenEvents.clear();
       seenOrder.length = 0;
-      for (const b of bursts) disposeBurst(b);
-      bursts.length = 0;
       for (const c of chainFx) disposeChain(c);
       chainFx.length = 0;
       // absorb events already present in a restored frame so they don't re-fire
@@ -1278,14 +1199,12 @@ export const tostarena = {
         tumble.visible = false;
       }
 
-      // the Capture-the-Flag props (flag / crates / bases / auras / bursts)
+      // the Capture-the-Flag props (flag / crates / bases / auras / chain FX)
       updateCTF(t, dt, frame);
     }
 
     function dispose() {
       disposed = true;
-      for (const b of bursts) disposeBurst(b);
-      bursts.length = 0;
       for (const c of chainFx) disposeChain(c);
       chainFx.length = 0;
       for (const [, m] of crateMeshes) group.remove(m);

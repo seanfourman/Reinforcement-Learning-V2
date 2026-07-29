@@ -1460,32 +1460,16 @@ export const fossilfalls = {
       }).catch((e) => console.warn("Cage pickup failed to load", e));
     }
 
-    // -- PRESSURE-PLATE puzzles: a BOULDER you shove onto a PLATE to open a SECRET DOOR ------
+    // -- PRESSURE-PLATE puzzles: shove a BOULDER onto a MANHOLE plate to open a BRICK door ---
     const puzzles = [];
     for (const pz of world.platePuzzles || []) {
-      const [dr0, dc0] = pz.door;
-      const [pr0, pc0] = pz.plate;
-      const [br0, bc0] = pz.boulder;
-      const plateMat = track(new THREE.MeshStandardMaterial({
-        color: 0x5c4a2e, emissive: 0xffa63a, emissiveIntensity: 0.0, roughness: 0.55, metalness: 0.35,
-      }));
-      const plate = new THREE.Mesh(track(new THREE.CylinderGeometry(0.34, 0.42, 0.12, 18)), plateMat);
-      plate.position.set(pc0 + 0.5, SLAB_TOP + 0.06, pr0 + 0.5);
-      plate.receiveShadow = true;
-      group.add(plate);
-      // the SEALED secret door: a stone slab that rises to block, sinks + fades when unlocked
-      const doorMat = track(new THREE.MeshStandardMaterial({
-        color: 0x8b949c, roughness: 0.92, metalness: 0.05, transparent: true, opacity: 1,
-      }));
-      const doorBar = new THREE.Mesh(track(new THREE.BoxGeometry(0.9, 1.15, 0.9)), doorMat);
-      const doorBaseY = SLAB_TOP + 0.575;
-      doorBar.position.set(dc0 + 0.5, doorBaseY, dr0 + 0.5);
-      doorBar.castShadow = true;
-      group.add(doorBar);
-      puzzles.push({ door: [dr0, dc0], plate, plateMat, doorBar, doorMat, doorBaseY,
-                     boulderWrap: null, start: [br0, bc0] });
+      puzzles.push({
+        door: pz.door.slice(), plate: pz.plate.slice(), start: pz.boulder.slice(),
+        boulderWrap: null, doorGroup: null, doorBaseY: SLAB_TOP, doorSink: 2.0,
+      });
     }
     if (puzzles.length) {
+      // BOULDER (the rock you push)
       const rockMat = track(new THREE.MeshStandardMaterial({
         map: objTex(OBJ + "Boulder/RockForest01_alb.png", true),
         normalMap: objTex(OBJ + "Boulder/RockForest01_nrm.png", false),
@@ -1504,6 +1488,52 @@ export const fossilfalls = {
           pz.boulderWrap = b;
         }
       }).catch((e) => console.warn("Boulder failed to load", e));
+
+      // PLATE = a metal MANHOLE cover, flush on the floor, with a glow ring that lights when pressed
+      const manMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(OBJ + "Manhole/MetalManhole03_alb.png", true),
+        normalMap: objTex(OBJ + "Manhole/MetalManhole03_nrm.png", false),
+        roughnessMap: objTex(OBJ + "Manhole/MetalManhole03_rgh.png", false),
+        metalnessMap: objTex(OBJ + "Manhole/MetalManhole03_mtl.png", false),
+        metalness: 0.6, roughness: 0.55, envMapIntensity: 1.3,
+      }));
+      collada.loadAsync(encodeURI(OBJ + "Manhole/CityWorldHomeManhole003.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        // the manhole is a GENUINE Z-up model (like the taxi): KEEP the loader's Z_UP->Y_UP
+        // rotation so it lies FLAT on the floor. Resetting it stands the cover up vertically.
+        root.traverse((o) => { if (o.isMesh) { o.material = manMat; o.receiveShadow = true; track(o.geometry); } });
+        const proto = fitObj(root, 0.95, false);
+        for (const pz of puzzles) {
+          const m = proto.clone();
+          m.position.set(pz.plate[1] + 0.5, SLAB_TOP + 0.02, pz.plate[0] + 0.5);
+          group.add(m);
+        }
+      }).catch((e) => console.warn("Manhole failed to load", e));
+
+      // DOOR = two BRICK blocks STACKED, sealing the shortcut until the plate is pressed
+      const brickMat = track(new THREE.MeshStandardMaterial({
+        map: objTex(OBJ + "Brick Block/BlockBrickBody_alb.png", true),
+        normalMap: objTex(OBJ + "Brick Block/BlockBrickBody_nrm.png", false),
+        roughnessMap: objTex(OBJ + "Brick Block/BlockBrickBody_rgh.png", false),
+        roughness: 0.9, metalness: 0.05,
+      }));
+      collada.loadAsync(encodeURI(OBJ + "Brick Block/BlockBrick.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        root.traverse((o) => { if (o.isMesh) { o.material = brickMat; o.castShadow = true; track(o.geometry); } });
+        const proto = fitObj(root, 0.9, false);
+        const unit = 0.9;                                 // one brick's height (fit is ~cubic)
+        for (const pz of puzzles) {
+          const g = new THREE.Group();
+          const b1 = proto.clone(); b1.position.y = 0;      g.add(b1);
+          const b2 = proto.clone(); b2.position.y = unit;   g.add(b2);   // stacked on top
+          g.position.set(pz.door[1] + 0.5, pz.doorBaseY, pz.door[0] + 0.5);
+          group.add(g);
+          pz.doorGroup = g;
+          pz.doorSink = 2 * unit + 0.2;                   // drop this far to hide fully below the floor
+        }
+      }).catch((e) => console.warn("Brick door failed to load", e));
     }
 
     // -- the drop cage (one per side, hidden until that agent is caged) -------
@@ -1652,12 +1682,11 @@ export const fossilfalls = {
             pz.boulderWrap.position.x += (tx - pz.boulderWrap.position.x) * k;
             pz.boulderWrap.position.z += (tz - pz.boulderWrap.position.z) * k;
           }
-          pz.plateMat.emissiveIntensity += ((fp.open ? 0.9 : 0.0) - pz.plateMat.emissiveIntensity) * Math.min(1, dt * 6);
-          const targetY = fp.open ? pz.doorBaseY - 1.3 : pz.doorBaseY;          // open = sunk
-          pz.doorBar.position.y += (targetY - pz.doorBar.position.y) * k;
-          const sealed = (pz.doorBar.position.y - (pz.doorBaseY - 1.3)) / 1.3;
-          pz.doorMat.opacity = 0.15 + 0.85 * sealed;
-          pz.doorBar.visible = sealed > 0.02;
+          if (pz.doorGroup) {                                    // the two brick blocks drop below the floor when open
+            const targetY = fp.open ? pz.doorBaseY - pz.doorSink : pz.doorBaseY;
+            pz.doorGroup.position.y += (targetY - pz.doorGroup.position.y) * k;
+            pz.doorGroup.visible = pz.doorGroup.position.y > pz.doorBaseY - pz.doorSink + 0.05;
+          }
         }
       }
       // Round-3 cage drops: while frame.caged[side] > 0, a cage falls from off-screen onto
