@@ -107,6 +107,37 @@ def trainer():
 
 # ------------------------------------------------------------------- HTTP layer
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        """Map a URL to a file, falling back to case-insensitive matching.
+
+        Asset files are stored lowercase but the models (DAE/OBJ) reference
+        their textures in mixed case. Windows resolves that silently; a Linux
+        host (Render) is case-sensitive and would 404 every such texture, so
+        when the exact path is missing, re-resolve each missing component
+        against the real directory listing ignoring case."""
+        p = super().translate_path(path)
+        if os.path.exists(p):
+            return p
+        missing = []
+        head = p
+        while head and not os.path.exists(head):
+            head, tail = os.path.split(head)
+            if not tail:               # hit a filesystem root that doesn't exist
+                return p
+            missing.append(tail)
+        cur = head
+        for name in reversed(missing):
+            try:
+                entries = os.listdir(cur or os.curdir)
+            except OSError:
+                return p
+            low = name.lower()
+            match = next((e for e in entries if e.lower() == low), None)
+            if match is None:
+                return p
+            cur = os.path.join(cur, match)
+        return cur
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.send_header("Pragma", "no-cache")
