@@ -31,7 +31,10 @@ sweeps*). ``learn_step`` is where a sweep budget is spent (the agent "thinks"
 as it moves), and ``end_episode`` is a no-op.
 """
 
-from env import MOVE_ACTIONS, N_ACTIONS, GHOST_LEN, FREEZE_LEN, WALL
+from core.grid_env import MOVE_ACTIONS, N_ACTIONS
+from core.worldgen import WALL
+
+from .env import GHOST_LEN, FREEZE_LEN
 
 GOAL_REWARD = 1.0      # reward for transitioning INTO the goal (then terminal)
 DEFAULT_PLAN_SPEED = 0.6   # Bellman sweeps per tick (the convergence-race knob)

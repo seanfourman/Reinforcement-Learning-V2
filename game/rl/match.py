@@ -22,10 +22,10 @@ import os
 import threading
 from collections import deque
 
-from env import (GridWorld,
-                 COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
-                 SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD,
-                 CAGE_REWARD, CAGE_LEN)
+from arenas.r1_peach_castle.env import (COIN_REWARD, BLOCK_REWARD,
+                                        GHOST_LEN, FREEZE_LEN, SLIP_PROB)
+from arenas.r2_new_donk_city.env import R2_SLIP_PROB, STAR_REWARD
+from arenas.r3_fossil_falls.env import R3_SLIP_PROB, CAGE_REWARD, CAGE_LEN
 from continuous import (ContinuousArena, PICKUP_EFFECT_SECONDS,
                         SPEED_MULTIPLIER, SLOW_MULTIPLIER)
 # All algorithm name -> class wiring lives in core/registry.py. The deep (R4/R5)
@@ -358,14 +358,14 @@ class Match:
     # ------------------------------------------------------------------ setup
     def _make_env(self, round_id):
         """Pick the env for a round: the shared continuous arena for a CONTINUOUS
-        round (its module THEME picks the 3D scene), else the tabular grid world.
-        SKELETON: both are bare navigate/fly-to-goal shells (no hazards)."""
+        round (its module THEME picks the 3D scene), else that round's grid-env
+        subclass from the registry."""
         mod = registry.ROUND_MODULES.get(round_id)
         seed = self.train_seed
         if getattr(mod, "CONTINUOUS", False):
             return ContinuousArena(seed, round_id=round_id,
                                    theme=getattr(mod, "THEME", "ruined"))
-        return GridWorld(seed, round_id=round_id)
+        return registry.make_grid_env(round_id, seed)
 
     def _apply_env_config(self):
         """Apply the step-cap override + the Round-1 mechanic params onto the current env,

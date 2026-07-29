@@ -32,6 +32,9 @@ from arenas.r2_new_donk_city import world as r2_world
 from arenas.r3_fossil_falls import world as r3_world
 from arenas.r4_ruined_kingdom import world as r4_world
 from arenas.r5_tostarena import world as r5_world
+from arenas.r1_peach_castle.env import PeachCastleEnv
+from arenas.r2_new_donk_city.env import NewDonkCityEnv
+from arenas.r3_fossil_falls.env import FossilFallsEnv
 from arenas.r1_peach_castle.value_iteration import ValueIteration
 from arenas.r1_peach_castle.policy_iteration import PolicyIteration
 from arenas.r2_new_donk_city.monte_carlo import MonteCarlo
@@ -85,6 +88,21 @@ def make_world(round_id=1, seed=None, **cfg):
     """Build a grid round's ``World`` via its arena's generator."""
     mod = ROUND_MODULES.get(round_id, r1_world)
     return mod.generate(seed, **cfg)
+
+
+# round id -> that grid round's env subclass (the continuous rounds 4/5 use the
+# shared continuous arena instead; the tournament checks the module's CONTINUOUS flag)
+GRID_ENVS = {
+    1: PeachCastleEnv,
+    2: NewDonkCityEnv,
+    3: FossilFallsEnv,
+}
+
+
+def make_grid_env(round_id, seed):
+    """Build a grid round's live environment (its arena env over the engine)."""
+    cls = GRID_ENVS.get(round_id, PeachCastleEnv)
+    return cls(seed, round_id=round_id)
 
 
 def round_algos(round_id):
