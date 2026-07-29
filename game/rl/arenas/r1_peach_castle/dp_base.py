@@ -1,9 +1,9 @@
-"""Dynamic-Programming planners for Round 1 - the MODEL-KNOWN maze.
+"""The shared Dynamic-Programming planner machinery for Round 1.
 
-Because the transition model P(s'|s,a) is *known* (see ``env.move_dist``), we don't
-learn from experience: we **plan** the optimal policy with Dynamic Programming, as
-in Benny's DP lecture. Round 1 (Peach's Castle) is a single-goal maze: navigate from
-the spawn to the Power Moon.
+Because the transition model P(s'|s,a) is *known* (see the env's
+``state_transition``), Round 1 does not learn from experience: it **plans** the
+optimal policy with Dynamic Programming. Round 1 (Peach's Castle) is a
+single-goal maze: navigate from the spawn to the Power Moon.
 
 The twist that makes it a RACE: instead of solving to convergence up front, each
 planner advances a few Bellman sweeps PER TICK (``plan_speed``) and the agent acts on
@@ -13,16 +13,22 @@ policy sharpens and it beelines. Whoever converges faster (more sweeps/tick, bet
 gamma) reaches the Moon sooner - and once BOTH converge they play the same optimum,
 so it settles to a draw. That is the whole DP-vs-DP contest.
 
-  * ``ValueIteration``  - each sweep: Bellman-optimality backup V(s) <- max_a Q(s,a),
-    policy read off greedily.
-  * ``PolicyIteration`` - each sweep: one policy-EVALUATION pass of the current
-    policy; when evaluation settles, one greedy IMPROVEMENT; stable policy = done.
+``_DPBase`` here owns everything both methods share: enumerating the state
+space, precomputing the transition model, the incremental sweep budget, the
+convergence bookkeeping the dashboard charts, and the standard agent interface
+(``policy_action`` / ``learn_step`` / ``q_values`` / ...) so the tournament
+drives a planner exactly like a learner. Subclasses implement one method,
+``_sweep`` - the actual Bellman update - which IS the VI-vs-PI contrast:
 
-Both converge to the SAME optimal policy (the contrast is *how* + *how many sweeps*).
-The planners conform to the agent interface (``policy_action`` / ``learn_step`` /
-``value`` / ``q_values`` / ``set_epsilon`` / ``reset_learning``) so match.py and the
-heatmap reuse them unchanged; ``learn_step`` is where a sweep budget is spent (the
-agent "thinks" as it moves), and ``end_episode`` is a no-op.
+  * ``value_iteration.py``  - each sweep: Bellman-optimality backup
+    V(s) <- max_a Q(s,a), policy read off greedily.
+  * ``policy_iteration.py`` - each sweep: one policy-EVALUATION pass of the
+    current policy; when evaluation settles, one greedy IMPROVEMENT; stable
+    policy = done.
+
+Both converge to the SAME optimal policy (the contrast is *how* + *how many
+sweeps*). ``learn_step`` is where a sweep budget is spent (the agent "thinks"
+as it moves), and ``end_episode`` is a no-op.
 """
 
 from env import MOVE_ACTIONS, N_ACTIONS, GHOST_LEN, FREEZE_LEN, WALL
@@ -243,81 +249,3 @@ class _DPBase:
 
     def reset_learning(self):
         self._init_plan()           # "relearn" = restart the plan from scratch
-
-
-class ValueIteration(_DPBase):
-    name = "Value Iteration"
-    mode = "value_iteration"
-
-    def _sweep(self):
-        # SYNCHRONOUS (Jacobi) backup: read the OLD V for every state, write into a
-        # fresh table, then swap - so value spreads ONE ring per sweep (the visible
-        # wave), instead of jumping across the whole maze as an in-place sweep would.
-        newV = dict(self.V)
-        delta = 0.0
-        for s in self._model:
-            best_a, best_q = self._greedy(s, self.V)
-            delta = max(delta, abs(best_q - self.V[s]))
-            newV[s] = best_q
-            self.policy[s] = best_a          # policy = greedy(V), refreshed each sweep
-        self.V = newV
-        self._log_sweep(delta)
-        if delta < self.theta:
-            self.converged = True
-
-
-class PolicyIteration(_DPBase):
-    """TRUNCATED (a.k.a. modified) policy iteration: a fixed budget of synchronous
-    policy-EVALUATION passes, THEN one greedy IMPROVEMENT, repeat. Running evaluation to
-    full convergence before every improvement (classic PI) needs hundreds of sweeps at
-    gamma~0.98 over this state space - far too slow for the live race - and "several
-    rounds of evaluation then an improvement" is exactly what the round is meant to
-    show. EVAL_SWEEPS=1 would BE value iteration; a handful shows distinct eval phases."""
-
-    name = "Policy Iteration"
-    mode = "policy_iteration"
-    EVAL_SWEEPS = 8            # evaluation passes per improvement (truncation budget)
-
-    def _init_plan(self):
-        super()._init_plan()
-        self._eval_since = 0
-
-    def _sweep(self):
-        # one SYNCHRONOUS policy-EVALUATION pass of the current policy...
-        newV = dict(self.V)
-        delta = 0.0
-        for s in self._model:
-            v = self._q_of(s, self.policy[s], self.V)
-            delta = max(delta, abs(v - self.V[s]))
-            newV[s] = v
-        self.V = newV
-        self._log_sweep(delta)
-        self._eval_since += 1
-        # ...then a greedy IMPROVEMENT once evaluation SETTLES or the budget is spent.
-        if delta < self.theta or self._eval_since >= self.EVAL_SWEEPS:
-            changed = 0
-            for s in self.policy:
-                best_a, _ = self._greedy(s, self.V)
-                if best_a != self.policy[s]:
-                    self.policy[s] = best_a
-                    changed += 1
-            self.policy_changes.append(changed)
-            self._eval_since = 0
-            # converged only when the policy is stable AND its value has settled
-            if changed == 0 and delta < self.theta:
-                self.converged = True
-
-
-DP_ALGORITHMS = {
-    "value_iteration": ValueIteration,
-    "policy_iteration": PolicyIteration,
-}
-
-
-def is_dp(algo):
-    return algo in DP_ALGORITHMS
-
-
-def make_dp(algo, env, agent, **kwargs):
-    cls = DP_ALGORITHMS.get(algo, ValueIteration)
-    return cls(env, agent, **kwargs)

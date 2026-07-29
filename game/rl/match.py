@@ -28,17 +28,16 @@ from env import (GridWorld,
                  CAGE_REWARD, CAGE_LEN)
 from continuous import (ContinuousArena, PICKUP_EFFECT_SECONDS,
                         SPEED_MULTIPLIER, SLOW_MULTIPLIER)
-from agents import make_agent, ALGORITHMS
-from dp import is_dp, make_dp
+# All algorithm name -> class wiring lives in core/registry.py. The deep (R4/R5)
+# factories imported here are LAZY: make_dqn / make_pg import torch only when a
+# deep agent is actually built, so the server still boots and runs the tabular /
+# DP rounds in a Python without torch installed. The name tuples + predicates are
+# plain membership tests (no torch), so validation / family labels always work.
+from core.registry import (ALGORITHMS, DQN_ALGOS, PG_ALGOS,
+                           is_dp, is_dqn, is_pg, is_deep,
+                           make_agent, make_dp, make_dqn, make_pg)
 import worlds
 
-# The deep agents (Rounds 4-5) need PyTorch. Import them LAZILY (inside _make_one)
-# so the server still boots and runs the tabular / DP rounds in a Python that
-# doesn't have torch installed - only building a deep agent requires it. Keep the
-# name lists + predicates here (a plain membership test, no torch) so validation /
-# family labels work without importing the torch modules.
-DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
-PG_ALGOS = ("reinforce", "actor_critic", "ppo")
 ROUND_ALGO_FAMILIES = {
     1: {"value_iteration", "policy_iteration"},
     2: {"monte_carlo", "first_visit_mc"},
@@ -46,18 +45,6 @@ ROUND_ALGO_FAMILIES = {
     4: set(DQN_ALGOS),
     5: set(PG_ALGOS),
 }
-
-
-def is_dqn(algo):
-    return algo in DQN_ALGOS
-
-
-def is_pg(algo):
-    return algo in PG_ALGOS
-
-
-def is_deep(algo):
-    return is_dqn(algo) or is_pg(algo)
 
 FRAME_CAP = 10001          # record the WHOLE episode: R4 survival is bounded by the
                            # env's own 10,000-step ceiling, so this never truncates a
@@ -469,7 +456,6 @@ class Match:
                            theta=self.dp_theta, max_sweeps=self.dp_max_sweeps,
                            plan_speed=speed)
         if is_dqn(algo):
-            from dqn import make_dqn   # lazy: only the deep rounds need PyTorch
             red = color == "red"       # EVERY DQN internal is per-side
             return make_dqn(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
                             seed=seed, alpha=alpha, gamma=gamma,
@@ -482,7 +468,6 @@ class Match:
                             hidden=self.red_dqn_hidden if red else self.dqn_hidden,
                             layers=self.red_dqn_layers if red else self.dqn_layers)
         if is_pg(algo):
-            from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
             if color == "red":
                 # the CPU's strength comes from its DIFFICULTY TIER: alpha/gamma (above)
                 # + the tier's entropy. It uses each algorithm's own default rollout knobs.
@@ -572,7 +557,8 @@ class Match:
             ):
                 return False
             try:
-                from dqn import save_checkpoint_file
+                # lazy: the checkpoint I/O lives with the R4 torch code
+                from arenas.r4_ruined_kingdom.dqn import save_checkpoint_file
                 save_checkpoint_file(self.checkpoint_path, self._checkpoint_payload())
             except Exception as exc:
                 self.checkpoint_status = "save-error"
@@ -591,7 +577,7 @@ class Match:
             self.checkpoint_error = None
             return False
 
-        from dqn import load_checkpoint_file
+        from arenas.r4_ruined_kingdom.dqn import load_checkpoint_file
         payload, error = load_checkpoint_file(self.checkpoint_path)
         if error is not None:
             self.checkpoint_status = "missing" if error == "missing" else "corrupt"

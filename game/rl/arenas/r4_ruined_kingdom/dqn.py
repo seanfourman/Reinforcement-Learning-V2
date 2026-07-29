@@ -1,30 +1,31 @@
-"""DQN + Double-DQN + Dueling-DQN for the Ruined Kingdom continuous arena (Round 4) -
-the value-based deep round of the syllabus (Round 5, the policy round, is Actor-Critic
-vs PPO in pg.py). Same agent interface as the
-tabular learners in agents.py (policy_action / learn_step / end_episode /
-q_values / state_value / set_epsilon / learned_count, with alpha/gamma/epsilon),
-so match.py drives them unchanged - but the action-value function is a small MLP
-over the continuous observation vector instead of a dict, trained off a replay
-buffer against a periodically-synced target network.
+"""DQN - the base deep Q-network agent for the Ruined Kingdom arena (Round 4),
+the value-based deep round of the syllabus (Round 5, the policy round, is
+Actor-Critic vs PPO in ``r5_tostarena``).
 
-Double-DQN differs in the bootstrap target only: vanilla DQN uses
-    max_a' Q_target(s', a')
-which over-estimates; Double-DQN decouples action SELECTION (online net) from its
-EVALUATION (target net):
-    Q_target(s', argmax_a' Q_online(s', a'))
+Same agent interface as the tabular learners (policy_action / learn_step /
+end_episode / q_values / state_value / set_epsilon / learned_count, with
+alpha/gamma/epsilon), so the tournament drives it unchanged - but the
+action-value function is a small MLP over the continuous observation vector
+instead of a dict, trained off a replay buffer against a periodically-synced
+target network. The three classic DQN stabilizers, all here:
 
-Dueling-DQN (an alternate pick, not a round default) differs in the NETWORK HEAD
-only: instead of one linear layer emitting Q(s,a) directly, a shared trunk splits
-into a state VALUE head V(s) and an ADVANTAGE head A(s,a), recombined as
-    Q(s,a) = V(s) + A(s,a) - mean_a A(s,a)
-so the net can learn how good a STATE is without needing to nail every action.
-Target rule stays the vanilla max, so the ONLY experimental variable vs DQN is the head.
+  * EXPERIENCE REPLAY  - transitions go into a ring buffer and training samples
+    random minibatches from it, breaking the correlation between consecutive
+    steps (see ``ReplayBuffer``).
+  * TARGET NETWORK     - the bootstrap target comes from a frozen copy of the
+    net, synced every ``target_sync`` steps, so the regression target does not
+    chase itself (see ``_train``).
+  * N-STEP RETURNS     - the reward of the next ``n_step`` transitions is folded
+    into one target, so a terminal penalty propagates back n steps at once.
+
+The variants live beside this file and each change ONE thing:
+``double_dqn.py`` changes the bootstrap target, ``dueling_dqn.py`` changes the
+network head. This module also owns the Round-4 checkpoint file I/O.
 """
 
 import os
 import random
 import tempfile
-from collections import deque
 
 import numpy as np
 import torch
@@ -90,6 +91,9 @@ def _mlp(obs_dim, hidden, layers):
 
 
 class QNet(nn.Module):
+    """The plain DQN network: an MLP trunk with one linear Q(s,a) output head.
+    ``hidden`` neurons wide, ``layers`` hidden layers deep (panel-tunable)."""
+
     def __init__(self, obs_dim, n_actions, hidden=128, layers=2):
         super().__init__()
         self.net = nn.Sequential(
@@ -99,24 +103,6 @@ class QNet(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-
-
-class DuelingQNet(nn.Module):
-    """Shared trunk -> V(s) head + A(s,a) head, Q = V + A - mean(A). The mean
-    subtraction pins down the V/A split (they are otherwise only identified up
-    to a constant)."""
-
-    def __init__(self, obs_dim, n_actions, hidden=128, layers=2):
-        super().__init__()
-        self.trunk = nn.Sequential(*_mlp(obs_dim, hidden, layers))
-        self.value = nn.Linear(hidden, 1)
-        self.adv = nn.Linear(hidden, n_actions)
-
-    def forward(self, x):
-        h = self.trunk(x)
-        v = self.value(h)
-        a = self.adv(h)
-        return v + a - a.mean(dim=-1, keepdim=True)
 
 
 class ReplayBuffer:
@@ -164,7 +150,8 @@ class ReplayBuffer:
 
 class DQNAgent:
     name = "DQN"
-    double = False
+    double = False        # double_dqn.py flips this: decoupled select/evaluate target
+    dueling = False       # dueling_dqn.py flips this: V/A two-head network
     net_cls = QNet
 
     def __init__(self, obs_dim, n_actions, alpha=0.2, gamma=0.98, seed=0,
@@ -389,9 +376,12 @@ class DQNAgent:
         q_sa = self.q(s_b).gather(1, a_b)
         with torch.no_grad():
             if self.double:
+                # Double-DQN: the ONLINE net SELECTS the next action, the TARGET
+                # net EVALUATES it - the decoupling that fixes overestimation.
                 next_a = torch.argmax(self.q(ns_b), dim=1, keepdim=True)
                 next_q = self.target(ns_b).gather(1, next_a)
             else:
+                # vanilla DQN: the target net both selects (max) and evaluates.
                 next_q = self.target(ns_b).max(dim=1, keepdim=True).values
             target = r_b + gamma_n * next_q * (1.0 - d_b)
         loss = nn.functional.smooth_l1_loss(q_sa, target)
@@ -436,20 +426,12 @@ class DQNAgent:
             "stepsToSync": (self.target_sync - self.train_steps % self.target_sync) if self.target_sync else 0,
             "syncCount": self.sync_count,
             "lr": round(self._lr(self._alpha), 6),
-            "dueling": self.net_cls is DuelingQNet,
+            "dueling": self.dueling,
         }
 
     def value_advantage(self, state):
-        """Dueling nets only: {v, a:[...]} the V(s) / centered-A(s,a) split, else None."""
-        if self.net_cls is not DuelingQNet:
-            return None
-        with torch.no_grad():
-            t = torch.as_tensor(np.asarray(state, dtype=np.float32), device=self.device).unsqueeze(0)
-            h = self.q.trunk(t)
-            v = float(self.q.value(h)[0, 0].item())
-            a = self.q.adv(h)[0]
-            a = (a - a.mean()).tolist()
-            return {"v": round(v, 4), "a": [round(float(x), 4) for x in a]}
+        """The V(s) / A(s,a) split - only a Dueling net has one (see dueling_dqn.py)."""
+        return None
 
     def end_episode(self):
         # flush the remaining short windows so the final states of the episode get
@@ -458,56 +440,3 @@ class DQNAgent:
         while self._nstep:
             self._emit_nstep_from_front()
             self._nstep.pop(0)
-
-
-class DoubleDQNAgent(DQNAgent):
-    name = "Double-DQN"
-    double = True
-
-
-class DuelingDQNAgent(DQNAgent):
-    name = "Dueling-DQN"
-    net_cls = DuelingQNet     # vanilla max target: the head is the only change
-
-
-DQN_ALGORITHMS = {"dqn": DQNAgent, "double_dqn": DoubleDQNAgent,
-                  "dueling_dqn": DuelingDQNAgent}
-
-
-def is_dqn(algo):
-    return algo in DQN_ALGORITHMS
-
-
-def make_dqn(algo, obs_dim, n_actions, **kwargs):
-    cls = DQN_ALGORITHMS.get(algo, DQNAgent)
-    return cls(obs_dim=obs_dim, n_actions=n_actions, **kwargs)
-
-
-# --------------------------------------------------------------------- self-test
-if __name__ == "__main__":
-    from continuous import ContinuousArena, N_ACTIONS, OBS_DIM
-
-    env = ContinuousArena(seed=0)
-    agent = DoubleDQNAgent(OBS_DIM, N_ACTIONS, alpha=0.2, gamma=0.98, seed=0, warmup=500)
-
-    EPISODES = 500
-    eps_start, eps_end, eps_eps = 1.0, 0.05, 300
-    recent = deque(maxlen=100)
-    for ep in range(EPISODES):
-        agent.set_epsilon(eps_start + (eps_end - eps_start) * min(1.0, ep / eps_eps))
-        (s, _), _ = env.reset(seed=10_000 + ep)
-        a = agent.policy_action(s)
-        done = False
-        while not done:
-            (ns, _), rew, done, trunc, info = env.step(a, 8)   # blue coasts
-            na = agent.policy_action(ns) if not done else 0
-            agent.learn_step(s, a, rew["red"], ns, na, done)
-            s, a = ns, na
-        agent.end_episode()
-        recent.append(1 if info["winner"] == "red" else 0)
-        if (ep + 1) % 100 == 0:
-            print(f"ep {ep + 1:4d}  eps {agent.epsilon:.2f}  "
-                  f"winrate(last100) {sum(recent) / len(recent):.2f}  "
-                  f"train_steps {agent.train_steps}")
-    final = sum(recent) / len(recent)
-    print(f"FINAL winrate (last 100): {final:.2f}  ->  {'OK' if final >= 0.7 else 'WARN: not learning well'}")
