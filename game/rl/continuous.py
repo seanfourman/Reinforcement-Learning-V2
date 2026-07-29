@@ -217,7 +217,7 @@ OIL_KNOCKBACK = 2.5                     # oil throws the rival back this far (un
 BOWSER_THROW_COUNT = 1                  # objects hurled per throw (tunable 0..4)
 BOWSER_OBJ_SPEED = 6.0                  # object travel speed, units/s (tunable)
 BOWSER_OBJ_R = 0.45                     # object radius (contact + draw)
-BOWSER_THROW_INTERVAL = 48.0          # seconds between throws (rare: ~1/20 the old rate)
+BOWSER_THROW_INTERVAL = 15.0          # seconds between throws
 BOWSER_FIRST_THROW = 4.0               # first throw after this many seconds
 BOWSER_OBJ_STUN_SECONDS = 1.0          # stun when an object hits an agent
 BOWSER_OBJ_LIFETIME = 4.0              # seconds before a thrown object despawns
@@ -1875,7 +1875,7 @@ class ContinuousArena:
         into is stunned (agents must DODGE), then it despawns. Objects also expire off
         the board or after BOWSER_OBJ_LIFETIME. Set bowser_throw_count = 0 to disable."""
         A = self.arena
-        ship_z = -2.0                                       # just NORTH of the board
+        ship_z = 0.4                                        # the board-facing cannon line
         # drift the ship a LITTLE side to side; ship_x is the throw origin + drives
         # the frontend ship (and Bowser rides along with it)
         self.ship_phase += BOWSER_SHIP_SPEED * self.dt

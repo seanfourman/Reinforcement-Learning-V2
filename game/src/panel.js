@@ -322,6 +322,17 @@ const STYLE = `
   animation:turboPulse 1s ease-in-out infinite;}
 @keyframes turboPulse{0%,100%{box-shadow:0 0 0 0 rgba(31,95,208,.36)}50%{box-shadow:0 0 0 6px rgba(31,95,208,0)}}
 #rl-panel .turbobtn svg{width:18px;height:18px;display:block;}
+/* while a turbo skip runs, gray out + LOCK the whole panel behind a scrim (shows the countdown) */
+#rl-panel .ff-scrim{position:absolute;inset:0;z-index:50;display:none;align-items:center;justify-content:center;
+  background:rgba(243,244,246,.74);backdrop-filter:grayscale(.55) blur(1.5px);-webkit-backdrop-filter:grayscale(.55) blur(1.5px);}
+#rl-panel[data-ff="on"] .ff-scrim{display:flex;}
+#rl-panel .ff-card{display:flex;flex-direction:column;align-items:center;gap:9px;padding:22px 32px;border-radius:16px;
+  background:#fff;box-shadow:0 12px 34px rgba(0,0,0,.17);border:1px solid #e6e8ec;text-align:center;}
+#rl-panel .ff-card .ff-bolt{width:42px;height:42px;border-radius:50%;background:#eef3fc;color:#1f5fd0;
+  display:grid;place-items:center;animation:turboPulse 1s ease-in-out infinite;}
+#rl-panel .ff-card .ff-bolt svg{width:24px;height:24px;}
+#rl-panel .ff-card b{font-size:15px;letter-spacing:.3px;color:#1f1f21;}
+#rl-panel .ff-card .ff-n{font-size:12.5px;color:#6b7280;font-variant-numeric:tabular-nums;}
 /* locked learning sliders (CPU + locked) read grayed out; black shared sliders stay open */
 #rl-panel .ctl.learn{transition:opacity .15s;}
 #rl-panel .ctl.learn:has(input:disabled){opacity:.5;}
@@ -964,8 +975,16 @@ export function initPanel() {
   // instantly - no rendering, the server burns through them and reports progress. Shown only
   // in Arena 2 (round index 1) on the Blue (your) model, so it never overlaps the CPU lock.
   const TURBO_BOLT = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>';
-  const TURBO_SKIP = 10000;   // episodes to fast-forward per click
+  const TURBO_SKIP = 5000;    // episodes to fast-forward per click
   turboBtn.innerHTML = TURBO_BOLT;
+  // full-panel scrim shown WHILE a skip runs: grays out + blocks the whole menu, with a
+  // live countdown. Sibling of .rl-body (so .rl-body's own styling can't dim the message).
+  const ffScrim = document.createElement('div');
+  ffScrim.className = 'ff-scrim';
+  ffScrim.setAttribute('aria-live', 'polite');
+  ffScrim.innerHTML = `<div class="ff-card"><span class="ff-bolt">${TURBO_BOLT}</span><b>Skipping ahead</b><span class="ff-n"></span></div>`;
+  panel.appendChild(ffScrim);
+  const ffN = ffScrim.querySelector('.ff-n');
   let turboRound = -1, ffRemaining = 0, ffFiredAt = 0;
   const updateTurboBtn = () => {
     const show = turboRound === 1 && panel.dataset.model === 'your';
@@ -973,6 +992,9 @@ export function initPanel() {
     if (show) panel.dataset.turbo = 'on'; else delete panel.dataset.turbo; // reserve header space
     const working = ffRemaining > 0;
     turboBtn.classList.toggle('working', working);
+    // gray out + lock the whole menu while the skip is running
+    if (working) { panel.dataset.ff = 'on'; ffN.textContent = `${ffRemaining.toLocaleString()} episodes to go`; }
+    else delete panel.dataset.ff;
     const label = working
       ? `Skipping ahead - ${ffRemaining.toLocaleString()} episodes to go`
       : `Turbo: jump ${TURBO_SKIP.toLocaleString()} episodes into the future`;

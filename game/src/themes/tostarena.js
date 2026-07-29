@@ -1516,7 +1516,10 @@ export const tostarena = {
           group.add(m);
           hazardMeshes.set(h.id, m);
         }
-        m.position.set(h.pos[0], 1.0, h.pos[1]); // flies low over the board
+        // arc: launched at cannon height near the ship, arcing down onto the board
+        const zFromShip = h.pos[1] - (SHIP.z + 1.9);
+        const y = Math.max(1.0, CANNON_Y - Math.max(0, zFromShip) * 0.45);
+        m.position.set(h.pos[0], y, h.pos[1]);
         m.rotation.y += dt * 5;
         m.rotation.x += dt * 3;
       }
@@ -1526,9 +1529,66 @@ export const tostarena = {
         hazardMeshes.delete(id);
       }
     }
+    // ---- cannon fire: a muzzle flash + smoke puff when the ship lobs a bomb --
+    const CANNON_Y = SHIP.y + 1.05; // cannon height on the board-facing hull
+    const CANNON_Z = SHIP.z + 1.9; //  board-facing side (toward the camera)
+    const cannonFx = [];
+    const flashGeo = track(new THREE.SphereGeometry(0.45, 10, 8));
+    const smokeGeo = track(new THREE.SphereGeometry(0.34, 8, 6));
+    function spawnCannonFire() {
+      const cx = shipState.curX + [-1.1, 0, 1.1][Math.floor(Math.random() * 3)]; // a cannon
+      const flash = new THREE.Mesh(
+        flashGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xffcf5a, transparent: true,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }),
+      );
+      flash.position.set(cx, CANNON_Y, CANNON_Z);
+      group.add(flash);
+      cannonFx.push({ m: flash, life: 0, dur: 0.16, kind: "flash" });
+      for (let i = 0; i < 3; i++) {
+        const sm = new THREE.Mesh(
+          smokeGeo,
+          new THREE.MeshStandardMaterial({
+            color: 0x6a6a6a, transparent: true, opacity: 0.55, depthWrite: false,
+          }),
+        );
+        sm.position.set(cx, CANNON_Y, CANNON_Z);
+        sm.userData.v = [
+          (Math.random() - 0.5) * 1.2, 0.7 + Math.random() * 0.7,
+          1.4 + Math.random() * 1.2, // drift toward the board + up
+        ];
+        group.add(sm);
+        cannonFx.push({ m: sm, life: 0, dur: 0.85, kind: "smoke" });
+      }
+    }
+    function updateCannonFx(dt) {
+      for (let i = cannonFx.length - 1; i >= 0; i--) {
+        const f = cannonFx[i];
+        f.life += dt;
+        const u = f.life / f.dur;
+        if (f.kind === "flash") {
+          f.m.scale.setScalar(1 + u * 2.2);
+          f.m.material.opacity = Math.max(0, 1 - u);
+        } else {
+          const v = f.m.userData.v;
+          f.m.position.x += v[0] * dt;
+          f.m.position.y += v[1] * dt;
+          f.m.position.z += v[2] * dt;
+          f.m.scale.setScalar(1 + u * 1.6);
+          f.m.material.opacity = 0.55 * Math.max(0, 1 - u);
+        }
+        if (u >= 1) {
+          group.remove(f.m);
+          f.m.material.dispose();
+          cannonFx.splice(i, 1);
+        }
+      }
+    }
     function updateBowser(frame, t, dt) {
       // the ship FLOATS (gentle bob + roll) and drifts a little to frame.ship.x;
-      // Bowser rides along on the deck with the SAME motion.
+      // Bowser STANDS on the deck (the cannons fire), just riding the ship's motion.
       const targetX = frame?.ship ? frame.ship.x : C;
       shipState.curX += (targetX - shipState.curX) * (1 - Math.exp(-dt * 5));
       const bobY = Math.sin(t * 0.9) * 0.3; // up-down float
@@ -1539,15 +1599,14 @@ export const tostarena = {
         shipState.obj.rotation.set(pitch, SHIP.ry, roll);
       }
       if (bowser.obj) {
-        bowser.throwT += dt;
-        const lunge = Math.max(0, 1 - bowser.throwT / 0.35);
         bowser.obj.position.set(
           shipState.curX + BOWSER_OFFSET_X,
           SHIP_DECK_Y + bobY,
-          SHIP_DECK_Z + BOWSER_OFFSET_Z + lunge * 0.5,
+          SHIP_DECK_Z + BOWSER_OFFSET_Z,
         );
-        bowser.obj.rotation.set(lunge * 0.5 + pitch, 0, roll); // rides the roll + throw lunge
+        bowser.obj.rotation.set(pitch, 0, roll); // just rides the roll
       }
+      updateCannonFx(dt);
     }
 
     // ---- crate-break shards (wooden debris flung out when a crate is smashed)
@@ -1767,7 +1826,7 @@ export const tostarena = {
         if (ev.type === "crate" && ev.pos) {
           spawnShards(ev.pos[0], ev.pos[1]); // the smash burst
         } else if (ev.type === "throw") {
-          bowser.throwT = 0; // Bowser lunges as he hurls
+          spawnCannonFire(); // a cannon flashes + smokes as the bomb is fired
         }
       }
       updateShards(dt);
@@ -1787,6 +1846,8 @@ export const tostarena = {
       trapMeshes.clear();
       for (const [, m] of hazardMeshes) group.remove(m);
       hazardMeshes.clear();
+      for (const f of cannonFx) { group.remove(f.m); f.m.material.dispose(); }
+      cannonFx.length = 0;
       // absorb events already present in a restored frame so they don't re-fire
       for (const ev of frameToSuppress?.ctfEvents || []) rememberEvent(ev.id);
     }
@@ -1852,6 +1913,8 @@ export const tostarena = {
       trapMeshes.clear();
       for (const [, m] of hazardMeshes) group.remove(m);
       hazardMeshes.clear();
+      for (const f of cannonFx) { group.remove(f.m); f.m.material.dispose(); }
+      cannonFx.length = 0;
       for (const s of shards) group.remove(s);
       shards.length = 0;
       const disposeTree = (obj) =>
