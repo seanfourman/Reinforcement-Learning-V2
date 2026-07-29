@@ -22,6 +22,12 @@ const IRIS_EASE = "cubic-bezier(.66,0,.34,1)";
 const STYLE = `
 #rl-iris{position:fixed;top:50%;left:50%;border-radius:50%;pointer-events:none;z-index:60;
   background:transparent;}
+/* a transparent full-screen shield that SWALLOWS clicks/hover while the iris covers
+   the screen - the iris itself is pointer-events:none (its black is a box-shadow that
+   never captures events), so without this the UI underneath stays clickable + shows a
+   pointer cursor THROUGH the black. Only armed during a transition. */
+#rl-iris-block{position:fixed;inset:0;z-index:65;background:transparent;pointer-events:none;}
+#rl-iris-block.on{pointer-events:auto;cursor:default;}
 #rl-iris-card{position:fixed;inset:0;z-index:66;pointer-events:none;display:flex;
   flex-direction:column;align-items:center;justify-content:center;text-align:center;
   opacity:0;transform:translateY(12px);
@@ -49,6 +55,12 @@ export function createTransition() {
   const iris = document.createElement("div");
   iris.id = "rl-iris";
   document.body.appendChild(iris);
+
+  // the click/hover shield (armed only while a transition is covering the screen)
+  const block = document.createElement("div");
+  block.id = "rl-iris-block";
+  document.body.appendChild(block);
+  const setBlock = (on) => block.classList.toggle("on", on);
 
   const card = document.createElement("div");
   card.id = "rl-iris-card";
@@ -122,6 +134,7 @@ export function createTransition() {
 
     clearTimeout(nameTimer); // cancel a prior transition's still-pending name fade
     busy = true;
+    setBlock(true); // swallow clicks/hover while the screen is covered
     // fade the CURRENT (old) level name out with ITS OWN text as we cover; the new
     // name's text is set later, UNDER BLACK, so it never visibly swaps on the old arena
     card.classList.remove("show");
@@ -163,6 +176,7 @@ export function createTransition() {
       card.classList.add("show");
     } finally {
       busy = false; // released as soon as the world is revealed
+      setBlock(false); // the world is visible again -> UI is interactive
     }
 
     // hold the level name, then fade it out - fire-and-forget so a quick NEXT move
@@ -185,6 +199,7 @@ export function createTransition() {
     }
 
     busy = true;
+    setBlock(true); // swallow clicks/hover while the screen is covered
     try {
       clearTimeout(nameTimer); // drop any pending name fade from a prior play()
       card.classList.remove("show");
@@ -209,6 +224,7 @@ export function createTransition() {
       await wait(IRIS_MS + 60);
     } finally {
       busy = false;
+      setBlock(false);
     }
   }
 
