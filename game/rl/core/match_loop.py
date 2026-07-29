@@ -15,7 +15,6 @@ from core.replays import FRAME_CAP, HISTORY_CAP
 class MatchLoopMixin:
     """Contest reset + episode lifecycle + the per-tick simulation step."""
 
-
     def _reset_stats(self):
         if getattr(self.env, "missile_game", False):
             # A manual model/world reset is not an automatic episode transition;
@@ -69,7 +68,6 @@ class MatchLoopMixin:
         # recent per-episode returns per side, for the MC-vs-TD variance comparison
         self.ret_hist = {"red": deque(maxlen=100), "blue": deque(maxlen=100)}
 
-
     def _apply_epsilon(self):
         # each side follows its own schedule, but a DP planner ignores epsilon and
         # plays optimally, so we read each agent's ACTUAL epsilon back for display:
@@ -81,14 +79,12 @@ class MatchLoopMixin:
         self.red.set_epsilon(self.red_eps_start + (self.red_eps_end - self.red_eps_start) * fr)
         self.red_epsilon = self.red.epsilon
 
-
     def _amask(self, agent):
         # per-cell mask of EFFECTIVE actions (grid envs only) so a greedy policy can't
         # self-loop on a wall / no-op. Continuous arenas have no such method -> None
         # (no masking, and their open action space has no wall-bumps anyway).
         fn = getattr(self.env, "effective_actions", None)
         return fn(agent) if fn else None
-
 
     def _new_episode(self):
         self._apply_epsilon()
@@ -185,7 +181,6 @@ class MatchLoopMixin:
         # snapshots AFTER stepping, so without this seed the replay began one move in
         # and agents appeared to start a square off their real spawn.
         self._frames = [self._replay_snapshot()]
-
 
     # ------------------------------------------------------------------- tick
     def tick(self):

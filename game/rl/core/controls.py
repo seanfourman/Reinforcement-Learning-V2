@@ -30,7 +30,6 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
 class ControlsMixin:
     """Panel parameter controls + their read-back views."""
 
-
     def set_params(self, p):
         """Update tunable settings live from the panel. Three tiers:
           * per-side LEARNING (alpha / gamma / epsilon schedule) -> OUR model, Blue;
@@ -274,7 +273,6 @@ class ControlsMixin:
                 self._new_episode()
             return self.params()
 
-
     def params(self):
         # Round-5 policy-gradient hyperparameters: report the values the LIVE Blue
         # agent is actually using (each algo defaults the ones it doesn't use).
@@ -335,7 +333,6 @@ class ControlsMixin:
             # reproducibility
             "trainSeed": self.train_seed if self.train_seed is not None else -1,
         }
-
 
     def set_red_params(self, p):
         """Manually override the CPU (Red) hyperparameters from the locked N panel.
@@ -405,7 +402,6 @@ class ControlsMixin:
                 self.red.reset_learning()   # replay the DP race with the new CPU setting
             self._apply_epsilon()
             return self.red_view()
-
 
     def red_view(self):
         """Red's current params (for the locked CPU panel). Step cap / episode

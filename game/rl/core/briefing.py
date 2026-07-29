@@ -17,7 +17,6 @@ from core.registry import is_dp
 class BriefingMixin:
     """The /api/mdp Challenge-card payload."""
 
-
     def mdp_spec(self):
         """The round's MDP tuple (S, A, R, gamma) + win condition, for the BRIEFING
         card. Reward constants mirror env.py / continuous.py."""

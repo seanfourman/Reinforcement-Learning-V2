@@ -132,15 +132,9 @@ class GridWorld(gym.Env):
         """Arena hook: parse the round's static layout + set its feature flags."""
 
     # ------------------------------------------------------------------ tiles
-    def _static_passable(self, agent, r, c):
-        """Passability for a STATIC model (a planner's transition model): in-bounds
-        and not a wall. ``agent`` is accepted for interface symmetry with the live
-        rule."""
-        return 0 <= r < self.H and 0 <= c < self.W and self.world.grid[r][c] != WALL
-
     def passable(self, agent, r, c):
-        # live passability: in-bounds and not a wall. ``agent`` is accepted for
-        # interface symmetry with _static_passable.
+        """In-bounds and not a wall. ``agent`` is accepted so a subclass could
+        make passability side-dependent without changing the callers."""
         return 0 <= r < self.H and 0 <= c < self.W and self.world.grid[r][c] != WALL
 
     def _ghost_step(self, cell, direction):
@@ -250,23 +244,14 @@ class GridWorld(gym.Env):
         return self.red_pos if agent == "red" else self.blue_pos
 
     def _resolve(self, agent, pos, direction, passable=None):
-        """Landing cell for one move DIRECTION (0..3) from pos. ``passable`` defaults
-        to the live rule; a planner may pass ``_static_passable``. A non-move (STAY)
-        holds position."""
+        """Landing cell for one move DIRECTION (0..3) from pos. ``passable``
+        defaults to the live rule. A non-move (STAY) holds position."""
         if direction not in MOVE_ACTIONS:
             return pos
         passable = passable or self.passable
         dr, dc = ACTIONS[direction]
         nr, nc = pos[0] + dr, pos[1] + dc
         return (nr, nc) if passable(agent, nr, nc) else pos
-
-    def move_dist(self, agent, pos, action, passable=None):
-        """P(next cell | pos, action) - the (deterministic) transition model. Returns
-        a list of (prob, cell); a non-move action stays put. Kept in list form so a
-        planner's Bellman backup can consume it unchanged."""
-        if action not in MOVE_ACTIONS:
-            return [(1.0, pos)]
-        return [(1.0, self._resolve(agent, pos, action, passable))]
 
     def effective_actions(self, agent, pos=None, star_mask=None):
         """Boolean mask over actions that can change state with positive probability.

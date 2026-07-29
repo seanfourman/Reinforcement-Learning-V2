@@ -15,7 +15,6 @@ from core.registry import (ALGORITHMS, ROUND_ALGO_FAMILIES,
 class RoundFlowMixin:
     """Round navigation, matchup resolution, awards, and contest resets."""
 
-
     # --------------------------------------------------------------- controls
     def regenerate(self, seed=None):
         """Install a newly-seeded world and wipe both models (New World control).
@@ -46,7 +45,6 @@ class RoundFlowMixin:
             self._reset_stats()
             self._new_episode()
 
-
     def reset_models(self):
         """Wipe learning, KEEP the current world."""
         with self.lock:
@@ -57,13 +55,11 @@ class RoundFlowMixin:
             self._reset_stats()
             self._new_episode()
 
-
     def reset_tournament(self):
         """Start a fresh tournament from round 1 and clear all stage points."""
         with self.lock:
             first = registry.ROUNDS[0] if registry.ROUNDS else self.round_id
             self.set_round(first, keep_score=False)
-
 
     def set_cpu_tier(self, tier, level=None, force=False):
         """Set the CPU (Red) difficulty from the chosen character. ``tier`` (1..5) is the
@@ -85,7 +81,6 @@ class RoundFlowMixin:
             self._reset_stats()
             self._new_episode()
 
-
     def set_side_algo(self, side, algo):
         with self.lock:
             valid = algo in ALGORITHMS or is_dp(algo) or is_deep(algo)
@@ -101,7 +96,6 @@ class RoundFlowMixin:
             self._reset_stats()
             self._new_episode()
 
-
     def _algo_for_env(self, algo, default):
         """Accept a per-round override only if it exists AND fits this round's env
         kind (deep on the continuous arenas; tabular / DP on the grids). Else
@@ -112,14 +106,12 @@ class RoundFlowMixin:
         ok = algo in ROUND_ALGO_FAMILIES.get(self.round_id, set())
         return algo if ok else default
 
-
     def _round_matchup(self, round_id):
         """(red, blue) for a round: the menu loadouts if set + compatible, else the
         ROUND_ALGOS defaults. Red = CPU character's algo, Blue = player's card pick."""
         dr, db = registry.round_algos(round_id)
         return (self._algo_for_env(self.cpu_algos.get(round_id), dr),
                 self._algo_for_env(self.player_algos.get(round_id), db))
-
 
     def set_loadouts(self, cpu=None, player=None):
         """Install the menu's per-round algorithm picks (lists in round order, index
@@ -142,7 +134,6 @@ class RoundFlowMixin:
             self._build_agents()
             self._reset_stats()
             self._new_episode()
-
 
     def set_round(self, round_id, keep_score=True):
         """Switch to a round: install its world + its matchup + reset learning.
@@ -170,14 +161,12 @@ class RoundFlowMixin:
             self._load_checkpoint()
             self._new_episode()
 
-
     def prev_round(self):
         """Step back to the previous round (navigation only; leaves the score as-is)."""
         with self.lock:
             order = registry.ROUNDS
             i = order.index(self.round_id) if self.round_id in order else 0
             self.set_round(order[(i - 1) % len(order)], keep_score=True)
-
 
     def next_round(self):
         """Advance to the next round (wraps). Navigation only: it does NOT score.
@@ -190,7 +179,6 @@ class RoundFlowMixin:
             order = registry.ROUNDS
             i = order.index(self.round_id) if self.round_id in order else 0
             self.set_round(order[(i + 1) % len(order)], keep_score=True)
-
 
     def award_round(self):
         """Finish the current stage INSTANTLY (no waiting for the next live finish).
@@ -231,7 +219,6 @@ class RoundFlowMixin:
                 "labelBlue": award.get("labelBlue", self.algo_blue),
             }
             return dict(award)
-
 
     def _award_current_round(self):
         recent = list(self.recent)
@@ -278,7 +265,6 @@ class RoundFlowMixin:
         }
         return dict(self.last_award)
 
-
     # ------------------------------------------------------------- inspection
     def _matchup(self):
         # round_meta carries the ROUND_ALGOS DEFAULTS; overwrite the algo labels with
@@ -294,7 +280,6 @@ class RoundFlowMixin:
         # header and the Head-to-head table (all Blue-left / Red-right).
         m["matchup"] = f"{lb} vs {lr}"
         return m
-
 
     def _family(self):
         a = self.algo_blue

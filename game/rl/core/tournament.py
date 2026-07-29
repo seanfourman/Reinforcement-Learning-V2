@@ -168,7 +168,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         self._load_checkpoint()
         self._new_episode()
 
-
     # ------------------------------------------------------------------ setup
     def _make_env(self, round_id):
         """Pick the env for a round: the shared continuous arena for a CONTINUOUS
@@ -180,7 +179,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
             return registry.make_continuous_env(round_id, seed,
                                                 getattr(mod, "THEME", "ruined"))
         return registry.make_grid_env(round_id, seed)
-
 
     def _apply_env_config(self):
         """Apply the step-cap override + the Round-1 mechanic params onto the current env,
@@ -211,7 +209,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
                         cage_reward=self.cage_reward, cage_len=self.cage_len)
         return False
 
-
     def _rebuild_world(self):
         """Rebuild the live env from the current world config (train seed) and the
         agents on top of it, then restart the contest. For a STRUCTURAL change where
@@ -224,14 +221,12 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         self._reset_stats()
         self._new_episode()
 
-
     def world_for_round(self, round_id):
         """A round's world built READ-ONLY (does not touch the live env/match),
         so the client can build + cache every arena scene up front during the
         start menu and make every transition instant."""
         with self.lock:
             return self._make_env(round_id).to_json()
-
 
     def world_json(self):
         """The live world + its version, read ATOMICALLY under the lock (for
@@ -241,16 +236,13 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         with self.lock:
             return {"worldVersion": self.world_version, "world": self.env.to_json()}
 
-
     def all_worlds(self):
         """Every round's world in tournament order (for the client prewarm)."""
         return [{"roundId": rid, "world": self.world_for_round(rid)}
                 for rid in registry.ROUNDS]
 
-
     def _is_round4_missile(self):
         return self.round_id == 4 and bool(getattr(self.env, "missile_game", False))
-
 
     def _effective_blue_eps_episodes(self):
         if not self._is_round4_missile():
@@ -261,7 +253,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
             else min(self.eps_episodes, 1_000)
         )
 
-
     def _effective_red_eps_episodes(self):
         if not self._is_round4_missile():
             return self.red_eps_episodes
@@ -270,7 +261,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
             if self.r4_red_eps_episodes is not None
             else min(self.red_eps_episodes, 1_000)
         )
-
 
     def _make_one(self, algo, color, seed, alpha, gamma):
         if is_dp(algo):
@@ -306,7 +296,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
                            minibatch=self.pg_minibatch)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
-
     def _red_from_tier(self):
         """(Re)derive Red's params from its per-character DIFFICULTY. Manual overrides via
         set_red_params replace these until the character (difficulty) changes again."""
@@ -321,7 +310,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         self.red_plan_speed = rp["plan_speed"]    # DP (R1): Red's sweeps per tick
         self.red_pg_entropy = rp.get("entropy")   # PG (R5): CPU entropy from its tier
 
-
     def _blue_from_round(self):
         """Restore Blue's validated default profile for the active arena."""
         bp = blue_params(self.round_id)
@@ -333,7 +321,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         self.r4_eps_episodes = None
         self.epsilon = bp["eps_start"]
 
-
     def _build_agents(self):
         # Red = CPU (params from its tier, or a manual override); Blue = ours, panel-tunable.
         # The train seed offsets BOTH agents' seeds so a different seed gives a
@@ -343,7 +330,6 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
                                   alpha=self.red_alpha, gamma=self.red_gamma)
         self.blue = self._make_one(self.algo_blue, "blue", seed=2 + off,
                                    alpha=self.alpha, gamma=self.gamma)
-
 
     def _agent(self, agent):
         return self.red if agent == "red" else self.blue

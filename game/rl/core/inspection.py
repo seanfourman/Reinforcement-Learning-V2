@@ -22,7 +22,6 @@ def _unique_argmax(values, valid=None):
 class InspectionMixin:
     """Value / policy / visit inspection endpoints."""
 
-
     def policy_grid(self, agent):
         """Per-cell GREEDY action (argmax_a Q) for the policy-arrow overlay."""
         with self.lock:
@@ -49,7 +48,6 @@ class InspectionMixin:
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W,
                     "mode": "policy", "ghostArrows": ghost}
 
-
     def _ghost_wall_arrows(self, agent):
         """The greedy phase-direction (N/S/W/E) on each interior WALL cell for the
         agent's CURRENT ghost state - i.e. which way it would keep phasing from there."""
@@ -69,7 +67,6 @@ class InspectionMixin:
             if best is not None:
                 out.append([cell[0], cell[1], int(best)])
         return out
-
 
     def visit_stats(self, agent):
         """Board coverage / unique cells / visitation entropy (exploration breadth)."""
@@ -107,7 +104,6 @@ class InspectionMixin:
                     "unique": uniq, "entropy": round(ent, 3),
                     "maxVisits": max(counts) if counts else 0, "floor": len(floor)}
 
-
     def _blank_grid(self, agent, mode=None):
         """Empty H x W grid - the arena round has no cells, so the grid overlays
         render nothing (the value-surface viz is added with the frontend)."""
@@ -116,7 +112,6 @@ class InspectionMixin:
         if mode:
             out["mode"] = mode
         return out
-
 
     def value_grid(self, agent):
         """V(s) per tile, holding the agent's CURRENT non-position context fixed.
@@ -136,7 +131,6 @@ class InspectionMixin:
                 valid = [i for i in range(len(q)) if mask[i]] or list(range(len(q)))
                 grid[r][c] = round(max(q[i] for i in valid), 4)
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W}
-
 
     def arena_field(self, agent, n=22, mode="value"):
         """Value + greedy-action field for the CONTINUOUS arenas: sample the agent's
@@ -203,7 +197,6 @@ class InspectionMixin:
                     "vmax": round(vmax, 3) if vmax > float("-inf") else 1.0,
                     "goal": wj.get("goal"), "goalR": wj.get("goalR"), "obstacles": solids}
 
-
     def va_probe(self, agent):
         """Dueling-DQN V(s) / A(s,a) split at the agent's CURRENT position (Tier 3).
         Unavailable for plain nets / tabular / DP (only Dueling exposes the split)."""
@@ -218,7 +211,6 @@ class InspectionMixin:
             if out is None:
                 return {"available": False}
             return {"available": True, "agent": agent, "v": out["v"], "a": out["a"]}
-
 
     def reward_decomp(self):
         """Average per-episode reward decomposition (terminal / bonuses / other)
@@ -242,7 +234,6 @@ class InspectionMixin:
                 out[side] = {k: round(sum(p[side][k] for p in h) / len(h), 3)
                              for k in ("terminal", "shape", "other")}
             return out
-
 
     def _record_probe(self):
         """V(spawn) for each side this episode - shows the start-state value rising
@@ -285,11 +276,9 @@ class InspectionMixin:
             pt[side + "V"] = round(v, 4) if v is not None else 0.0
         self.q_probe.append(pt)
 
-
     def q_probe_series(self):
         with self.lock:
             return {"available": bool(self.q_probe), "points": list(self.q_probe)}
-
 
     def policy_agreement(self):
         """Fraction of comparable learned cells where the two greedy policies agree.
@@ -326,7 +315,6 @@ class InspectionMixin:
             return {"available": True, "cells": cells, "agree": same,
                     "rate": round(same / cells, 3), "mirrored": mirrored}
 
-
     def visit_grid(self, agent):
         """Per-cell visit counts for the agent (the 'where do they travel' heatmap).
         Floor cells carry their count (0 if never stepped on); walls stay None."""
@@ -338,7 +326,6 @@ class InspectionMixin:
             for (r, c) in self.env.floor_cells:
                 grid[r][c] = vis[r][c]
             return {"agent": agent, "grid": grid, "H": self.env.H, "W": self.env.W, "mode": "visits"}
-
 
     def q_grid(self, agent):
         """Per-action Q for EVERY tile (the 'numbers on tiles' value overlay), in the
@@ -364,7 +351,6 @@ class InspectionMixin:
                 best[r][c] = _unique_argmax(q, valid)
             return {"agent": agent, "grid": grid, "best": best,
                     "H": self.env.H, "W": self.env.W, "mode": "q"}
-
 
     def q_at(self, agent, r, c):
         """Per-action Q for one tile in the current context (the Q inspector)."""

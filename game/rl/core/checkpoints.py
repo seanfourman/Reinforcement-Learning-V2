@@ -30,7 +30,6 @@ ROUND4_TRAINING_REVISION = 8
 class CheckpointMixin:
     """Round-4 checkpoint save / load / delete, mixed into Match."""
 
-
     # ---------------------------------------------------------- DQN checkpoint
     def _checkpoint_eligible(self):
         return (
@@ -40,7 +39,6 @@ class CheckpointMixin:
             and hasattr(self.red, "checkpoint_state")
             and hasattr(self.blue, "checkpoint_state")
         )
-
 
     def _checkpoint_payload(self):
         return {
@@ -57,7 +55,6 @@ class CheckpointMixin:
                 "blue": self.blue.checkpoint_state(),
             },
         }
-
 
     def save_checkpoint(self, force=True):
         """Persist Round-4 DQN learning; return True only when a file was written."""
@@ -84,7 +81,6 @@ class CheckpointMixin:
             self.checkpoint_status = "saved"
             self.checkpoint_error = None
             return True
-
 
     def _load_checkpoint(self):
         """Load one compatible Round-4 checkpoint, leaving fresh agents on error."""
@@ -141,7 +137,6 @@ class CheckpointMixin:
         self.checkpoint_status = "loaded"
         self.checkpoint_error = None
         return True
-
 
     def delete_checkpoint(self):
         """Delete saved Round-4 learning for an explicit wipe-learning control."""

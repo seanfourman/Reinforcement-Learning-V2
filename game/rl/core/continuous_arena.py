@@ -160,10 +160,6 @@ class ContinuousArena:
     def _reset_round_state(self, regenerate):
         """Arena hook: per-episode reset of the round's own state."""
 
-    def set_round(self, round_id):
-        self.round_id = round_id
-        self.reset(regenerate=True)
-
     # ------------------------------------------------------------- dynamics
     def _integrate(self, pos, vel, action, speed_multiplier=1.0, frozen=False):
         """Apply one thrust action: accelerate, drag, cap speed, move, clamp to the
@@ -256,12 +252,6 @@ class ContinuousArena:
         if leave < 0.0 or enter > 1.0:
             return None
         return max(0.0, min(1.0, enter))
-
-    @staticmethod
-    def _swept_hit(m0, m1, a0, a1, radius):
-        """Compatibility boolean used by the small standalone smoke test."""
-        return ContinuousArena._swept_hit_time(
-            m0, m1, a0, a1, radius) is not None
 
     @staticmethod
     def _circle_exit_time(p0, p1, centre, radius):

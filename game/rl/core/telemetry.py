@@ -12,7 +12,6 @@ from core.registry import is_dp
 class TelemetryMixin:
     """The polled stats/snapshot payloads + diagnostics helpers."""
 
-
     def stats(self):
         with self.lock:
             recent = list(self.recent)
@@ -58,7 +57,6 @@ class TelemetryMixin:
                 "diag": {"red": self._diag("red"), "blue": self._diag("blue")},
             }
 
-
     def snapshot(self, include_world=False):
         with self.lock:
             snap = self.env.snapshot()
@@ -71,11 +69,9 @@ class TelemetryMixin:
                 out["world"] = self.env.to_json()
             return out
 
-
     def history(self):
         with self.lock:
             return {"round": self.round_id, "points": list(self.hist)}
-
 
     def dp_report(self, agent):
         """A DP planner's per-sweep convergence trace + meta, for the training
@@ -99,7 +95,6 @@ class TelemetryMixin:
                     "policyChanges": list(getattr(a, "policy_changes", []) or []),
                     "sweeps": list(log)}
 
-
     def dp_planning_complete(self):
         """True only when both Stage-1 planners genuinely converged.
 
@@ -116,7 +111,6 @@ class TelemetryMixin:
                     for agent in agents
                 )
             )
-
 
     def dp_sweeps(self, agent):
         """Per-sweep V snapshots (H x W grids) for the Value-Iteration propagation
@@ -136,7 +130,6 @@ class TelemetryMixin:
                 out.append(g)
             return {"available": True, "agent": agent, "n": len(out), "H": H, "W": W, "frames": out}
 
-
     # ---- diagnostics helpers (Tier 1) -----------------------------------
     def _learn_signal(self, side):
         """The learning signal to chart: smoothed |TD error| for tabular agents,
@@ -144,18 +137,15 @@ class TelemetryMixin:
         f = getattr(self._agent(side), "td_error", None)
         return f() if f else 0.0
 
-
     def _dqn_field(self, side, key):
         # DQN-only fields (gradNorm/predQ); PG agents expose a different diag shape
         # (policyLoss/entropy), so missing keys read as 0.0 instead of crashing.
         d = getattr(self._agent(side), "diag", None)
         return d().get(key, 0.0) if d else 0.0
 
-
     def _diag(self, side):
         d = getattr(self._agent(side), "diag", None)
         return d() if d else None
-
 
     def _ret_std(self):
         """Std of recent per-episode returns per side (MC is noisier than TD)."""
@@ -169,19 +159,16 @@ class TelemetryMixin:
                 out[s] = 0.0
         return out
 
-
     def _recent_outcome(self):
         ro = list(self.recent_out)
         n = len(ro) or 1
         return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
-
 
     # The continuous arena's 9 thrust actions (see continuous.DIRS): 8 compass
     # directions + coast. Shown as real directions, never bare 0..8 indices.
     _ARENA_LABELS = ["N", "S", "W", "E", "NW", "NE", "SW", "SE", "Stay"]
     _ARENA_LABELS_FULL = ["North", "South", "West", "East", "North-West",
                           "North-East", "South-West", "South-East", "Stay (coast)"]
-
 
     def _action_labels(self, full=False):
         if self.env.n_actions == 9 and getattr(self.env, "objective", "") == "arena":
@@ -202,7 +189,6 @@ class TelemetryMixin:
         if self.round_id == 1:
             return ["South", "North", "East", "West"] if full else ["S", "N", "E", "W"]
         return ["North", "South", "West", "East"] if full else ["N", "S", "W", "E"]
-
 
     def action_dist(self):
         """Normalized action-frequency histogram per side (is the policy balanced?)."""

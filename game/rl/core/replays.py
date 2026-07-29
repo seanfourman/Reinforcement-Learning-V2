@@ -25,7 +25,6 @@ TOP_N = 30                 # best replays kept per model (fastest or longest by 
 class ReplayMixin:
     """Episode recording, top/milestone lists, and replay accessors."""
 
-
     def _replay_snapshot(self, actions=None):
         """Environment frame plus the tiny DP progress marker needed by replay."""
         frame = self.env.snapshot()
@@ -46,7 +45,6 @@ class ReplayMixin:
             if hasattr(agent, "sweeps"):
                 frame[f"{side}DpSweep"] = sum(agent.sweeps or [])
         return frame
-
 
     def _finish_episode(
             self, winner, truncated=False, finishers=None, finish_steps=None,
@@ -167,14 +165,12 @@ class ReplayMixin:
             "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
         })
 
-
     # cause string (from the recorded frame's <side>Dead) -> a human phrase
     _DEATH_PHRASE = {
         "plant": "eaten by a Piranha Plant",
         "spike": "impaled on a spike trap",
         "goomba": "caught by a Goomba",
     }
-
 
     def _capture_milestones(self, race, replay_sides, side_steps, truncated):
         """Save a one-off replay the FIRST time each notable event happens this round:
@@ -322,7 +318,6 @@ class ReplayMixin:
                 "replayFields": fields,
             })
 
-
     def _replay_policy_frames(self, agent):
         """Compact HxW canonical policy history for a DP replay; empty for learners."""
         planner = self._agent(agent)
@@ -337,7 +332,6 @@ class ReplayMixin:
                     grid[r][c] = int(action)
             out.append(grid)
         return out
-
 
     def _capture_replay_fields(self, agent):
         """Freeze Arena-2 Q/value/policy fields before MC learns from the run.
@@ -388,7 +382,6 @@ class ReplayMixin:
             "epsilon": round(float(learner.epsilon), 4),
         }
 
-
     def _ceremony_frame(self, side):
         frame = copy.deepcopy(self._frames[-1]) if self._frames else self.env.snapshot()
         if side not in ("red", "blue"):
@@ -405,7 +398,6 @@ class ReplayMixin:
         if goal is not None:
             frame[side] = goal
         return frame
-
 
     def replay(self, which="last", agent=None, rank=0, episode=None):
         with self.lock:
@@ -454,7 +446,6 @@ class ReplayMixin:
             return {"available": True, "which": which, "winner": ep["winner"],
                     "metric": metric,
                     "steps": ep["steps"], "frames": ep["frames"]}
-
 
     def replays_index(self, agent):
         """Lightweight metadata (no frames) for the top-30 replay list per model."""
