@@ -895,6 +895,14 @@ class GridWorld(gym.Env):
                 snap[pre + "Warp"] = list(w) if w else None          # warp DESTINATION cell
                 da = dead_at.get(agent)
                 snap[pre + "DeadAt"] = list(da) if da else None      # the tile it died on
+                # the PLANT that ate it (the one whose 8-cell zone the death tile is in), so the
+                # theme + char animator can stage the grab / throw / swallow toward that plant.
+                if dead.get(agent) == "plant" and da:
+                    killer = next((list(p) for p in self.plant_cells
+                                   if max(abs(p[0] - da[0]), abs(p[1] - da[1])) <= 1), None)
+                    snap[pre + "DeadPlant"] = killer
+                else:
+                    snap[pre + "DeadPlant"] = None
                 wf = warp_from.get(agent)
                 snap[pre + "WarpFrom"] = list(wf) if wf else None    # the pipe ENTRANCE it dived
                 snap[pre + "ResolvedAction"] = resolved.get(agent)

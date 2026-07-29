@@ -698,11 +698,13 @@ export const tostarena = {
 
     // ======================================================================
     // CAPTURE THE FLAG game props (Round 5): the centre flag-pole, breakable
-    // crates (the real FrailBox model), the two corner bases with score pips,
-    // the carrier's foot-ring, power-up auras (shield / speed) + stun stars, a
-    // Chain-Chomp yank, and one-shot grab/steal/capture/crate/chain/bomb bursts.
-    // All driven per-frame from the live snapshot in updateCTF(), the same way
-    // ruined.js drives its Banzai Bills.
+    // crates (the real FrailBox model) that BURST into shards when smashed, the
+    // two corner bases with score pips, cartoon stun STARS, flying Mario-Kart
+    // shells + laid banana/oil traps, and the Chain-Chomp reel-in (the chomp ball
+    // flies out + drags the rival back), plus one-shot grab/steal/capture/crate
+    // bursts. (The held weapon is shown in the top HUD, not in-world.) All driven
+    // per-frame from the live snapshot in updateCTF(), the same way ruined.js
+    // drives its Banzai Bills.
     // ======================================================================
     const ctf = world.ctf || {};
     const homeR = ctf.homeRadius || 1.5;
@@ -715,9 +717,6 @@ export const tostarena = {
     };
     const RED = 0xff5a4d;
     const BLUE = 0x4da0ff;
-    const POWER_COLOR = {
-      speed: 0x66ffcc, chain: 0xffb347, shield: 0x8fd0ff, bomb: 0xff6a4d,
-    };
     const CRATE_PATH = "./assets/objects/Crate/";
 
     // a soft additive radial-gradient glow sprite in any colour
@@ -991,81 +990,293 @@ export const tostarena = {
       }
     }
 
-    // ---- per-side power-up auras: shield bubble, speed glow, stun stars -----
+    // ---- per-side cartoon STUN STARS: classic yellow 5-point "dizzy" stars that
+    // circle over a stunned agent's head (a hand-drawn star sprite, not a blob) ---
+    function makeStarTexture() {
+      const S = 96, cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d");
+      const cx = S / 2, cy = S / 2, R = S * 0.4, r = R * 0.46;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const rad = i % 2 === 0 ? R : r;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      const grd = ctx.createLinearGradient(0, cy - R, 0, cy + R);
+      grd.addColorStop(0, "#fff29a"); grd.addColorStop(1, "#ffb61e");
+      ctx.fillStyle = grd; ctx.fill();
+      ctx.lineJoin = "round"; ctx.lineWidth = S * 0.085;
+      ctx.strokeStyle = "#5a3a00"; ctx.stroke();            // bold cartoon outline
+      const tex = trackTexture(new THREE.CanvasTexture(cv));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+    const starMat = track(new THREE.SpriteMaterial({
+      map: makeStarTexture(), transparent: true, depthWrite: false,
+      depthTest: false, fog: false,
+    }));
     const aura = {};
     for (const side of ["red", "blue"]) {
-      const shield = new THREE.Mesh(
-        track(new THREE.SphereGeometry(1.05, 18, 14)),
-        track(new THREE.MeshBasicMaterial({
-          color: 0x8fd0ff, transparent: true, opacity: 0.22,
-          blending: THREE.AdditiveBlending, depthWrite: false,
-          side: THREE.DoubleSide,
-        })));
-      shield.visible = false;
-      group.add(shield);
-      const speedGlow = makeGlowSprite(0x66ffcc, 2.4);
-      speedGlow.visible = false;
-      group.add(speedGlow);
       const stars = new THREE.Group();
       for (let i = 0; i < 3; i++) {
-        const s = makeGlowSprite(0xfff2a0, 0.55);
-        s.position.set(Math.cos((i / 3) * Math.PI * 2) * 0.5, 0,
-                       Math.sin((i / 3) * Math.PI * 2) * 0.5);
+        const s = new THREE.Sprite(starMat);                // sprites share one material
+        s.scale.set(0.6, 0.6, 1);
+        s.renderOrder = 11;
+        s.position.set(Math.cos((i / 3) * Math.PI * 2) * 0.55, 0,
+                       Math.sin((i / 3) * Math.PI * 2) * 0.55);
         stars.add(s);
       }
       stars.visible = false;
       group.add(stars);
-      aura[side] = { shield, speedGlow, stars };
+      aura[side] = { stars };
     }
 
-    // ---- the Chain-Chomp yank (transient, spawned on a "chain" event) ------
+    // ---- flying shells (red = homing, green = straight/bouncing) ------------
+    // two shared prototypes cloned per live shell id (geometry/material tracked
+    // once), pooled by id and removed when the shell expires or lands a hit.
+    function makeShell(kind) {
+      const color = kind === "red" ? 0xff4438 : 0x36c85a;
+      const g = new THREE.Group();
+      const dome = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.34, 16, 12)),
+        track(new THREE.MeshStandardMaterial({
+          color, roughness: 0.3, metalness: 0.1,
+          emissive: color, emissiveIntensity: 0.28,
+        })));
+      dome.scale.y = 0.82;
+      dome.position.y = 0.04;
+      dome.castShadow = true;
+      g.add(dome);
+      const rim = new THREE.Mesh(
+        track(new THREE.TorusGeometry(0.3, 0.075, 8, 18)),
+        track(new THREE.MeshStandardMaterial({ color: 0xfff2d0, roughness: 0.5 })));
+      rim.rotation.x = Math.PI / 2;
+      g.add(rim);
+      return g;
+    }
+    const shellProto = { red: makeShell("red"), green: makeShell("green") };
+    const shellMeshes = new Map();
+    function syncShells(frame, t, dt) {
+      const active = new Set();
+      for (const s of frame?.shells || []) {
+        active.add(s.id);
+        let m = shellMeshes.get(s.id);
+        if (!m) {
+          m = (shellProto[s.kind] || shellProto.red).clone();
+          group.add(m);
+          shellMeshes.set(s.id, m);
+        }
+        m.position.set(s.pos[0], 0.38, s.pos[1]);
+        m.rotation.y += dt * 15;                           // spin like a rolling shell
+      }
+      for (const [id, m] of shellMeshes) {
+        if (active.has(id)) continue;
+        group.remove(m);
+        shellMeshes.delete(id);
+      }
+    }
+
+    // ---- laid traps: a banana peel or an oil slick lying on the sand --------
+    function makeBanana() {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        track(new THREE.TorusGeometry(0.26, 0.1, 8, 16, Math.PI * 1.15)),
+        track(new THREE.MeshStandardMaterial({
+          color: 0xffd23f, roughness: 0.5, emissive: 0x4a3a00, emissiveIntensity: 0.2,
+        })));
+      body.rotation.x = Math.PI / 2;
+      body.castShadow = true;
+      g.add(body);
+      return g;
+    }
+    // oil slick = the SAME wobbly extruded PUDDLE blob the slippery cells use
+    // (city.js / fossilfalls.js), just skinned BLACK: a near-black pool with a
+    // faint iridescent oily sheen instead of cartoon-turquoise water.
+    function _oilCanvas() {
+      const S = 256, cv = document.createElement("canvas");
+      cv.width = cv.height = S;
+      const ctx = cv.getContext("2d"), img = ctx.createImageData(S, S), d = img.data;
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+        const u = x / S, v = y / S;
+        let n = 0.5 + 0.30 * Math.sin(2 * Math.PI * (u + v))
+          + 0.20 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
+        n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
+        // a slow rainbow sheen riding on the near-black base (oil-slick shimmer)
+        const sheen = 0.5 + 0.5 * Math.sin(2 * Math.PI * (u * 3 + v * 2) + n * 3.0);
+        const i = (y * S + x) * 4;
+        d[i]     = 6 + 20 * n + 16 * sheen;              // purple glints
+        d[i + 1] = 6 + 14 * n + 20 * (1 - sheen) * n;    // teal glints
+        d[i + 2] = 10 + 26 * n + 22 * sheen;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return cv;
+    }
+    function oilShape() {
+      const s = new THREE.Shape();
+      const ph1 = Math.random() * 6.283, ph2 = Math.random() * 6.283;
+      const rr = 0.6;                                    // ~TRAP_R across
+      for (let i = 0, n = 72; i <= n; i++) {
+        const th = (i / n) * Math.PI * 2;
+        const w = 1 + 0.08 * Math.sin(th * 3 + ph1) + 0.045 * Math.sin(th * 5 + ph2);
+        const x = Math.cos(th) * rr * w, y = Math.sin(th) * rr * w;
+        if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+      }
+      return s;
+    }
+    const oilTex = trackTexture(new THREE.CanvasTexture(_oilCanvas()));
+    oilTex.colorSpace = THREE.SRGBColorSpace;
+    oilTex.wrapS = oilTex.wrapT = THREE.RepeatWrapping;
+    oilTex.repeat.set(1.4, 1.4);
+    oilTex.anisotropy = maxAniso;
+    const oilMat = track(new THREE.MeshStandardMaterial({
+      color: 0xffffff, map: oilTex, transparent: true, opacity: 0.95,
+      roughness: 0.12, metalness: 0.55, emissive: 0x0a0a12, emissiveIntensity: 0.15,
+      depthWrite: false,
+    }));
+    function makeOil() {
+      const g = new THREE.Group();
+      const slick = new THREE.Mesh(track(new THREE.ExtrudeGeometry(oilShape(), {
+        depth: 0.05, bevelEnabled: true, bevelThickness: 0.03,
+        bevelSize: 0.04, bevelSegments: 2,
+      })), oilMat);
+      slick.rotation.x = -Math.PI / 2;                   // lay the blob flat on the sand
+      slick.position.y = 0.03;
+      slick.renderOrder = 3;
+      slick.receiveShadow = true;
+      g.add(slick);
+      return g;
+    }
+    const trapProto = { banana: makeBanana(), oil: makeOil() };
+    const trapMeshes = new Map();
+    function syncTraps(frame, t) {
+      oilTex.offset.x = t * 0.008;                        // slow living oily shimmer
+      oilTex.offset.y = Math.sin(t * 0.2) * 0.03;
+      const active = new Set();
+      for (const tr of frame?.traps || []) {
+        active.add(tr.id);
+        let m = trapMeshes.get(tr.id);
+        if (!m) {
+          m = (trapProto[tr.kind] || trapProto.banana).clone();
+          m.position.set(tr.pos[0], 0, tr.pos[1]);
+          m.rotation.y = (tr.id * 1.7) % (Math.PI * 2);   // vary each peel / slick
+          group.add(m);
+          trapMeshes.set(tr.id, m);
+        }
+        if (tr.kind === "banana") {
+          m.position.y = 0.14 + Math.sin(t * 3 + tr.id) * 0.04;
+        }
+      }
+      for (const [id, m] of trapMeshes) {
+        if (active.has(id)) continue;
+        group.remove(m);
+        trapMeshes.delete(id);
+      }
+    }
+
+    // ---- crate-break shards (wooden debris flung out when a crate is smashed)
+    const shardGeo = track(new THREE.BoxGeometry(0.16, 0.16, 0.16));
+    const shardMat = track(new THREE.MeshStandardMaterial({
+      color: 0xba7a32, roughness: 0.85,
+    }));
+    const shards = [];
+    function spawnShards(x, z) {
+      for (let i = 0; i < 11; i++) {
+        const s = new THREE.Mesh(shardGeo, shardMat);
+        s.position.set(x, 0.35, z);
+        const ang = Math.random() * Math.PI * 2;
+        const sp = 2 + Math.random() * 3.5;
+        s.userData.v = [Math.cos(ang) * sp, 2.6 + Math.random() * 2.6,
+                        Math.sin(ang) * sp];
+        s.userData.rv = [Math.random() * 9, Math.random() * 9, Math.random() * 9];
+        s.userData.life = 0;
+        s.castShadow = true;
+        group.add(s);
+        shards.push(s);
+      }
+    }
+    function updateShards(dt) {
+      for (let i = shards.length - 1; i >= 0; i--) {
+        const s = shards[i];
+        const v = s.userData.v;
+        v[1] -= 13 * dt;                                   // gravity
+        s.position.x += v[0] * dt;
+        s.position.y += v[1] * dt;
+        s.position.z += v[2] * dt;
+        if (s.position.y < 0.08) {                         // bounce + settle
+          s.position.y = 0.08;
+          v[0] *= 0.6; v[2] *= 0.6; v[1] *= -0.32;
+        }
+        s.rotation.x += s.userData.rv[0] * dt;
+        s.rotation.y += s.userData.rv[1] * dt;
+        s.rotation.z += s.userData.rv[2] * dt;
+        s.userData.life += dt;
+        if (s.userData.life >= 0.75) { group.remove(s); shards.splice(i, 1); }
+      }
+    }
+
+    // ---- the Chain-Chomp REEL-IN (spawned on a "chain" event) --------------
+    // The chomp ball SHOOTS OUT from the puller to the rival over CHAIN_LAUNCH,
+    // then the chain (and the rival, dragged by the sim) retract together. Both
+    // endpoints track the LIVE snapshot positions each frame, so the yank reads as
+    // a real animation instead of an instant teleport.
     const chainFx = [];
-    function spawnChain(fromXZ, toXZ) {
+    const CHAIN_LAUNCH = 0.16, CHAIN_FX_DUR = 0.75;
+    function spawnChain(pullerSide, victimSide) {
       const g = new THREE.Group();
       const linkMat = new THREE.MeshStandardMaterial({
-        color: 0x2b2b2b, roughness: 0.45, metalness: 0.8,
+        color: 0x2b2b2b, roughness: 0.45, metalness: 0.8, transparent: true,
       });
       const links = [];
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 8; i++) {
         const l = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.045, 6, 10), linkMat);
         l.rotation.x = i % 2 ? Math.PI / 2 : 0;
         g.add(l);
         links.push(l);
       }
-      const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.34, 16, 12),
-        new THREE.MeshStandardMaterial({
-          color: 0x141414, roughness: 0.4, metalness: 0.3,
-        }));
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0x141414, roughness: 0.35, metalness: 0.3, transparent: true,
+      });
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), headMat);
       g.add(head);
       group.add(g);
-      chainFx.push({ g, links, head, linkMat, from: fromXZ, to: toXZ, t: 0, dur: 0.55 });
+      chainFx.push({ g, links, head, linkMat, headMat,
+                     puller: pullerSide, victim: victimSide, t: 0, from: null, to: null });
     }
     function disposeChain(c) {
       group.remove(c.g);
       c.linkMat.dispose();
+      c.headMat.dispose();
       for (const l of c.links) l.geometry.dispose();
       c.head.geometry.dispose();
-      c.head.material.dispose();
     }
-    function updateChains(dt) {
+    function updateChains(dt, frame) {
       for (let i = chainFx.length - 1; i >= 0; i--) {
         const c = chainFx[i];
         c.t += dt;
-        const u = c.t / c.dur;
+        const pf = frame?.[c.puller], vf = frame?.[c.victim];
+        if (pf) c.from = [pf[0], pf[1]];                   // puller root (chain anchor)
+        if (vf) c.to = [vf[0], vf[1]];                     // the hooked rival (live)
+        const from = c.from || [0, 0], to = c.to || from;
+        const reach = Math.min(1, c.t / CHAIN_LAUNCH);     // chomp shoots out, then sticks
         for (let k = 0; k < c.links.length; k++) {
-          const f = k / (c.links.length - 1);
+          const f = (k / (c.links.length - 1)) * reach;
           c.links[k].position.set(
-            c.from[0] + (c.to[0] - c.from[0]) * f,
+            from[0] + (to[0] - from[0]) * f,
             0.9 + Math.sin(f * Math.PI) * 0.15,
-            c.from[1] + (c.to[1] - c.from[1]) * f);
+            from[1] + (to[1] - from[1]) * f);
         }
-        c.head.position.set(c.to[0], 0.9, c.to[1]);
-        c.linkMat.transparent = true;
-        c.linkMat.opacity = Math.max(0, 1 - u);
-        c.head.material.transparent = true;
-        c.head.material.opacity = Math.max(0, 1 - u);
-        if (u >= 1) {
+        c.head.position.set(
+          from[0] + (to[0] - from[0]) * reach, 0.95,
+          from[1] + (to[1] - from[1]) * reach);
+        c.head.rotation.y += dt * 9;
+        const fade = Math.max(0, Math.min(1, (CHAIN_FX_DUR - c.t) / 0.18));
+        c.linkMat.opacity = fade;
+        c.headMat.opacity = fade;
+        if (c.t >= CHAIN_FX_DUR) {
           disposeChain(c);
           chainFx.splice(i, 1);
         }
@@ -1113,37 +1324,34 @@ export const tostarena = {
         baseVis[side].glow.intensity = 0.6 + Math.sin(t * 3 + ph) * 0.2;
       }
 
-      // power-up auras + stun stars, per side
-      const effects = frame?.effects || {};
+      // stun stars, per side (spun overhead while an agent is stunned)
       const stun = frame?.stun || {};
       for (const side of ["red", "blue"]) {
         const p = frame?.[side];
         const a = aura[side];
-        const ef = effects[side] || {};
-        a.shield.visible = (ef.shield || 0) > 0 && !!p;
-        if (a.shield.visible) {
-          a.shield.position.set(p[0], 1.0, p[1]);
-          a.shield.scale.setScalar(1 + Math.sin(t * 6) * 0.05);
-        }
-        a.speedGlow.visible = (ef.speed || 0) > 0 && !!p;
-        if (a.speedGlow.visible) a.speedGlow.position.set(p[0], 0.5, p[1]);
         a.stars.visible = (stun[side] || 0) > 0 && !!p;
         if (a.stars.visible) {
-          a.stars.position.set(p[0], 2.2, p[1]);
-          a.stars.rotation.y += dt * 5;
+          a.stars.position.set(p[0], 2.35, p[1]);
+          a.stars.rotation.y += dt * 5.5;                  // whirl the dizzy ring
+          a.stars.children.forEach((s, i) =>              // + a little bob per star
+            (s.position.y = Math.sin(t * 6 + i * 2.1) * 0.12));
         }
       }
 
-      // crates + the transient chain-yank FX
+      // crates, flying shells, laid traps + crate shards
       syncCrates(frame, t, dt);
+      syncShells(frame, t, dt);
+      syncTraps(frame, t);
       for (const ev of frame?.ctfEvents || []) {
         if (!rememberEvent(ev.id)) continue;
         if (ev.type === "chain" && ev.target) {
-          const to = frame?.[ev.target];
-          if (ev.pos && to) spawnChain(ev.pos, to);
+          spawnChain(ev.side, ev.target);                 // reel-in FX follows live pos
+        } else if (ev.type === "crate" && ev.pos) {
+          spawnShards(ev.pos[0], ev.pos[1]);              // the smash burst
         }
       }
-      updateChains(dt);
+      updateChains(dt, frame);
+      updateShards(dt);
     }
 
     function resetEffects(frameToSuppress = null) {
@@ -1151,6 +1359,13 @@ export const tostarena = {
       seenOrder.length = 0;
       for (const c of chainFx) disposeChain(c);
       chainFx.length = 0;
+      // clear transient weapon props so a new episode starts clean
+      for (const s of shards) group.remove(s);
+      shards.length = 0;
+      for (const [, m] of shellMeshes) group.remove(m);
+      shellMeshes.clear();
+      for (const [, m] of trapMeshes) group.remove(m);
+      trapMeshes.clear();
       // absorb events already present in a restored frame so they don't re-fire
       for (const ev of frameToSuppress?.ctfEvents || []) rememberEvent(ev.id);
     }
@@ -1209,6 +1424,13 @@ export const tostarena = {
       chainFx.length = 0;
       for (const [, m] of crateMeshes) group.remove(m);
       crateMeshes.clear();
+      // remove the pooled weapon props (their shared geo/mat are freed via `trash`)
+      for (const [, m] of shellMeshes) group.remove(m);
+      shellMeshes.clear();
+      for (const [, m] of trapMeshes) group.remove(m);
+      trapMeshes.clear();
+      for (const s of shards) group.remove(s);
+      shards.length = 0;
       const disposeTree = (obj) => obj?.traverse?.((o) => {
         if (!o.isMesh) return;
         o.geometry?.dispose?.();

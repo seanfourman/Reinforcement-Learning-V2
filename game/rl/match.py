@@ -1028,7 +1028,14 @@ class Match:
                         "frames": frames,
                         "policyFrames": replay_policy,
                         "replayFields": (replay_fields or {}).get(replay_side)})
-            lst.sort(key=lambda e: e["steps"], reverse=survival)
+            # Rank the RACE "top" list by REWARD (highest return first) - the meaningful
+            # quality signal - breaking ties with the FASTEST run; earlier it sorted only by
+            # steps, so the many max-step (timeout) episodes tied and fell back to episode
+            # order. The survival round keeps its own longest-first ordering.
+            if survival:
+                lst.sort(key=lambda e: e["steps"], reverse=True)
+            else:
+                lst.sort(key=lambda e: (e["stats"]["return"], -e["steps"]), reverse=True)
             del lst[TOP_N:]
         recent = list(self.recent)
         n = len(recent) or 1
@@ -2060,7 +2067,7 @@ class Match:
                     "the same instant is a draw)."
                 )
             elif getattr(env, "ctf_game", False):
-                actions = ["8 compass thrusts + coast (9)"]
+                actions = ["8 compass thrusts + coast + USE weapon (10)"]
                 state_size = None
                 sees_opp = True
                 state_desc = (
@@ -2071,9 +2078,12 @@ class Match:
                     "rival-carries) + 4 base vectors (to your base, to the rival's base) + "
                     "4 status terms (carrying, your + rival stun timers, capture lead) + "
                     "6 crate terms (2 nearest crates: present, relative x/z) + "
-                    "4 power-up timers (your + rival speed and shield)"
+                    "5 held-weapon one-hot (chain / red shell / green shell / banana / "
+                    "oil; all 0 = empty) + 1 rival-armed flag + "
+                    "10 shell terms (2 nearest shells: present, relative x/z, velocity x/z) + "
+                    "8 trap terms (2 nearest traps: present, relative x/z, is-oil)"
                 )
-                # segmented breakdown (dims sum to obs_dim = 31) for the stacked bar
+                # segmented breakdown (dims sum to obs_dim = 51) for the stacked bar
                 state_groups = [
                     {"label": "Self", "dim": 4, "color": "#3f7fe0",
                      "detail": "your position x/z and velocity x/z"},
@@ -2087,18 +2097,24 @@ class Match:
                      "detail": "carrying, your + rival stun timers, capture lead"},
                     {"label": "Crates", "dim": 6, "count": 2, "each": 3, "color": "#c98a3a",
                      "detail": "2 nearest crates (present, relative x/z)"},
-                    {"label": "Power-ups", "dim": 4, "color": "#22a39f",
-                     "detail": "your + rival speed and shield timers"},
+                    {"label": "Weapon", "dim": 6, "color": "#d94f8a",
+                     "detail": "your held weapon (5-way one-hot) + is the rival armed?"},
+                    {"label": "Shells", "dim": 10, "count": 2, "each": 5, "color": "#e07b3f",
+                     "detail": "2 nearest shells (present, relative x/z, velocity x/z)"},
+                    {"label": "Traps", "dim": 8, "count": 2, "each": 4, "color": "#6b8e23",
+                     "detail": "2 nearest traps (present, relative x/z, is-oil)"},
                 ]
                 observation = (
                     "Each agent sees ITSELF AND ITS RIVAL: its own position/velocity, the "
                     "rival's relative position/velocity, where the flag is and who holds "
                     "it, the direction to both bases, the status terms (carrying, the two "
-                    "stun timers, capture lead), the two nearest crates, and both sides' "
-                    "power-up timers."
+                    "stun timers, capture lead), the two nearest crates, WHICH weapon it is "
+                    "holding (and whether the rival is armed), and the two nearest incoming "
+                    "shells and laid traps."
                 )
                 observation_tuple = (
-                    "(self, opponent, flag + holder, bases, status, crates, power-ups)")
+                    "(self, opponent, flag + holder, bases, status, crates, weapon, "
+                    "shells, traps)")
                 opp_info = (
                     "FULLY VISIBLE - this is the whole point of the round. The rival's "
                     "relative position and velocity are in every observation, so a good "
@@ -2113,9 +2129,12 @@ class Match:
                     "is the CHASER. Tag the carrier to INSTANTLY STEAL the flag - the "
                     "robbed carrier is briefly stunned. Deliver the flag to your own corner "
                     "base to CAPTURE it (+1); it then respawns on the pole. Breakable "
-                    "CRATES spawn around the board: touch one to smash it for a random "
-                    "POWER-UP - speed boost, chain-pull (yank + stun the rival), shield "
-                    "(immune to steal/stun), or flag-bomb (knock the flag off the carrier)."
+                    "CRATES spawn around the board: smash one to pick up a random Mario-Kart "
+                    "WEAPON into a one-slot inventory, HELD until you fire it with the USE "
+                    "action - Chain Chomp (yank the rival in + stun it), a homing Red shell "
+                    "or a straight Green shell (both stun on hit; the green bounces off "
+                    "walls), a Banana (a laid trap that stuns whoever drives over it) or "
+                    "an Oil slick (throws the rival backwards + briefly dazes it)."
                 )
                 rewards = [
                     ["Grab the loose flag", 0.15],
@@ -2123,8 +2142,10 @@ class Match:
                     ["Lose it to a tag", -0.40],
                     ["Capture at your base", 1.0],
                     ["The rival captures one", -0.30],
-                    ["Smash a crate (earn a power-up)", 0.10],
-                    ["Flag-bomb strips the enemy carrier", 0.20],
+                    ["Smash a crate (pick up a weapon)", 0.10],
+                    ["Chain-yank the rival", 0.08],
+                    ["Hit the rival with a shell", 0.30],
+                    ["Snare the rival with a banana / oil", 0.25],
                     ["Win the round (first to 3 captures)", 2.0],
                     ["Step", -0.002],
                 ]
@@ -2292,7 +2313,7 @@ class Match:
         with self.lock:
             lst = self._top.get(agent, [])
             return {"agent": agent, "count": len(lst),
-                    "metric": "longest" if getattr(self.env, "missile_game", False) else "fastest",
+                    "metric": "longest" if getattr(self.env, "missile_game", False) else "reward",
                     "items": [{"rank": i, "steps": e["steps"], "episode": e["episode"],
                                "return": (e.get("stats") or {}).get("return"),
                                "id": f"{self.round_id}:{agent}:{e['episode']}"}
@@ -2401,6 +2422,11 @@ class Match:
     def _action_labels(self, full=False):
         if self.env.n_actions == 9 and getattr(self.env, "objective", "") == "arena":
             return self._ARENA_LABELS_FULL if full else self._ARENA_LABELS
+        # Round 5 CTF adds a 10th "use the held weapon" action after the 9 thrusts.
+        if self.env.n_actions == 10 and getattr(self.env, "objective", "") == "arena":
+            base = list(self._ARENA_LABELS_FULL if full else self._ARENA_LABELS)
+            base.append("Use weapon" if full else "Use")
+            return base
         if self.env.n_actions == 5:     # Round 3: the 4 moves + a STAY (wait out a Goomba)
             return (["North", "South", "West", "East", "Wait"] if full
                     else ["N", "S", "W", "E", "Wait"])

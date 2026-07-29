@@ -955,24 +955,43 @@ export const city = {
     });
 
     // ---- PIRANHA PLANTS (carnivorous): stand on a hedge tile; their 8-cell zone kills.
-    // They LUNGE + rise when they bite (a char strays into the zone / dies there).
+    // They REACH (bone neck) toward a char that strays in, and stage a full grab-throw-swallow
+    // on a death. PLANT_FACE = yaw offset so "lean forward" points AT the char (tuned by render).
+    const PLANT_FACE = 0;
     const plantMat = track(new THREE.MeshStandardMaterial({
       map: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_alb.png'),
       normalMap: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_nrm.png', false),
       roughnessMap: objTex(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBigBody_rgh.png', false),
       roughness: 0.62, metalness: 0.0,
     }));
-    const plantObjs = [];                  // {r, c, wrap, baseS, chomp}
-    loadObj(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBig.dae').then((proto) => {
-      if (!proto) return;
-      for (const [r, c] of world.plants || []) {
-        const wrap = fitObject(proto.clone(true), 1.5);
-        setObjMat(wrap, plantMat);
-        wrap.position.set(cellX(c), 0.02, cellZ(r));
-        group.add(wrap);
-        plantObjs.push({ r, c, wrap, baseS: wrap.scale.x, chomp: 0 });
-      }
-    });
+    const plantObjs = [];                  // {r, c, wrap, bones, chomp, death}
+    // Load the plant WITH its skeleton (do NOT deskin): the neck bones (Spin1..4) and jaw bones
+    // (JawUpper/JawLower) drive the reach + chomp. cloneSkinned gives each plant its OWN skeleton
+    // so they animate independently.
+    collada.loadAsync(encodeURI(OBJ + 'Piranha Plant/PackunPoisonBig/PackunPoisonBig.dae'))
+      .then((asset) => {
+        if (disposed) return;
+        for (const [r, c] of world.plants || []) {
+          const inst = cloneSkinned(asset.scene);
+          const wrap = fitObject(inst, 1.5);
+          setObjMat(wrap, plantMat);
+          wrap.position.set(cellX(c), 0.02, cellZ(r));
+          group.add(wrap);
+          const bones = { spins: [], jawL: [], jawU: [] };
+          wrap.traverse((o) => {
+            if (!o.isBone) return;
+            if (/^Spin[1-4]$/.test(o.name)) bones.spins.push(o);
+            else if (/^JawLower/.test(o.name)) bones.jawL.push(o);
+            else if (/^JawUpper/.test(o.name)) bones.jawU.push(o);
+          });
+          bones.spins.sort((a, b) => a.name.localeCompare(b.name));
+          // The whole armature is authored with local X pointing UP, so the neck's forward
+          // bend and the jaw's mouth-open BOTH hinge about each bone's local Y (a horizontal
+          // axis) - NOT local X (which just twists/skews). Store the rest local-Y per bone.
+          for (const b of [...bones.spins, ...bones.jawL, ...bones.jawU]) b.userData.ry = b.rotation.y;
+          plantObjs.push({ r, c, wrap, bones, restY: wrap.rotation.y, chomp: 0, death: null, ate: false });
+        }
+      }).catch((e) => console.warn('Piranha plant failed to load', e));
 
     // ---- POWER STARS to collect: 3 per agent, the CoinCollectG "apple" (a purple
     // faceted tomato). Each agent claims its OWN three (Cobalt's on the left, Crimson's
@@ -1076,13 +1095,50 @@ export const city = {
           if (at && d === 'plant') plantDeaths.push(at);
         }
       }
+      const faceYawTo = (p, at) =>
+        Math.atan2((at[1] + 0.5) - (p.c + 0.5), (at[0] + 0.5) - (p.r + 0.5)) + PLANT_FACE;
       for (const p of plantObjs) {
-        const bite = plantDeaths.some((at) => cheby(p, at)) || cheby(p, rCell) || cheby(p, bCell);
-        p.chomp = bite ? 1 : Math.max(0, p.chomp - dt * 1.4);
-        const lunge = Math.sin(Math.min(1, p.chomp) * Math.PI);
-        p.wrap.scale.set(p.baseS * (1 + lunge * 0.12), p.baseS * (1 + lunge * 0.6), p.baseS * (1 + lunge * 0.12));
-        p.wrap.rotation.y = lunge * 0.5;
-        p.wrap.position.y = 0.02 + lunge * 0.26;
+        if (!p.bones) continue;
+        // A DEATH in this plant's 8-cell zone triggers the full GRAB cinematic (reach at the
+        // char, then hold the mouth WIDE to catch it as it is thrown up + falls back in, then
+        // swallow). A live char merely STRAYING in gives a smaller warning chomp toward it.
+        const deathAt = plantDeaths.find((at) => cheby(p, at));
+        // Fire the eat cinematic ONCE per death: the frame keeps reporting this death for many
+        // frames (until the round resets), so latch `p.ate` while a death sits in the zone and
+        // only re-arm once it clears - otherwise the plant would loop, re-opening its mouth.
+        if (deathAt) { if (!p.death && !p.ate) p.death = { t: 0, at: deathAt }; }
+        else p.ate = false;
+        // A char that is already DEAD (a corpse in the zone) must not count as a live stray, or
+        // the plant would keep nibbling the body and never keep its mouth shut after eating.
+        const redAlive = !(frame && frame.redDead), blueAlive = !(frame && frame.blueDead);
+        const strayAt = (redAlive && rCell && cheby(p, rCell) && rCell) ||
+                        (blueAlive && bCell && cheby(p, bCell) && bCell) || null;
+
+        let reach = 0, mouth = 0, targetY = p.restY;
+        if (p.death) {
+          p.death.t += dt;
+          const T = p.death.t;
+          targetY = faceYawTo(p, p.death.at);
+          if (T < 0.30) { const u = T / 0.30; reach = u; mouth = u; }         // reach toward the char, open
+          else if (T < 0.85) { reach = 1 - (T - 0.30) / 0.55; mouth = 1; }    // rise upright, mouth WIDE (catch)
+          else if (T < 1.05) { reach = 0; mouth = 1 - (T - 0.85) / 0.20; }    // SWALLOW: close the mouth
+          else { p.death = null; p.ate = true; p.chomp = 0; }                 // eaten: latch shut, no residual chomp
+        } else if (strayAt) {
+          p.chomp = Math.min(1, p.chomp + dt * 4);
+          targetY = faceYawTo(p, strayAt);
+          reach = p.chomp * 0.45; mouth = p.chomp * 0.6;
+        } else {
+          p.chomp = Math.max(0, p.chomp - dt * 2.5);
+          reach = p.chomp * 0.45; mouth = p.chomp * 0.6;
+        }
+
+        p.wrap.rotation.y += (targetY - p.wrap.rotation.y) * Math.min(1, dt * 9);
+        const sp = p.bones.spins;                       // stack the segment bends -> the neck arcs over
+        // hinge about local Y: -reach lunges the neck FORWARD (+Z, toward the prey); the jaws
+        // swing open vertically (lower drops, upper lifts) instead of twisting sideways.
+        for (let i = 0; i < sp.length; i++) sp[i].rotation.y = sp[i].userData.ry - reach * 0.30;
+        for (const j of p.bones.jawL) j.rotation.y = j.userData.ry - mouth * 1.00;
+        for (const j of p.bones.jawU) j.rotation.y = j.userData.ry + mouth * 0.90;
       }
     }
 

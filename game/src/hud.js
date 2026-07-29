@@ -153,6 +153,19 @@ const STYLE = `
   opacity:.5;transition:fill .18s,opacity .18s;}
 .fb-side.blue .fb-flag.alive path{fill:#4c9dff;opacity:1;}
 .fb-side.red .fb-flag.alive path{fill:#f04b43;opacity:1;}
+/* Arena-5 CTF: the currently HELD weapon on the OUTER side of the flags. A team-
+   coloured RING with NO dark fill; the item PNG sits a bit LARGER than the ring and
+   pops out of it (overflow visible), so the weapon reads clearly, not a tiny disc. */
+.fb-weapon{display:none;box-sizing:border-box;width:44px;height:44px;flex:none;margin:0 12px;
+  align-items:center;justify-content:center;border-radius:50%;border:3px solid #4c9dff;
+  background:radial-gradient(circle at 50% 42%,rgba(76,157,255,.22),rgba(76,157,255,0) 72%);
+  transition:opacity .18s;}
+.fb-weapon img{width:158%;height:158%;object-fit:contain;display:block;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.7));}
+.fb-weapon.empty{opacity:.4;}
+.fb-weapon.empty img{display:none;}
+.fb-side.red .fb-weapon{border-color:#f04b43;
+  background:radial-gradient(circle at 50% 42%,rgba(240,75,67,.22),rgba(240,75,67,0) 72%);}
 `;
 
 export function initHud() {
@@ -164,6 +177,7 @@ export function initHud() {
   hud.id = "rl-hud";
   const sideHTML = (side, px) =>
     `<div class="fb-side ${side}">
+      <div class="fb-weapon" id="fb-weapon-${side}"><img alt="" /></div>
       <div class="fb-hearts" id="fb-hearts-${side}"></div>
       <img class="fb-port" id="fb-port-${side}" alt="" />
       <div class="fb-col">
@@ -360,12 +374,44 @@ export function initHud() {
     '<svg class="fb-tomato" viewBox="0 0 24 24" aria-hidden="true">' +
     '<path d="M12 6.2c5.55-1.45 9.15 1.7 8.75 6.65-.42 5.2-4.12 8.15-8.75 8.15s-8.33-2.95-8.75-8.15C2.85 7.9 6.45 4.75 12 6.2z M12 7.65 9.55 5.5 6.35 6.1 8.2 3.45 7.6 1.4 11 3.25 13.75 1.2 13.45 4.05 17.65 4.65 14.3 6.05z"/>' +
     "</svg>";
-  // a pennant (triangle) flag on a rounded pole, filled per side like the hearts
+  // a BOLD pennant (big triangle) on a slim rounded pole, filled per side like
+  // the hearts. The triangle is deliberately large so the team colour dominates
+  // and the pole leaves little empty space.
   const FLAG_SVG =
     '<svg class="fb-flag" viewBox="0 0 24 24" aria-hidden="true">' +
-    '<path d="M6 2.6a.85.85 0 0 1 .85.85V20.55a.85.85 0 0 1-1.7 0V3.45A.85.85 0 0 1 6 2.6Z ' +
-    'M7.2 3.6 18.7 6.9a.6.6 0 0 1 0 1.1L7.2 11.2Z"/>' +
+    '<path d="M5.4 1.8a.9.9 0 0 1 .9.9V21.3a.9.9 0 0 1-1.8 0V2.7A.9.9 0 0 1 5.4 1.8Z ' +
+    'M6.3 2.7 21.4 9.15a.65.65 0 0 1 0 1.2L6.3 16.8Z"/>' +
     "</svg>";
+  // Round-5 held-weapon icons (the files the user dropped in assets/icons/weapons)
+  const WEAPON_ICON = {
+    chain: "./assets/icons/weapons/Chain_Chomp.png",
+    red_shell: "./assets/icons/weapons/red-shell-2x.png",
+    green_shell: "./assets/icons/weapons/green-shell-2x.png",
+    banana: "./assets/icons/weapons/banana-2x.png",
+    oil: "./assets/icons/weapons/MKAGPDX_Sticky_Oil.png",
+  };
+  const weaponBox = { blue: $("#fb-weapon-blue"), red: $("#fb-weapon-red") };
+  // weapon: a key => show that icon (armed); null => R5 but the slot is empty (dim
+  // circle); undefined => not Round 5, hide the badge entirely.
+  function setWeaponBadge(side, weapon) {
+    const box = weaponBox[side];
+    if (!box) return;
+    if (weapon === undefined) {
+      box.style.display = "none";
+      return;
+    }
+    box.style.display = "flex";
+    const img = box.querySelector("img");
+    const url = WEAPON_ICON[weapon];
+    if (url) {
+      if (img.getAttribute("src") !== url) img.setAttribute("src", url);
+      box.classList.add("armed");
+      box.classList.remove("empty");
+    } else {
+      box.classList.add("empty");
+      box.classList.remove("armed");
+    }
+  }
   const heartBox = { blue: $("#fb-hearts-blue"), red: $("#fb-hearts-red") };
   function setProgressPips(side, filled, max, kind) {
     const box = heartBox[side];
@@ -414,6 +460,9 @@ export function initHud() {
     // Arena 4: remaining lives (hearts). Arena 2: collected-tomato count. Arena 5:
     // captured flags. Any other round hides the same shared progress row.
     const frame = e.detail.frame;
+    // the held-weapon badge is Round-5 only; hide it every other round
+    setWeaponBadge("blue", undefined);
+    setWeaponBadge("red", undefined);
     const hearts =
       frame && frame.gameMode === "missileSurvival" ? frame.hearts : null;
     if (hearts) {
@@ -425,6 +474,9 @@ export function initHud() {
       const max = frame.capturesToWin || 3;
       setProgressPips("blue", cap.blue || 0, max, "flag");
       setProgressPips("red", cap.red || 0, max, "flag");
+      const w = frame.weapons || {};
+      setWeaponBadge("blue", w.blue ?? null);
+      setWeaponBadge("red", w.red ?? null);
     } else if (frame && frame.nStars) {
       const bitCount = (bits) => {
         let count = 0;

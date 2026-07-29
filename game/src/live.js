@@ -349,9 +349,11 @@ export function createLiveActors(scene, walkers) {
         // start = the tile it stood on; pipe = the entrance it leaps into; to = where it pops out
         fx[side] = { type: 'warp', t: 0, start: { ...rendered[side] }, pipe: cwArr(from), to: cwArr(warpTo) };
         lastFxStep[side] = step;
-      } else if (dead === 'plant' && at) {          // ONLY the plant animates the char (eaten);
-        fx[side] = { type: 'death', t: 0, kind: dead, at: cwArr(at) };  // a spike death is the
-        lastFxStep[side] = step;                    // rising spikes alone - the char just vanishes
+      } else if (dead === 'plant' && at) {          // the plant STAGES the eat (grab/throw/swallow);
+        const pl = f[side + 'DeadPlant'];           // a spike death is the rising spikes alone.
+        fx[side] = { type: 'death', t: 0, kind: dead, at: cwArr(at),
+                     plant: pl ? cwArr(pl) : cwArr(at) };   // the plant's tile = where it is thrown + swallowed
+        lastFxStep[side] = step;
       }
     }
   }
@@ -505,20 +507,41 @@ export function createLiveActors(scene, walkers) {
       fx[key] = null;
       return true;
     }
-    // DEATH: on the tile it died on - a plant yanks it UP small, spikes squash it FLAT -
-    // then it is gone; a later episode-reset frame restores it at spawn.
-    const DUR = 0.55;
-    if (f.t < DUR) {
-      const u = f.t / DUR;
-      if (f.kind === 'plant') {
-        g.position.set(f.at.x, u * 0.9, f.at.z);     // lifted into the mouth
-        g.scale.setScalar(agentScale * (1 - 0.85 * u));
-      } else {
+    // DEATH: a PLANT stages GRAB -> THROW-up -> FALL-in -> SWALLOW (synced with the plant's own
+    // neck/jaw animation in the city theme); a SPIKE just squashes it FLAT. Then it is gone until
+    // a later episode-reset frame restores it at spawn.
+    if (f.kind === 'plant') {
+      const T = 1.05, pl = f.plant || f.at, MOUTH = 1.15;   // plant mouth height (world units)
+      if (f.t < T) {
+        const tt = f.t, lp = (a, b, u) => a + (b - a) * u;
+        let x, z, y, s = agentScale;
+        if (tt < 0.30) {                             // GRABBED at its own tile as the neck lunges over it
+          const u = tt / 0.30;
+          x = f.at.x; z = f.at.z; y = u * 0.95;
+        } else if (tt < 0.55) {                      // THROWN: swept over the plant and flung high
+          const u = (tt - 0.30) / 0.25;
+          x = lp(f.at.x, pl.x, u); z = lp(f.at.z, pl.z, u); y = 0.95 + u * 2.0;
+        } else if (tt < 0.86) {                      // FALLING: back down into the wide-open mouth
+          const u = (tt - 0.55) / 0.31;
+          x = pl.x; z = pl.z; y = 2.95 * (1 - u) + MOUTH * u;
+        } else {                                     // SWALLOWED: sinks in + shrinks away
+          const u = (tt - 0.86) / 0.19;
+          x = pl.x; z = pl.z; y = MOUTH * (1 - 0.55 * u); s = agentScale * (1 - u);
+        }
+        g.position.set(x, y, z);
+        g.scale.setScalar(Math.max(0.001, s));
+        g.rotation.y += dt * 9;
+        return false;
+      }
+    } else {                                         // SPIKE: squash flat
+      const DUR = 0.55;
+      if (f.t < DUR) {
+        const u = f.t / DUR;
         g.position.set(f.at.x, 0, f.at.z);
         g.scale.set(agentScale * (1 + 0.3 * u), agentScale * (1 - 0.9 * u), agentScale * (1 + 0.3 * u));
+        g.rotation.y += dt * 12;
+        return false;
       }
-      g.rotation.y += dt * 12;
-      return false;
     }
     rendered[key] = { ...target[key] };              // terminal hazard position
     g.position.set(target[key].x, baseY, target[key].z);

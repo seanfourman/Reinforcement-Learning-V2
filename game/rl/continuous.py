@@ -173,30 +173,48 @@ STEAL_REWARD = 0.40         # tagging the enemy carrier and taking the flag
 TAGGED_PENALTY = -0.40      # losing the flag to a tag
 CAPTURE_REWARD = 1.00       # delivering a flag to your base
 CONCEDE_PENALTY = -0.30     # the rival captured one
-CRATE_REWARD = 0.10         # smashing a crate (earning a power-up)
-BOMB_STRIP_REWARD = 0.20    # a flag-bomb that knocks the flag off the enemy carrier
-CHAIN_HIT_REWARD = 0.05     # landing a chain-pull on the rival
+CRATE_REWARD = 0.10         # smashing a crate (picking up a weapon)
+CHAIN_HIT_REWARD = 0.08     # landing a chain-pull on the rival
+SHELL_HIT_REWARD = 0.30     # a shell hitting the rival
+TRAP_HIT_REWARD = 0.25      # the rival running into your banana / oil
+STUNNED_PENALTY = -0.05     # a small ding for getting stunned by any weapon
 CTF_WIN, CTF_LOSE = 2.0, -2.0
 # potential-based shaping toward the CURRENT relevant target (flag / base / carrier).
 # PBRS (difference of potentials) telescopes over a segment, so it cannot be farmed.
 CTF_SHAPE_COEF = 0.02
 
-# ---- breakable crates + the four power-ups ----
+# ---- WEAPON crates (Mario-Kart style: held in a 1-slot inventory, fired on demand) ----
 CRATE_R = 0.55                          # crate half-extent; smashed on contact
 CRATE_MAX_ACTIVE = 3
 CRATE_FIRST_SECONDS = 2.0
 CRATE_INTERVAL_SECONDS = (3.0, 5.0)     # gap between crate spawns
-POWERUPS = ("speed", "chain", "shield", "bomb")
-SPEED_MULT = 1.6                        # speed-boost multiplier
-SPEED_SECONDS = 3.0
-SHIELD_SECONDS = 3.0                    # immune to steal / stun / chain / bomb
-CHAIN_STUN_SECONDS = 1.0                # the chain-pull stuns the rival this long
-CHAIN_PULL_DIST = 1.3                   # rival is yanked to this range from you
+USE_ACTION = 9                          # the 10th action: fire the held weapon
+CTF_N_ACTIONS = 10                      # 8 thrusts + coast + use
+WEAPONS = ("chain", "red_shell", "green_shell", "banana", "oil")
+# durations / geometry
+STUN_SECONDS_WEAPON = 1.1               # stun from a shell / banana / chain hit
+CHAIN_STUN_SECONDS = 1.1
+CHAIN_PULL_DIST = 1.3                   # rival is reeled to this range from you
+CHAIN_PULL_SECONDS = 0.5               # reel-in takes this long (a visible drag, not a teleport)
+CHAIN_PULL_EASE = 0.4                  # fraction of the remaining gap closed each step
+CHAIN_PULL_MIN_STEP = 0.16            # ... but at least this much, so it always arrives
+SHELL_SPEED = 8.0                       # projectile speed (faster than the agents)
+SHELL_R = 0.35                          # projectile radius
+SHELL_LIFETIME = 3.0                    # seconds before a missed shell fizzles
+SHELL_TURN_RATE = 4.0                   # red-shell homing turn (rad/s)
+TRAP_R = 0.7                            # a laid banana/oil triggers within this of a rival
+TRAP_LIFETIME = 12.0                    # seconds a laid trap persists
+TRAP_PLACE_BACK = 0.9                   # dropped this far BEHIND the placer
+OIL_KNOCKBACK = 2.5                     # oil throws the rival back this far (units)
 # obs: self kin 4 + opp rel pos/vel 4 + flag rel 2 + flag flags 3 + base vecs 4
-# + carrying 1 + my/opp stun 2 + capture diff 1 + 2 nearest crates x(present,rel x/z) 6
-# + my speed/shield 2 + opp speed/shield 2
+# + carrying 1 + my/opp stun 2 + capture diff 1 + 2 crates x(present,rel x/z) 6
+# + my weapon one-hot(5) + opp-armed 1 + 2 shells x(present,rel x/z,vel x/z) 10
+# + 2 traps x(present,rel x/z,is-oil) 8
 OBS_CRATE_SLOTS = 2
-CTF_OBS_DIM = 4 + 4 + 2 + 3 + 4 + 1 + 2 + 1 + OBS_CRATE_SLOTS * 3 + 2 + 2   # 31
+OBS_SHELL_SLOTS = 2
+OBS_TRAP_SLOTS = 2
+CTF_OBS_DIM = (4 + 4 + 2 + 3 + 4 + 1 + 2 + 1 + OBS_CRATE_SLOTS * 3
+               + len(WEAPONS) + 1 + OBS_SHELL_SLOTS * 5 + OBS_TRAP_SLOTS * 4)   # 51
 
 
 class ContinuousArena:
@@ -241,7 +259,8 @@ class ContinuousArena:
         self.missile_turn = MISSILE_TURN_RATE
         self.hearts_max = HEARTS
         self.hit_penalty = HIT_PENALTY
-        self.n_actions = N_ACTIONS          # match.py reads these off the env
+        # CTF adds a 10th action (fire the held weapon); other rounds use 9.
+        self.n_actions = CTF_N_ACTIONS if self.ctf_game else N_ACTIONS
         self.obs_dim = (MISSILE_OBS_DIM if self.missile_game
                         else CTF_OBS_DIM if self.ctf_game else RACE_OBS_DIM)
         self.H = self.W = int(self.arena)   # coarse grid the value field samples on
@@ -261,13 +280,16 @@ class ContinuousArena:
             self.flag_holder = None
             self.captures = {"red": 0, "blue": 0}
             self.stun = {"red": 0, "blue": 0}
-            # durational power-up effect timers (steps); chain/bomb are instantaneous
-            self.ctf_effects = {
-                side: {"speed": 0, "shield": 0} for side in ("red", "blue")
-            }
+            self.weapon = {"red": None, "blue": None}    # held weapon (1-slot inventory)
+            self.facing = {"red": math.pi, "blue": math.pi}  # last heading (shell aim)
+            self.chain_pull = {"red": None, "blue": None}  # active chain reel-in (per victim)
+            self.shells = []                             # in-flight projectiles
+            self.traps = []                              # laid bananas / oil
             self.crates = []
             self.ctf_events = []
             self._crate_serial = 0
+            self._shell_serial = 0
+            self._trap_serial = 0
             self._ctf_event_serial = 0
             self.next_crate_step = self._seconds_to_steps(CRATE_FIRST_SECONDS)
         self.steps = 0
@@ -335,23 +357,16 @@ class ContinuousArena:
             return self.blue_pos
         return self.flag_pos
 
-    def _shielded(self, side):
-        return self.ctf_effects[side]["shield"] > 0
-
     def _movement_mult(self, side):
-        """Speed multiplier + frozen flag for one side: carrying slows you, a speed
-        power-up quickens you, a stun freezes you in place."""
-        mult = 1.0
-        if self.flag_holder == side:
-            mult *= CARRY_SLOW
-        if self.ctf_effects[side]["speed"] > 0:
-            mult *= SPEED_MULT
+        """Speed multiplier + frozen flag: carrying slows you; a stun freezes you in
+        place. (Crates hold WEAPONS now - no speed/shield power-ups.)"""
+        mult = CARRY_SLOW if self.flag_holder == side else 1.0
         return mult, self.stun[side] > 0
 
     def _observe_ctf(self, which, pos, vel):
-        """Egocentric, opponent-aware observation. Everything the policy needs to
-        decide 'grab it / carry it home / chase the thief / detour to a crate' is
-        exposed directly, including the nearest crates and both sides' power-up timers."""
+        """Egocentric, opponent-aware observation. Exposes the rival, flag, bases and
+        nearest crates, PLUS the held weapon, whether the rival is armed, and the
+        nearest in-flight shells + laid traps to dodge."""
         A = self.arena
         opp = "blue" if which == "red" else "red"
         opp_pos = self.blue_pos if opp == "blue" else self.red_pos
@@ -363,8 +378,6 @@ class ContinuousArena:
         mine = 1.0 if self.flag_holder == which else 0.0
         theirs = 1.0 if self.flag_holder == opp else 0.0
         stun_ref = max(1, self._seconds_to_steps(STUN_SECONDS))
-        speed_ref = max(1, self._seconds_to_steps(SPEED_SECONDS))
-        shield_ref = max(1, self._seconds_to_steps(SHIELD_SECONDS))
         cap_diff = (self.captures[which] - self.captures[opp]) / float(CAPTURES_TO_WIN)
         out = [
             float(pos[0]) / A, float(pos[1]) / A,
@@ -395,13 +408,37 @@ class ContinuousArena:
                             float(np.clip(rel[1] / A, -1, 1))])
             else:
                 out.extend([0.0, 0.0, 0.0])
-        # my + rival durational power-up timers (speed, shield); chain/bomb are instant
-        out.extend([
-            min(1.0, self.ctf_effects[which]["speed"] / speed_ref),
-            min(1.0, self.ctf_effects[which]["shield"] / shield_ref),
-            min(1.0, self.ctf_effects[opp]["speed"] / speed_ref),
-            min(1.0, self.ctf_effects[opp]["shield"] / shield_ref),
-        ])
+        # my held weapon (one-hot over WEAPONS; all 0 = empty) + is the rival armed?
+        held = self.weapon[which]
+        out.extend([1.0 if held == w else 0.0 for w in WEAPONS])
+        out.append(1.0 if self.weapon[opp] is not None else 0.0)
+        # nearest in-flight shells (present, rel x/z, vel x/z) - to dodge
+        shells = sorted(self.shells,
+                        key=lambda s: float(np.linalg.norm(s["pos"] - pos)))
+        for i in range(OBS_SHELL_SLOTS):
+            if i < len(shells):
+                s = shells[i]
+                rel = s["pos"] - pos
+                out.extend([1.0,
+                            float(np.clip(rel[0] / A, -1, 1)),
+                            float(np.clip(rel[1] / A, -1, 1)),
+                            float(s["vel"][0]) / SHELL_SPEED,
+                            float(s["vel"][1]) / SHELL_SPEED])
+            else:
+                out.extend([0.0, 0.0, 0.0, 0.0, 0.0])
+        # nearest laid traps (present, rel x/z, is-oil) - to avoid
+        traps = sorted(self.traps,
+                       key=lambda tr: float(np.linalg.norm(tr["pos"] - pos)))
+        for i in range(OBS_TRAP_SLOTS):
+            if i < len(traps):
+                tr = traps[i]
+                rel = tr["pos"] - pos
+                out.extend([1.0,
+                            float(np.clip(rel[0] / A, -1, 1)),
+                            float(np.clip(rel[1] / A, -1, 1)),
+                            1.0 if tr["kind"] == "oil" else 0.0])
+            else:
+                out.extend([0.0, 0.0, 0.0, 0.0])
         assert len(out) == CTF_OBS_DIM
         return np.asarray(out, dtype=np.float32)
 
@@ -668,9 +705,11 @@ class ContinuousArena:
             self.flag_holder = None
             self.captures = {"red": 0, "blue": 0}
             self.stun = {"red": 0, "blue": 0}
-            self.ctf_effects = {
-                side: {"speed": 0, "shield": 0} for side in ("red", "blue")
-            }
+            self.weapon = {"red": None, "blue": None}
+            self.facing = {"red": math.pi, "blue": math.pi}
+            self.chain_pull = {"red": None, "blue": None}
+            self.shells = []
+            self.traps = []
             self.crates = []
             self.ctf_events = []
             self.next_crate_step = self._seconds_to_steps(CRATE_FIRST_SECONDS)
@@ -1399,18 +1438,24 @@ class ContinuousArena:
 
     # ---------------------------------------------------- Round-5 Capture the Flag
     def _step_ctf_game(self, a_red, a_blue):
-        """One CTF decision step for both agents. Order: age timers -> spawn crates ->
-        move (carrier slowed / speed boost / stunned frozen) -> resolve grab/capture/
-        steal -> smash crates + apply power-ups -> shape -> check win/timeout.
+        """One CTF decision step. Order: age timers -> spawn crates -> USE weapons ->
+        move (carrier slowed / stunned frozen) -> resolve grab/capture/steal -> pick up
+        crates -> advance shells + traps (resolve hits) -> shape -> check win/timeout.
         Instant-steal + first-to-3-captures."""
         self._age_ctf_events()
         for side in ("red", "blue"):
             self.stun[side] = max(0, self.stun[side] - 1)
-            for kind in ("speed", "shield"):
-                self.ctf_effects[side][kind] = max(
-                    0, self.ctf_effects[side][kind] - 1)
         self._advance_crate_spawns()
         reward = {"red": -CTF_STEP_COST, "blue": -CTF_STEP_COST}
+
+        # the 10th action (USE_ACTION) fires the held weapon; that agent coasts this
+        # step and cannot fire while stunned.
+        acts = {"red": a_red, "blue": a_blue}
+        for side in ("red", "blue"):
+            if acts[side] == USE_ACTION:
+                if self.stun[side] <= 0:
+                    self._use_weapon(side, reward)
+                acts[side] = N_ACTIONS - 1               # coast while firing
 
         # possession + free-flag position as they were at the START of the step, so
         # PBRS shaping uses one consistent target basis across the move.
@@ -1422,13 +1467,20 @@ class ContinuousArena:
             for side in ("red", "blue")
         }
 
-        # integrate: carrier slowed, speed boost quickens, a stunned agent is frozen
+        # integrate: the carrier is slowed; a stunned agent is frozen in place
         red_mult, red_frozen = self._movement_mult("red")
         blue_mult, blue_frozen = self._movement_mult("blue")
         self.red_pos, self.red_vel = self._integrate(
-            self.red_pos, self.red_vel, a_red, red_mult, red_frozen)
+            self.red_pos, self.red_vel, acts["red"], red_mult, red_frozen)
         self.blue_pos, self.blue_vel = self._integrate(
-            self.blue_pos, self.blue_vel, a_blue, blue_mult, blue_frozen)
+            self.blue_pos, self.blue_vel, acts["blue"], blue_mult, blue_frozen)
+        # remember each heading (for aiming green shells / dropping traps behind)
+        for side, v in (("red", self.red_vel), ("blue", self.blue_vel)):
+            if float(np.linalg.norm(v)) > 0.05:
+                self.facing[side] = math.atan2(float(v[1]), float(v[0]))
+        # a chain-hooked rival is reeled toward its puller a bit this step (overrides
+        # its frozen position, so successive snapshots show it sliding in)
+        self._advance_chain_pulls()
 
         winner_side = None
         if self.flag_holder is None:
@@ -1466,20 +1518,22 @@ class ContinuousArena:
                     [self.arena / 2, self.arena / 2], dtype=np.float32)
                 if self.captures[holder] >= CAPTURES_TO_WIN:
                     winner_side = holder
-            elif (self.stun[other] <= 0 and not self._shielded(holder)
+            elif (self.stun[other] <= 0
                     and float(np.linalg.norm(other_pos - holder_pos))
                     <= TAG_R + AGENT_R):
                 # INSTANT STEAL: the chaser tags the carrier and takes the flag; the
                 # robbed carrier is briefly stunned so it cannot instantly re-steal.
-                # A SHIELDED carrier cannot be robbed.
                 self.flag_holder = other
                 self.stun[holder] = self._seconds_to_steps(STUN_SECONDS)
                 reward[other] += STEAL_REWARD
                 reward[holder] += TAGGED_PENALTY
                 self._add_ctf_event("steal", other, holder_pos)
 
-        # SMASH any crate an agent reached this step -> a random power-up
+        # SMASH any crate an agent reached this step -> a random held weapon
         self._resolve_crates(reward)
+        # advance in-flight shells + laid traps, resolving any hits (stun / knockback)
+        self._advance_shells(reward)
+        self._advance_traps(reward)
 
         # dense potential-based shaping toward the step-start target (telescopes)
         new = {"red": self.red_pos, "blue": self.blue_pos}
@@ -1517,9 +1571,9 @@ class ContinuousArena:
         }
 
     def _resolve_crates(self, reward):
-        """Each crate an agent reaches this step is SMASHED for one random power-up,
-        applied immediately to the breaker (both in reach -> the nearer one; a stunned
-        agent cannot break one)."""
+        """Each crate an agent reaches this step is SMASHED and drops a random WEAPON
+        into the breaker's single inventory slot. An agent that is stunned OR already
+        holding a weapon cannot break one; both in reach -> the nearer one wins."""
         if not self.crates:
             return
         reach = CRATE_R + AGENT_R
@@ -1527,7 +1581,7 @@ class ContinuousArena:
         for crate in sorted(self.crates, key=lambda c: c["id"]):
             contenders = []
             for side, p in (("red", self.red_pos), ("blue", self.blue_pos)):
-                if self.stun[side] > 0:
+                if self.stun[side] > 0 or self.weapon[side] is not None:
                     continue
                 d = float(np.linalg.norm(p - crate["pos"]))
                 if d <= reach:
@@ -1536,50 +1590,190 @@ class ContinuousArena:
                 continue
             contenders.sort()
             breaker = contenders[0][1]
-            kind = self.rng.choice(POWERUPS)
+            weapon = self.rng.choice(WEAPONS)
+            self.weapon[breaker] = weapon
             reward[breaker] += CRATE_REWARD
-            self._apply_powerup(breaker, kind, reward)
-            self._add_ctf_event("crate", breaker, crate["pos"], {"powerup": kind})
+            self._add_ctf_event("crate", breaker, crate["pos"], {"weapon": weapon})
             smashed.add(crate["id"])
         if smashed:
             self.crates = [c for c in self.crates if c["id"] not in smashed]
 
-    def _apply_powerup(self, side, kind, reward):
-        """Auto-apply a smashed crate's power-up to `side` (there is no separate 'use'
-        action, so the effect fires on pickup). Chain / bomb are instantaneous; speed /
-        shield are durational."""
+    def _use_weapon(self, side, reward):
+        """Fire the held weapon (triggered by USE_ACTION). Chain yanks + stuns the rival
+        instantly; shells become in-flight projectiles; banana/oil become laid traps.
+        No-op with a small time-waste cost if the slot is empty."""
+        w = self.weapon[side]
+        if w is None:
+            return
+        self.weapon[side] = None                        # consume the one-slot inventory
         opp = "blue" if side == "red" else "red"
-        if kind == "speed":
-            self.ctf_effects[side]["speed"] = self._seconds_to_steps(SPEED_SECONDS)
-        elif kind == "shield":
-            self.ctf_effects[side]["shield"] = self._seconds_to_steps(SHIELD_SECONDS)
-        elif kind == "chain":
-            # the Chain Chomp yank: pull the rival to you + stun it (unless shielded)
-            if not self._shielded(opp):
-                me = self.red_pos if side == "red" else self.blue_pos
-                other = self.red_pos if opp == "red" else self.blue_pos
+        me = self.red_pos if side == "red" else self.blue_pos
+        other = self.red_pos if opp == "red" else self.blue_pos
+        if w == "chain":
+            # Chain Chomp: HOOK the rival and reel it in over the next CHAIN_PULL_SECONDS
+            # (a visible drag handled in _advance_chain_pulls, NOT a teleport) + stun it.
+            self.chain_pull[opp] = {
+                "puller": side,
+                "left": max(1, self._seconds_to_steps(CHAIN_PULL_SECONDS)),
+            }
+            self.stun[opp] = max(self.stun[opp],
+                                 self._seconds_to_steps(CHAIN_STUN_SECONDS))
+            reward[side] += CHAIN_HIT_REWARD
+            reward[opp] += STUNNED_PENALTY
+            self._add_ctf_event("chain", side, me, {"target": opp})
+        elif w in ("red_shell", "green_shell"):
+            if w == "red_shell":                        # homing: launch toward the rival
                 d = other - me
                 dist = float(np.linalg.norm(d))
                 direction = (d / dist if dist > 1e-6
                              else np.array([1.0, 0.0], dtype=np.float32))
-                pulled = np.clip(me + direction * CHAIN_PULL_DIST,
-                                 AGENT_R, self.arena - AGENT_R).astype(np.float32)
-                if opp == "red":
-                    self.red_pos, self.red_vel = pulled, np.zeros(2, dtype=np.float32)
-                else:
-                    self.blue_pos, self.blue_vel = pulled, np.zeros(2, dtype=np.float32)
-                self.stun[opp] = max(self.stun[opp],
-                                     self._seconds_to_steps(CHAIN_STUN_SECONDS))
-                reward[side] += CHAIN_HIT_REWARD
-                self._add_ctf_event("chain", side, me, {"target": opp})
-        elif kind == "bomb":
-            # flag-bomb: knock the flag off the enemy carrier (it returns to the pole)
-            if self.flag_holder == opp and not self._shielded(opp):
-                self.flag_holder = None
-                self.flag_pos = np.array(
-                    [self.arena / 2, self.arena / 2], dtype=np.float32)
-                reward[side] += BOMB_STRIP_REWARD
-                self._add_ctf_event("bomb", side, self.flag_pos)
+            else:                                       # straight: launch along heading
+                direction = np.array([math.cos(self.facing[side]),
+                                      math.sin(self.facing[side])], dtype=np.float32)
+            spawn = (me + direction * (AGENT_R + SHELL_R + 0.1)).astype(np.float32)
+            self._shell_serial += 1
+            self.shells.append({
+                "id": self._shell_serial, "owner": side,
+                "kind": "red" if w == "red_shell" else "green",
+                "pos": spawn, "vel": (direction * SHELL_SPEED).astype(np.float32),
+                "age": 0,
+            })
+            self._add_ctf_event("fire", side, spawn, {"weapon": w})
+        elif w in ("banana", "oil"):
+            # laid on the ground a bit BEHIND the placer; triggers on the rival's touch
+            back = np.array([math.cos(self.facing[side]), math.sin(self.facing[side])],
+                            dtype=np.float32)
+            place = np.clip(me - back * TRAP_PLACE_BACK,
+                            AGENT_R, self.arena - AGENT_R).astype(np.float32)
+            self._trap_serial += 1
+            self.traps.append({"id": self._trap_serial, "owner": side, "kind": w,
+                               "pos": place, "age": 0})
+            self._add_ctf_event("drop", side, place, {"weapon": w})
+
+    def _advance_chain_pulls(self):
+        """Reel each chain-hooked rival toward its puller a little each step (ease-in),
+        until it is within CHAIN_PULL_DIST or the reel time runs out. The victim is
+        already stunned (frozen), so this drag is what actually moves it - producing a
+        visible slide across successive snapshots instead of an instant teleport."""
+        for victim in ("red", "blue"):
+            pull = self.chain_pull.get(victim)
+            if not pull:
+                continue
+            pull["left"] -= 1
+            puller = pull["puller"]
+            ppos = self.red_pos if puller == "red" else self.blue_pos
+            vpos = self.red_pos if victim == "red" else self.blue_pos
+            d = ppos - vpos
+            dist = float(np.linalg.norm(d))
+            if dist <= CHAIN_PULL_DIST or pull["left"] <= 0:
+                self.chain_pull[victim] = None
+                continue
+            step = min(dist - CHAIN_PULL_DIST,
+                       max((dist - CHAIN_PULL_DIST) * CHAIN_PULL_EASE,
+                           CHAIN_PULL_MIN_STEP))
+            newpos = np.clip(vpos + (d / dist) * step,
+                             AGENT_R, self.arena - AGENT_R).astype(np.float32)
+            if victim == "red":
+                self.red_pos, self.red_vel = newpos, np.zeros(2, dtype=np.float32)
+            else:
+                self.blue_pos, self.blue_vel = newpos, np.zeros(2, dtype=np.float32)
+
+    def _advance_shells(self, reward):
+        """Move each in-flight shell (red homes with a capped turn rate; green flies
+        straight and bounces off the walls), stun the rival on contact, and fizzle after
+        SHELL_LIFETIME. A green shell can also boomerang into its owner after a grace."""
+        if not self.shells:
+            return
+        A = self.arena
+        survivors = []
+        for sh in self.shells:
+            sh["age"] += 1
+            owner = sh["owner"]
+            target = "blue" if owner == "red" else "red"
+            tpos = self.blue_pos if target == "blue" else self.red_pos
+            if sh["kind"] == "red":                     # steer toward the target
+                desired = tpos - sh["pos"]
+                da = math.atan2(float(desired[1]), float(desired[0]))
+                ca = math.atan2(float(sh["vel"][1]), float(sh["vel"][0]))
+                delta = math.atan2(math.sin(da - ca), math.cos(da - ca))
+                lim = SHELL_TURN_RATE * self.dt
+                ang = ca + max(-lim, min(lim, delta))
+                sh["vel"] = np.array([math.cos(ang) * SHELL_SPEED,
+                                      math.sin(ang) * SHELL_SPEED], dtype=np.float32)
+            newpos = sh["pos"] + sh["vel"] * self.dt
+            if sh["kind"] == "green":                   # bounce off the square walls
+                for i in (0, 1):
+                    if newpos[i] < SHELL_R:
+                        newpos[i] = SHELL_R
+                        sh["vel"][i] *= -1
+                    elif newpos[i] > A - SHELL_R:
+                        newpos[i] = A - SHELL_R
+                        sh["vel"][i] *= -1
+            else:
+                newpos = np.clip(newpos, SHELL_R, A - SHELL_R)
+            sh["pos"] = newpos.astype(np.float32)
+            grace = sh["age"] * self.dt < 0.25
+            hit_side = None
+            for cs, cp in (("red", self.red_pos), ("blue", self.blue_pos)):
+                if cs == owner and (sh["kind"] == "red" or grace):
+                    continue                            # red never hits owner; green has grace
+                if float(np.linalg.norm(sh["pos"] - cp)) <= SHELL_R + AGENT_R:
+                    hit_side = cs
+                    break
+            if hit_side is not None:
+                self.stun[hit_side] = max(self.stun[hit_side],
+                                          self._seconds_to_steps(STUN_SECONDS_WEAPON))
+                if hit_side != owner:
+                    reward[owner] += SHELL_HIT_REWARD
+                reward[hit_side] += STUNNED_PENALTY
+                self._add_ctf_event("shellhit", owner, sh["pos"], {"target": hit_side})
+                continue                                # shell consumed on impact
+            if sh["age"] * self.dt <= SHELL_LIFETIME:
+                survivors.append(sh)
+        self.shells = survivors
+
+    def _advance_traps(self, reward):
+        """A laid banana/oil triggers when the RIVAL drives over it: banana stuns it in
+        place; oil throws it backwards + briefly dazes it. Traps fizzle after
+        TRAP_LIFETIME; a trap is consumed when it triggers."""
+        if not self.traps:
+            return
+        survivors = []
+        for tr in self.traps:
+            tr["age"] += 1
+            owner = tr["owner"]
+            target = "blue" if owner == "red" else "red"
+            tpos = self.blue_pos if target == "blue" else self.red_pos
+            tvel = self.blue_vel if target == "blue" else self.red_vel
+            if float(np.linalg.norm(tpos - tr["pos"])) <= TRAP_R + AGENT_R:
+                if tr["kind"] == "banana":
+                    self.stun[target] = max(self.stun[target],
+                                            self._seconds_to_steps(STUN_SECONDS_WEAPON))
+                else:                                   # oil: throw the rival backwards
+                    sp = float(np.linalg.norm(tvel))
+                    if sp > 0.3:
+                        back = -tvel / sp
+                    else:
+                        d = tpos - tr["pos"]
+                        dn = float(np.linalg.norm(d))
+                        back = (d / dn if dn > 1e-6
+                                else np.array([1.0, 0.0], dtype=np.float32))
+                    newpos = np.clip(tpos + back * OIL_KNOCKBACK,
+                                     AGENT_R, self.arena - AGENT_R).astype(np.float32)
+                    if target == "red":
+                        self.red_pos, self.red_vel = newpos, np.zeros(2, dtype=np.float32)
+                    else:
+                        self.blue_pos, self.blue_vel = newpos, np.zeros(2, dtype=np.float32)
+                    self.stun[target] = max(self.stun[target],
+                                            self._seconds_to_steps(0.4))
+                reward[owner] += TRAP_HIT_REWARD
+                reward[target] += STUNNED_PENALTY
+                self._add_ctf_event("traphit", owner, tr["pos"],
+                                    {"kind": tr["kind"], "target": target})
+                continue                                # trap consumed on trigger
+            if tr["age"] * self.dt <= TRAP_LIFETIME:
+                survivors.append(tr)
+        self.traps = survivors
 
     def _commit_action(self, side, a):
         """Action-repeat: hold the chosen direction for `action_repeat` steps, so the
@@ -1695,7 +1889,10 @@ class ContinuousArena:
                 "stunSeconds": STUN_SECONDS,
                 "flagSpawn": [self.arena / 2, self.arena / 2],
                 "crateRadius": CRATE_R,
-                "powerups": list(POWERUPS),
+                "weapons": list(WEAPONS),
+                "shellRadius": SHELL_R,
+                "trapRadius": TRAP_R,
+                "weaponStunSeconds": STUN_SECONDS_WEAPON,
                 "bases": {
                     "red": [float(self.red_base[0]), float(self.red_base[1])],
                     "blue": [float(self.blue_base[0]), float(self.blue_base[1])],
@@ -1723,10 +1920,6 @@ class ContinuousArena:
             "steps": self.steps, "winner": self.winner,
         }
         if self.ctf_game:
-            eff_ref = {
-                "speed": max(1, self._seconds_to_steps(SPEED_SECONDS)),
-                "shield": max(1, self._seconds_to_steps(SHIELD_SECONDS)),
-            }
             out.update({
                 "captures": dict(self.captures),
                 "capturesToWin": CAPTURES_TO_WIN,
@@ -1741,21 +1934,26 @@ class ContinuousArena:
                     side: round(self.stun[side] * self.dt, 2)
                     for side in ("red", "blue")
                 },
-                "effects": {
-                    side: {
-                        "speed": round(self.ctf_effects[side]["speed"] * self.dt, 2),
-                        "shield": round(self.ctf_effects[side]["shield"] * self.dt, 2),
-                    }
-                    for side in ("red", "blue")
-                },
+                "weapons": {side: self.weapon[side] for side in ("red", "blue")},
                 "crates": [
                     {"id": c["id"], "pos": rd(c["pos"]), "radius": CRATE_R}
                     for c in sorted(self.crates, key=lambda c: c["id"])
                 ],
+                "shells": [
+                    {"id": s["id"], "owner": s["owner"], "kind": s["kind"],
+                     "pos": rd(s["pos"]), "vel": rd(s["vel"]), "radius": SHELL_R}
+                    for s in sorted(self.shells, key=lambda s: s["id"])
+                ],
+                "traps": [
+                    {"id": t["id"], "owner": t["owner"], "kind": t["kind"],
+                     "pos": rd(t["pos"]), "radius": TRAP_R}
+                    for t in sorted(self.traps, key=lambda t: t["id"])
+                ],
                 "ctfEvents": [
                     {"id": e["id"], "type": e["type"], "side": e["side"],
                      "pos": rd(e["pos"]),
-                     **({"powerup": e["powerup"]} if "powerup" in e else {}),
+                     **({"weapon": e["weapon"]} if "weapon" in e else {}),
+                     **({"kind": e["kind"]} if "kind" in e else {}),
                      **({"target": e["target"]} if "target" in e else {})}
                     for e in self.ctf_events
                 ],
