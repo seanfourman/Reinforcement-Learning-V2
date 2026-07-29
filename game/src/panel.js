@@ -103,6 +103,7 @@ export const GLOBAL_PARAMS = [
   { key: 'pgHorizon', label: 'Rollout horizon', min: 16, max: 1024, step: 16, sect: 'algo', scope: 'pg', def: 64, desc: 'Steps collected before each update for Actor-Critic (default 64) and PPO (default 512). Longer = steadier but fewer, slower updates. (Ignored by REINFORCE.)', fmt: fLoc },
   { key: 'pgClip', label: 'PPO clip ε', min: 0.05, max: 0.5, step: 0.05, sect: 'algo', scope: 'pg', def: 0.2, desc: 'PPO trust-region size: caps how far each update moves the policy (ratio clipped to 1±ε). Smaller = safer, slower. (PPO only.)', fmt: (v) => (+v).toFixed(2) },
   { key: 'pgEpochs', label: 'PPO epochs', min: 1, max: 10, step: 1, sect: 'algo', scope: 'pg', def: 4, desc: 'How many optimisation passes PPO takes over each rollout. More = more sample reuse per batch. (PPO only.)', fmt: fLoc },
+  { key: 'pgMinibatch', label: 'PPO minibatch', min: 8, max: 512, step: 8, sect: 'algo', scope: 'pg', def: 128, desc: 'Minibatch size PPO uses for its SGD passes over each rollout. (PPO only.)', fmt: fLoc },
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
   // These scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
   { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },

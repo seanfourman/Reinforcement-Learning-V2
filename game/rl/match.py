@@ -330,6 +330,7 @@ class Match:
         self.pg_horizon = None
         self.pg_clip = None
         self.pg_epochs = None
+        self.pg_minibatch = None
         self.red_pg_entropy = None              # CPU entropy from its R5 difficulty tier
         # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
@@ -493,7 +494,8 @@ class Match:
                            seed=seed, alpha=alpha, gamma=gamma, hidden=self.pg_hidden,
                            entropy_coef=self.pg_entropy, lam=self.pg_lam,
                            value_coef=self.pg_value_coef, horizon=self.pg_horizon,
-                           clip=self.pg_clip, epochs=self.pg_epochs)
+                           clip=self.pg_clip, epochs=self.pg_epochs,
+                           minibatch=self.pg_minibatch)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
@@ -1554,6 +1556,9 @@ class Match:
             if "pgEpochs" in p:
                 self.pg_epochs = max(1, min(20, int(p["pgEpochs"])))
                 _pg_live("epochs", self.pg_epochs)
+            if "pgMinibatch" in p:
+                self.pg_minibatch = max(8, min(512, int(p["pgMinibatch"])))
+                _pg_live("minibatch", self.pg_minibatch)
             if "pgHidden" in p:
                 self.pg_hidden = max(16, min(1024, int(p["pgHidden"])))
                 need_agent_rebuild = True
@@ -1666,6 +1671,7 @@ class Match:
             "pgHorizon": int(_pgv("horizon", 64)),
             "pgClip": round(float(_pgv("clip", 0.2)), 3),
             "pgEpochs": int(_pgv("epochs", 4)),
+            "pgMinibatch": int(_pgv("minibatch", 128)),
             "epsStart": round(self.eps_start, 3),
             "epsEnd": round(self.eps_end, 3),
             "epsEpisodes": self._effective_blue_eps_episodes(),

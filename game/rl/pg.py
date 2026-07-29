@@ -75,7 +75,7 @@ class PGAgent:
 
     def __init__(self, obs_dim, n_actions, alpha=0.2, gamma=0.98, seed=0, hidden=128,
                  entropy_coef=None, lam=None, value_coef=None, horizon=None,
-                 clip=None, epochs=None):
+                 clip=None, epochs=None, minibatch=None):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
         self.hidden = hidden
@@ -102,7 +102,7 @@ class PGAgent:
         for _name, _val, _cast in (("entropy_coef", entropy_coef, float),
                                    ("lam", lam, float), ("value_coef", value_coef, float),
                                    ("horizon", horizon, int), ("clip", clip, float),
-                                   ("epochs", epochs, int)):
+                                   ("epochs", epochs, int), ("minibatch", minibatch, int)):
             if _val is not None:
                 setattr(self, _name, _cast(_val))
 
