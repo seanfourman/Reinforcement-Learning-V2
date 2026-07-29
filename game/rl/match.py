@@ -1141,9 +1141,10 @@ class Match:
         if race in ("red", "blue"):
             events.append((f"win_{race}", f"{names[race]}'s first win",
                            race, side_steps.get(race, self.env.steps)))
-        # first time each side reaches the goal at all (even a 2nd-place finish).
-        # CTF has no goal (it captures a flag), so it uses the weapon/flag firsts below.
-        if not getattr(self.env, "ctf_game", False):
+        # first time each side reaches the goal at all (even a 2nd-place finish). Only the
+        # goal-race rounds have a goal: CTF captures a flag and R4 is a survival game (no
+        # goal), so both rely on their own firsts (flag / heart / pickup) + the win above.
+        if not getattr(self.env, "ctf_game", False) and not getattr(self.env, "missile_game", False):
             for side in replay_sides:
                 events.append((f"goal_{side}", f"{names[side]} first reaches the goal",
                                side, side_steps.get(side, self.env.steps)))
@@ -1190,6 +1191,66 @@ class Match:
                             agent = "red"
                         events.append((key, label, agent, i))
                         break
+        # ---- R1-R4 "first X" events (per side), scanned from the recorded frames.
+        # Each Match is one round, so only that round's flags add specs; a spec already
+        # captured is skipped (no scan), so this costs nothing once every first is logged.
+        def _pc(x):
+            return bin(int(x or 0)).count("1")
+
+        def _first_idx(pred, cap=4000):
+            for i in range(min(len(self._frames), cap)):
+                try:
+                    if pred(self._frames[i]):
+                        return i
+                except Exception:
+                    pass
+            return None
+
+        env = self.env
+        specs = []   # (key, label, agent, predicate(frame))
+        for side in ("red", "blue"):
+            nm = names[side]
+            if getattr(env, "rich", False):                       # Round 1: coins + "?" blocks
+                specs += [
+                    (f"coin_{side}", f"{nm} grabs its first coin", side,
+                     (lambda s: lambda fr: _pc(fr.get(s + "Coins")) > 0)(side)),
+                    (f"ghost_{side}", f"{nm} first turns into a Ghost", side,
+                     (lambda s: lambda fr: fr.get(s + "Status") == "ghost")(side)),
+                    (f"frozen_{side}", f"{nm} first freezes on a Mystery Block", side,
+                     (lambda s: lambda fr: fr.get(s + "Status") == "frozen")(side)),
+                ]
+            if getattr(env, "star_mode", False):                  # Round 2: stars
+                specs.append(
+                    (f"star_{side}", f"{nm} collects its first star", side,
+                     (lambda s: lambda fr: _pc(fr.get(s + "Stars")) > 0)(side)))
+            if getattr(env, "hazardous", False) and not getattr(env, "goomba_mode", False):
+                specs.append(                                     # Round 2: warp pipes
+                    (f"pipe_{side}", f"{nm} rides a warp pipe for the first time", side,
+                     (lambda s: lambda fr: fr.get(s + "Warp") is not None)(side)))
+            if getattr(env, "goomba_mode", False):                # Round 3: the Cage
+                specs.append(
+                    (f"caged_{side}", f"{nm} first gets caught in a Cage", side,
+                     (lambda s: lambda fr: (fr.get("caged") or {}).get(s, 0) > 0)(side)))
+            if getattr(env, "missile_game", False):               # Round 4: hearts + pickups
+                specs.append(
+                    (f"hit_{side}", f"{nm} loses its first heart to a Banzai Bill", side,
+                     (lambda s: lambda fr: (fr.get("hearts") or {}).get(s, 99)
+                      < (fr.get("maxHearts") or 3))(side)))
+                for _t, _lbl in (("speed", "Speed"), ("invincible", "Shield"),
+                                 ("slow", "Slow"), ("freeze", "Freeze")):
+                    specs.append(
+                        (f"pickup_{_t}_{side}",
+                         f"{nm} collects its first {_lbl} power-up", side,
+                         (lambda s, t: lambda fr: any(
+                             ev.get("collector") == s and ev.get("type") == t
+                             for ev in (fr.get("pickupEvents") or [])))(side, _t)))
+        for key, label, agent, pred in specs:
+            if key in self._milestone_keys:
+                continue          # already logged this round - don't scan for it again
+            idx = _first_idx(pred)
+            if idx is not None:
+                events.append((key, label, agent, idx))
+
         for key, label, agent, steps in events:
             if key in self._milestone_keys:
                 continue

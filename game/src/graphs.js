@@ -1328,7 +1328,7 @@ export function initBriefing(parent) {
         bolt: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
         shield: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.6 8 11 4.6-2.4 8-6 8-11V5z"/></svg>',
         snail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 18h6"/><circle cx="14" cy="12" r="6"/><circle cx="14" cy="12" r="2.3"/><path d="M8 18a4 4 0 0 1-4-4"/><path d="M19.2 7.8 20.8 6"/></svg>',
-        ice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.3 7l17.4 10M20.7 7 3.3 17"/><path d="M9.5 3.2 12 5.7l2.5-2.5M9.5 20.8 12 18.3l2.5 2.5"/></svg>',
+        ice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>',
       };
       const pkList = Array.isArray(s.pickups) ? s.pickups : [];
       const pickupsBlock = pkList.length
@@ -1360,13 +1360,9 @@ export function initBriefing(parent) {
       const weaponsBlock = (s.weapons && s.weapons.length)
         ? `<h3 class="brief-sub">Weapons (smash a crate for one)</h3>` +
           s.weapons.map((w) =>
-            `<div style="display:flex;align-items:center;gap:11px;margin:7px 0;">` +
-            (WPN_ICON[w.icon]
-              ? `<img src="${WPN_ICON[w.icon]}" alt="" style="width:38px;height:38px;`
-                + `object-fit:contain;flex:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));">`
-              : "") +
-            `<div><b>${w.name}</b>: <span style="opacity:.82;">${w.desc}</span></div>`
-            + `</div>`,
+            `<div class="wpn-item">` +
+            (WPN_ICON[w.icon] ? `<img class="wpn-ic" src="${WPN_ICON[w.icon]}" alt="">` : "") +
+            `<div><b>${w.name}</b>: ${w.desc}</div></div>`,
           ).join("")
         : "";
       body.innerHTML =

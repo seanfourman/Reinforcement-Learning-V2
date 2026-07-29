@@ -461,9 +461,7 @@ const STYLE = `
    --pc = the pickup's colour (drives the left accent + the icon). */
 #rl-panel #rl-brief .pk-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 2px;}
 #rl-panel #rl-brief .pk-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
-  padding:12px 12px 12px 15px;border-radius:13px;background:#fff;border:1px solid #e6e8ec;overflow:hidden;
-  box-shadow:0 1px 2px rgba(0,0,0,.04);transition:transform .12s ease,box-shadow .12s ease;}
-#rl-panel #rl-brief .pk-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.09);}
+  padding:12px 12px 12px 15px;border-radius:13px;background:#fff;border:1px solid #e6e8ec;overflow:hidden;}
 #rl-panel #rl-brief .pk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc);}
 #rl-panel #rl-brief .pk-card.bad{background:linear-gradient(180deg,#fff,#fffafa);}
 #rl-panel #rl-brief .pk-ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
@@ -471,6 +469,12 @@ const STYLE = `
 #rl-panel #rl-brief .pk-ic svg{width:21px;height:21px;display:block;}
 #rl-panel #rl-brief .pk-name{font-size:13px;font-weight:800;color:#1f1f21;line-height:1.1;}
 #rl-panel #rl-brief .pk-eff{font-size:11px;color:#4b4d53;font-weight:600;line-height:1.3;}
+/* Round-5 weapon list: matches the tab's 11px body / bold-dark label rhythm */
+#rl-panel #rl-brief .wpn-item{display:flex;align-items:center;gap:11px;margin:7px 0;
+  font-size:11px;line-height:1.4;color:#4b4d53;font-weight:600;}
+#rl-panel #rl-brief .wpn-item b{color:#1f1f21;font-weight:800;}
+#rl-panel #rl-brief .wpn-ic{width:36px;height:36px;flex:none;object-fit:contain;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));}
 #rl-panel #rl-brief .pk-dur{margin-top:5px;font-size:10px;font-weight:800;color:#6b7280;font-variant-numeric:tabular-nums;
   background:#f0f1f3;border-radius:20px;padding:2px 8px;letter-spacing:.2px;}
 #rl-panel #rl-brief .pk-tag{position:absolute;top:9px;right:9px;font-size:8px;font-weight:800;letter-spacing:.6px;
