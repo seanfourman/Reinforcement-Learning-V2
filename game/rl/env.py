@@ -20,8 +20,15 @@ import random
 import gymnasium as gym
 from gymnasium import spaces
 
-import worldgen
-from worldgen import WALL
+from core.worldgen import WALL
+
+
+def _generate_world(round_id, seed, **cfg):
+    """Build a round's World via the registry. Imported lazily because the
+    registry pulls in every arena package (which in turn import this module's
+    constants); by the time an env is constructed everything is loaded."""
+    from core.registry import make_world
+    return make_world(round_id, seed, **cfg)
 
 # --- actions: N, S, W, E ----------------------------------------------------
 ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -89,7 +96,7 @@ class GridWorld(gym.Env):
         self.rng = random.Random(seed)   # samples ice, puddles, blocks and pipe outcomes
         self.action_space = spaces.Discrete(N_ACTIONS)
         self.n_actions = N_ACTIONS        # match.py reads this off the env
-        self._install(worldgen.generate(seed, round_id, **self.gen_cfg))
+        self._install(_generate_world(round_id, seed, **self.gen_cfg))
 
     # ---------------------------------------------------------------- install
     def _install(self, world):
@@ -321,8 +328,9 @@ class GridWorld(gym.Env):
         if seed is not None:
             self.rng = random.Random(seed)
         if regenerate or self.world is None:
-            self._install(worldgen.generate(seed if seed is not None else self._seed,
-                                            self.round_id, **self.gen_cfg))
+            self._install(_generate_world(self.round_id,
+                                          seed if seed is not None else self._seed,
+                                          **self.gen_cfg))
         self.red_pos = self.world.red_spawn
         self.blue_pos = self.world.blue_spawn
         self.steps = 0

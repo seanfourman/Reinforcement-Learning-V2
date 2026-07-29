@@ -27,7 +27,7 @@ tomato, plants, optional puddles, and seeded bush corridors before the goal.
 import random
 from collections import deque
 
-from .grid import World, WALL, FLOOR, ESCAPE
+from core.worldgen import World, WALL, FLOOR, ESCAPE
 
 THEME = "city"
 ROUND_ID = 2

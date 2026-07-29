@@ -26,7 +26,7 @@ Coordinates are (row, col); the theme camera flips the view, so spawns read bott
 import random
 from collections import deque
 
-from .grid import World, validate, SIZE, WALL, FLOOR, ESCAPE
+from core.worldgen import World, validate, SIZE, WALL, FLOOR, ESCAPE
 
 THEME = "peach"
 ROUND_ID = 1

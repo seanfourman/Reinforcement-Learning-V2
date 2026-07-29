@@ -18,7 +18,7 @@ Coordinates are (row, col), row 0 = NORTH (exit), row H-1 = SOUTH (spawns).
 
 import random
 
-from .grid import (
+from core.worldgen import (
     World, validate, ORTHO,
     WALL, FLOOR, ESCAPE, RED_SPAWN, BLUE_SPAWN,
 )

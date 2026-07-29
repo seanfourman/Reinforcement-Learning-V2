@@ -1,7 +1,17 @@
-"""The algorithm registry: every name -> class mapping in ONE place.
+"""The tournament registry: every round -> module and algorithm name -> class
+mapping in ONE place.
 
-The browser selects algorithms by their STRING names (through /api/control),
-so these names are part of the frozen serve.py <-> browser contract:
+Two kinds of lookups live here:
+
+  * the ROUND registry - round id -> world module (ROUND_MODULES), the running
+    order (ROUNDS), each round's default matchup (ROUND_ALGOS), and the
+    metadata helpers (make_world / round_algos / round_meta);
+  * the ALGORITHM registry - algorithm string name -> class, plus the
+    family predicates (is_dp / is_dqn / is_pg) and factories.
+
+The browser selects rounds and algorithms by these STRING names (through
+/api/control), so the names are part of the frozen serve.py <-> browser
+contract:
 
     value_iteration, policy_iteration          (R1, Dynamic Programming)
     monte_carlo, first_visit_mc                (R2, Monte Carlo)
@@ -17,6 +27,11 @@ requires it. The name TUPLES and predicates below are plain membership tests,
 so validation / family labels also work without importing torch.
 """
 
+from arenas.r1_peach_castle import world as r1_world
+from arenas.r2_new_donk_city import world as r2_world
+from arenas.r3_fossil_falls import world as r3_world
+from arenas.r4_ruined_kingdom import world as r4_world
+from arenas.r5_tostarena import world as r5_world
 from arenas.r1_peach_castle.value_iteration import ValueIteration
 from arenas.r1_peach_castle.policy_iteration import PolicyIteration
 from arenas.r2_new_donk_city.monte_carlo import MonteCarlo
@@ -24,6 +39,72 @@ from arenas.r2_new_donk_city.first_visit_mc import FirstVisitMonteCarlo
 from arenas.r3_fossil_falls.qlearning import QLearning
 from arenas.r3_fossil_falls.sarsa import Sarsa
 from arenas.r3_fossil_falls.expected_sarsa import ExpectedSarsa
+
+# ------------------------------------------------------------------- rounds
+# round_id -> world module (must expose THEME / ROUND_ID / TITLE; grid rounds also
+# expose generate(). A module flagged CONTINUOUS=True has no grid World - its
+# env is continuous: the tournament builds the shared continuous arena directly.)
+ROUND_MODULES = {
+    1: r1_world,
+    2: r2_world,
+    3: r3_world,
+    4: r4_world,
+    5: r5_world,
+}
+# tournament running order
+ROUNDS = [1, 2, 3, 4, 5]
+
+# default head-to-head matchup per round (Red algo, Blue algo). Panel-overridable.
+ROUND_ALGOS = {
+    1: ("value_iteration", "policy_iteration"),  # castle: DP - the model-known maze race
+    2: ("monte_carlo", "first_visit_mc"),   # city: every-visit vs first-visit MC
+    3: ("sarsa", "qlearning"),         # falls: on-policy vs off-policy TD
+    4: ("dqn", "double_dqn"),          # ruins: deep VALUE - function approximation
+    5: ("actor_critic", "ppo"),        # desert rally: deep POLICY - policy gradient
+}
+
+# human-readable algorithm names (for the HUD matchup label)
+ALGO_LABELS = {
+    "value_iteration": "Value Iteration",
+    "policy_iteration": "Policy Iteration",
+    "qlearning": "Q-Learning",
+    "sarsa": "SARSA",
+    "expected_sarsa": "Expected-SARSA",
+    "monte_carlo": "Every-visit MC",
+    "first_visit_mc": "First-visit MC",
+    "dqn": "DQN",
+    "double_dqn": "Double-DQN",
+    "dueling_dqn": "Dueling-DQN",
+    "reinforce": "REINFORCE",
+    "actor_critic": "Actor-Critic",
+    "ppo": "PPO",
+}
+
+
+def make_world(round_id=1, seed=None, **cfg):
+    """Build a grid round's ``World`` via its arena's generator."""
+    mod = ROUND_MODULES.get(round_id, r1_world)
+    return mod.generate(seed, **cfg)
+
+
+def round_algos(round_id):
+    """The (red, blue) default algorithm names for a round."""
+    return ROUND_ALGOS.get(round_id, ("qlearning", "qlearning"))
+
+
+def round_meta(round_id):
+    """Round metadata for the HUD / briefing: title, theme, matchup labels."""
+    mod = ROUND_MODULES.get(round_id, r1_world)
+    ar, ab = round_algos(round_id)
+    return {
+        "roundId": mod.ROUND_ID, "theme": mod.THEME, "title": mod.TITLE,
+        "index": ROUNDS.index(round_id) if round_id in ROUNDS else 0,
+        "total": len(ROUNDS),
+        "algoRed": ar, "algoBlue": ab,
+        "labelRed": ALGO_LABELS.get(ar, ar), "labelBlue": ALGO_LABELS.get(ab, ab),
+        "matchup": f"{ALGO_LABELS.get(ar, ar)} vs {ALGO_LABELS.get(ab, ab)}",
+    }
+
 
 # ---------------------------------------------------------------- tabular (R2/R3)
 ALGORITHMS = {

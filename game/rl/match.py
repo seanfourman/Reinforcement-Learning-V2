@@ -36,7 +36,7 @@ from continuous import (ContinuousArena, PICKUP_EFFECT_SECONDS,
 from core.registry import (ALGORITHMS, DQN_ALGOS, PG_ALGOS,
                            is_dp, is_dqn, is_pg, is_deep,
                            make_agent, make_dp, make_dqn, make_pg)
-import worlds
+from core import registry
 
 ROUND_ALGO_FAMILIES = {
     1: {"value_iteration", "policy_iteration"},
@@ -360,7 +360,7 @@ class Match:
         """Pick the env for a round: the shared continuous arena for a CONTINUOUS
         round (its module THEME picks the 3D scene), else the tabular grid world.
         SKELETON: both are bare navigate/fly-to-goal shells (no hazards)."""
-        mod = worlds.ROUND_MODULES.get(round_id)
+        mod = registry.ROUND_MODULES.get(round_id)
         seed = self.train_seed
         if getattr(mod, "CONTINUOUS", False):
             return ContinuousArena(seed, round_id=round_id,
@@ -426,7 +426,7 @@ class Match:
     def all_worlds(self):
         """Every round's world in tournament order (for the client prewarm)."""
         return [{"roundId": rid, "world": self.world_for_round(rid)}
-                for rid in worlds.ROUNDS]
+                for rid in registry.ROUNDS]
 
     def _is_round4_missile(self):
         return self.round_id == 4 and bool(getattr(self.env, "missile_game", False))
@@ -1389,7 +1389,7 @@ class Match:
     def reset_tournament(self):
         """Start a fresh tournament from round 1 and clear all stage points."""
         with self.lock:
-            first = worlds.ROUNDS[0] if worlds.ROUNDS else self.round_id
+            first = registry.ROUNDS[0] if registry.ROUNDS else self.round_id
             self.set_round(first, keep_score=False)
 
     def set_params(self, p):
@@ -1834,7 +1834,7 @@ class Match:
     def _round_matchup(self, round_id):
         """(red, blue) for a round: the menu loadouts if set + compatible, else the
         ROUND_ALGOS defaults. Red = CPU character's algo, Blue = player's card pick."""
-        dr, db = worlds.round_algos(round_id)
+        dr, db = registry.round_algos(round_id)
         return (self._algo_for_env(self.cpu_algos.get(round_id), dr),
                 self._algo_for_env(self.player_algos.get(round_id), db))
 
@@ -1843,7 +1843,7 @@ class Match:
         0 = first round): cpu = the chosen CPU character's algo per round (Red),
         player = the card picks per round (Blue). Re-applies to the current round."""
         with self.lock:
-            order = worlds.ROUNDS
+            order = registry.ROUNDS
 
             def build(lst):
                 d = {}
@@ -1889,7 +1889,7 @@ class Match:
     def prev_round(self):
         """Step back to the previous round (navigation only; leaves the score as-is)."""
         with self.lock:
-            order = worlds.ROUNDS
+            order = registry.ROUNDS
             i = order.index(self.round_id) if self.round_id in order else 0
             self.set_round(order[(i - 1) % len(order)], keep_score=True)
 
@@ -1901,7 +1901,7 @@ class Match:
         if the current round was resolved with T its point is already banked, and
         if it wasn't, skipping past it gives nobody a point."""
         with self.lock:
-            order = worlds.ROUNDS
+            order = registry.ROUNDS
             i = order.index(self.round_id) if self.round_id in order else 0
             self.set_round(order[(i + 1) % len(order)], keep_score=True)
 
@@ -1932,7 +1932,7 @@ class Match:
                 "awardSerial": award.get("serial"),
                 "roundId": self.round_id,
                 "roundIndex": award.get("roundIndex", 0),
-                "roundTotal": award.get("roundTotal", len(worlds.ROUNDS)),
+                "roundTotal": award.get("roundTotal", len(registry.ROUNDS)),
                 "title": award.get("title", ""),
                 "winner": focus if focus in ("red", "blue") else None,
                 "episodeWinner": None,
@@ -1977,7 +1977,7 @@ class Match:
             "source": "official",
             "roundId": self.round_id,
             "roundIndex": idx,
-            "roundTotal": meta.get("total", len(worlds.ROUNDS)),
+            "roundTotal": meta.get("total", len(registry.ROUNDS)),
             "title": meta.get("title", ""),
             "winner": winner,
             "awarded": bool(winner and not already),
@@ -1996,9 +1996,9 @@ class Match:
         # the LIVE agents so the briefing / HUD / award reflect the actual matchup
         # (the chosen character's algo for Red, the player's card pick for Blue), not
         # the round default. World identity (theme / title / index) stays from meta.
-        m = dict(worlds.round_meta(self.round_id))
-        lr = worlds.ALGO_LABELS.get(self.algo_red, self.algo_red)
-        lb = worlds.ALGO_LABELS.get(self.algo_blue, self.algo_blue)
+        m = dict(registry.round_meta(self.round_id))
+        lr = registry.ALGO_LABELS.get(self.algo_red, self.algo_red)
+        lb = registry.ALGO_LABELS.get(self.algo_blue, self.algo_blue)
         m["algoRed"], m["algoBlue"] = self.algo_red, self.algo_blue
         m["labelRed"], m["labelBlue"] = lr, lb
         # Blue (the player's model) reads on the LEFT, matching the HUD, the panel
@@ -2540,7 +2540,7 @@ class Match:
             return {
                 "round": meta,
                 "score": dict(self.score),
-                "roundResults": [self.round_results.get(i) for i in range(len(worlds.ROUNDS))],
+                "roundResults": [self.round_results.get(i) for i in range(len(registry.ROUNDS))],
                 "roundAwarded": self.round_id in self.awarded_rounds,
                 "award": dict(self.last_award) if self.last_award else None,
                 "finishEvent": copy.deepcopy(self.finish_event) if self.finish_event else None,

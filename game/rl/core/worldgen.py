@@ -1,14 +1,14 @@
-"""Shared grid-world core: tile alphabet, the ``World`` data container, and a
-generic reachability validator.
+"""Shared grid-world primitives: tile alphabet, the ``World`` data container,
+and a generic reachability validator.
 
 A ``World`` is a pure data object describing one round's static layout: the tile
 grid, the spawns and goal (escape) tiles, the slippery cells, and the per-round
-**theme**. The live env (`env.py`) reads these; the browser reads ``to_json()`` to
+**theme**. The live grid env reads these; the browser reads ``to_json()`` to
 build the themed 3D scene.
 
-Each themed round lives in its own module under ``worlds/`` and returns a
-``World``. ``worldgen.py`` re-exports this module so the historical
-``import worldgen`` / ``from worldgen import WALL, ...`` imports keep working.
+Each grid round's GENERATOR lives in its arena package
+(``arenas/<round>/world.py``) and returns a ``World`` built from these
+primitives; ``core/registry.py`` maps round ids to those modules.
 
 Coordinates are (row, col), row 0 = NORTH (escape), row H-1 = SOUTH (spawns).
 """
