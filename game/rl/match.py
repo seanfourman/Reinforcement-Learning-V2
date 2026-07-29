@@ -26,7 +26,8 @@ from env import (GridWorld, N_ACTIONS,
                  COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
                  SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD,
                  CAGE_REWARD, CAGE_LEN)
-from continuous import ContinuousArena
+from continuous import (ContinuousArena, PICKUP_EFFECT_SECONDS,
+                        SPEED_MULTIPLIER, SLOW_MULTIPLIER)
 from agents import make_agent, ALGORITHMS
 from dp import is_dp, make_dp
 import worlds
@@ -193,6 +194,28 @@ R3_LADDER = [
     {"alpha": .40, "gamma": .98, "eps_start": 1.00, "eps_end": .02, "eps_episodes": 550},   # 9 Parabones
 ]
 
+# Arena 5 (Tostarena, Capture the Flag, POLICY GRADIENT) CPU ladder. Policy gradients
+# don't use epsilon (they explore via policy ENTROPY), so difficulty is driven by the
+# LEARNING RATE (alpha -> Adam lr, see pg.PGAgent._lr) and the discount gamma: a weak
+# character learns slowly and short-sighted (barely improves within a match); a strong
+# one learns fast + plans further, so it out-grabs/steals/dodges the player. The
+# per-character ENTROPY drops with difficulty too (weak = stays random/dithers forever;
+# strong = commits to a sharp policy). eps_* are carried for the shared consumer but
+# unused by PG. Monotonic easy->hard. Index = character level 0..9.
+R5_LADDER = [
+    {"alpha": .10, "gamma": .970, "entropy": .050, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 0 Mario
+    {"alpha": .14, "gamma": .972, "entropy": .042, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 1 Luigi
+    {"alpha": .18, "gamma": .974, "entropy": .035, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 2 Yoshi
+    {"alpha": .22, "gamma": .976, "entropy": .028, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 3 Toadette
+    {"alpha": .26, "gamma": .978, "entropy": .022, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 4 Pauline
+    {"alpha": .30, "gamma": .980, "entropy": .017, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 5 Koopa
+    {"alpha": .34, "gamma": .983, "entropy": .013, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 6 Bowser
+    {"alpha": .38, "gamma": .986, "entropy": .009, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 7 Peach
+    {"alpha": .42, "gamma": .988, "entropy": .006, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 8 Toad
+    {"alpha": .46, "gamma": .990, "entropy": .004, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000},  # 9 Parabones
+]
+BLUE_R5 = {"alpha": .20, "gamma": .98, "eps_start": 0, "eps_end": 0, "eps_episodes": 4000}
+
 
 def red_params(level, round_id=None):
     """Resolved CPU profile for a character and arena.
@@ -209,6 +232,8 @@ def red_params(level, round_id=None):
         resolved.update(R3_LADDER[idx])
     elif round_id == 4:
         resolved.update(R4_LADDER[idx])
+    elif round_id == 5:
+        resolved.update(R5_LADDER[idx])
     return resolved
 
 
@@ -219,6 +244,8 @@ def blue_params(round_id=None):
         resolved.update(BLUE_MODEL["r2"])
     elif round_id == 4:
         resolved.update(BLUE_R4)
+    elif round_id == 5:
+        resolved.update(BLUE_R5)
     return resolved
 
 
@@ -294,6 +321,16 @@ class Match:
         self.red_dqn_n_step = 3
         self.red_dqn_hidden = 128               # Red hidden width
         self.red_dqn_layers = 2                 # Red hidden layers
+        # Round-5 policy-gradient hyperparameters (REINFORCE / Actor-Critic / PPO),
+        # applied to BOTH sides. None = keep each algorithm's own class default.
+        self.pg_hidden = 128
+        self.pg_entropy = None
+        self.pg_lam = None
+        self.pg_value_coef = None
+        self.pg_horizon = None
+        self.pg_clip = None
+        self.pg_epochs = None
+        self.red_pg_entropy = None              # CPU entropy from its R5 difficulty tier
         # ------------------------------------------------------------------------
         self.env = self._make_env(round_id)
         self._apply_env_config()
@@ -445,8 +482,18 @@ class Match:
                             layers=self.red_dqn_layers if red else self.dqn_layers)
         if is_pg(algo):
             from pg import make_pg     # lazy: the policy-gradient round (R5) needs PyTorch
+            if color == "red":
+                # the CPU's strength comes from its DIFFICULTY TIER: alpha/gamma (above)
+                # + the tier's entropy. It uses each algorithm's own default rollout knobs.
+                return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
+                               seed=seed, alpha=alpha, gamma=gamma, hidden=self.pg_hidden,
+                               entropy_coef=self.red_pg_entropy)
+            # Blue = the user's model: the panel's PG hyperparameters apply here.
             return make_pg(algo, obs_dim=self.env.obs_dim, n_actions=self.env.n_actions,
-                           seed=seed, alpha=alpha, gamma=gamma, hidden=self.dqn_hidden)
+                           seed=seed, alpha=alpha, gamma=gamma, hidden=self.pg_hidden,
+                           entropy_coef=self.pg_entropy, lam=self.pg_lam,
+                           value_coef=self.pg_value_coef, horizon=self.pg_horizon,
+                           clip=self.pg_clip, epochs=self.pg_epochs)
         return make_agent(algo, n_actions=self.env.n_actions, seed=seed, alpha=alpha, gamma=gamma)
 
     def _red_from_tier(self):
@@ -461,6 +508,7 @@ class Match:
         self.r4_red_eps_episodes = None
         self.red_epsilon = rp["eps_start"]
         self.red_plan_speed = rp["plan_speed"]    # DP (R1): Red's sweeps per tick
+        self.red_pg_entropy = rp.get("entropy")   # PG (R5): CPU entropy from its tier
 
     def _blue_from_round(self):
         """Restore Blue's validated default profile for the active arena."""
@@ -1093,10 +1141,12 @@ class Match:
         if race in ("red", "blue"):
             events.append((f"win_{race}", f"{names[race]}'s first win",
                            race, side_steps.get(race, self.env.steps)))
-        # first time each side reaches the goal at all (even a 2nd-place finish)
-        for side in replay_sides:
-            events.append((f"goal_{side}", f"{names[side]} first reaches the goal",
-                           side, side_steps.get(side, self.env.steps)))
+        # first time each side reaches the goal at all (even a 2nd-place finish).
+        # CTF has no goal (it captures a flag), so it uses the weapon/flag firsts below.
+        if not getattr(self.env, "ctf_game", False):
+            for side in replay_sides:
+                events.append((f"goal_{side}", f"{names[side]} first reaches the goal",
+                               side, side_steps.get(side, self.env.steps)))
         # first death by each hazard: scan the recorded frames for the death step + cause
         for side in ("red", "blue"):
             dk = side + "Dead"
@@ -1107,6 +1157,39 @@ class Match:
                     events.append((f"death_{cause}_{side}",
                                    f"{names[side]} first {phrase}", side, i))
                     break
+        # Round-5 Capture-the-Flag weapon/flag firsts: scan the recorded ctfEvents for
+        # the FIRST frame each notable thing happens (whoever did it becomes the replay
+        # subject). Append-only per round via _milestone_keys, like the rows above.
+        if getattr(self.env, "ctf_game", False):
+            ctf_specs = [
+                ("ctf_grab", "First flag grab",
+                 lambda e: e.get("type") == "grab"),
+                ("ctf_steal", "First flag steal (a tag)",
+                 lambda e: e.get("type") == "steal"),
+                ("ctf_capture", "First flag capture",
+                 lambda e: e.get("type") == "capture"),
+                ("ctf_chainhit", "First Chain Chomp reel-in",
+                 lambda e: e.get("type") == "chainhit"),
+                ("ctf_redshell", "First red-shell hit",
+                 lambda e: e.get("type") == "shellhit" and e.get("kind") == "red"),
+                ("ctf_greenshell", "First green-shell hit",
+                 lambda e: e.get("type") == "shellhit" and e.get("kind") == "green"),
+                ("ctf_banana", "First banana snare",
+                 lambda e: e.get("type") == "traphit" and e.get("kind") == "banana"),
+                ("ctf_oil", "First oil-slick spin-out",
+                 lambda e: e.get("type") == "traphit" and e.get("kind") == "oil"),
+                ("ctf_bomb", "First Bowser bomb blast",
+                 lambda e: e.get("type") == "bombhit"),
+            ]
+            for key, label, pred in ctf_specs:
+                for i, fr in enumerate(self._frames):
+                    ev = next((e for e in (fr.get("ctfEvents") or []) if pred(e)), None)
+                    if ev is not None:
+                        agent = ev.get("target") or ev.get("side") or "red"
+                        if agent not in ("red", "blue"):
+                            agent = "red"
+                        events.append((key, label, agent, i))
+                        break
         for key, label, agent, steps in events:
             if key in self._milestone_keys:
                 continue
@@ -1387,6 +1470,33 @@ class Match:
             if "r5AgentSight" in p:
                 self.r5_agent_sight = max(1.0, min(20.0, float(p["r5AgentSight"])))
 
+            # ---- Round-5 policy-gradient hyperparameters (both sides). Most apply
+            # LIVE to the running agents; only the hidden width rebuilds the network. ----
+            def _pg_live(attr, value):     # the panel tunes the USER's model (Blue) only
+                if hasattr(self.blue, attr):
+                    setattr(self.blue, attr, value)
+            if "pgEntropy" in p:
+                self.pg_entropy = max(0.0, min(0.2, float(p["pgEntropy"])))
+                _pg_live("entropy_coef", self.pg_entropy)
+            if "pgLambda" in p:
+                self.pg_lam = max(0.0, min(1.0, float(p["pgLambda"])))
+                _pg_live("lam", self.pg_lam)
+            if "pgValueCoef" in p:
+                self.pg_value_coef = max(0.0, min(2.0, float(p["pgValueCoef"])))
+                _pg_live("value_coef", self.pg_value_coef)
+            if "pgHorizon" in p:
+                self.pg_horizon = max(8, min(2048, int(p["pgHorizon"])))
+                _pg_live("horizon", self.pg_horizon)
+            if "pgClip" in p:
+                self.pg_clip = max(0.02, min(0.6, float(p["pgClip"])))
+                _pg_live("clip", self.pg_clip)
+            if "pgEpochs" in p:
+                self.pg_epochs = max(1, min(20, int(p["pgEpochs"])))
+                _pg_live("epochs", self.pg_epochs)
+            if "pgHidden" in p:
+                self.pg_hidden = max(16, min(1024, int(p["pgHidden"])))
+                need_agent_rebuild = True
+
             # ---- BLUE's DQN internals (per-side; Red's are in set_red_params) ----
             if "dqnBatch" in p:
                 self.dqn_batch = max(1, min(1024, int(p["dqnBatch"])))
@@ -1479,9 +1589,22 @@ class Match:
             return self.params()
 
     def params(self):
+        # Round-5 policy-gradient hyperparameters: report the values the LIVE Blue
+        # agent is actually using (each algo defaults the ones it doesn't use).
+        _pg = self.blue if is_pg(self.algo_blue) else None
+
+        def _pgv(attr, default):
+            return getattr(_pg, attr, default) if _pg is not None else default
         return {
             "alpha": round(self.alpha, 4),
             "gamma": round(self.gamma, 4),
+            "pgHidden": int(_pgv("hidden", self.pg_hidden)),
+            "pgEntropy": round(float(_pgv("entropy_coef", 0.01)), 4),
+            "pgLambda": round(float(_pgv("lam", 0.95)), 3),
+            "pgValueCoef": round(float(_pgv("value_coef", 0.5)), 3),
+            "pgHorizon": int(_pgv("horizon", 64)),
+            "pgClip": round(float(_pgv("clip", 0.2)), 3),
+            "pgEpochs": int(_pgv("epochs", 4)),
             "epsStart": round(self.eps_start, 3),
             "epsEnd": round(self.eps_end, 3),
             "epsEpisodes": self._effective_blue_eps_episodes(),
@@ -1861,6 +1984,7 @@ class Match:
             # factors: |S| = n1 x n2 x ... - one chip per factor, so the grid rounds
             # get the same at-a-glance state teaching the continuous rounds do.
             state_factors = None
+            pickups = None        # R4 only: the collectible power-ups, for a visual card
             reward_note = (
                 "Only the listed rewards are used; there is no hidden "
                 "closer-to-goal bonus."
@@ -2144,6 +2268,30 @@ class Match:
                     "the round ends only when a character loses them all. Pickups can speed "
                     "you up, shield you, slow you or briefly freeze you."
                 )
+                # the four collectible power-ups, as structured data for the Challenge
+                # card: two to SEEK (speed, shield) and two to AVOID (slow, freeze).
+                pickups = [
+                    {"type": "speed", "label": "Speed", "good": True, "icon": "bolt",
+                     "color": "#cc9016",   # darker yellow (the two good ones are a yellow pair)
+                     "effect": f"Move x{SPEED_MULTIPLIER:g} faster",
+                     "seconds": PICKUP_EFFECT_SECONDS["speed"],
+                     "detail": "Zip around the tower - dodging the barrage gets much easier."},
+                    {"type": "invincible", "label": "Shield", "good": True, "icon": "shield",
+                     "color": "#f2b90a",   # yellow
+                     "effect": "Immune to hits",
+                     "seconds": PICKUP_EFFECT_SECONDS["invincible"],
+                     "detail": "Bills pass right through you - plow through danger for a moment."},
+                    {"type": "slow", "label": "Slow", "good": False, "icon": "snail",
+                     "color": "#ef4136",   # red (matches the in-game red mushroom glow)
+                     "effect": f"Move x{SLOW_MULTIPLIER:g} slower",
+                     "seconds": PICKUP_EFFECT_SECONDS["slow"],
+                     "detail": "Sluggish and easy to corner - steer clear of it."},
+                    {"type": "freeze", "label": "Freeze", "good": False, "icon": "ice",
+                     "color": "#22bfdd",   # cyan
+                     "effect": "Frozen in place",
+                     "seconds": PICKUP_EFFECT_SECONDS["freeze"],
+                     "detail": "You cannot move at all - the worst thing to touch mid-barrage."},
+                ]
                 rewards = [
                     ["Stay alive", "+0.2 / second"],
                     ["Dodge a Bill aimed at you (it expires without a hit)", 0.15],
@@ -2315,6 +2463,21 @@ class Match:
                 "winCondition": win,
                 "rewards": rewards,
                 "rewardNote": reward_note,
+                "pickups": pickups,
+                # Round-5 Capture-the-Flag: the crate weapons, listed for the briefing
+                "weapons": ([
+                    {"name": "Chain Chomp", "icon": "chain",
+                     "desc": "Throws a chomp head that flies to the rival, reels it in "
+                             "point-blank, and stuns it."},
+                    {"name": "Red shell", "icon": "red_shell",
+                     "desc": "A homing shell that chases the rival and stuns on hit."},
+                    {"name": "Green shell", "icon": "green_shell",
+                     "desc": "Fires straight and bounces off walls; stuns whoever it hits."},
+                    {"name": "Banana", "icon": "banana",
+                     "desc": "A peel dropped behind you; whoever drives over it is stunned."},
+                    {"name": "Oil slick", "icon": "oil",
+                     "desc": "An oil pool that throws the rival backwards and briefly dazes it."},
+                ] if getattr(env, "ctf_game", False) else None),
             }
 
     def stats(self):

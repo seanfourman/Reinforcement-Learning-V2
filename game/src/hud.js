@@ -153,19 +153,17 @@ const STYLE = `
   opacity:.5;transition:fill .18s,opacity .18s;}
 .fb-side.blue .fb-flag.alive path{fill:#4c9dff;opacity:1;}
 .fb-side.red .fb-flag.alive path{fill:#f04b43;opacity:1;}
-/* Arena-5 CTF: the currently HELD weapon on the OUTER side of the flags. A team-
-   coloured RING with NO dark fill; the item PNG sits a bit LARGER than the ring and
-   pops out of it (overflow visible), so the weapon reads clearly, not a tiny disc. */
+/* Arena-5 CTF: the currently HELD weapon on the OUTER side of the flags. A plain
+   BLACK disc (like an unfilled flag pip, no coloured border); when armed, the item
+   PNG sits a bit LARGER than the disc and pops out of it (overflow visible). */
 .fb-weapon{display:none;box-sizing:border-box;width:44px;height:44px;flex:none;margin:0 12px;
-  align-items:center;justify-content:center;border-radius:50%;border:3px solid #4c9dff;
-  background:radial-gradient(circle at 50% 42%,rgba(76,157,255,.22),rgba(76,157,255,0) 72%);
+  align-items:center;justify-content:center;border-radius:50%;
+  background:#101010;box-shadow:0 2px 0 rgba(0,0,0,.45);
   transition:opacity .18s;}
 .fb-weapon img{width:158%;height:158%;object-fit:contain;display:block;
   filter:drop-shadow(0 2px 3px rgba(0,0,0,.7));}
-.fb-weapon.empty{opacity:.4;}
+.fb-weapon.empty{opacity:.5;}          /* dark disc, like an unfilled flag pip */
 .fb-weapon.empty img{display:none;}
-.fb-side.red .fb-weapon{border-color:#f04b43;
-  background:radial-gradient(circle at 50% 42%,rgba(240,75,67,.22),rgba(240,75,67,0) 72%);}
 `;
 
 export function initHud() {

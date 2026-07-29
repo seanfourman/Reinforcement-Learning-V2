@@ -1138,32 +1138,50 @@ export const tostarena = {
     // two shared prototypes cloned per live shell id (geometry/material tracked
     // once), pooled by id and removed when the shell expires or lands a hit.
     function makeShell(kind) {
-      const color = kind === "red" ? 0xff4438 : 0x36c85a;
+      const color = kind === "red" ? 0xe5342a : 0x2eb24a;
+      const cream = 0xfbe9c2;
       const g = new THREE.Group();
+      // top carapace: a glossy coloured dome (upper hemisphere)
       const dome = new THREE.Mesh(
-        track(new THREE.SphereGeometry(0.34, 16, 12)),
-        track(
-          new THREE.MeshStandardMaterial({
-            color,
-            roughness: 0.3,
-            metalness: 0.1,
-            emissive: color,
-            emissiveIntensity: 0.28,
-          }),
-        ),
+        track(new THREE.SphereGeometry(0.36, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.56)),
+        track(new THREE.MeshStandardMaterial({
+          color, roughness: 0.28, metalness: 0.05,
+          emissive: color, emissiveIntensity: 0.12,
+        })),
       );
-      dome.scale.y = 0.82;
-      dome.position.y = 0.04;
+      dome.scale.y = 0.9;
+      dome.position.y = 0.05;
       dome.castShadow = true;
       g.add(dome);
+      // the cream belly (lower hemisphere, flattened)
+      const belly = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.34, 22, 12, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5)),
+        track(new THREE.MeshStandardMaterial({ color: cream, roughness: 0.6 })),
+      );
+      belly.scale.y = 0.55;
+      belly.position.y = 0.05;
+      g.add(belly);
+      // the thick cream rim around the middle (the shell's lip)
       const rim = new THREE.Mesh(
-        track(new THREE.TorusGeometry(0.3, 0.075, 8, 18)),
-        track(
-          new THREE.MeshStandardMaterial({ color: 0xfff2d0, roughness: 0.5 }),
-        ),
+        track(new THREE.TorusGeometry(0.345, 0.075, 10, 26)),
+        track(new THREE.MeshStandardMaterial({ color: cream, roughness: 0.5 })),
       );
       rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.05;
       g.add(rim);
+      // the red shell wears cream Koopa-spots on its dome
+      if (kind === "red") {
+        const spotMat = track(new THREE.MeshStandardMaterial({ color: cream, roughness: 0.5 }));
+        const spotGeo = track(new THREE.SphereGeometry(0.085, 10, 8));
+        for (const [ax, az] of [[0, 0], [0.2, 0.13], [-0.19, 0.14], [0.11, -0.22], [-0.13, -0.2]]) {
+          const r = Math.hypot(ax, az);
+          const s = new THREE.Mesh(spotGeo, spotMat);
+          const yy = 0.05 + Math.sqrt(Math.max(0, 0.32 * 0.32 - r * r)) * 0.9;
+          s.position.set(ax, yy, az);
+          s.scale.set(1, 0.4, 1);
+          g.add(s);
+        }
+      }
       return g;
     }
     const shellProto = { red: makeShell("red"), green: makeShell("green") };
@@ -1513,13 +1531,23 @@ export const tostarena = {
         let m = hazardMeshes.get(h.id);
         if (!m) {
           m = hazardProto[(h.kind || 0) % 3].clone();
+          m.userData.rx = h.pos[0];      // rendered position, smoothed toward the sim
+          m.userData.rz = h.pos[1];
           group.add(m);
           hazardMeshes.set(h.id, m);
         }
+        // the sim advances the bomb in coarse snapshot jumps; DEAD-RECKON toward the
+        // next sim spot using its velocity, then ease onto the exact position, so the
+        // flight reads smooth (not jumpy) at the same average speed.
+        m.userData.rx += h.vel[0] * dt;
+        m.userData.rz += h.vel[1] * dt;
+        const k = 1 - Math.exp(-dt * 10);
+        m.userData.rx += (h.pos[0] - m.userData.rx) * k;
+        m.userData.rz += (h.pos[1] - m.userData.rz) * k;
         // arc: launched at cannon height near the ship, arcing down onto the board
-        const zFromShip = h.pos[1] - (SHIP.z + 1.9);
+        const zFromShip = m.userData.rz - (SHIP.z + 1.9);
         const y = Math.max(1.0, CANNON_Y - Math.max(0, zFromShip) * 0.45);
-        m.position.set(h.pos[0], y, h.pos[1]);
+        m.position.set(m.userData.rx, y, m.userData.rz);
         m.rotation.y += dt * 5;
         m.rotation.x += dt * 3;
       }

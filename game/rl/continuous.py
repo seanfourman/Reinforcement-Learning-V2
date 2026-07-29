@@ -1829,7 +1829,8 @@ class ContinuousArena:
                 if hit_side != owner:
                     reward[owner] += SHELL_HIT_REWARD
                 reward[hit_side] += STUNNED_PENALTY
-                self._add_ctf_event("shellhit", owner, sh["pos"], {"target": hit_side})
+                self._add_ctf_event("shellhit", owner, sh["pos"],
+                                    {"target": hit_side, "kind": sh["kind"]})
                 continue                                # shell consumed on impact
             if sh["age"] * self.dt <= SHELL_LIFETIME:
                 survivors.append(sh)
@@ -1918,14 +1919,16 @@ class ContinuousArena:
             hz["age"] += 1
             hz["pos"] = (hz["pos"] + hz["vel"] * self.dt).astype(np.float32)
             p = hz["pos"]
-            # IMPACT when it reaches its target spot, flies into an agent, leaves the
-            # board, or times out -> it EXPLODES there.
+            # IMPACT only when it REACHES its (uniformly random) target spot, leaves
+            # the board, or times out -> it EXPLODES there. It does NOT detonate on an
+            # agent it merely flies OVER in transit: every bomb funnels out of the
+            # north-edge ship, so punishing fly-overs would unfairly pepper the
+            # north/blue corner. The blast at the landing point is the only threat, and
+            # landing points are uniform across the whole arena -> fair to both sides.
             reached = float(np.dot(hz["target"] - p, hz["vel"])) <= 0.0
-            direct = any(float(np.linalg.norm(p - cp)) <= BOWSER_OBJ_R + AGENT_R
-                         for cp in (self.red_pos, self.blue_pos))
             off = (p[0] < -3 or p[0] > A + 3 or p[1] < -3 or p[1] > A + 3)
             timeout = hz["age"] * self.dt > BOWSER_OBJ_LIFETIME
-            if reached or direct or off or timeout:
+            if reached or off or timeout:
                 # the blast STUNS any agent within BOWSER_BLAST_R of the impact point
                 for cs, cp in (("red", self.red_pos), ("blue", self.blue_pos)):
                     if float(np.linalg.norm(p - cp)) <= BOWSER_BLAST_R + AGENT_R:

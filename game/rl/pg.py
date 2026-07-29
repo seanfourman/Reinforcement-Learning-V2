@@ -73,7 +73,9 @@ class PGAgent:
     has_critic = False
     entropy_coef = 0.01     # small bonus that keeps the policy from collapsing early
 
-    def __init__(self, obs_dim, n_actions, alpha=0.2, gamma=0.98, seed=0, hidden=128):
+    def __init__(self, obs_dim, n_actions, alpha=0.2, gamma=0.98, seed=0, hidden=128,
+                 entropy_coef=None, lam=None, value_coef=None, horizon=None,
+                 clip=None, epochs=None):
         self.obs_dim = obs_dim
         self.n_actions = n_actions
         self.hidden = hidden
@@ -95,6 +97,14 @@ class PGAgent:
         self.ploss_ema = 0.0        # smoothed policy(-surrogate) loss
         self.vloss_ema = 0.0        # smoothed value loss (0 for REINFORCE)
         self.entropy_ema = 0.0      # smoothed policy entropy (the exploration measure)
+        # optional hyperparameter overrides from the panel (None = keep the class
+        # default; attrs the algo doesn't use are simply ignored by it)
+        for _name, _val, _cast in (("entropy_coef", entropy_coef, float),
+                                   ("lam", lam, float), ("value_coef", value_coef, float),
+                                   ("horizon", horizon, int), ("clip", clip, float),
+                                   ("epochs", epochs, int)):
+            if _val is not None:
+                setattr(self, _name, _cast(_val))
 
     # alpha (panel "learning rate") maps onto the Adam lr, kept gentle: policy
     # gradients are far more step-size sensitive than value regression.

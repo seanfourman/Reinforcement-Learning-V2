@@ -94,6 +94,15 @@ export const GLOBAL_PARAMS = [
   { key: 'dqnWarmup', label: 'Warmup steps', min: 0, max: 10000, step: 250, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, desc: 'Experiences collected BEFORE training starts, so the first updates are not drawn from an almost-empty memory.', fmt: fLoc },
   { key: 'dqnTargetSync', label: 'Target sync (steps)', min: 50, max: 5000, step: 50, sect: 'algo', scope: 'dqn', def: 500, color: C_OURS, desc: 'How often the stable "target" copy of the network is refreshed. Larger = steadier but slower to follow.', fmt: fLoc },
   { key: 'dqnNstep', label: 'N-step returns', min: 1, max: 10, step: 1, sect: 'algo', scope: 'dqn', def: 3, color: C_OURS, desc: 'How many steps of future reward are folded into one learning target. 1 = standard DQN.', fmt: fLoc },
+  // --- Round-5 policy-gradient internals (REINFORCE / Actor-Critic / PPO). Most
+  // apply live; hidden width rebuilds the network. Some only affect certain algos. ---
+  { key: 'pgHidden', label: 'Hidden width', min: 32, max: 512, step: 32, sect: 'algo', scope: 'pg', def: 128, desc: 'Neurons per hidden layer of the policy (and value) network. Rebuilds the network.', fmt: fLoc },
+  { key: 'pgEntropy', label: 'Entropy bonus', min: 0, max: 0.1, step: 0.005, sect: 'algo', scope: 'pg', def: 0.01, desc: 'Reward for keeping the policy random (exploration). Higher = explores longer before committing. Used by all three PG algorithms.', fmt: (v) => (+v).toFixed(3) },
+  { key: 'pgLambda', label: 'GAE λ', min: 0.8, max: 1, step: 0.01, sect: 'algo', scope: 'pg', def: 0.95, desc: 'Generalised-advantage bias/variance knob for Actor-Critic and PPO. 1 = high-variance Monte-Carlo advantage; lower = more bootstrapping. (Ignored by REINFORCE.)', fmt: (v) => (+v).toFixed(2) },
+  { key: 'pgValueCoef', label: 'Value loss weight', min: 0, max: 1, step: 0.05, sect: 'algo', scope: 'pg', def: 0.5, desc: 'How strongly the critic (value) loss is weighted against the policy loss in Actor-Critic and PPO. (Ignored by REINFORCE.)', fmt: (v) => (+v).toFixed(2) },
+  { key: 'pgHorizon', label: 'Rollout horizon', min: 16, max: 1024, step: 16, sect: 'algo', scope: 'pg', def: 64, desc: 'Steps collected before each update for Actor-Critic (default 64) and PPO (default 512). Longer = steadier but fewer, slower updates. (Ignored by REINFORCE.)', fmt: fLoc },
+  { key: 'pgClip', label: 'PPO clip ε', min: 0.05, max: 0.5, step: 0.05, sect: 'algo', scope: 'pg', def: 0.2, desc: 'PPO trust-region size: caps how far each update moves the policy (ratio clipped to 1±ε). Smaller = safer, slower. (PPO only.)', fmt: (v) => (+v).toFixed(2) },
+  { key: 'pgEpochs', label: 'PPO epochs', min: 1, max: 10, step: 1, sect: 'algo', scope: 'pg', def: 4, desc: 'How many optimisation passes PPO takes over each rollout. More = more sample reuse per batch. (PPO only.)', fmt: fLoc },
   // --- Round-1 game mechanics (Peach's Castle: ice puddles + Mystery Blocks).
   // These scope to 'r1' and live in the World card. Each edit re-solves both DP planners. ---
   { key: 'slipProb', label: 'Puddle slip chance', min: 0, max: 0.9, step: 0.05, sect: 'world', scope: 'r1', def: 0.30, desc: 'Chance that an ice move goes sideways; the two side directions split this probability.', fmt: (v) => `${Math.round(v * 100)}%` },
@@ -448,6 +457,26 @@ const STYLE = `
 #rl-panel #rl-brief .act-chip b{font-size:19px;font-weight:800;color:#2a2c31;line-height:1;}
 #rl-panel #rl-brief .act-chip.wide{flex-direction:row;text-transform:none;letter-spacing:.2px;font-size:12px;
   color:#2a2c31;font-weight:700;padding:11px 13px;}
+/* Round-4 POWER-UPS: a card per collectible, colour-accented, with a SEEK / AVOID tag.
+   --pc = the pickup's colour (drives the left accent + the icon). */
+#rl-panel #rl-brief .pk-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 2px;}
+#rl-panel #rl-brief .pk-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:12px 12px 12px 15px;border-radius:13px;background:#fff;border:1px solid #e6e8ec;overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);transition:transform .12s ease,box-shadow .12s ease;}
+#rl-panel #rl-brief .pk-card:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.09);}
+#rl-panel #rl-brief .pk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc);}
+#rl-panel #rl-brief .pk-card.bad{background:linear-gradient(180deg,#fff,#fffafa);}
+#rl-panel #rl-brief .pk-ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
+  background:#f4f6f8;color:var(--pc);margin-bottom:5px;}
+#rl-panel #rl-brief .pk-ic svg{width:21px;height:21px;display:block;}
+#rl-panel #rl-brief .pk-name{font-size:13px;font-weight:800;color:#1f1f21;line-height:1.1;}
+#rl-panel #rl-brief .pk-eff{font-size:11px;color:#4b4d53;font-weight:600;line-height:1.3;}
+#rl-panel #rl-brief .pk-dur{margin-top:5px;font-size:10px;font-weight:800;color:#6b7280;font-variant-numeric:tabular-nums;
+  background:#f0f1f3;border-radius:20px;padding:2px 8px;letter-spacing:.2px;}
+#rl-panel #rl-brief .pk-tag{position:absolute;top:9px;right:9px;font-size:8px;font-weight:800;letter-spacing:.6px;
+  padding:3px 7px;border-radius:20px;}
+#rl-panel #rl-brief .pk-card.good .pk-tag{background:#e7f6ec;color:#1f9d55;}
+#rl-panel #rl-brief .pk-card.bad .pk-tag{background:#fdeceb;color:#dc4a45;}
 /* Reward structure - signed proportional bars. The bar + value are FIXED-width on
    the right and the label flexes, so every bar lines up in the same column no matter
    how long the number is. */
@@ -1169,6 +1198,7 @@ export function initPanel() {
         case 'eps': return !isDP && !isPg;        // ε-greedy schedule: not DP, not PG (PG samples its policy)
         case 'dp': return isDP;                   // convergence + sweeps + speed: DP round
         case 'dqn': return isDqn;                 // replay / batch / target-net: DQN rounds only
+        case 'pg': return isPg;                   // policy-gradient internals: R5 (REINFORCE/AC/PPO)
         case 'r1': return roundIndex === 0;       // Round-1 game mechanics (ice + "?" blocks)
         case 'r2': return roundIndex === 1;       // Round-2 game mechanics (regioned maze: pipes + puddles)
         case 'r3': return roundIndex === 2;       // Round-3 game mechanics (Fossil Falls wet cells)

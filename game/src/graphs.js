@@ -1322,6 +1322,53 @@ export function initBriefing(parent) {
               .join("") +
             `</div></div>`
           : `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>`;
+      // Round-4 POWER-UPS: a visual card per collectible - SEEK the good (speed / shield),
+      // AVOID the bad (slow / freeze). Line icons keyed off each pickup's `icon`.
+      const PK_ICONS = {
+        bolt: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.6 8 11 4.6-2.4 8-6 8-11V5z"/></svg>',
+        snail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 18h6"/><circle cx="14" cy="12" r="6"/><circle cx="14" cy="12" r="2.3"/><path d="M8 18a4 4 0 0 1-4-4"/><path d="M19.2 7.8 20.8 6"/></svg>',
+        ice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M3.3 7l17.4 10M20.7 7 3.3 17"/><path d="M9.5 3.2 12 5.7l2.5-2.5M9.5 20.8 12 18.3l2.5 2.5"/></svg>',
+      };
+      const pkList = Array.isArray(s.pickups) ? s.pickups : [];
+      const pickupsBlock = pkList.length
+        ? `<h3 class="brief-sub">Power-ups</h3>` +
+          `<p class="note" style="margin:-2px 0 0">Grab the good ones, dodge the bad.</p>` +
+          `<div class="pk-grid">` +
+          pkList
+            .map(
+              (p) =>
+                `<div class="pk-card ${p.good ? "good" : "bad"}" style="--pc:${p.color || "#3f7fe0"}" ` +
+                `title="${(p.detail || "").replace(/"/g, "&quot;")}">` +
+                `<span class="pk-tag">${p.good ? "SEEK" : "AVOID"}</span>` +
+                `<span class="pk-ic">${PK_ICONS[p.icon] || PK_ICONS.bolt}</span>` +
+                `<b class="pk-name">${p.label}</b>` +
+                `<span class="pk-eff">${p.effect}</span>` +
+                `<span class="pk-dur">${p.seconds}s</span></div>`,
+            )
+            .join("") +
+          `</div>`
+        : "";
+      // Round-5 Capture-the-Flag: the crate weapons, each with its Mario-Kart icon
+      const WPN_ICON = {
+        chain: "./assets/icons/weapons/Chain_Chomp.png",
+        red_shell: "./assets/icons/weapons/red-shell-2x.png",
+        green_shell: "./assets/icons/weapons/green-shell-2x.png",
+        banana: "./assets/icons/weapons/banana-2x.png",
+        oil: "./assets/icons/weapons/MKAGPDX_Sticky_Oil.png",
+      };
+      const weaponsBlock = (s.weapons && s.weapons.length)
+        ? `<h3 class="brief-sub">Weapons (smash a crate for one)</h3>` +
+          s.weapons.map((w) =>
+            `<div style="display:flex;align-items:center;gap:11px;margin:7px 0;">` +
+            (WPN_ICON[w.icon]
+              ? `<img src="${WPN_ICON[w.icon]}" alt="" style="width:38px;height:38px;`
+                + `object-fit:contain;flex:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));">`
+              : "") +
+            `<div><b>${w.name}</b>: <span style="opacity:.82;">${w.desc}</span></div>`
+            + `</div>`,
+          ).join("")
+        : "";
       body.innerHTML =
         `<div class="brief-matchup">${s.matchup}</div>` +
         `<p class="hint">${s.family}. ${s.winCondition}</p>` +
@@ -1343,9 +1390,14 @@ export function initBriefing(parent) {
         `<h3 class="brief-sub">Reward structure (R)</h3>${rewards}` +
         (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "") +
 
+        weaponsBlock +
+
+        pickupsBlock +
+
         learnBlock +
 
         `<h3 class="brief-sub">Dynamics</h3>` +
+        (s.dynamics ? `<p class="hint" style="margin:0 0 8px;">${s.dynamics}</p>` : "") +
         `<div class="dyn-chips">` +
         (s.slipProb
           ? `<span class="dyn-chip"><b>${Math.round(100 * s.slipProb)}%</b>slip chance</span>`
