@@ -215,11 +215,11 @@ OIL_KNOCKBACK = 2.5                     # oil throws the rival back this far (un
 # DODGE, which is why they sense nearby objects up to `agent_sight` metres away.
 # Speeds are in units/SECOND (dt-independent), tuned for R5's tick like R4's Bills.
 BOWSER_THROW_COUNT = 1                  # objects hurled per throw (tunable 0..4)
-BOWSER_OBJ_SPEED = 6.0                  # object travel speed, units/s (tunable)
+BOWSER_OBJ_SPEED = 10.0                 # object travel speed, units/s (tunable)
 BOWSER_OBJ_R = 0.45                     # object radius (contact + draw)
 BOWSER_BLAST_R = 1.7                    # explosion radius: an agent within this is stunned
-BOWSER_THROW_INTERVAL = 15.0          # seconds between throws
-BOWSER_FIRST_THROW = 4.0               # first throw after this many seconds
+BOWSER_THROW_INTERVAL = 2.5           # seconds between throws (default; tunable)
+BOWSER_FIRST_THROW = 2.0               # first throw after this many seconds
 BOWSER_OBJ_STUN_SECONDS = 1.0          # stun when an object hits an agent
 BOWSER_OBJ_LIFETIME = 4.0              # seconds before a thrown object despawns
 BOWSER_SHIP_SPEED = 0.7                # ship side-to-side angular speed (rad/s)
@@ -283,6 +283,7 @@ class ContinuousArena:
         # Round-5 Bowser-airship dials, live-tunable from the panel (see set_ctf_dynamics)
         self.bowser_throw_count = BOWSER_THROW_COUNT
         self.bowser_obj_speed = BOWSER_OBJ_SPEED
+        self.bowser_interval = BOWSER_THROW_INTERVAL
         self.agent_sight = AGENT_SIGHT
         # CTF adds a 10th action (fire the held weapon); other rounds use 9.
         self.n_actions = CTF_N_ACTIONS if self.ctf_game else N_ACTIONS
@@ -790,14 +791,22 @@ class ContinuousArena:
             self.hearts_max = max(1, int(hearts))
 
     def set_ctf_dynamics(self, bowser_throw_count=None, bowser_obj_speed=None,
-                         agent_sight=None):
+                         agent_sight=None, bowser_interval=None):
         """Live-tune the Round-5 Bowser airship from the panel (None = unchanged):
-        how many objects it hurls per throw, how fast they fly, and how far ahead the
-        agents can SEE incoming objects. throw_count = 0 turns Bowser off."""
+        how many objects it hurls per throw, how fast they fly, how OFTEN it fires, and
+        how far ahead the agents can SEE incoming objects. throw_count = 0 turns it off."""
         if bowser_throw_count is not None:
             self.bowser_throw_count = max(0, min(6, int(bowser_throw_count)))
         if bowser_obj_speed is not None:
             self.bowser_obj_speed = max(0.5, float(bowser_obj_speed))
+        if bowser_interval is not None:
+            self.bowser_interval = max(0.5, float(bowser_interval))
+            # feel it immediately: never wait longer than the NEW interval for the
+            # next shot (so dragging the slider down fires sooner right away)
+            if self.ctf_game:
+                self.next_throw_step = min(
+                    self.next_throw_step,
+                    self.steps + self._seconds_to_steps(self.bowser_interval))
         if agent_sight is not None:
             self.agent_sight = max(1.0, float(agent_sight))
 
@@ -1901,7 +1910,7 @@ class ContinuousArena:
             self._add_ctf_event("throw", "red",
                                 np.array([self.ship_x, ship_z], dtype=np.float32))
             self.next_throw_step = self.steps + self._seconds_to_steps(
-                BOWSER_THROW_INTERVAL)
+                self.bowser_interval)
         if not self.hazards:
             return
         survivors = []
@@ -2054,7 +2063,7 @@ class ContinuousArena:
                     "throwCount": int(self.bowser_throw_count),
                     "objSpeed": round(float(self.bowser_obj_speed), 2),
                     "objRadius": BOWSER_OBJ_R,
-                    "throwInterval": BOWSER_THROW_INTERVAL,
+                    "throwInterval": round(float(self.bowser_interval), 2),
                     "shipZ": -2.0,
                     "agentSight": round(float(self.agent_sight), 2),
                 },

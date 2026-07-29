@@ -275,6 +275,7 @@ class Match:
         # ahead the agents can see incoming objects.
         self.r5_bowser_count = None
         self.r5_bowser_speed = None
+        self.r5_bowser_interval = None
         self.r5_agent_sight = None
         # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
         # Red each train fully independently (different brain AND different training
@@ -358,6 +359,7 @@ class Match:
         if setc:                                # Round-5 Bowser-airship overrides
             setc(bowser_throw_count=self.r5_bowser_count,
                  bowser_obj_speed=self.r5_bowser_speed,
+                 bowser_interval=self.r5_bowser_interval,
                  agent_sight=self.r5_agent_sight)
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
@@ -1380,6 +1382,8 @@ class Match:
                 self.r5_bowser_count = max(0, min(6, int(round(float(p["r5BowserCount"])))))
             if "r5BowserSpeed" in p:
                 self.r5_bowser_speed = max(1.0, min(14.0, float(p["r5BowserSpeed"])))
+            if "r5BowserInterval" in p:
+                self.r5_bowser_interval = max(0.5, min(30.0, float(p["r5BowserInterval"])))
             if "r5AgentSight" in p:
                 self.r5_agent_sight = max(1.0, min(20.0, float(p["r5AgentSight"])))
 
@@ -1505,6 +1509,11 @@ class Match:
             "r4Hearts": int(getattr(self.env, "hearts_max", 3)),
             "r4HitPenalty": round(getattr(self.env, "hit_penalty", -2.0), 2),
             "r4ActionRepeat": int(getattr(self.env, "action_repeat", 4)),
+            # round-5 airship (only shown on R5; safe defaults on other rounds)
+            "r5BowserCount": int(getattr(self.env, "bowser_throw_count", 1)),
+            "r5BowserInterval": round(getattr(self.env, "bowser_interval", 2.5), 2),
+            "r5BowserSpeed": round(getattr(self.env, "bowser_obj_speed", 10.0), 2),
+            "r5AgentSight": round(getattr(self.env, "agent_sight", 6.0), 2),
             "dqnBatch": self.dqn_batch,
             "dqnBuffer": self.dqn_buffer,
             "dqnWarmup": self.dqn_warmup,
