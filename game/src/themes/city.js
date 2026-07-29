@@ -994,9 +994,6 @@ export const city = {
           // axis), while local X is the stem's own axis (a twist). Store both rest angles.
           for (const b of [...bones.spins, ...bones.jawL, ...bones.jawU]) b.userData.ry = b.rotation.y;
           if (bones.neck) bones.neck.userData.rx = bones.neck.rotation.x;
-          // The body never turns any more, so give each plant its own resting facing
-          // (deterministic per cell) instead of a row of identically-posed clones.
-          wrap.rotation.y = ((r * 7 + c * 13) % 16) * (Math.PI / 8);
           plantObjs.push({ r, c, wrap, bones, restY: wrap.rotation.y,
                            chomp: 0, death: null, ate: false, twist: 0 });
         }
