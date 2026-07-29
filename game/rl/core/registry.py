@@ -176,6 +176,17 @@ def make_dp(algo, env, agent, **kwargs):
 DQN_ALGOS = ("dqn", "double_dqn", "dueling_dqn")
 PG_ALGOS = ("reinforce", "actor_critic", "ppo")
 
+# which algorithm names FIT each round's env kind (used to validate the panel's
+# algorithm switches and the menu loadouts, so a mismatched pick can never
+# build the wrong agent for the env)
+ROUND_ALGO_FAMILIES = {
+    1: {"value_iteration", "policy_iteration"},
+    2: {"monte_carlo", "first_visit_mc"},
+    3: {"qlearning", "sarsa", "expected_sarsa"},
+    4: set(DQN_ALGOS),
+    5: set(PG_ALGOS),
+}
+
 
 def is_dqn(algo):
     return algo in DQN_ALGOS
