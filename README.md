@@ -310,7 +310,27 @@ to a sharp policy.
 | 8 | Toad | 0.42 | 0.988 | 0.006 |
 | 9 | Parabones | 0.46 | 0.990 | 0.004 |
 
-R5_BEST_PLACEHOLDER
+**The best measured settings (search + numbers).** Method: train Blue for 450
+episodes against Parabones (Actor-Critic, level 9) inside the real tournament
+loop, score the last 150 episodes; 2 seeds per candidate (~10 minutes of CPU
+per run). Results (Blue win rate, seeds shown because policy-gradient variance
+is real): the shipped PPO default (alpha .20, gamma .98, entropy .01) averages
+**57%** (0.16 / 0.97 - the weak seed let Red take 50%); learning-rate probes:
+alpha .30 + gamma .99 **76%**, alpha .46 (Parabones' own rate) **51%** with one
+collapsed seed (Red 65% - too hot for PPO's multi-epoch reuse); horizon 256
+**58%**; epochs 6 + clip 0.15 **83%**; and **entropy 0.003 wins at 90%**
+(1.00 / 0.79) while holding Red to ZERO wins on both seeds. Running
+Actor-Critic on Blue with Parabones' own profile manages only **27%** -
+PPO's clipped multi-epoch updates beat the single-step critic no matter the
+knobs, which is the round's thesis measured. The best set: **PPO, alpha 0.20,
+gamma 0.98, entropy 0.003, horizon 512, clip 0.2, epochs 4, minibatch 128,
+GAE lambda 0.95**. Why each value: entropy 0.003 is the headline - the
+default 0.01 keeps the policy dithering long after it should commit, while
+0.003 (just under Parabones' 0.004) lets it sharpen into decisive
+grab-juke-capture lines without collapsing early; alpha stays at 0.20 because
+policy steps compound over 4 reuse epochs (0.46 demonstrably destabilizes);
+gamma 0.98 covers the grab-to-capture chain; and the stock horizon/clip/epoch
+values were each probed and not beaten cleanly.
 
 The CPU (Red) reads the same knobs, but its values come from the chosen character's
 **difficulty tier** (10 characters, easy -> hard): a weaker character learns slower
