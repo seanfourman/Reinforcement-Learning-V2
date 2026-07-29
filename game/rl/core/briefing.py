@@ -51,23 +51,28 @@ class BriefingMixin:
                 state_size = ((n_floor * (gl + fl + 1) + n_wall * gl) * (1 << nbits))
                 state_factors = [
                     {"label": "Your tile", "n": n_floor + n_wall,
-                     "detail": "the (row, col) cell you stand on", "color": "#3f7fe0"},
+                     "detail": "the square of the castle floor you are standing on",
+                     "color": "#3f7fe0"},
                     {"label": "Collected", "n": 1 << nbits,
-                     "detail": f"{nbits}-bit mask of coins / Mystery Blocks claimed",
+                     "detail": f"every combination of which of your {nbits} coins and "
+                               f"Mystery Blocks you have already taken",
                      "color": "#8b5cf6"},
                     {"label": "Status", "n": gl + fl + 1,
-                     "detail": "ghost or freeze countdown (0 = normal)",
+                     "detail": f"normal, Ghost (up to {gl} tiles left) or Frozen "
+                               f"(up to {fl} turns left)",
                      "color": "#22a39f"},
                 ]
-                state_desc = ("your tile, which of your own coins/Mystery Blocks you have claimed, "
-                              "and your power-up / frozen countdown")
-                observation = ("Each model sees its own tile, its collected coins/Mystery Blocks, and "
-                               "any active ghost or freeze timer - the rival stays invisible, so "
-                               "it still plans as a single agent.")
-                observation_tuple = "(cell, collected mask, status)"
+                state_desc = ("which tile you stand on, what you have collected so far, and "
+                              "whether a Ghost or Freeze effect is running")
+                observation = ("The racer knows three things: the tile it stands on, which of "
+                               "its own coins and Mystery Blocks it has already taken, and "
+                               "whether a Ghost or Freeze effect is currently ticking. That is "
+                               "its whole picture of the world.")
+                observation_tuple = "(tile, collected, status)"
                 sees_opp = False
-                opp_info = ("Nothing. There is no opponent term in the state; each model owns a "
-                            "mirror-image set of coins/Mystery Blocks, so the race is fair but solo.")
+                opp_info = ("No - the rival appears nowhere in the snapshot. Each racer has "
+                            "its own mirror-image coins and blocks, so the race is perfectly "
+                            "fair, but each one plans as if it were alone in the castle.")
                 dynamics = (f"Deterministic on dry tiles. On ICE a move slips sideways "
                             f"({round((1 - sp) * 100)}% intended, {round(sp * 50)}% each "
                             f"perpendicular). A Mystery Block is a one-time gamble: {round(gp * 100)}% "
@@ -89,32 +94,37 @@ class BriefingMixin:
                 n_slip = len(getattr(env, "slip_cells", ()))
                 n_plants = len(getattr(env, "plant_cells", ()))
                 if star_mode:
-                    state_desc = (f"your tile AND which of your {n_stars} tomatoes you already "
-                                  f"hold - the cell index x a {n_stars}-bit tomato mask")
+                    state_desc = (f"which tile you stand on, plus which of your {n_stars} "
+                                  f"tomatoes you have already picked up")
                     state_size = (n_floor * (1 << n_stars)) if n_floor else None
                     if n_floor:
                         state_factors = [
                             {"label": "Your tile", "n": n_floor,
-                             "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                             "detail": "the square of the park you are standing on",
+                             "color": "#3f7fe0"},
                             {"label": "Tomatoes held", "n": 1 << n_stars,
-                             "detail": f"{n_stars}-bit mask (2^{n_stars} = {1 << n_stars} combos)",
+                             "detail": f"one yes/no per tomato - {1 << n_stars} possible "
+                                       f"combinations of what you hold",
                              "color": "#e0563f"},
                         ]
                 else:
-                    state_desc = "your tile only: the (row, column) cell index"
+                    state_desc = "which tile you stand on - nothing else"
                     state_size = n_floor
                     if n_floor:
                         state_factors = [
                             {"label": "Your tile", "n": n_floor,
-                             "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                             "detail": "the square of the park you are standing on",
+                             "color": "#3f7fe0"},
                         ]
-                observation = (f"Each model sees its own tile and its own {n_stars}-tomato progress - a "
-                               "single-agent navigator. The maze walls and pipes are FIXED map "
-                               "features, so (tile, tomatoes-held) stays Markov; the rival is invisible.")
-                observation_tuple = "(cell, tomato mask)" if star_mode else "(cell)"
+                observation = (f"The racer knows exactly two things: the tile it stands on and "
+                               f"which of its {n_stars} tomatoes it has picked up so far. The "
+                               "walls, pipes and plants never move, so this tiny snapshot really "
+                               "is the full picture - and the rival is invisible to it.")
+                observation_tuple = "(tile, tomatoes)" if star_mode else "(tile)"
                 sees_opp = False
-                opp_info = ("Nothing. There is no opponent term in the state; each model races its "
-                            "own mirror-image copy of the same tomato-collection course.")
+                opp_info = ("No - the rival appears nowhere in the snapshot. Each racer runs "
+                            "its own mirror-image copy of the same course, so the two never "
+                            "even touch each other.")
                 stage_pipes = len({
                     req for req in getattr(env, "pipe_req", {}).values()
                     if req is not None
@@ -160,10 +170,10 @@ class BriefingMixin:
                         "the complete reward function."
                     )
                 else:
-                    observation = ("Each model sees only its own tile. The seeded bush maze, "
-                                   "puddle, plant attack zone, and Pipe are fixed map features.")
-                    opp_info = ("Nothing. Both models receive exact mirrored copies of the same "
-                                "bottom-section decision room.")
+                    observation = ("The racer knows only the tile it stands on. The maze, "
+                                   "puddle, plant zone and Pipe are fixed parts of the map.")
+                    opp_info = ("No - the rival appears nowhere in the snapshot. Both models "
+                                "get exact mirrored copies of the same decision room.")
                     dynamics = (
                         f"The bottom section forks into a SHORT slippery route and a LONG safe "
                         f"route to a deterministic Pipe. On the puddle, movement skids sideways "
@@ -186,10 +196,10 @@ class BriefingMixin:
                 has_puzzle = bool(getattr(env, "puzzle", {}) and any(env.puzzle.values()))
                 door_n = 2 if has_puzzle else 1
                 state_desc = (
-                    f"your tile, the Goomba patrol PHASE (steps mod {env._phase_period}: the "
-                    "shared cycle on which every Goomba's position repeats), a compact RIVAL "
-                    "flag (ahead / level / behind, plus whether YOUR cage pickup is still ready)"
-                    + (", and whether YOUR pressure-plate door is open yet" if has_puzzle else "")
+                    "which tile you stand on, where the Goombas are in their repeating patrol "
+                    "loop, how the race stands (ahead / level / behind, and whether your cage "
+                    "pickup is still there)"
+                    + (", and whether your shortcut door is open yet" if has_puzzle else "")
                 )
                 n_cells_r3 = getattr(env, "n_cells", 0)
                 phase_period = int(getattr(env, "_phase_period", 1))
@@ -197,29 +207,36 @@ class BriefingMixin:
                 if n_cells_r3:
                     state_factors = [
                         {"label": "Your tile", "n": n_cells_r3,
-                         "detail": "the floor cell you stand on", "color": "#3f7fe0"},
-                        {"label": "Patrol phase", "n": phase_period,
-                         "detail": f"steps mod {phase_period}: all {len(env.goombas)} Goombas share this cycle",
+                         "detail": "the maze square you are standing on", "color": "#3f7fe0"},
+                        {"label": "Patrol tick", "n": phase_period,
+                         "detail": f"where the {len(env.goombas)} Goombas are in their shared "
+                                   f"{phase_period}-step patrol loop - knowing the tick means "
+                                   "knowing where every Goomba is",
                          "color": "#e0563f"},
-                        {"label": "Rival flag", "n": 6,
-                         "detail": "ahead / level / behind x cage-ready",
+                        {"label": "Race + cage", "n": 6,
+                         "detail": "ahead / level / behind in the race, combined with whether "
+                                   "your cage pickup is still available",
                          "color": "#8b5cf6"},
                     ]
                     if has_puzzle:
                         state_factors.append(
                             {"label": "Secret door", "n": 2,
-                             "detail": "open? (boulder pushed onto your plate) - a permanent shortcut",
+                             "detail": "whether your shortcut door has been opened (it stays "
+                                       "open for the rest of the episode)",
                              "color": "#c9862a"})
                 observation = (
-                    "Its own tile, the patrol phase (so it can TIME the moving Goombas), where the "
-                    "rival is, and whether its own cage pickup is still there to grab."
+                    "The racer knows the tile it stands on, the tick of the Goomba patrol loop "
+                    "(so it can wait for a gap instead of walking into one), whether it is "
+                    "ahead, level or behind in the race, and whether its cage pickup is still "
+                    "on the board."
                 )
-                observation_tuple = "(cell, phase, rival_flag, door)" if has_puzzle else "(cell, phase, rival_flag)"
+                observation_tuple = ("(tile, patrol tick, race, door)" if has_puzzle
+                                     else "(tile, patrol tick, race)")
                 sees_opp = True
                 opp_info = (
-                    "The rival's RELATIVE position is in the state (ahead / level / behind), and a "
-                    "bit for whether your CAGE pickup is still available - so a racer can learn to "
-                    "detour for the cage and freeze the rival, especially when it is falling behind."
+                    "Partly. It never sees the rival's exact tile - only whether it is ahead, "
+                    "level or behind. That one hint is enough to learn the catch-up play: when "
+                    "behind, detour to the cage pickup and freeze the rival."
                 )
                 dynamics = (
                     "4-way moves PLUS a STAY (wait); walls block and the board edge is the outer "
@@ -245,19 +262,19 @@ class BriefingMixin:
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
                 actions = ["North", "South", "West", "East"]
-                state_desc = "your tile only: the (row, column) cell index"
+                state_desc = "which tile you stand on - nothing else"
                 state_size = getattr(env, "n_cells", None)
                 if state_size:
                     state_factors = [
                         {"label": "Your tile", "n": state_size,
-                         "detail": "the floor cell you stand on", "color": "#3f7fe0"},
+                         "detail": "the floor square you are standing on", "color": "#3f7fe0"},
                     ]
-                observation = ("Each model sees ONLY its own tile. It learns as a single-agent "
-                               "navigator: the maze is shared, but neither model perceives the other.")
-                observation_tuple = "(cell)"
+                observation = ("The racer knows only the tile it stands on. The maze is shared, "
+                               "but neither model perceives the other.")
+                observation_tuple = "(tile)"
                 sees_opp = False
-                opp_info = ("Nothing. There is no opponent term in the state, so the rival is "
-                            "invisible to the agent.")
+                opp_info = ("No - the rival appears nowhere in the snapshot, so each model "
+                            "races as if it were alone.")
                 dynamics = ("Moves are deterministic. Walls and the map edge block movement "
                             "(you stay put).")
                 rewards = [["Step", -0.01], ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
@@ -266,39 +283,36 @@ class BriefingMixin:
                 actions = ["8 compass directions + stay (9)"]
                 state_size = None
                 sees_opp = False
-                state_desc = (
-                    f"continuous {env.obs_dim}-vector = "
-                    "5 own kinematics (position x/z, velocity x/z, rim clearance) + "
-                    "5 own effect timers (speed, shield, slow, freeze, post-hit mercy) + "
-                    "3 nearest missiles x 8 (present, relative x/z, velocity x/z, "
-                    "aimed-at-me, time-to-impact, predicted miss) + "
-                    "3 nearest pickups x 7 (present, relative x/z, 4-way type one-hot)"
-                )
-                # a VISUAL segmented breakdown of the same vector (dims sum to obs_dim),
-                # rendered as a stacked bar + legend instead of the run-on sentence above
+                state_desc = (f"a continuous {env.obs_dim}-vector: everything the flyer "
+                              "senses, refreshed every step - see the breakdown below")
+                # a VISUAL segmented breakdown of the vector (dims sum to obs_dim),
+                # rendered as a stacked bar + legend
                 state_groups = [
                     {"label": "Self", "dim": 5, "color": "#3f7fe0",
-                     "detail": "position x/z, velocity x/z, rim clearance"},
+                     "detail": "where it is, how fast it is moving, and the room left "
+                               "before the arena rim"},
                     {"label": "Effects", "dim": 5, "color": "#22a39f",
-                     "detail": "speed, shield, slow, freeze and post-hit mercy timers"},
+                     "detail": "the time left on each effect: Speed, Shield, Slow, Freeze, "
+                               "and the brief mercy after a hit"},
                     {"label": "Missiles", "dim": 24, "count": 3, "each": 8, "color": "#e0563f",
-                     "detail": "3 nearest x (present, rel x/z, vel x/z, aimed-at-me, "
-                               "time-to-impact, predicted miss)"},
+                     "detail": "the 3 closest Bills, soonest first: where each is, how it "
+                               "moves, whether it hunts YOU, how soon it arrives, and how "
+                               "far it would miss"},
                     {"label": "Pickups", "dim": 21, "count": 3, "each": 7, "color": "#8b5cf6",
-                     "detail": "3 nearest x (present, rel x/z, 4-way type one-hot)"},
+                     "detail": "the 3 closest pickups: where each is and which of the 4 "
+                               "types it is"},
                 ]
                 observation = (
-                    "Each agent sees ONLY itself and its immediate surroundings: its own "
-                    "position / velocity and clearance to the rim, its own power-up and "
-                    "post-hit timers, the 3 nearest Banzai Bills SORTED by how soon they "
-                    "reach it (each with a targets-me flag, a time-to-impact and a "
-                    "predicted miss distance), and the 3 nearest pickups with their type."
+                    "The flyer senses only its own bubble of the arena: its own motion, its "
+                    "active effects, the 3 missiles closing in soonest and the 3 nearest "
+                    f"pickups. All of it is packed into {env.obs_dim} numbers, refreshed "
+                    "every step."
                 )
                 observation_tuple = "(self, effects, missiles x3, pickups x3)"
                 opp_info = (
-                    "Nothing - the rival is not in the observation. Each agent just "
-                    "survives its own share of the shared missiles; a targets-me flag "
-                    "tells it which Bills are currently hunting it."
+                    "No - the rival is not in the snapshot at all. Each flyer simply dodges "
+                    "its own missiles; the hunts-YOU flag tells it which Bills are actually "
+                    "after it."
                 )
                 repeat = int(getattr(env, "action_repeat", 4))
                 hearts = int(getattr(env, "hearts_max", 3))
@@ -355,64 +369,51 @@ class BriefingMixin:
                 actions = ["8 compass thrusts + coast + USE weapon (10)"]
                 state_size = None
                 sees_opp = True
-                state_desc = (
-                    f"continuous {env.obs_dim}-vector = "
-                    "4 own kinematics (position x/z, velocity x/z) + "
-                    "4 opponent terms (rival relative position x/z, velocity x/z) + "
-                    "5 flag terms (relative x/z, and 3 flags: free / you-carry / "
-                    "rival-carries) + 4 base vectors (to your base, to the rival's base) + "
-                    "4 status terms (carrying, your + rival stun timers, capture lead) + "
-                    "6 crate terms (2 nearest crates: present, relative x/z) + "
-                    "5 held-weapon one-hot (chain / red shell / green shell / banana / "
-                    "oil; all 0 = empty) + 1 rival-armed flag + "
-                    "10 shell terms (2 nearest shells: present, relative x/z, velocity x/z) + "
-                    "8 trap terms (2 nearest traps: present, relative x/z, is-oil) + "
-                    "15 hazard terms (3 nearest thrown Bowser objects WITHIN sight: "
-                    "present, relative x/z, velocity x/z)"
-                )
-                # segmented breakdown (dims sum to obs_dim = 66) for the stacked bar
+                state_desc = (f"a continuous {env.obs_dim}-vector: everything the agent "
+                              "senses, refreshed every step - see the breakdown below")
+                # segmented breakdown (dims sum to obs_dim) for the stacked bar
                 state_groups = [
                     {"label": "Self", "dim": 4, "color": "#3f7fe0",
-                     "detail": "your position x/z and velocity x/z"},
+                     "detail": "where you are and how fast you are moving"},
                     {"label": "Opponent", "dim": 4, "color": "#e0563f",
-                     "detail": "the RIVAL's relative position x/z and velocity x/z"},
+                     "detail": "where the RIVAL is relative to you, and how fast it is moving"},
                     {"label": "Flag", "dim": 5, "color": "#f5c542",
-                     "detail": "flag relative x/z + who holds it (free / you / rival)"},
+                     "detail": "where the flag is, and who has it: free / you / the rival"},
                     {"label": "Bases", "dim": 4, "color": "#22a39f",
-                     "detail": "vector to YOUR base and to the rival's base"},
+                     "detail": "the direction to YOUR base and to the rival's"},
                     {"label": "Status", "dim": 4, "color": "#8b5cf6",
-                     "detail": "carrying, your + rival stun timers, capture lead"},
+                     "detail": "carrying the flag?, both stun timers, and who leads on captures"},
                     {"label": "Crates", "dim": 6, "count": 2, "each": 3, "color": "#c98a3a",
-                     "detail": "2 nearest crates (present, relative x/z)"},
+                     "detail": "the 2 nearest weapon crates and where they are"},
                     {"label": "Weapon", "dim": 6, "color": "#d94f8a",
-                     "detail": "your held weapon (5-way one-hot) + is the rival armed?"},
+                     "detail": "which weapon you are holding (if any), and whether the "
+                               "rival is armed"},
                     {"label": "Shells", "dim": 10, "count": 2, "each": 5, "color": "#e07b3f",
-                     "detail": "2 nearest shells (present, relative x/z, velocity x/z)"},
+                     "detail": "the 2 nearest shells in flight: where each is and where "
+                               "it is heading"},
                     {"label": "Traps", "dim": 8, "count": 2, "each": 4, "color": "#6b8e23",
-                     "detail": "2 nearest traps (present, relative x/z, is-oil)"},
+                     "detail": "the 2 nearest laid traps: where each is and whether it is oil"},
                     {"label": "Bowser objects", "dim": 15, "count": 3, "each": 5,
                      "color": "#3aa76d",
-                     "detail": "3 nearest thrown objects within sight (present, rel x/z, "
-                               "velocity x/z) - so it can DODGE them"},
+                     "detail": "the 3 nearest falling objects within sight, so it can "
+                               "DODGE them"},
                 ]
                 observation = (
-                    "Each agent sees ITSELF AND ITS RIVAL: its own position/velocity, the "
-                    "rival's relative position/velocity, where the flag is and who holds "
-                    "it, the direction to both bases, the status terms (carrying, the two "
-                    "stun timers, capture lead), the two nearest crates, WHICH weapon it is "
-                    "holding (and whether the rival is armed), the two nearest incoming "
-                    "shells and laid traps, and the nearest objects Bowser has thrown that "
-                    "are within its sight range (to dodge)."
+                    "The agent sees the whole duel: itself, the rival, the flag and who "
+                    "holds it, both bases, the stun and capture situation, nearby crates, "
+                    "the weapon it holds, and every shell, trap and falling object close "
+                    f"enough to matter. All of it is packed into {env.obs_dim} numbers, "
+                    "refreshed every step."
                 )
                 observation_tuple = (
                     "(self, opponent, flag + holder, bases, status, crates, weapon, "
                     "shells, traps, Bowser objects)")
                 opp_info = (
-                    "FULLY VISIBLE - this is the whole point of the round. The rival's "
-                    "relative position and velocity are in every observation, so a good "
-                    "policy learns to INTERCEPT the carrier when chasing and to JUKE away "
-                    "from the chaser when carrying (and the best juke is unpredictable - "
-                    "why a stochastic policy-gradient policy shines here)."
+                    "Yes, fully - and that is the point of this round. The rival's position "
+                    "and speed are in every snapshot, so a good policy learns to INTERCEPT "
+                    "the carrier when chasing and to JUKE the chaser when carrying. The "
+                    "best juke is unpredictable, which is exactly why a stochastic "
+                    "policy-gradient player shines here."
                 )
                 dynamics = (
                     "Continuous physics WITH momentum: a thrust accelerates the flyer (with "
@@ -455,12 +456,13 @@ class BriefingMixin:
                 actions = ["8 compass thrusts + coast (9)"]
                 state_size = None
                 sees_opp = False
-                state_desc = "continuous 6-vector: position, velocity, goal offset (all normalized)"
-                observation = ("Its own position and velocity, and the vector to the goal - all "
-                               "normalized to the arena size.")
+                state_desc = ("a continuous 6-vector: position, velocity and the offset "
+                              "to the goal")
+                observation = ("The flyer knows its own position and speed, plus the "
+                               "direction to the goal - six numbers in total.")
                 observation_tuple = "(x, z, vx, vz, goal dx, goal dz)"
-                opp_info = ("Nothing. Each model flies its own copy of the physics; the opponent "
-                            "is not part of the observation.")
+                opp_info = ("No - the rival appears nowhere in the snapshot. Each model "
+                            "flies its own copy of the physics.")
                 dynamics = ("Continuous physics: a thrust accelerates the flyer (with drag). Walls "
                             "clamp it back.")
                 rewards = [["Step", -0.006], ["Win (reach goal)", 1.0], ["Lose", -1.0]]

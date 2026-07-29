@@ -1348,7 +1348,6 @@ const STORY = {
 export function initBriefing(parent) {
   const html = `
     <section id="rl-brief">
-      <h2>Briefing - the MDP</h2>
       <div id="rl-brief-body"><p class="hint">Loading round spec...</p></div>
     </section>`;
   const hdr = parent.querySelector(".hdr");
@@ -1380,19 +1379,16 @@ export function initBriefing(parent) {
       const specKey = JSON.stringify(s);
       if (specKey === lastSpecKey) return updateLive(s.gammaBlue, s.gammaRed);
       lastSpecKey = specKey;
-      // reward structure as signed proportional BARS (green = gain, red = cost);
+      // ---- REWARDS: signed proportional bars (green = gain, red = cost);
       // string-valued rewards (e.g. "+0.2 / second") show as text with no bar.
       const rvals = s.rewards || [];
       const maxMag = Math.max(
         0.001,
         ...rvals.map(([, v]) => (typeof v === "number" ? Math.abs(v) : 0)),
       );
-      const rewards = rvals
+      const rewardRows = rvals
         .map(([k, v]) => {
-          const isNum = typeof v === "number";
-          if (!isNum) {
-            // a rate/description (e.g. "+0.2 / second"): no proportional bar - just
-            // the label with the value wrapping on the right, so it never overflows.
+          if (typeof v !== "number") {
             return (
               `<div class="rw-row str"><span class="rw-k">${k}</span>` +
               `<b class="rw-val str">${v}</b></div>`
@@ -1400,8 +1396,8 @@ export function initBriefing(parent) {
           }
           const cls = v >= 0 ? "pos" : "neg";
           const w = Math.max(6, (Math.abs(v) / maxMag) * 100);
-          // fixed-width bar + value columns (label flexes), so every bar starts at
-          // the SAME x across rows regardless of how long the number is.
+          // fixed-width bar + value columns (label flexes), so every bar starts
+          // at the SAME x across rows regardless of how long the number is.
           return (
             `<div class="rw-row"><span class="rw-k">${k}</span>` +
             `<span class="rw-track"><span class="rw-fill ${cls}" style="width:${w}%"></span></span>` +
@@ -1409,121 +1405,169 @@ export function initBriefing(parent) {
           );
         })
         .join("");
-      // Actions: grid rounds render as chips - a compass arrow per move, plus a
-      // "stay" dot on the Goomba-timing round (5 actions). Anything unrecognized
-      // (the 9-way arenas, given as one label string) shows as one wide chip.
+      const rewardsPanel =
+        `<p class="bf-lead">After every single move, the AI is paid or fined the amounts below. Nobody tells it HOW to play - it simply learns whatever behaviour collects the most in total.</p>` +
+        `<div class="rw-leg"><span><i class="pos"></i>Gain</span><span><i class="neg"></i>Cost</span></div>` +
+        rewardRows +
+        (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
+
+      // ---- GAME: goal hero + storyboard rows + move keycaps + fact tiles ----
       const glyph = { North: "↑", South: "↓", West: "←", East: "→", Stay: "•" };
       const acts = s.actions || [];
-      const actionsVisual =
+      const movesVisual =
         acts.length && acts.every((a) => glyph[a])
-          ? `<div class="act-chips">` +
+          ? `<div class="bf-keys">` +
             acts
-              .map(
-                (a) =>
-                  `<span class="act-chip"><b>${glyph[a]}</b><span>${a}</span></span>`,
-              )
+              .map((a) => `<span class="bf-key"><b>${glyph[a]}</b><span>${a}</span></span>`)
               .join("") +
             `</div>`
-          : `<div class="act-chips"><span class="act-chip wide">${acts.join(" · ")}</span></div>`;
-      // Hyperparameters: Blue vs Red mini-columns (α, γ, ε schedule). A planning
-      // round (DP) has no α/ε - it solves the MDP directly - so only γ is shown.
+          : `<div class="bf-keys"><span class="bf-key wide"><span>${acts.join(" · ")}</span></span></div>`;
+      const story = STORY[s.round] || null;
+      const beats = story
+        ? story.beats
+            .map(([ic, t]) => {
+              const tn = /^(plant|spike|goomba|bill|cannon|water)$/.test(ic) ? "bad"
+                : /^(coin|star|cage|flag|bolt)$/.test(ic) ? "good" : "info";
+              return `<div class="bf-beat"><span class="bf-beat-ic ${tn}">${BICONS[ic] || ""}</span><p>${t}</p></div>`;
+            })
+            .join("")
+        : "";
+      const finePrint = (s.dynamics || s.winCondition)
+        ? `<details class="bf-more"><summary>The fine print - exact rules</summary>` +
+          (s.dynamics ? `<p>${s.dynamics}</p>` : "") +
+          (s.winCondition ? `<p><b>Winning:</b> ${s.winCondition}</p>` : "") +
+          `</details>`
+        : "";
+      const gamePanel =
+        `<div class="goal-card"><span class="goal-ic">${BICONS.trophy}</span>` +
+        `<div class="goal-body"><span class="goal-lbl">The goal</span>` +
+        `<span class="goal-txt">${story ? story.goal : s.winCondition}</span></div></div>` +
+        (beats ? `<h3 class="bf-h">How a round plays out</h3>` + beats : "") +
+        `<h3 class="bf-h">The moves</h3>` + movesVisual +
+        `<div class="bf-facts">` +
+        `<div class="bf-fact"><b>${s.nActions}</b><span>moves</span></div>` +
+        (s.slipProb ? `<div class="bf-fact"><b>${Math.round(100 * s.slipProb)}%</b><span>slip chance</span></div>` : "") +
+        `<div class="bf-fact"><b>${(+s.maxSteps).toLocaleString()}</b><span>max steps</span></div>` +
+        `</div>` +
+        finePrint;
+
+      // ---- ALGORITHM: glossary primer + one explainer card per rival + live hyperparameters ----
       const L = s.learning || null;
+      const algoCard = (who, label, color) => {
+        const info = ALGO_INFO[label] || {};
+        const tags = (info.tags || []).map((t) => `<span class="alg-tg">${t}</span>`).join("");
+        return `<div class="alg-card" style="--ac:${color}">` +
+          `<div class="alg-head"><span class="alg-who">${who}</span>` +
+          `<b class="alg-name">${label}</b>${info.fam ? `<span class="alg-fam">${info.fam}</span>` : ""}</div>` +
+          `<div class="alg-tags">${info.cat ? `<span class="alg-cat">${info.cat}</span>` : ""}${tags}</div>` +
+          (info.is ? `<p class="alg-is">${info.is}</p>` : "") +
+          (info.how ? `<div class="alg-lbl">How it learns</div><p class="alg-how">${info.how}</p>` : "") +
+          (info.key ? `<div class="alg-lbl">Key idea</div><p class="alg-how">${info.key}</p>` : "") +
+          `</div>`;
+      };
+      // Blue vs Red hyperparameter mini-columns. A planning round (DP) has no
+      // α/ε - it solves the MDP directly - so only γ is shown there.
       const lcol = (who, d, color) =>
         `<div class="lh-col"><div class="lh-who" style="color:${color}">${who}</div>` +
         `<div class="lh-algo">${d.algo}</div>` +
         (L.planning
           ? `<div class="lh-row"><span>γ discount</span><b>${d.gamma}</b></div>` +
-            `<div class="lh-note">Plans directly — no α / ε.</div>`
+            `<div class="lh-note">Plans directly - no α / ε.</div>`
           : `<div class="lh-row"><span>α learn rate</span><b>${d.alpha}</b></div>` +
             `<div class="lh-row"><span>γ discount</span><b>${d.gamma}</b></div>` +
             `<div class="lh-row"><span>ε explore</span><b>${d.epsStart} → ${d.epsEnd}</b></div>` +
             `<div class="lh-row"><span>ε decay</span><b>${(d.epsEpisodes || 0).toLocaleString()} eps</b></div>`) +
         `</div>`;
-      const learnBlock = L
-        ? `<h3 class="brief-sub">Hyperparameters</h3>` +
-          `<div class="lh-grid">` +
-          lcol("Blue", L.blue, "#1f5fd0") +
-          lcol("Red", L.red, "#e60012") +
-          `</div>` +
+      const algoPanel = L
+        ? `<details class="alg-primer" open><summary>New to RL? The seven words everything uses</summary>` +
+          `<dl>` + RL_PRIMER.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("") + `</dl></details>` +
+          `<h3 class="bf-h">The two rivals</h3>` +
+          `<p class="bf-p" style="margin-bottom:9px">Both race to solve the exact same round - but they go about it very differently:</p>` +
+          algoCard("BLUE", L.blue.algo, "#1f5fd0") +
+          algoCard("RED", L.red.algo, "#e60012") +
+          `<h3 class="bf-h">Current hyperparameters</h3>` +
+          `<div class="lh-grid">` + lcol("Blue", L.blue, "#1f5fd0") + lcol("Red", L.red, "#e60012") + `</div>` +
           `<p class="note">Effective horizon &asymp; 1/(1-γ) &asymp; ${horizon(s.gammaBlue)} steps - roughly how far ahead a reward still sways a choice.</p>`
         : "";
-      let heroBig, heroUnit;
-      if (s.stateSize) {
-        heroBig = s.stateSize.toLocaleString();
-        heroUnit = "states in S";
-      } else {
-        const m = (s.stateDesc || "").match(/(\d+)-vector/);
-        heroBig = m ? m[1] + "-D" : "cont.";
-        heroUnit = "continuous state";
-      }
-      const seq = (s.stateDesc || "").includes("9-vector");
-      const obsTuple =
-        s.observationTuple ||
-        (s.objective === "cross"
-          ? "(cell)"
-          : s.objective === "race"
-            ? "(cell, key, gold, opp-region, adjacent, trap)"
-            : s.missileGame
-              ? "(self + rival, missiles x3, effects, pickups x2)"
-              : seq
-              ? "(x, z, vx, vz, →cp x, →cp y, leg, →storm x, →storm y)"
-              : "(x, z, vx, vz, →goal x, →goal y)");
-      const sqCls = s.seesOpponent ? "yes" : "no";
-      const sqLabel = s.seesOpponent ? "VISIBLE" : "HIDDEN";
-      // a structured obs vector renders as a stacked bar + legend; otherwise fall back
-      // to the plain sentence (grid rounds, simple race).
+
+      // ---- STATE: the snapshot story. One narrative: what the AI is handed
+      // each step, what the snapshot is made of, how big the problem is, and
+      // whether the rival is in it. ----
       const groups = s.stateGroups || null;
       const factors = s.stateFactors || null;
-      const gTotal = groups ? groups.reduce((a, g) => a + g.dim, 0) || 1 : 1;
-      const stateRow = groups
-        ? `<div class="so-row"><span class="so-k">State (S) - ${gTotal} dimensions</span>` +
-          `<div class="sv-bar">` +
+      const gTotal = groups ? groups.reduce((a, g) => a + g.dim, 0) || 1 : 0;
+      const planning = !!(L && L.planning);
+      const obsTuple = s.observationTuple || "(state)";
+      let breakdown, totalStrip;
+      if (groups) {
+        // continuous rounds: the observation vector as a stacked bar + legend
+        breakdown =
+          `<div class="st-bar">` +
           groups
-            .map(
-              (g) =>
-                `<span class="sv-seg" style="width:${((g.dim / gTotal) * 100).toFixed(2)}%;background:${g.color}" title="${g.label}: ${g.dim} dims">${g.dim}</span>`,
-            )
+            .map((g) =>
+              `<span class="st-seg" style="width:${((g.dim / gTotal) * 100).toFixed(2)}%;background:${g.color}" title="${g.label}: ${g.dim} numbers">${g.dim}</span>`)
             .join("") +
           `</div>` +
-          `<div class="sv-legend">` +
           groups
-            .map(
-              (g) =>
-                `<div class="sv-item"><span class="sv-dot" style="background:${g.color}"></span>` +
-                `<span class="sv-lab">${g.label}</span>` +
-                `<span class="sv-dim">${g.count ? `${g.count}&times;${g.each}` : `&times;${g.dim}`}</span>` +
-                `<span class="sv-det">${g.detail}</span></div>`,
-            )
+            .map((g) =>
+              `<div class="st-li"><span class="st-dot" style="background:${g.color}"></span>` +
+              `<span class="st-lab">${g.label}</span>` +
+              `<span class="st-n">${g.count ? `${g.count}×${g.each} = ${g.dim}` : g.dim}</span>` +
+              `<span class="st-det">${g.detail}</span></div>`)
+            .join("");
+        totalStrip =
+          `<div class="st-total"><div class="st-row1"><span class="st-num">${gTotal}</span>` +
+          `<span class="st-unit">numbers per snapshot</span></div>` +
+          `<p class="st-why">Positions here are continuous, so no two snapshots are ever exactly alike and no table could list them all. That is why this round uses a neural network: it reads the ${gTotal} numbers and judges each move directly.</p></div>`;
+      } else if (factors) {
+        // tabular rounds: |S| as multiplied factor chips + legend
+        breakdown =
+          `<div class="st-chips">` +
+          factors
+            .map((f, i) => {
+              const c = f.color || "#3f7fe0";
+              return `${i ? `<span class="st-x">×</span>` : ""}` +
+                `<span class="st-chip" style="color:${c};background:${c}0f;border-color:${c}44">` +
+                `<b>${(f.n || 0).toLocaleString()}</b><span>${f.label}</span></span>`;
+            })
             .join("") +
-          `</div></div>`
-        : factors
-          ? // a DISCRETE tabular state: show its factors MULTIPLIED into |S|
-            `<div class="so-row"><span class="so-k">State (S) = ${factors.length} factor${factors.length > 1 ? "s" : ""}</span>` +
-            `<div class="sf-chips">` +
-            factors
-              .map(
-                (f, i) =>
-                  `${i ? `<span class="sf-x">&times;</span>` : ""}` +
-                  `<span class="sf-chip" style="--fc:${f.color || "#3f7fe0"};background:${f.color || "#3f7fe0"}14;border-color:${f.color || "#3f7fe0"}55">` +
-                  `<b>${(f.n || 0).toLocaleString()}</b><span>${f.label}</span></span>`,
-              )
-              .join("") +
-            `</div>` +
-            (s.stateSize
-              ? `<div class="sf-total">${s.stateFactorsExact ? "=" : "&asymp;"} <b>${(+s.stateSize).toLocaleString()}</b> possible states</div>`
-              : "") +
-            `<div class="sf-legend">` +
-            factors
-              .map(
-                (f) =>
-                  `<div class="sf-li"><span class="sf-dot" style="background:${f.color || "#3f7fe0"}"></span>` +
-                  `<span class="sf-lk">${f.label}</span><span class="sf-ld">${f.detail}</span></div>`,
-              )
-              .join("") +
-            `</div></div>`
-          : `<div class="so-row"><span class="so-k">State (S)</span><span class="so-v">${s.stateDesc}</span></div>`;
-      // Round-4 POWER-UPS: a visual card per collectible - SEEK the good (speed / shield),
-      // AVOID the bad (slow / freeze). Line icons keyed off each pickup's `icon`.
+          `</div>` +
+          factors
+            .map((f) =>
+              `<div class="st-li"><span class="st-dot" style="background:${f.color || "#3f7fe0"}"></span>` +
+              `<span class="st-lab">${f.label}</span>` +
+              `<span class="st-det">${f.detail}</span></div>`)
+            .join("");
+        totalStrip = s.stateSize
+          ? `<div class="st-total"><div class="st-row1"><span class="st-num">${s.stateFactorsExact ? "" : "≈ "}${(+s.stateSize).toLocaleString()}</span>` +
+            `<span class="st-unit">possible situations</span></div>` +
+            `<p class="st-why">${planning
+              ? "Multiply the pieces together and that is every situation this round can produce. Few enough to LIST - the planners literally compute a value for every single one. That is what makes Dynamic Programming possible here."
+              : "Multiply the pieces together and that is every situation this round can produce. Few enough for a TABLE with one row per situation - each row remembers how good every move is from there. That is what &quot;tabular&quot; learning means."}</p></div>`
+          : "";
+      } else {
+        breakdown = `<p class="bf-p">${s.stateDesc || ""}</p>`;
+        totalStrip = "";
+      }
+      const EYE_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/></svg>';
+      const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.7A11 11 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17.8 17.8 0 0 1-2.8 3.7M6.4 6.7A16.7 16.7 0 0 0 2.5 12s3.5 6.5 9.5 6.5a10.3 10.3 0 0 0 4.9-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3.5 3.5l17 17"/></svg>';
+      const statePanel =
+        `<p class="bf-lead">Each step, the AI is handed one small snapshot of the world - the <b>state</b>. Everything it will ever know when picking its next move is in that snapshot.</p>` +
+        `<h3 class="bf-h">What it knows each step</h3>` +
+        `<p class="bf-p">${s.observation}</p>` +
+        `<code class="st-tuple">state = ${obsTuple}</code>` +
+        `<h3 class="bf-h">Inside the snapshot</h3>` +
+        breakdown +
+        totalStrip +
+        `<h3 class="bf-h">Does it see its rival?</h3>` +
+        `<div class="st-opp"><span class="st-eye ${s.seesOpponent ? "yes" : "no"}">` +
+        (s.seesOpponent ? EYE_ON : EYE_OFF) +
+        `<b>${s.seesOpponent ? "VISIBLE" : "HIDDEN"}</b></span>` +
+        `<p class="bf-p">${s.opponentInfo}</p></div>`;
+
+      // ---- ITEMS & ENEMIES: icon-tile rows (+ R4 power-up cards, R5 crate weapons) ----
+      // Round-4 POWER-UPS: a card per collectible - SEEK the good (speed /
+      // shield), AVOID the bad (slow / freeze). Icons keyed off each `icon`.
       const PK_ICONS = {
         bolt: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
         shield: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 8.6 8 11 4.6-2.4 8-6 8-11V5z"/></svg>',
@@ -1532,8 +1576,7 @@ export function initBriefing(parent) {
       };
       const pkList = Array.isArray(s.pickups) ? s.pickups : [];
       const pickupsBlock = pkList.length
-        ? `<h3 class="brief-sub">Power-ups</h3>` +
-          `<p class="note" style="margin:-2px 0 0">Grab the good ones, dodge the bad.</p>` +
+        ? `<h3 class="bf-h">Power-ups on the field</h3>` +
           `<div class="pk-grid">` +
           pkList
             .map(
@@ -1558,96 +1601,36 @@ export function initBriefing(parent) {
         oil: "./assets/icons/weapons/MKAGPDX_Sticky_Oil.png",
       };
       const weaponsBlock = (s.weapons && s.weapons.length)
-        ? `<h3 class="brief-sub">Weapons (smash a crate for one)</h3>` +
-          s.weapons.map((w) =>
-            `<div class="wpn-item">` +
-            (WPN_ICON[w.icon] ? `<img class="wpn-ic" src="${WPN_ICON[w.icon]}" alt="">` : "") +
-            `<div><b>${w.name}</b>: ${w.desc}</div></div>`,
-          ).join("")
+        ? `<h3 class="bf-h">Crate weapons</h3>` +
+          `<p class="bf-p" style="margin:0 0 3px">Smash a crate to pick one up (one slot); fire it with the USE action.</p>` +
+          s.weapons
+            .map((w) =>
+              `<div class="bf-it"><span class="bf-it-ic">` +
+              (WPN_ICON[w.icon] ? `<img src="${WPN_ICON[w.icon]}" alt="">` : "") +
+              `</span><div class="bf-it-tx"><b>${w.name}</b><span>${w.desc}</span></div></div>`)
+            .join("")
         : "";
+      const round = s.round || 0;
+      const best = BESTIARY[round] || { items: [], foes: [] };
+      const itRow = (e) =>
+        `<div class="bf-it"><span class="bf-it-ic ${e.tone || "info"}">${BICONS[e.ic] || ""}</span>` +
+        `<div class="bf-it-tx"><b>${e.name}</b><span>${e.desc}</span></div></div>`;
+      const itemsPanel =
+        (best.items.length ? `<h3 class="bf-h">On the board</h3>` + best.items.map(itRow).join("") : "") +
+        pickupsBlock + weaponsBlock;
+      const enemiesPanel = best.foes.length
+        ? `<h3 class="bf-h">Watch out for these</h3>` + best.foes.map(itRow).join("")
+        : "";
+
       // ---- assemble the sub-tabbed briefing (Game / Algorithm / State / Rewards / Items / Enemies) ----
       const TAB_ICONS = {
         game: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
         algo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a4 4 0 0 0-4 4 3 3 0 0 0-1 5.8V17a3 3 0 0 0 5 2 3 3 0 0 0 5-2v-4.2A3 3 0 0 0 16 7a4 4 0 0 0-4-4z"/><path d="M12 3v16"/></svg>',
-        state: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>',
+        state: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/></svg>',
         rewards: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v3a4 4 0 0 1-8 0z"/><path d="M8 5H5v1a3 3 0 0 0 3 3M16 5h3v1a3 3 0 0 1-3 3"/><path d="M12 11v4M9 20h6M10 20l.5-3h3l.5 3"/></svg>',
         items: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="1"/><path d="M3 12h18M12 8v13M8 8 12 4l4 4"/></svg>',
         enemies: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-8a7 7 0 0 1 14 0v8l-2-1.5-2 1.5-3-1.5-3 1.5-2-1.5z"/><circle cx="9.5" cy="11" r="1" fill="currentColor"/><circle cx="14.5" cy="11" r="1" fill="currentColor"/></svg>',
       };
-      const round = s.round || 0;
-      const best = BESTIARY[round] || { items: [], foes: [] };
-      const foeCard = (e) =>
-        `<div class="be-card ${e.tone || "info"}"><span class="be-ic">${BICONS[e.ic] || ""}</span>` +
-        `<div class="be-txt"><b>${e.name}</b><span>${e.desc}</span></div></div>`;
-      const algoCard = (who, label, color) => {
-        const info = ALGO_INFO[label] || {};
-        const tags = (info.tags || []).map((t) => `<span class="alg-tg">${t}</span>`).join("");
-        return `<div class="alg-card" style="--ac:${color}">` +
-          `<div class="alg-head"><span class="alg-who" style="background:${color}">${who}</span>` +
-          `<b class="alg-name">${label}</b>${info.fam ? `<span class="alg-fam">${info.fam}</span>` : ""}</div>` +
-          `<div class="alg-tags">${info.cat ? `<span class="alg-cat">${info.cat}</span>` : ""}${tags}</div>` +
-          (info.is ? `<p class="alg-is">${info.is}</p>` : "") +
-          (info.how ? `<div class="alg-lbl">How it learns</div><p class="alg-how">${info.how}</p>` : "") +
-          (info.key ? `<div class="alg-lbl">Key idea</div><p class="alg-how">${info.key}</p>` : "") +
-          `</div>`;
-      };
-
-      const story = STORY[s.round] || null;
-      const gamePanel =
-        // GOAL hero card - the single most important line, up top
-        `<div class="goal-card"><span class="goal-ic">${BICONS.trophy}</span>` +
-        `<div class="goal-body"><span class="goal-lbl">The goal</span>` +
-        `<span class="goal-txt">${story ? story.goal : s.winCondition}</span></div></div>` +
-        // HOW IT WORKS - an always-visible illustrated storyboard of the round
-        (story
-          ? `<h3 class="brief-sub">How it works</h3>` +
-            `<div class="story">` +
-            story.beats
-              .map(([ic, t]) => {
-                const tn = /^(plant|spike|goomba|bill|cannon|water)$/.test(ic) ? "bad"
-                  : /^(coin|star|cage|flag|bolt)$/.test(ic) ? "good" : "info";
-                return `<div class="story-beat"><span class="story-ic ${tn}">${BICONS[ic] || ""}</span>` +
-                  `<span class="story-tx">${t}</span></div>`;
-              })
-              .join("") +
-            `</div>`
-          : (s.dynamics ? `<h3 class="brief-sub">How it works</h3><p class="hint">${s.dynamics}</p>` : "")) +
-        // THE MOVES
-        `<h3 class="brief-sub">The moves - ${s.nActions}</h3>` + actionsVisual +
-        // quick stats
-        `<div class="dyn-chips" style="margin-top:11px">` +
-        (s.slipProb ? `<span class="dyn-chip"><b>${Math.round(100 * s.slipProb)}%</b>slip chance</span>` : "") +
-        `<span class="dyn-chip"><b>${s.maxSteps}</b>max steps</span></div>`;
-
-      const primerBlock =
-        `<details class="alg-primer" open><summary>New to this? Start here: the words every method uses</summary>` +
-        `<dl>` + RL_PRIMER.map(([t, d]) => `<dt>${t}</dt><dd>${d}</dd>`).join("") + `</dl></details>`;
-      const algoPanel = (s.learning
-        ? primerBlock +
-          `<p class="note" style="margin:11px 0 9px">Two rival methods race to solve the SAME room. Each learns very differently - here is exactly how:</p>` +
-          algoCard("BLUE", s.learning.blue.algo, "#1f5fd0") +
-          algoCard("RED", s.learning.red.algo, "#e60012")
-        : "") + learnBlock;
-
-      const statePanel =
-        `<div class="so-card">` +
-        `<div class="so-hero"><div class="so-big">${heroBig}</div><div class="so-unit">${heroUnit}</div></div>` +
-        stateRow +
-        `<div class="so-row"><span class="so-k">Each model observes</span><span class="so-v">${s.observation}</span>` +
-        `<span class="so-tuple">${obsTuple}</span></div>` +
-        `<div class="so-row"><span class="so-k">Sees the opponent?</span>` +
-        `<div class="so-opp"><span class="so-sq ${sqCls}"><b>RIVAL</b><b>${sqLabel}</b></span>` +
-        `<span class="so-opp-txt">${s.opponentInfo}</span></div></div></div>`;
-
-      const rewardsPanel = rewards + (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
-
-      const itemsPanel =
-        (best.items.length ? `<div class="be-grid">${best.items.map(foeCard).join("")}</div>` : "") +
-        pickupsBlock + weaponsBlock;
-
-      const enemiesPanel = best.foes.length
-        ? `<div class="be-grid">${best.foes.map(foeCard).join("")}</div>` : "";
-
       const hasItems = best.items.length || pkList.length || (s.weapons && s.weapons.length);
       const hasFoes = best.foes.length;
       const TABS = [["game", "Game"], ["algo", "Algorithm"], ["state", "State"], ["rewards", "Rewards"]];

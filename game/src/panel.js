@@ -174,6 +174,13 @@ const STYLE = `
 /* sticky header with the live matchup */
 #rl-panel .hdr{position:sticky;top:0;z-index:2;padding:15px 16px 14px;background:#fff;
   border-bottom:1px solid #e6e8ec;}
+/* close chevron (top-left): a quiet ghost button; the panel slides out leftwards */
+#rl-panel .hdr .closebtn{flex:none;width:32px;height:32px;padding:0;margin-left:-7px;
+  display:grid;place-items:center;border:0;border-radius:9px;background:transparent;color:#8a8d94;
+  cursor:pointer;transition:background .12s,color .12s;}
+#rl-panel .hdr .closebtn:hover{background:#f0f1f3;color:#3a3c42;}
+#rl-panel .hdr .closebtn:active{background:#e7e8eb;}
+#rl-panel .hdr .closebtn svg{width:19px;height:19px;display:block;}
 /* arena name (left) + round tag pushed to the far right - the header's title row.
    On the CPU model the lock swings in top-right, so reserve space then to avoid an overlap. */
 #rl-panel .hdr .harena{display:flex;align-items:center;gap:10px;margin-top:0;
@@ -397,199 +404,192 @@ const STYLE = `
 #rl-panel .actrow .ab+.ab{margin-top:0;}
 #rl-panel .actrow .ab i{display:block;height:100%;transition:width .3s;}
 #rl-panel .actrow .ab i.r{background:#e60012;} #rl-panel .actrow .ab i.b{background:#1f5fd0;}
-/* briefing card + two-column (Red vs Blue) comparison tables */
-#rl-panel .brief-matchup{font-size:14.5px;font-weight:800;color:#1f1f21;margin:0 0 3px;letter-spacing:-.2px;}
-#rl-panel .brief-sub{font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;margin:15px 0 7px;}
-#rl-panel #rl-brief .stat b.rw-pos{color:#1f7a3d;}   /* positive rewards green */
-#rl-panel #rl-brief .stat b.rw-neg{color:#c0392b;}   /* penalties red */
-/* State & observation - the briefing's centrepiece card */
-#rl-panel #rl-brief .so-card{margin:9px 0 6px;padding:15px 15px 13px;border:1px solid #e4e7ec;border-radius:14px;
-  background:linear-gradient(180deg,#f8f9fc,#eef1f6);box-shadow:0 1px 3px rgba(20,22,28,.05);}
-#rl-panel #rl-brief .so-hero{display:flex;align-items:baseline;gap:9px;padding-bottom:11px;margin-bottom:3px;border-bottom:1px solid #e2e5ea;}
-#rl-panel #rl-brief .so-big{font-size:33px;font-weight:800;letter-spacing:-1.2px;color:#1f1f21;line-height:.9;font-variant-numeric:tabular-nums;}
-#rl-panel #rl-brief .so-unit{font-size:12px;font-weight:700;color:#9a9da4;letter-spacing:.2px;}
-#rl-panel #rl-brief .so-row{padding:9px 0 8px;border-bottom:1px solid #e7eaef;}
-#rl-panel #rl-brief .so-row:last-child{border-bottom:0;padding-bottom:1px;}
-#rl-panel #rl-brief .so-k{display:block;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#a2a5ac;margin-bottom:4px;}
-#rl-panel #rl-brief .so-v{display:block;font-size:11.5px;color:#4b4d53;line-height:1.5;}
-/* the state vector as a VISUAL stacked bar (segment width = share of dimensions) + legend */
-#rl-panel #rl-brief .sv-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;gap:2px;background:transparent;margin:3px 0 11px;}
-#rl-panel #rl-brief .sv-seg{display:flex;align-items:center;justify-content:center;min-width:14px;
-  color:#fff;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.2px;
-  border-radius:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);}
-#rl-panel #rl-brief .sv-legend{display:flex;flex-direction:column;gap:8px;}
-#rl-panel #rl-brief .sv-item{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;column-gap:8px;row-gap:2px;}
-#rl-panel #rl-brief .sv-dot{width:10px;height:10px;border-radius:3px;align-self:center;}
-#rl-panel #rl-brief .sv-lab{font-size:11.5px;font-weight:800;color:#2a2c31;}
-#rl-panel #rl-brief .sv-dim{font-size:10.5px;font-weight:800;color:#8a8d94;font-variant-numeric:tabular-nums;
-  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;}
-#rl-panel #rl-brief .sv-det{grid-column:2 / -1;font-size:10.5px;color:#7a7d84;line-height:1.45;}
-/* the observation vector, shown as a code-style tuple */
-#rl-panel #rl-brief .so-tuple{display:block;margin-top:7px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  font-size:11px;font-weight:700;color:#1f5fd0;background:#eef2fa;border:1px solid #e0e6f2;border-radius:8px;
-  padding:7px 9px;letter-spacing:.2px;line-height:1.5;}
-/* opponent visibility: a square two-line badge with the explanation to its right */
-#rl-panel #rl-brief .so-opp{display:flex;align-items:center;gap:12px;margin-top:3px;}
-#rl-panel #rl-brief .so-sq{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  width:68px;height:68px;border-radius:13px;text-align:center;}
-#rl-panel #rl-brief .so-sq b{display:block;font-size:11px;font-weight:800;letter-spacing:.7px;line-height:1.5;}
-#rl-panel #rl-brief .so-sq.no{background:#f3eaea;color:#b0555a;}
-#rl-panel #rl-brief .so-sq.yes{background:#e7f0ff;color:#1f5fd0;}
-#rl-panel #rl-brief .so-opp-txt{font-size:11.5px;color:#4b4d53;line-height:1.5;}
-/* State FACTORS - a discrete |S| shown as multiplied chips (grid rounds) */
-#rl-panel #rl-brief .sf-chips{display:flex;align-items:stretch;flex-wrap:wrap;gap:6px;margin:6px 0 2px;}
-#rl-panel #rl-brief .sf-x{display:flex;align-items:center;color:#b7bac1;font-weight:800;font-size:15px;}
-#rl-panel #rl-brief .sf-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-width:52px;padding:7px 11px;border-radius:11px;border:1px solid #e2e5ea;background:#f6f7f9;}
-#rl-panel #rl-brief .sf-chip b{font-size:16px;font-weight:800;color:var(--fc);line-height:1;font-variant-numeric:tabular-nums;}
-#rl-panel #rl-brief .sf-chip span{font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6b7280;margin-top:4px;}
-#rl-panel #rl-brief .sf-total{font-size:11.5px;color:#5a5d63;margin:9px 0 2px;}
-#rl-panel #rl-brief .sf-total b{font-size:14px;font-weight:800;color:#1f1f21;font-variant-numeric:tabular-nums;}
-#rl-panel #rl-brief .sf-legend{display:flex;flex-direction:column;gap:5px;margin-top:7px;}
-#rl-panel #rl-brief .sf-li{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;column-gap:8px;}
-#rl-panel #rl-brief .sf-dot{width:9px;height:9px;border-radius:3px;align-self:center;}
-#rl-panel #rl-brief .sf-lk{font-size:11px;font-weight:800;color:#2a2c31;}
-#rl-panel #rl-brief .sf-ld{font-size:10.5px;color:#7a7d84;line-height:1.4;}
-/* Actions - compass arrow chips (4-way) or one wide label chip (arenas) */
-#rl-panel #rl-brief .act-chips{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 4px;}
-#rl-panel #rl-brief .act-chip{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:52px;
-  padding:8px 12px;border:1px solid #e2e5ea;border-radius:11px;background:#f6f7f9;
-  font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6b7280;}
-#rl-panel #rl-brief .act-chip b{font-size:19px;font-weight:800;color:#2a2c31;line-height:1;}
-#rl-panel #rl-brief .act-chip.wide{flex-direction:row;text-transform:none;letter-spacing:.2px;font-size:12px;
-  color:#2a2c31;font-weight:700;padding:11px 13px;}
-/* Round-4 POWER-UPS: a card per collectible, colour-accented, with a SEEK / AVOID tag.
-   --pc = the pickup's colour (drives the left accent + the icon). */
-#rl-panel #rl-brief .pk-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:8px 0 2px;}
-#rl-panel #rl-brief .pk-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;
-  padding:12px 12px 12px 15px;border-radius:13px;background:#fff;border:1px solid #e6e8ec;overflow:hidden;}
-#rl-panel #rl-brief .pk-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc);}
-#rl-panel #rl-brief .pk-card.bad{background:linear-gradient(180deg,#fff,#fffafa);}
-#rl-panel #rl-brief .pk-ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;
-  background:#f4f6f8;color:var(--pc);margin-bottom:5px;}
-#rl-panel #rl-brief .pk-ic svg{width:21px;height:21px;display:block;}
-#rl-panel #rl-brief .pk-name{font-size:13px;font-weight:800;color:#1f1f21;line-height:1.1;}
-#rl-panel #rl-brief .pk-eff{font-size:11px;color:#4b4d53;font-weight:600;line-height:1.3;}
-/* Round-5 weapon list: matches the tab's 11px body / bold-dark label rhythm */
-#rl-panel #rl-brief .wpn-item{display:flex;align-items:center;gap:11px;margin:7px 0;
-  font-size:11px;line-height:1.4;color:#4b4d53;font-weight:600;}
-#rl-panel #rl-brief .wpn-item b{color:#1f1f21;font-weight:800;}
-#rl-panel #rl-brief .wpn-ic{width:36px;height:36px;flex:none;object-fit:contain;
-  filter:drop-shadow(0 1px 2px rgba(0,0,0,.45));}
-#rl-panel #rl-brief .pk-dur{margin-top:5px;font-size:10px;font-weight:800;color:#6b7280;font-variant-numeric:tabular-nums;
-  background:#f0f1f3;border-radius:20px;padding:2px 8px;letter-spacing:.2px;}
-#rl-panel #rl-brief .pk-tag{position:absolute;top:9px;right:9px;font-size:8px;font-weight:800;letter-spacing:.6px;
-  padding:3px 7px;border-radius:20px;}
-#rl-panel #rl-brief .pk-card.good .pk-tag{background:#e7f6ec;color:#1f9d55;}
-#rl-panel #rl-brief .pk-card.bad .pk-tag{background:#fdeceb;color:#dc4a45;}
-/* ===== Challenge card SUB-TABS: a chip row that swaps panels inside the briefing ===== */
-#rl-panel #rl-brief .bsub-bar{display:flex;gap:5px;flex-wrap:wrap;margin:1px 0 12px;}
-#rl-panel #rl-brief .bsub-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px 6px 9px;
-  border:1px solid #e2e5ea;border-radius:20px;background:#f6f7f9;color:#6b7280;font-size:11.5px;font-weight:700;
-  cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
-#rl-panel #rl-brief .bsub-chip .bsub-ic,#rl-panel #rl-brief .bsub-chip .bsub-ic svg{width:15px;height:15px;display:block;}
-#rl-panel #rl-brief .bsub-chip:hover{background:#eef0f3;color:#3a3c42;}
-#rl-panel #rl-brief .bsub-chip.on{background:var(--hue);border-color:var(--hue);color:#fff;}
+/* ========================== CHALLENGE TAB ========================== */
+/* The round briefing (#rl-brief), one design system for the whole tab:
+   .bsub-* = the segmented sub-nav; .bf-* = shared rhythm (headings, body
+   text, icon rows, tiles); .goal/.alg/.st/.rw/.pk = panel-specific pieces. */
+#rl-panel .brief-sub{font-size:10px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:#8a8d94;margin:15px 0 7px;} /* shared small-caps label (Score + Replays cards use it too) */
+
+/* --- sub-nav: a segmented control; the active segment is a raised white chip --- */
+#rl-panel #rl-brief .bsub-bar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;
+  margin:0 0 15px;padding:3px;background:#e9ebef;border-radius:12px;}
+#rl-panel #rl-brief .bsub-chip{display:flex;flex:none;flex-direction:column;align-items:center;gap:4px;
+  min-width:0;padding:8px 2px 7px;border:0;border-radius:9px;background:transparent;color:#83868e;
+  font-size:9.5px;font-weight:800;letter-spacing:.2px;cursor:pointer;
+  transition:background .16s,color .16s,box-shadow .16s;}
+#rl-panel #rl-brief .bsub-chip .bsub-ic,#rl-panel #rl-brief .bsub-chip .bsub-ic svg{width:16px;height:16px;display:block;}
+#rl-panel #rl-brief .bsub-chip:hover{background:#f1f2f5;color:#4b4d53;}
+#rl-panel #rl-brief .bsub-chip.on{background:#fff;color:var(--hue);
+  box-shadow:0 1px 4px rgba(18,20,28,.13),0 0 0 1px rgba(18,20,28,.02);}
 #rl-panel #rl-brief .bsub-panel{display:none;}
-#rl-panel #rl-brief .bsub-panel.on{display:block;animation:bsubIn .18s ease;}
-#rl-panel #rl-brief .bsub-panel .brief-sub:first-child{margin-top:2px;}
-@keyframes bsubIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
-/* ===== GAME tab: goal hero card + illustrated story timeline ===== */
-#rl-panel #rl-brief .goal-card{display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:15px;margin:2px 0 6px;
-  background:var(--hue);color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.13);}
-#rl-panel #rl-brief .goal-ic{width:42px;height:42px;flex:none;border-radius:12px;display:grid;place-items:center;background:rgba(255,255,255,.18);}
-#rl-panel #rl-brief .goal-ic svg{width:24px;height:24px;color:#fff;}
-#rl-panel #rl-brief .goal-body{min-width:0;}
-#rl-panel #rl-brief .goal-lbl{display:block;font-size:9px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.72);}
-#rl-panel #rl-brief .goal-txt{display:block;font-size:14px;font-weight:800;line-height:1.35;margin-top:3px;}
-#rl-panel #rl-brief .story{display:flex;flex-direction:column;margin:5px 0 2px;}
-#rl-panel #rl-brief .story-beat{display:flex;align-items:flex-start;gap:12px;padding:8px 0;}
-#rl-panel #rl-brief .story-beat:not(:last-child){border-bottom:1px solid #f1f2f4;}
-#rl-panel #rl-brief .story-ic{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center;margin-top:1px;
-  background:#eef3fc;color:#1f5fd0;}
-#rl-panel #rl-brief .story-ic.bad{background:#fdecea;color:#e0563f;}
-#rl-panel #rl-brief .story-ic.good{background:#e9f7ef;color:#1f9d55;}
-#rl-panel #rl-brief .story-ic svg{width:19px;height:19px;display:block;}
-#rl-panel #rl-brief .story-tx{font-size:12.5px;color:#3a3c42;line-height:1.5;padding-top:7px;}
-/* Algorithm explanation cards (one per rival), accent-coloured by side */
-#rl-panel #rl-brief .alg-card{border:1px solid #e6e8ec;border-radius:13px;padding:12px 13px;margin:9px 0;
-  background:#fff;border-left:4px solid var(--ac);}
-#rl-panel #rl-brief .alg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-#rl-panel #rl-brief .alg-who{font-size:8.5px;font-weight:800;letter-spacing:.6px;color:#fff;padding:2px 7px;border-radius:20px;}
-#rl-panel #rl-brief .alg-name{font-size:15px;font-weight:800;color:#1f1f21;}
-#rl-panel #rl-brief .alg-fam{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#9a9da4;}
-#rl-panel #rl-brief .alg-tags{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px;}
-#rl-panel #rl-brief .alg-cat{font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:20px;
-  background:var(--ac);color:#fff;}
-#rl-panel #rl-brief .alg-tg{font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:20px;background:#eef0f3;color:#5a5d63;}
-#rl-panel #rl-brief .alg-is{font-size:12.5px;font-weight:700;color:#1f1f21;line-height:1.5;margin:9px 0 2px;}
-#rl-panel #rl-brief .alg-lbl{font-size:8.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--ac);margin:11px 0 3px;}
-#rl-panel #rl-brief .alg-how{font-size:12px;color:#4b4d53;line-height:1.55;margin:0;}
-/* the RL glossary primer at the top of the Algorithm tab */
-#rl-panel #rl-brief .alg-primer{border:1px solid #e6e8ec;border-radius:13px;background:#fafbfc;padding:11px 13px;margin:2px 0 4px;}
-#rl-panel #rl-brief .alg-primer summary{cursor:pointer;list-style:none;font-size:11.5px;font-weight:800;color:#3a3c42;display:flex;align-items:center;gap:7px;}
-#rl-panel #rl-brief .alg-primer summary::-webkit-details-marker{display:none;}
-#rl-panel #rl-brief .alg-primer summary::before{content:"";width:7px;height:7px;flex:none;border-right:2px solid #9aa0a8;border-bottom:2px solid #9aa0a8;transform:rotate(-45deg);transition:transform .15s;}
-#rl-panel #rl-brief .alg-primer[open] summary::before{transform:rotate(45deg);}
-#rl-panel #rl-brief .alg-primer dl{margin:9px 0 0;display:grid;grid-template-columns:auto 1fr;gap:5px 10px;}
-#rl-panel #rl-brief .alg-primer dt{font-size:11.5px;font-weight:800;color:#1f5fd0;white-space:nowrap;}
-#rl-panel #rl-brief .alg-primer dd{margin:0;font-size:11.5px;color:#4b4d53;line-height:1.45;}
-/* Items / Enemies bestiary cards (icon + name + description), toned good/bad/info */
-#rl-panel #rl-brief .be-grid{display:flex;flex-direction:column;gap:8px;margin:8px 0 2px;}
-#rl-panel #rl-brief .be-card{display:flex;align-items:flex-start;gap:12px;padding:11px 13px;border:1px solid #e6e8ec;
-  border-radius:13px;background:#fff;border-left:4px solid #9aa0a8;}
-#rl-panel #rl-brief .be-card.good{border-left-color:#1f9d55;}
-#rl-panel #rl-brief .be-card.bad{border-left-color:#e0563f;}
-#rl-panel #rl-brief .be-card.info{border-left-color:#3f7fe0;}
-#rl-panel #rl-brief .be-ic{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;background:#f4f6f8;color:#5a5d63;}
-#rl-panel #rl-brief .be-card.good .be-ic{color:#1f9d55;}
-#rl-panel #rl-brief .be-card.bad .be-ic{color:#e0563f;}
-#rl-panel #rl-brief .be-card.info .be-ic{color:#3f7fe0;}
-#rl-panel #rl-brief .be-ic svg{width:23px;height:23px;display:block;}
-#rl-panel #rl-brief .be-txt{min-width:0;}
-#rl-panel #rl-brief .be-txt b{display:block;font-size:13px;font-weight:800;color:#1f1f21;margin-bottom:2px;}
-#rl-panel #rl-brief .be-txt span{font-size:11.5px;color:#4b4d53;line-height:1.5;}
-/* collapsible "how this world works" - keeps the long procedural blurb out of sight by default */
-#rl-panel #rl-brief .dyn-more{margin:11px 0 2px;border-top:1px solid #eceef1;padding-top:9px;}
-#rl-panel #rl-brief .dyn-more summary{cursor:pointer;list-style:none;font-size:11.5px;font-weight:700;color:#6b7280;
-  display:flex;align-items:center;gap:7px;}
-#rl-panel #rl-brief .dyn-more summary::-webkit-details-marker{display:none;}
-#rl-panel #rl-brief .dyn-more summary::before{content:"";width:7px;height:7px;flex:none;
+#rl-panel #rl-brief .bsub-panel.on{display:block;animation:bsubIn .2s ease;}
+@keyframes bsubIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* --- shared rhythm --- */
+#rl-panel #rl-brief .bf-h{display:flex;align-items:center;gap:9px;margin:20px 0 10px;
+  font-size:9.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;color:#9a9da4;}
+#rl-panel #rl-brief .bf-h::after{content:"";flex:1;height:1px;background:#eceef1;}
+#rl-panel #rl-brief .bsub-panel>.bf-h:first-child{margin-top:3px;}
+#rl-panel #rl-brief .bf-lead{margin:2px 0 0;font-size:12px;line-height:1.6;color:#3f4147;}
+#rl-panel #rl-brief .bf-lead b{font-weight:800;color:#1f1f21;}
+#rl-panel #rl-brief .bf-p{margin:0;font-size:11.5px;line-height:1.6;color:#55585f;}
+#rl-panel #rl-brief .bf-more{margin:13px 0 0;border-top:1px solid #eceef1;padding-top:10px;}
+#rl-panel #rl-brief .bf-more summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;
+  font-size:11.5px;font-weight:700;color:#6b7280;}
+#rl-panel #rl-brief .bf-more summary::-webkit-details-marker{display:none;}
+#rl-panel #rl-brief .bf-more summary::before{content:"";width:6px;height:6px;flex:none;
   border-right:2px solid #9aa0a8;border-bottom:2px solid #9aa0a8;transform:rotate(-45deg);transition:transform .15s;}
-#rl-panel #rl-brief .dyn-more[open] summary::before{transform:rotate(45deg);}
-#rl-panel #rl-brief .dyn-more summary:hover{color:#3a3c42;}
-#rl-panel #rl-brief .dyn-more p{font-size:11.5px;color:#6b7280;line-height:1.55;margin:8px 0 0;}
-/* Reward structure - signed proportional bars. The bar + value are FIXED-width on
-   the right and the label flexes, so every bar lines up in the same column no matter
-   how long the number is. */
-#rl-panel #rl-brief .rw-row{display:flex;align-items:center;gap:10px;
-  font-size:11.5px;padding:6px 0;border-bottom:1px solid #f0f1f3;}
-#rl-panel #rl-brief .rw-row:last-child{border-bottom:0;}
-#rl-panel #rl-brief .rw-k{flex:1 1 auto;min-width:0;color:#4b4d53;line-height:1.35;}
-#rl-panel #rl-brief .rw-track{flex:0 0 96px;height:7px;background:#eceef1;border-radius:4px;overflow:hidden;}
-#rl-panel #rl-brief .rw-fill{display:block;height:100%;border-radius:4px;}
-#rl-panel #rl-brief .rw-fill.pos{background:#1f9d63;}
-#rl-panel #rl-brief .rw-fill.neg{background:#d9534f;}
-#rl-panel #rl-brief .rw-val{flex:0 0 46px;text-align:right;font-weight:800;
-  font-variant-numeric:tabular-nums;color:#4b4d53;white-space:nowrap;}
-#rl-panel #rl-brief .rw-val.pos{color:#1f7a3d;}
-#rl-panel #rl-brief .rw-val.neg{color:#c0392b;}
-/* string-valued rewards (rates): no bar; the value wraps on the right, never overflows */
-#rl-panel #rl-brief .rw-row.str .rw-val{flex:0 1 auto;max-width:52%;white-space:normal;
-  text-align:right;color:#5a5d63;font-weight:700;font-size:11px;line-height:1.3;}
-/* Hyperparameters - Blue vs Red mini-columns */
-#rl-panel #rl-brief .lh-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:4px 0 2px;}
-#rl-panel #rl-brief .lh-col{border:1px solid #e4e7ec;border-radius:12px;padding:11px 12px;background:#fbfbfc;}
-#rl-panel #rl-brief .lh-who{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;}
-#rl-panel #rl-brief .lh-algo{font-size:11px;font-weight:700;color:#5a5d63;margin:1px 0 7px;}
+#rl-panel #rl-brief .bf-more[open] summary::before{transform:rotate(45deg);}
+#rl-panel #rl-brief .bf-more summary:hover{color:#3a3c42;}
+#rl-panel #rl-brief .bf-more p{margin:9px 0 0;font-size:11.5px;line-height:1.6;color:#6b7280;}
+
+/* --- GAME: goal hero + storyboard rows + move keycaps + fact tiles --- */
+#rl-panel #rl-brief .goal-card{display:flex;align-items:center;gap:13px;margin:2px 0 4px;padding:15px 16px;
+  border-radius:14px;border:1px solid #e9ebef;background:#f6f7f9;color:#1f1f21;}
+#rl-panel #rl-brief .goal-ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+  background:#fff;border:1px solid #e6e8ec;color:var(--hue);}
+#rl-panel #rl-brief .goal-ic svg{width:22px;height:22px;}
+#rl-panel #rl-brief .goal-body{min-width:0;}
+#rl-panel #rl-brief .goal-lbl{display:block;font-size:8.5px;font-weight:800;letter-spacing:1.1px;
+  text-transform:uppercase;color:#9a9da4;}
+#rl-panel #rl-brief .goal-txt{display:block;margin-top:3px;font-size:13.5px;font-weight:800;line-height:1.35;}
+#rl-panel #rl-brief .bf-beat{display:flex;align-items:center;gap:11px;padding:8px 0;}
+#rl-panel #rl-brief .bf-beat+.bf-beat{border-top:1px solid #f2f3f5;}
+#rl-panel #rl-brief .bf-beat-ic{flex:none;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:#eef3fc;color:#1f5fd0;}
+#rl-panel #rl-brief .bf-beat-ic.bad{background:#fdeceb;color:#d84c3e;}
+#rl-panel #rl-brief .bf-beat-ic.good{background:#e9f6ef;color:#1f9d55;}
+#rl-panel #rl-brief .bf-beat-ic svg{width:17px;height:17px;display:block;}
+#rl-panel #rl-brief .bf-beat p{margin:0;font-size:12px;line-height:1.5;color:#3a3c42;}
+#rl-panel #rl-brief .bf-keys{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+#rl-panel #rl-brief .bf-key{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-width:50px;padding:8px 10px 7px;border:1px solid #e0e3e8;border-radius:11px;
+  background:linear-gradient(180deg,#fff,#f5f6f8);box-shadow:0 1.5px 0 #e0e3e8;}
+#rl-panel #rl-brief .bf-key b{font-size:17px;line-height:1.1;color:#2a2c31;}
+#rl-panel #rl-brief .bf-key span{font-size:8.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#8a8d94;}
+#rl-panel #rl-brief .bf-key.wide{padding:11px 14px;}
+#rl-panel #rl-brief .bf-key.wide span{font-size:11.5px;font-weight:700;letter-spacing:.1px;text-transform:none;color:#3a3c42;}
+#rl-panel #rl-brief .bf-facts{display:flex;gap:8px;margin-top:14px;}
+#rl-panel #rl-brief .bf-fact{flex:1;display:flex;flex-direction:column;gap:3px;padding:10px 12px;
+  border:1px solid #e6e8ec;border-radius:11px;background:#fafbfc;}
+#rl-panel #rl-brief .bf-fact b{font-size:16px;font-weight:800;color:#1f1f21;line-height:1;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .bf-fact span{font-size:8.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#9a9da4;}
+
+/* --- ALGORITHM: glossary primer + one explainer card per rival --- */
+#rl-panel #rl-brief .alg-primer{margin:2px 0 0;padding:11px 13px;border:1px solid #e2e7f3;border-radius:12px;background:#f7f9fd;}
+#rl-panel #rl-brief .alg-primer summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:7px;
+  font-size:11.5px;font-weight:800;color:#3a3c42;}
+#rl-panel #rl-brief .alg-primer summary::-webkit-details-marker{display:none;}
+#rl-panel #rl-brief .alg-primer summary::before{content:"";width:6px;height:6px;flex:none;
+  border-right:2px solid #9aa0a8;border-bottom:2px solid #9aa0a8;transform:rotate(-45deg);transition:transform .15s;}
+#rl-panel #rl-brief .alg-primer[open] summary::before{transform:rotate(45deg);}
+#rl-panel #rl-brief .alg-primer dl{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;}
+#rl-panel #rl-brief .alg-primer dt{font-size:11px;font-weight:800;color:#3567c4;white-space:nowrap;}
+#rl-panel #rl-brief .alg-primer dd{margin:0;font-size:11px;color:#4b4d53;line-height:1.5;}
+#rl-panel #rl-brief .alg-card{margin:9px 0 0;padding:12px 14px 13px;border:1px solid #e6e8ec;border-radius:13px;
+  border-top:3px solid var(--ac);background:#fff;}
+#rl-panel #rl-brief .alg-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+#rl-panel #rl-brief .alg-who{font-size:8px;font-weight:800;letter-spacing:.7px;color:#fff;padding:3px 7px;border-radius:6px;background:var(--ac);}
+#rl-panel #rl-brief .alg-name{font-size:15px;font-weight:800;color:#1f1f21;letter-spacing:-.2px;}
+#rl-panel #rl-brief .alg-fam{margin-left:auto;font-size:8.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#9a9da4;}
+#rl-panel #rl-brief .alg-tags{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0 0;}
+#rl-panel #rl-brief .alg-cat{font-size:9px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:20px;background:var(--ac);color:#fff;}
+#rl-panel #rl-brief .alg-tg{font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;background:#f0f1f4;color:#5a5d63;}
+#rl-panel #rl-brief .alg-is{margin:10px 0 0;font-size:12.5px;font-weight:700;color:#1f1f21;line-height:1.5;}
+#rl-panel #rl-brief .alg-lbl{margin:11px 0 3px;font-size:8.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--ac);}
+#rl-panel #rl-brief .alg-how{margin:0;font-size:11.5px;color:#4b4d53;line-height:1.6;}
+/* current hyperparameters: Blue vs Red mini-columns */
+#rl-panel #rl-brief .lh-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+#rl-panel #rl-brief .lh-col{border:1px solid #e6e8ec;border-radius:12px;padding:11px 12px;background:#fafbfc;}
+#rl-panel #rl-brief .lh-who{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;}
+#rl-panel #rl-brief .lh-algo{font-size:10.5px;font-weight:700;color:#5a5d63;margin:2px 0 8px;}
 #rl-panel #rl-brief .lh-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:3px 0;font-size:11px;color:#7a7d84;}
 #rl-panel #rl-brief .lh-row b{color:#1f1f21;font-weight:800;font-variant-numeric:tabular-nums;}
 #rl-panel #rl-brief .lh-note{font-size:10px;color:#9a9da4;line-height:1.4;margin-top:4px;}
-/* Dynamics - two compact fact chips (no wall of text) */
-#rl-panel #rl-brief .dyn-chips{display:flex;flex-wrap:wrap;gap:7px;}
-#rl-panel #rl-brief .dyn-chip{display:flex;align-items:baseline;gap:6px;padding:7px 11px;border:1px solid #e2e5ea;
-  border-radius:9px;background:#f6f7f9;font-size:10.5px;font-weight:700;color:#6b7280;}
-#rl-panel #rl-brief .dyn-chip b{font-size:14px;font-weight:800;color:#2a2c31;font-variant-numeric:tabular-nums;}
+
+/* --- STATE: the snapshot story --- */
+#rl-panel #rl-brief .st-tuple{display:block;margin:10px 0 0;padding:8px 11px;border:1px solid #e2e6ef;border-radius:9px;
+  background:#f6f8fb;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;font-weight:700;
+  color:#35507e;letter-spacing:.2px;line-height:1.5;}
+/* continuous rounds: the observation vector as a stacked share bar */
+#rl-panel #rl-brief .st-bar{display:flex;gap:2px;height:24px;margin:2px 0 4px;}
+#rl-panel #rl-brief .st-seg{display:grid;place-items:center;min-width:13px;border-radius:6px;color:#fff;
+  font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums;}
+/* tabular rounds: |S| as multiplied factor chips */
+#rl-panel #rl-brief .st-chips{display:flex;flex-wrap:wrap;align-items:stretch;gap:7px;margin:2px 0 4px;}
+#rl-panel #rl-brief .st-x{display:grid;place-items:center;font-size:15px;font-weight:800;color:#b7bac1;}
+#rl-panel #rl-brief .st-chip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-width:54px;padding:9px 12px;border-radius:11px;border:1px solid;}
+#rl-panel #rl-brief .st-chip b{font-size:17px;line-height:1;color:inherit;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .st-chip span{font-size:8.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#6b7280;}
+/* legend rows shared by both breakdowns */
+#rl-panel #rl-brief .st-li{display:grid;grid-template-columns:10px 1fr auto;column-gap:9px;row-gap:2px;align-items:baseline;padding:8px 0;}
+#rl-panel #rl-brief .st-li+.st-li{border-top:1px solid #f2f3f5;}
+#rl-panel #rl-brief .st-dot{width:10px;height:10px;border-radius:3.5px;align-self:center;}
+#rl-panel #rl-brief .st-lab{font-size:12px;font-weight:800;color:#2a2c31;}
+#rl-panel #rl-brief .st-n{font-size:9.5px;font-weight:800;color:#8a8d94;font-variant-numeric:tabular-nums;
+  font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:#f0f1f4;border-radius:6px;padding:2px 6px;}
+#rl-panel #rl-brief .st-det{grid-column:2/-1;font-size:11px;color:#71747c;line-height:1.5;}
+/* the total strip: |S| or the vector size, plus why it matters */
+#rl-panel #rl-brief .st-total{margin:12px 0 0;padding:13px 15px;border:1px solid #e9ebef;border-radius:12px;background:#f6f7f9;}
+#rl-panel #rl-brief .st-row1{display:flex;align-items:baseline;gap:8px;}
+#rl-panel #rl-brief .st-num{font-size:24px;font-weight:800;letter-spacing:-.6px;color:#1f1f21;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .st-unit{font-size:11px;font-weight:700;color:#7a7d84;}
+#rl-panel #rl-brief .st-why{margin:7px 0 0;font-size:11px;line-height:1.55;color:#6b7280;}
+/* rival visibility: an eye badge + the explanation */
+#rl-panel #rl-brief .st-opp{display:flex;align-items:center;gap:13px;}
+#rl-panel #rl-brief .st-eye{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  width:64px;height:64px;border-radius:14px;}
+#rl-panel #rl-brief .st-eye svg{width:22px;height:22px;display:block;}
+#rl-panel #rl-brief .st-eye b{font-size:8px;font-weight:800;letter-spacing:.7px;}
+#rl-panel #rl-brief .st-eye.yes{background:#e7f0ff;color:#1f5fd0;}
+#rl-panel #rl-brief .st-eye.no{background:#f1f2f4;color:#6b7280;}
+
+/* --- REWARDS: signed proportional bars --- */
+#rl-panel #rl-brief .rw-leg{display:flex;gap:14px;margin:12px 0 2px;font-size:10px;font-weight:800;
+  letter-spacing:.4px;text-transform:uppercase;color:#8a8d94;}
+#rl-panel #rl-brief .rw-leg i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
+#rl-panel #rl-brief .rw-leg .pos{background:#1f9d55;}
+#rl-panel #rl-brief .rw-leg .neg{background:#d9534f;}
+#rl-panel #rl-brief .rw-row{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:11.5px;}
+#rl-panel #rl-brief .rw-row+.rw-row{border-top:1px solid #f2f3f5;}
+#rl-panel #rl-brief .rw-k{flex:1 1 auto;min-width:0;color:#4b4d53;line-height:1.4;}
+#rl-panel #rl-brief .rw-track{flex:0 0 92px;height:6px;border-radius:4px;background:#eef0f3;overflow:hidden;}
+#rl-panel #rl-brief .rw-fill{display:block;height:100%;border-radius:4px;}
+#rl-panel #rl-brief .rw-fill.pos{background:#1f9d55;}
+#rl-panel #rl-brief .rw-fill.neg{background:#d9534f;}
+#rl-panel #rl-brief .rw-val{flex:0 0 46px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
+#rl-panel #rl-brief .rw-val.pos{color:#1f7a3d;}
+#rl-panel #rl-brief .rw-val.neg{color:#c0392b;}
+/* string-valued rewards (rates): no bar; the value wraps on the right */
+#rl-panel #rl-brief .rw-row.str .rw-val{flex:0 1 auto;max-width:52%;white-space:normal;text-align:right;
+  color:#5a5d63;font-weight:700;font-size:11px;line-height:1.35;}
+
+/* --- ITEMS & ENEMIES: icon-tile rows + the R4 power-up cards --- */
+#rl-panel #rl-brief .bf-it{display:flex;align-items:center;gap:12px;padding:9px 0;}
+#rl-panel #rl-brief .bf-it+.bf-it{border-top:1px solid #f2f3f5;}
+#rl-panel #rl-brief .bf-it-ic{flex:none;width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  background:#f0f2f5;color:#5a5d63;}
+#rl-panel #rl-brief .bf-it-ic.good{background:#e9f6ef;color:#1f9d55;}
+#rl-panel #rl-brief .bf-it-ic.bad{background:#fdeceb;color:#d84c3e;}
+#rl-panel #rl-brief .bf-it-ic.info{background:#eef3fc;color:#3f7fe0;}
+#rl-panel #rl-brief .bf-it-ic svg{width:21px;height:21px;display:block;}
+#rl-panel #rl-brief .bf-it-ic img{width:30px;height:30px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.4));}
+#rl-panel #rl-brief .bf-it-tx{min-width:0;}
+#rl-panel #rl-brief .bf-it-tx b{display:block;font-size:12.5px;font-weight:800;color:#1f1f21;margin-bottom:1px;}
+#rl-panel #rl-brief .bf-it-tx span{font-size:11.5px;color:#55585f;line-height:1.5;}
+#rl-panel #rl-brief .pk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+#rl-panel #rl-brief .pk-card{position:relative;padding:11px 12px;border:1px solid #e6e8ec;border-radius:12px;background:#fff;}
+#rl-panel #rl-brief .pk-ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--pc);background:#f2f4f7;}
+#rl-panel #rl-brief .pk-ic svg{width:19px;height:19px;display:block;}
+#rl-panel #rl-brief .pk-name{display:block;font-size:12.5px;font-weight:800;color:#1f1f21;margin-top:8px;}
+#rl-panel #rl-brief .pk-eff{display:block;font-size:10.5px;color:#55585f;line-height:1.35;margin-top:1px;}
+#rl-panel #rl-brief .pk-dur{display:inline-block;margin-top:8px;font-size:9.5px;font-weight:800;color:#6b7280;
+  font-variant-numeric:tabular-nums;background:#f0f1f4;border-radius:20px;padding:2px 7px;}
+#rl-panel #rl-brief .pk-tag{position:absolute;top:9px;right:9px;font-size:7.5px;font-weight:800;letter-spacing:.6px;
+  padding:3px 7px;border-radius:20px;}
+#rl-panel #rl-brief .pk-card.good .pk-tag{background:#e7f6ec;color:#1f9d55;}
+#rl-panel #rl-brief .pk-card.bad .pk-tag{background:#fdeceb;color:#dc4a45;}
 #rl-panel .cmp-head{display:flex;align-items:center;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:#a2a5ac;padding:0 0 6px;border-bottom:1px solid #f0f1f3;}
 #rl-panel .cmp-head span{flex:1;}
 #rl-panel .cmp-head .cr,#rl-panel .cmp-head .cb{flex:none;width:100px;text-align:center;white-space:nowrap;}
@@ -855,7 +855,12 @@ export function initPanel() {
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
       <button class="turbobtn" type="button" aria-label="Turbo: fast-forward training"></button>
-      <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
+      <div class="harena">
+        <button class="closebtn" type="button" aria-label="Close the control menu" title="Close (C)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6 8.5 12l6 6"/></svg>
+        </button>
+        <b id="rl-arena">-</b><div class="rdots" id="rl-round"></div>
+      </div>
       <div class="mselect" role="group" aria-label="Model view">
         <span class="msel-wash" aria-hidden="true"></span>
         <button type="button" class="msel your active" data-view="your" aria-pressed="true">
@@ -1036,8 +1041,9 @@ export function initPanel() {
     el.style.background = `linear-gradient(to right,${fill} ${pct}%,#e1e3e8 ${pct}%)`;
   };
 
-  // ---- open / close the control menu (C key) ----
+  // ---- open / close the control menu (C key / the header chevron) ----
   if (new URLSearchParams(location.search).has('panel')) panel.classList.add('open');
+  panel.querySelector('.closebtn').addEventListener('click', () => panel.classList.remove('open'));
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && panel.classList.contains('open')) {
       e.preventDefault();
