@@ -244,7 +244,26 @@ buffer 50k, warmup 500, target sync 500, 3-step returns).
 | 8 | Toad | 0.36 | 0.994 | 0.88 | 0.05 | 900 |
 | 9 | Parabones | 0.38 | 0.995 | 0.85 | 0.03 | 600 |
 
-R4_BEST_PLACEHOLDER
+**The best measured settings (search + numbers).** Method: train Blue for 700
+episodes against Parabones (DQN, level 9) inside the real tournament loop
+(curriculum + action-repeat included), score the last 200 episodes; 2 seeds per
+candidate, ~40 minutes of CPU training per run. Results (Blue win rate): the
+shipped Blue default (Double-DQN, alpha .30, gamma .99, eps -> .05 over 1,000)
+already edges Parabones at **53%** - Double-DQN's corrected bootstrap beats
+vanilla DQN at comparable settings; cloning Parabones' schedule onto Double-DQN
+gains nothing (**47%**); target-sync 250 **51%**; Parabones' schedule + n-step
+5 **61%**; + hidden width 256 **63%**; and **Dueling-DQN on Parabones'
+schedule wins 66%** (0.72 / 0.60 across seeds - its worse seed still beats
+every pb-clone seed). The measured best set: **Dueling-DQN, alpha 0.38, gamma
+0.995, epsilon 0.85 -> 0.03 over 600 episodes, network 128 x 2, batch 64,
+buffer 50k, warmup 500, target sync 500, 3-step returns**. Why each value:
+the Dueling head wins because in a missile storm most of the value is WHERE
+YOU STAND (V) rather than tiny per-action differences (A), which is exactly
+the split it learns; alpha 0.38 / 600-episode decay because the curriculum
+makes early episodes easy, so exploring long wastes them; gamma 0.995 because
+staying alive is a hundreds-of-steps horizon; eps floor 0.03 because every
+random step in a barrage is a heart risk; and the stock replay/target-sync
+values were confirmed by the sync-250 probe changing nothing.
 
 ### Room 5 - Dry Dry Desert (Policy Gradient: Actor-Critic vs PPO, also REINFORCE)
 
