@@ -217,6 +217,7 @@ OIL_KNOCKBACK = 2.5                     # oil throws the rival back this far (un
 BOWSER_THROW_COUNT = 1                  # objects hurled per throw (tunable 0..4)
 BOWSER_OBJ_SPEED = 6.0                  # object travel speed, units/s (tunable)
 BOWSER_OBJ_R = 0.45                     # object radius (contact + draw)
+BOWSER_BLAST_R = 1.7                    # explosion radius: an agent within this is stunned
 BOWSER_THROW_INTERVAL = 15.0          # seconds between throws
 BOWSER_FIRST_THROW = 4.0               # first throw after this many seconds
 BOWSER_OBJ_STUN_SECONDS = 1.0          # stun when an object hits an agent
@@ -1892,7 +1893,9 @@ class ContinuousArena:
                 self.hazards.append({
                     "id": self._hazard_serial,
                     "pos": np.array([self.ship_x, ship_z], dtype=np.float32),
-                    "vel": vel.astype(np.float32), "age": 0,
+                    "vel": vel.astype(np.float32),
+                    "target": np.array([tx, tz], dtype=np.float32),  # where it lands
+                    "age": 0,
                     "kind": self._hazard_serial % 3,        # a few different object looks
                 })
             self._add_ctf_event("throw", "red",
@@ -1906,20 +1909,23 @@ class ContinuousArena:
             hz["age"] += 1
             hz["pos"] = (hz["pos"] + hz["vel"] * self.dt).astype(np.float32)
             p = hz["pos"]
-            hit_side = None
-            for cs, cp in (("red", self.red_pos), ("blue", self.blue_pos)):
-                if float(np.linalg.norm(p - cp)) <= BOWSER_OBJ_R + AGENT_R:
-                    hit_side = cs
-                    break
-            if hit_side is not None:
-                self.stun[hit_side] = max(self.stun[hit_side],
-                                          self._seconds_to_steps(BOWSER_OBJ_STUN_SECONDS))
-                reward[hit_side] += STUNNED_PENALTY
-                self._add_ctf_event("bowserhit", hit_side, p)
-                continue                                    # object consumed on impact
+            # IMPACT when it reaches its target spot, flies into an agent, leaves the
+            # board, or times out -> it EXPLODES there.
+            reached = float(np.dot(hz["target"] - p, hz["vel"])) <= 0.0
+            direct = any(float(np.linalg.norm(p - cp)) <= BOWSER_OBJ_R + AGENT_R
+                         for cp in (self.red_pos, self.blue_pos))
             off = (p[0] < -3 or p[0] > A + 3 or p[1] < -3 or p[1] > A + 3)
-            if not off and hz["age"] * self.dt <= BOWSER_OBJ_LIFETIME:
-                survivors.append(hz)
+            timeout = hz["age"] * self.dt > BOWSER_OBJ_LIFETIME
+            if reached or direct or off or timeout:
+                # the blast STUNS any agent within BOWSER_BLAST_R of the impact point
+                for cs, cp in (("red", self.red_pos), ("blue", self.blue_pos)):
+                    if float(np.linalg.norm(p - cp)) <= BOWSER_BLAST_R + AGENT_R:
+                        self.stun[cs] = max(self.stun[cs],
+                                            self._seconds_to_steps(BOWSER_OBJ_STUN_SECONDS))
+                        reward[cs] += STUNNED_PENALTY
+                self._add_ctf_event("bombhit", "red", p)    # -> the explosion FX
+                continue                                    # bomb consumed on impact
+            survivors.append(hz)
         self.hazards = survivors
 
     def _commit_action(self, side, a):

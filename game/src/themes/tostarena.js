@@ -1586,6 +1586,239 @@ export const tostarena = {
         }
       }
     }
+    // ---- bomb-impact EXPLOSION: the EXACT toon-fire blast ported from R4
+    // (ruined.js): a blob cluster + burst star + additive core sprite + pale dust
+    // puffs + a brief point light. Geometry/textures are shared; each blast owns
+    // only its animated materials.
+    const MAX_EXPLOSION_FX = 8, MAX_EXPLOSION_LIGHTS = 4;
+    const explosionFx = [];
+    const toonGradient = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = 4; cv.height = 1;
+      const g = cv.getContext("2d");
+      ["#3a3a3a", "#797979", "#b9b9b9", "#ffffff"].forEach((color, i) => {
+        g.fillStyle = color; g.fillRect(i, 0, 1, 1);
+      });
+      const tx = trackTexture(new THREE.CanvasTexture(cv));
+      tx.minFilter = THREE.NearestFilter; tx.magFilter = THREE.NearestFilter;
+      tx.generateMipmaps = false;
+      return tx;
+    })();
+    const explosionBlobGeometry = (() => {
+      const geometry = track(new THREE.IcosahedronGeometry(0.5, 4));
+      const position = geometry.attributes.position, normal = geometry.attributes.normal;
+      for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i), y = position.getY(i), z = position.getZ(i);
+        const length = Math.max(0.0001, Math.hypot(x, y, z));
+        const nx = x / length, ny = y / length, nz = z / length;
+        const wobble = 1 + Math.sin(nx * 8.7 + ny * 4.1 - nz * 2.3) * 0.06
+          + Math.sin(nz * 10.3 - nx * 3.7 + ny * 2.9) * 0.035;
+        position.setXYZ(i, x * wobble, y * wobble, z * wobble);
+        normal.setXYZ(i, nx, ny, nz);
+      }
+      position.needsUpdate = true; normal.needsUpdate = true;
+      return geometry;
+    })();
+    const explosionBurstGeometry = (() => {
+      const positions = [], colors = [];
+      const innerColor = new THREE.Color(0xda9e51), tipColor = new THREE.Color(0xf6de4a);
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2;
+        const inner = 0.28 + (i % 3) * 0.025, outer = i % 2 ? 1.08 : 1.42;
+        const halfWidth = i % 2 ? 0.046 : 0.062;
+        positions.push(
+          Math.cos(angle - halfWidth) * inner, 0, Math.sin(angle - halfWidth) * inner,
+          Math.cos(angle) * outer, 0, Math.sin(angle) * outer,
+          Math.cos(angle + halfWidth) * inner, 0, Math.sin(angle + halfWidth) * inner);
+        colors.push(innerColor.r, innerColor.g, innerColor.b,
+          tipColor.r, tipColor.g, tipColor.b, innerColor.r, innerColor.g, innerColor.b);
+      }
+      const geometry = track(new THREE.BufferGeometry());
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      return geometry;
+    })();
+    const explosionCoreTexture = (() => {
+      const cv = document.createElement("canvas");
+      cv.width = cv.height = 128;
+      const g = cv.getContext("2d");
+      const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.18, "rgba(255,251,208,1)");
+      grad.addColorStop(0.46, "rgba(245,235,85,.86)");
+      grad.addColorStop(0.7, "rgba(221,130,101,.34)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+      const tx = trackTexture(new THREE.CanvasTexture(cv));
+      tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = maxAniso;
+      return tx;
+    })();
+    const FIRE_CORE = new THREE.Color(0xfffbd0), FIRE_HOT = new THREE.Color(0xf5eb55);
+    const FIRE_GOLD = new THREE.Color(0xda9e51), FIRE_CORAL = new THREE.Color(0xdd8265);
+    const FIRE_BURNT = new THREE.Color(0xac4b40);
+    function disposeExplosion(fx) {
+      group.remove(fx.group);
+      fx.coreMat.dispose(); fx.burstMat.dispose();
+      for (const layer of fx.fireLayers) layer.material.dispose();
+      for (const layer of fx.dustLayers) layer.material.dispose();
+    }
+    function spawnExplosion(x, z) {
+      while (explosionFx.length >= MAX_EXPLOSION_FX) disposeExplosion(explosionFx.shift());
+      const p = { x, z };
+      const blast = new THREE.Group();
+      blast.position.set(p.x, 0.88, p.z);
+      const isHit = false;                                 // a bomb hits the sand -> dust
+      const coreMat = new THREE.SpriteMaterial({
+        map: explosionCoreTexture, color: 0xffffff, transparent: true, opacity: 1,
+        depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      });
+      const core = new THREE.Sprite(coreMat);
+      core.scale.setScalar(0.32); core.renderOrder = 34;
+      blast.add(core);
+      const burstMat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 1, depthWrite: false,
+        depthTest: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      });
+      const burst = new THREE.Mesh(explosionBurstGeometry, burstMat);
+      burst.position.y = 0.035; burst.rotation.y = Math.random() * Math.PI * 2;
+      burst.scale.setScalar(0.42); burst.renderOrder = 33;
+      blast.add(burst);
+      const fireLayers = [];
+      const fireCount = isHit ? 8 : 7, blastScale = isHit ? 1.13 : 1.09;
+      for (let i = 0; i < fireCount; i++) {
+        const emissivePeak = i === 0 ? 1.02 : i === 1 ? 0.7 : 0.48 + Math.random() * 0.13;
+        const material = new THREE.MeshToonMaterial({
+          color: FIRE_CORE, gradientMap: toonGradient, emissive: FIRE_HOT,
+          emissiveIntensity: emissivePeak, transparent: true, opacity: 0,
+          depthWrite: false, depthTest: true, toneMapped: false,
+        });
+        const mesh = new THREE.Mesh(explosionBlobGeometry, material);
+        const angle = i === 0 ? 0 : i * 2.399963229728653 + (Math.random() - 0.5) * 0.62;
+        const radius = (i === 0 ? 0 : i === 1 ? 0.2 + Math.random() * 0.12
+          : 0.48 + Math.random() * 0.3) * 1.08;
+        const origin = new THREE.Vector3(Math.cos(angle) * radius,
+          i === 0 ? 0.12 : -0.08 + Math.random() * 0.5, Math.sin(angle) * radius);
+        mesh.position.copy(origin);
+        mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        mesh.scale.setScalar(0.001);
+        mesh.renderOrder = 29;
+        blast.add(mesh);
+        const size = (i === 0 ? 1.5 : i === 1 ? 1.3 + Math.random() * 0.14
+          : 1.1 + Math.random() * 0.34) * blastScale;
+        fireLayers.push({
+          mesh, material, origin,
+          delay: i === 0 ? 0 : 0.018 + Math.random() * 0.045,
+          life: i === 0 ? 0.42 : 0.34 + Math.random() * 0.05,
+          maxScale: new THREE.Vector3(size * (0.9 + Math.random() * 0.18),
+            size * (0.82 + Math.random() * 0.22), size * (0.9 + Math.random() * 0.18)),
+          maxOpacity: i === 0 ? 1 : 0.94,
+          heatOffset: i === 0 ? -0.1 : i === 1 ? 0.06 : 0.14 + Math.random() * 0.12,
+          emissivePeak,
+          spin: new THREE.Vector3((Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.7,
+            (Math.random() - 0.5) * 1.5),
+          drift: new THREE.Vector3(Math.cos(angle) * (0.12 + Math.random() * 0.17),
+            0.04 + Math.random() * 0.13, Math.sin(angle) * (0.12 + Math.random() * 0.17)),
+        });
+      }
+      const dustLayers = [];
+      if (!isHit) {
+        const outward = new THREE.Vector3(p.x - C, 0, p.z - C);
+        if (outward.lengthSq() < 0.001) outward.set(0, 0, 1);
+        outward.normalize();
+        const tangent = new THREE.Vector3(-outward.z, 0, outward.x);
+        const dustPalette = [0xf4efe5, 0xe7e0d3, 0xd2ccc4, 0xb7b0aa];
+        for (let i = 0; i < 8; i++) {
+          const color = dustPalette[i % dustPalette.length];
+          const material = new THREE.MeshToonMaterial({
+            color, gradientMap: toonGradient, emissive: color, emissiveIntensity: 0.08,
+            transparent: true, opacity: 0, depthWrite: false, depthTest: true, toneMapped: false,
+          });
+          const mesh = new THREE.Mesh(explosionBlobGeometry, material);
+          const side = (Math.random() - 0.5) * 1.6;
+          const origin = new THREE.Vector3().addScaledVector(tangent, side)
+            .addScaledVector(outward, (Math.random() - 0.5) * 0.16);
+          origin.y = -0.14 + Math.random() * 0.55;
+          mesh.position.copy(origin);
+          mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+          mesh.scale.setScalar(0.001); mesh.renderOrder = 21 + i;
+          blast.add(mesh);
+          const width = 0.55 + Math.random() * 0.34;
+          dustLayers.push({
+            mesh, material, origin,
+            delay: 0.27 + Math.random() * 0.045, life: 0.39 + Math.random() * 0.05,
+            maxScale: new THREE.Vector3(width, 0.5 + Math.random() * 0.4, 0.44 + Math.random() * 0.28),
+            maxOpacity: 0.58 + Math.random() * 0.16,
+            spin: new THREE.Vector3((Math.random() - 0.5) * 0.65, (Math.random() - 0.5) * 0.75,
+              (Math.random() - 0.5) * 0.65),
+            drift: new THREE.Vector3().addScaledVector(tangent, (Math.random() - 0.5) * 0.32)
+              .addScaledVector(outward, -0.08 - Math.random() * 0.16)
+              .add(new THREE.Vector3(0, 0.32 + Math.random() * 0.42, 0)),
+          });
+        }
+      }
+      const hasLightBudget = explosionFx.filter((fx) => fx.light).length < MAX_EXPLOSION_LIGHTS;
+      const light = hasLightBudget
+        ? new THREE.PointLight(0xffdc57, isHit ? 18 : 15, isHit ? 9 : 8, 2) : null;
+      if (light) { light.position.y = 0.45; light.castShadow = false; blast.add(light); }
+      group.add(blast);
+      const duration = Math.max(0.52, ...fireLayers.map((l) => l.delay + l.life),
+        ...dustLayers.map((l) => l.delay + l.life)) + 0.06;
+      explosionFx.push({
+        group: blast, core, coreMat, burst, burstMat, fireLayers, dustLayers,
+        light, lightPeak: isHit ? 18 : 15, age: 0, duration,
+      });
+    }
+    function updateExplosions(dt) {
+      const smooth = THREE.MathUtils.smoothstep;
+      for (let i = explosionFx.length - 1; i >= 0; i--) {
+        const fx = explosionFx[i];
+        fx.age += dt;
+        const u = Math.min(1, fx.age / fx.duration);
+        const coreU = Math.min(1, fx.age / 0.29);
+        fx.core.scale.setScalar(0.32 + 1.48 * (1 - Math.exp(-coreU * 7.5)));
+        fx.coreMat.opacity = 1 - smooth(coreU, 0.22, 1);
+        const burstU = Math.min(1, fx.age / 0.2);
+        fx.burst.scale.setScalar(0.42 + 0.78 * (1 - Math.pow(1 - burstU, 3)));
+        fx.burst.rotation.y += dt * 1.2;
+        fx.burstMat.opacity = 1 - smooth(burstU, 0.16, 1);
+        for (const layer of fx.fireLayers) {
+          const local = (fx.age - layer.delay) / layer.life;
+          if (local <= 0 || local >= 1) { layer.material.opacity = 0; continue; }
+          const appear = smooth(local, 0, 0.075), fade = 1 - smooth(local, 0.56, 1);
+          const enter = Math.min(1, local / 0.18), pop = 1 - Math.pow(1 - enter, 3);
+          const contract = 1 - 0.62 * smooth(local, 0.54, 1);
+          layer.mesh.scale.copy(layer.maxScale).multiplyScalar(Math.max(0.001, pop * contract));
+          const move = smooth(local, 0.12, 1);
+          layer.mesh.position.copy(layer.origin).addScaledVector(layer.drift, move);
+          layer.mesh.rotation.x += layer.spin.x * dt;
+          layer.mesh.rotation.y += layer.spin.y * dt;
+          layer.mesh.rotation.z += layer.spin.z * dt;
+          layer.material.opacity = appear * fade * layer.maxOpacity;
+          const heat = THREE.MathUtils.clamp(local + layer.heatOffset, 0, 1);
+          if (heat < 0.2) layer.material.color.lerpColors(FIRE_CORE, FIRE_HOT, heat / 0.2);
+          else if (heat < 0.48) layer.material.color.lerpColors(FIRE_HOT, FIRE_GOLD, (heat - 0.2) / 0.28);
+          else if (heat < 0.75) layer.material.color.lerpColors(FIRE_GOLD, FIRE_CORAL, (heat - 0.48) / 0.27);
+          else layer.material.color.lerpColors(FIRE_CORAL, FIRE_BURNT, (heat - 0.75) / 0.25);
+          layer.material.emissive.copy(layer.material.color);
+          layer.material.emissiveIntensity = 0.04 + layer.emissivePeak * (1 - smooth(local, 0.1, 0.68));
+        }
+        for (const layer of fx.dustLayers) {
+          const local = (fx.age - layer.delay) / layer.life;
+          if (local <= 0 || local >= 1) { layer.material.opacity = 0; continue; }
+          const appear = smooth(local, 0, 0.13), fade = 1 - smooth(local, 0.56, 1);
+          const grow = 1 - Math.pow(1 - Math.min(1, local / 0.32), 3);
+          layer.mesh.scale.copy(layer.maxScale).multiplyScalar(Math.max(0.001, grow));
+          layer.mesh.position.copy(layer.origin).addScaledVector(layer.drift, local);
+          layer.mesh.rotation.x += layer.spin.x * dt;
+          layer.mesh.rotation.y += layer.spin.y * dt;
+          layer.mesh.rotation.z += layer.spin.z * dt;
+          layer.material.opacity = appear * fade * layer.maxOpacity;
+        }
+        if (fx.light) fx.light.intensity = fx.lightPeak * Math.exp(-fx.age * 10.5);
+        if (u >= 1) { disposeExplosion(fx); explosionFx.splice(i, 1); }
+      }
+    }
     function updateBowser(frame, t, dt) {
       // the ship FLOATS (gentle bob + roll) and drifts a little to frame.ship.x;
       // Bowser STANDS on the deck (the cannons fire), just riding the ship's motion.
@@ -1607,6 +1840,7 @@ export const tostarena = {
         bowser.obj.rotation.set(pitch, 0, roll); // just rides the roll
       }
       updateCannonFx(dt);
+      updateExplosions(dt);
     }
 
     // ---- crate-break shards (wooden debris flung out when a crate is smashed)
@@ -1827,6 +2061,8 @@ export const tostarena = {
           spawnShards(ev.pos[0], ev.pos[1]); // the smash burst
         } else if (ev.type === "throw") {
           spawnCannonFire(); // a cannon flashes + smokes as the bomb is fired
+        } else if (ev.type === "bombhit" && ev.pos) {
+          spawnExplosion(ev.pos[0], ev.pos[1]); // the bomb lands + explodes
         }
       }
       updateShards(dt);
@@ -1848,6 +2084,8 @@ export const tostarena = {
       hazardMeshes.clear();
       for (const f of cannonFx) { group.remove(f.m); f.m.material.dispose(); }
       cannonFx.length = 0;
+      for (const fx of explosionFx) disposeExplosion(fx);
+      explosionFx.length = 0;
       // absorb events already present in a restored frame so they don't re-fire
       for (const ev of frameToSuppress?.ctfEvents || []) rememberEvent(ev.id);
     }
@@ -1915,6 +2153,8 @@ export const tostarena = {
       hazardMeshes.clear();
       for (const f of cannonFx) { group.remove(f.m); f.m.material.dispose(); }
       cannonFx.length = 0;
+      for (const fx of explosionFx) disposeExplosion(fx);
+      explosionFx.length = 0;
       for (const s of shards) group.remove(s);
       shards.length = 0;
       const disposeTree = (obj) =>
