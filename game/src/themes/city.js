@@ -977,19 +977,28 @@ export const city = {
           setObjMat(wrap, plantMat);
           wrap.position.set(cellX(c), 0.02, cellZ(r));
           group.add(wrap);
-          const bones = { spins: [], jawL: [], jawU: [] };
+          const bones = { spins: [], jawL: [], jawU: [], neck: null };
           wrap.traverse((o) => {
             if (!o.isBone) return;
             if (/^Spin[1-4]$/.test(o.name)) bones.spins.push(o);
             else if (/^JawLower/.test(o.name)) bones.jawL.push(o);
             else if (/^JawUpper/.test(o.name)) bones.jawU.push(o);
+            // `Center` roots the stem (Center -> Spin1..4 -> Head -> jaws) and is a SIBLING
+            // of LeafL / LeafR, so twisting it aims the stem while the base stays planted.
+            else if (/^Center$/.test(o.name)) bones.neck = o;
           });
           bones.spins.sort((a, b) => a.name.localeCompare(b.name));
+          if (!bones.neck) bones.neck = bones.spins[0] || null;
           // The whole armature is authored with local X pointing UP, so the neck's forward
           // bend and the jaw's mouth-open BOTH hinge about each bone's local Y (a horizontal
-          // axis) - NOT local X (which just twists/skews). Store the rest local-Y per bone.
+          // axis), while local X is the stem's own axis (a twist). Store both rest angles.
           for (const b of [...bones.spins, ...bones.jawL, ...bones.jawU]) b.userData.ry = b.rotation.y;
-          plantObjs.push({ r, c, wrap, bones, restY: wrap.rotation.y, chomp: 0, death: null, ate: false });
+          if (bones.neck) bones.neck.userData.rx = bones.neck.rotation.x;
+          // The body never turns any more, so give each plant its own resting facing
+          // (deterministic per cell) instead of a row of identically-posed clones.
+          wrap.rotation.y = ((r * 7 + c * 13) % 16) * (Math.PI / 8);
+          plantObjs.push({ r, c, wrap, bones, restY: wrap.rotation.y,
+                           chomp: 0, death: null, ate: false, twist: 0 });
         }
       }).catch((e) => console.warn('Piranha plant failed to load', e));
 
@@ -1132,7 +1141,14 @@ export const city = {
           reach = p.chomp * 0.45; mouth = p.chomp * 0.6;
         }
 
-        p.wrap.rotation.y += (targetY - p.wrap.rotation.y) * Math.min(1, dt * 9);
+        // AIM with the STEM, not the body: twist the neck root about its own (vertical)
+        // axis so the head swings to the prey while the base and its leaves stay planted.
+        // Step the SHORT way around - a plain lerp toward an atan2 angle crosses the
+        // +/-PI seam and unwinds the long way, which read as a full-body spin.
+        let d = (targetY - p.restY - p.twist + Math.PI) % (2 * Math.PI);
+        if (d < 0) d += 2 * Math.PI;
+        p.twist += (d - Math.PI) * Math.min(1, dt * 9);
+        if (p.bones.neck) p.bones.neck.rotation.x = p.bones.neck.userData.rx + p.twist;
         const sp = p.bones.spins;                       // stack the segment bends -> the neck arcs over
         // hinge about local Y: -reach lunges the neck FORWARD (+Z, toward the prey); the jaws
         // swing open vertically (lower drops, upper lifts) instead of twisting sideways.
