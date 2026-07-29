@@ -25,9 +25,10 @@ const PEACH_ACTION_ORDER = [1, 0, 3, 2];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
 const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)
-// A loaded replay always plays at THIS fixed, watchable pace, no matter how fast the
-// live-training slider is set (crank training to 15000/s, a replay still crawls at 5/s).
-const REPLAY_VIEW_FPS = 5;
+const speedToSlider = (sps) => 100 * Math.log(sps) / Math.log(15000); // inverse of the above
+// Picking a replay just MOVES the speed slider to this pace (a watchable 5/s); the slider
+// still drives the replay from there, exactly like the live game.
+const REPLAY_VIEW_SPS = 5;
 
 // per-level control scoping. DP planners (Value / Policy Iteration) plan with the
 // discount γ + a planning-speed knob, so the learning controls (α, ε) hide there.
@@ -949,6 +950,14 @@ export function initPanel() {
     paintRange(speed);
   };
   const sendSpeed = () => window.RL.control({ cmd: 'speed', value: effSpeed() });
+  // a loaded replay plays at the CURRENT speed setting (mapped to a watchable fps)
+  const replayFps = () => Math.max(1, Math.min(60, effSpeed()));
+  // move the slider to ~5/s (accounting for the round's speedMul so the shown number is 5)
+  const setSpeedToReplayPace = () => {
+    speed.value = Math.max(0, Math.min(100, Math.round(speedToSlider(REPLAY_VIEW_SPS / speedMul))));
+    showSpeed();
+    sendSpeed();
+  };
 
   // ---- Arena-2 TURBO: a blue lightning button that sits in the CPU lock's exact slot
   // (top-right of the header). One click JUMPS training TURBO_SKIP episodes into the future
@@ -995,10 +1004,12 @@ export function initPanel() {
     speedMul = mul;
     showSpeed();
     sendSpeed();
+    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
   };
   speed.addEventListener('input', () => {
     showSpeed();
     sendSpeed();
+    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
   });
   showSpeed();
   sendSpeed();
@@ -1046,7 +1057,8 @@ export function initPanel() {
     playBtn.style.background = on ? (red ? '#e60012' : '#1f5fd0') : '';
     if (on) {
       setMapContext(s.tomatoMask, s.nTomatoes, true);
-      if (!lastReplayActive) window.RL.replay?.setFps?.(REPLAY_VIEW_FPS); // fixed watchable pace, not the training speed
+      if (!lastReplayActive) setSpeedToReplayPace();  // moving into a replay: drop the slider to 5/s
+      window.RL.replay?.setFps?.(replayFps());        // play at whatever the slider now reads
       seekEl.style.setProperty('--fill', red ? '#e60012' : '#1f5fd0'); // scrubber matches the model
       seekEl.max = Math.max(0, (s.total || 1) - 1);
       if (document.activeElement !== seekEl) { seekEl.value = s.idx; paintRange(seekEl); } // don't fight a drag

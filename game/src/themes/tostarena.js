@@ -17,7 +17,7 @@ import * as THREE from "three";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
-import { loadBoardWalker } from "../boardchars.js";   // Bowser rides the airship (idx 6)
+import { loadBoardWalker } from "../boardchars.js"; // Bowser rides the airship (idx 6)
 
 const ASSETS = "./assets/models/tostarena/";
 
@@ -471,7 +471,11 @@ export const tostarena = {
     // the arena - remove just those 36 triangles; the wall in the same bucket
     // is 1000+ units away in model space, so it is untouched.
     const TOWN_CARVE = [
-      { mesh: "WallClayColor01_rep", lo: [-530, -70, -610], hi: [-250, 210, -300] },
+      {
+        mesh: "WallClayColor01_rep",
+        lo: [-530, -70, -610],
+        hi: [-250, 210, -300],
+      },
     ];
     // `which` names the placement in TOWN; `place.half` (or `which` itself)
     // picks which geometry HALF to keep, so several placements can reuse the
@@ -721,7 +725,14 @@ export const tostarena = {
       const r = Math.round(c.r * 255),
         g = Math.round(c.g * 255),
         b = Math.round(c.b * 255);
-      const grd = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      const grd = ctx.createRadialGradient(
+        S / 2,
+        S / 2,
+        0,
+        S / 2,
+        S / 2,
+        S / 2,
+      );
       grd.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
       grd.addColorStop(0.4, `rgba(${r},${g},${b},0.35)`);
       grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
@@ -765,7 +776,10 @@ export const tostarena = {
         m.position.copy(sm.position);
         m.quaternion.copy(sm.quaternion);
         m.scale.copy(sm.scale);
-        if (sm.parent) { sm.parent.add(m); sm.parent.remove(sm); }
+        if (sm.parent) {
+          sm.parent.add(m);
+          sm.parent.remove(sm);
+        }
       }
       return root;
     };
@@ -788,90 +802,121 @@ export const tostarena = {
     // in the wind (a vertex wave growing from the pole to the free edge).
     const FLAGDIR = OBJ + "Checkpoint Flag/";
     const flag = {
-      poleWrap: new THREE.Group(),          // the planted pole (never moves)
-      clothWrap: null,                      // the movable cloth group
-      cloth: null, clothBase: null, wave: null, clothHome: null,
+      poleWrap: new THREE.Group(), // the planted pole (never moves)
+      clothWrap: null, // the movable cloth group
+      cloth: null,
+      clothBase: null,
+      wave: null,
+      clothHome: null,
     };
     flag.poleWrap.position.set(C, 0, C);
     group.add(flag.poleWrap);
     {
-      const poleMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(FLAGDIR + "CheckpointFlagBody_alb.png", true),
-        normalMap: objTex(FLAGDIR + "CheckpointFlagBody_nrm.png", false),
-        roughnessMap: objTex(FLAGDIR + "CheckpointFlagBody_rgh.png", false),
-        roughness: 0.75, metalness: 0.2,
-      }));
-      const clothMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(FLAGDIR + "CheckpointFlagMark_alb.0.png", true),
-        normalMap: objTex(FLAGDIR + "CheckpointFlagMark_nrm.0.png", false),
-        roughnessMap: objTex(FLAGDIR + "CheckpointFlagMark_rgh.0.png", false),
-        roughness: 0.7, metalness: 0.0, side: THREE.DoubleSide,
-      }));
-      collada.loadAsync(encodeURI(FLAGDIR + "CheckpointFlag.dae")).then((asset) => {
-        if (disposed) return;
-        const root = deskinObj(asset.scene);
-        let clothMesh = null;
-        root.traverse((o) => {
-          if (!o.isMesh) return;
-          o.castShadow = true;
-          o.receiveShadow = true;
-          track(o.geometry);
-          // NB: the pole mesh is "CheckpointFlag__BodyMT" - it CONTAINS "Flag"
-          // (from the model name), so key off "Body" for the pole and treat the
-          // rest (the "__FlagMT" cloth) as the banner.
-          if (/body/i.test(o.name || "")) o.material = poleMat;
-          else { o.material = clothMat; clothMesh = o; }
-        });
-        const wrap = fitObj(root, 2.8, true);      // ~2.8 units tall by height
-        flag.poleWrap.add(wrap);
-        // lift the CLOTH out of the pole model into its own world-space group, so
-        // only the cloth travels while the pole stays planted. Bake its planted
-        // world transform so it doesn't jump when we detach it.
-        if (clothMesh) {
-          flag.poleWrap.updateMatrixWorld(true);
-          const wp = new THREE.Vector3(), wq = new THREE.Quaternion(),
-            ws = new THREE.Vector3();
-          clothMesh.matrixWorld.decompose(wp, wq, ws);
-          clothMesh.parent.remove(clothMesh);
-          clothMesh.position.set(0, 0, 0);
-          clothMesh.quaternion.copy(wq);
-          clothMesh.scale.copy(ws);
-          const cw = new THREE.Group();
-          cw.position.copy(wp);
-          cw.add(clothMesh);
-          group.add(cw);
-          flag.clothWrap = cw;
-          flag.cloth = clothMesh;
-          flag.clothHome = wp.clone();             // where it rests on the pole
-          // prime the wind wave: flattest axis = the sheet normal to displace, the
-          // wider horizontal axis = the length (the free edge waves most).
-          const g = clothMesh.geometry;
-          g.computeBoundingBox();
-          const bb = g.boundingBox;
-          const ext = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z];
-          const normalAxis = ext.indexOf(Math.min(...ext));
-          const lenAxis = normalAxis === 0 ? 2 : normalAxis === 2 ? 0
-            : (ext[0] >= ext[2] ? 0 : 2);
-          flag.clothBase = Float32Array.from(g.attributes.position.array);
-          flag.wave = {
-            normalAxis, lenAxis,
-            lo: bb.min.getComponent(lenAxis),
-            range: ext[lenAxis] || 1,
-          };
-          // centre the POLE dead-centre: the cloth was offset to one side and skewed
-          // the model bbox, so fitObj left the pole off-centre. Shift the (now pole-
-          // only) model AND the cloth's home by the same offset so the cloth stays put.
-          wrap.updateMatrixWorld(true);
-          const pc = new THREE.Box3().setFromObject(wrap).getCenter(new THREE.Vector3());
-          const ox = pc.x - C, oz = pc.z - C;
-          wrap.position.x -= ox;
-          wrap.position.z -= oz;
-          cw.position.x -= ox;
-          cw.position.z -= oz;
-          flag.clothHome.x -= ox;
-          flag.clothHome.z -= oz;
-        }
-      }).catch(() => {});
+      const poleMat = track(
+        new THREE.MeshStandardMaterial({
+          map: objTex(FLAGDIR + "CheckpointFlagBody_alb.png", true),
+          normalMap: objTex(FLAGDIR + "CheckpointFlagBody_nrm.png", false),
+          roughnessMap: objTex(FLAGDIR + "CheckpointFlagBody_rgh.png", false),
+          roughness: 0.75,
+          metalness: 0.2,
+        }),
+      );
+      const clothMat = track(
+        new THREE.MeshStandardMaterial({
+          map: objTex(FLAGDIR + "CheckpointFlagMark_alb.0.png", true),
+          normalMap: objTex(FLAGDIR + "CheckpointFlagMark_nrm.0.png", false),
+          roughnessMap: objTex(FLAGDIR + "CheckpointFlagMark_rgh.0.png", false),
+          roughness: 0.7,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+        }),
+      );
+      collada
+        .loadAsync(encodeURI(FLAGDIR + "CheckpointFlag.dae"))
+        .then((asset) => {
+          if (disposed) return;
+          const root = deskinObj(asset.scene);
+          let clothMesh = null;
+          root.traverse((o) => {
+            if (!o.isMesh) return;
+            o.castShadow = true;
+            o.receiveShadow = true;
+            track(o.geometry);
+            // NB: the pole mesh is "CheckpointFlag__BodyMT" - it CONTAINS "Flag"
+            // (from the model name), so key off "Body" for the pole and treat the
+            // rest (the "__FlagMT" cloth) as the banner.
+            if (/body/i.test(o.name || "")) o.material = poleMat;
+            else {
+              o.material = clothMat;
+              clothMesh = o;
+            }
+          });
+          const wrap = fitObj(root, 2.8, true); // ~2.8 units tall by height
+          flag.poleWrap.add(wrap);
+          // lift the CLOTH out of the pole model into its own world-space group, so
+          // only the cloth travels while the pole stays planted. Bake its planted
+          // world transform so it doesn't jump when we detach it.
+          if (clothMesh) {
+            flag.poleWrap.updateMatrixWorld(true);
+            const wp = new THREE.Vector3(),
+              wq = new THREE.Quaternion(),
+              ws = new THREE.Vector3();
+            clothMesh.matrixWorld.decompose(wp, wq, ws);
+            clothMesh.parent.remove(clothMesh);
+            clothMesh.position.set(0, 0, 0);
+            clothMesh.quaternion.copy(wq);
+            clothMesh.scale.copy(ws);
+            const cw = new THREE.Group();
+            cw.position.copy(wp);
+            cw.add(clothMesh);
+            group.add(cw);
+            flag.clothWrap = cw;
+            flag.cloth = clothMesh;
+            flag.clothHome = wp.clone(); // where it rests on the pole
+            // prime the wind wave: flattest axis = the sheet normal to displace, the
+            // wider horizontal axis = the length (the free edge waves most).
+            const g = clothMesh.geometry;
+            g.computeBoundingBox();
+            const bb = g.boundingBox;
+            const ext = [
+              bb.max.x - bb.min.x,
+              bb.max.y - bb.min.y,
+              bb.max.z - bb.min.z,
+            ];
+            const normalAxis = ext.indexOf(Math.min(...ext));
+            const lenAxis =
+              normalAxis === 0
+                ? 2
+                : normalAxis === 2
+                  ? 0
+                  : ext[0] >= ext[2]
+                    ? 0
+                    : 2;
+            flag.clothBase = Float32Array.from(g.attributes.position.array);
+            flag.wave = {
+              normalAxis,
+              lenAxis,
+              lo: bb.min.getComponent(lenAxis),
+              range: ext[lenAxis] || 1,
+            };
+            // centre the POLE dead-centre: the cloth was offset to one side and skewed
+            // the model bbox, so fitObj left the pole off-centre. Shift the (now pole-
+            // only) model AND the cloth's home by the same offset so the cloth stays put.
+            wrap.updateMatrixWorld(true);
+            const pc = new THREE.Box3()
+              .setFromObject(wrap)
+              .getCenter(new THREE.Vector3());
+            const ox = pc.x - C,
+              oz = pc.z - C;
+            wrap.position.x -= ox;
+            wrap.position.z -= oz;
+            cw.position.x -= ox;
+            cw.position.z -= oz;
+            flag.clothHome.x -= ox;
+            flag.clothHome.z -= oz;
+          }
+        })
+        .catch(() => {});
     }
 
     // ---- the two corner HOME bases: the Shiverian Rug, tinted per team ------
@@ -879,41 +924,55 @@ export const tostarena = {
     // owning model's colour (red base = red rug, blue base = blue rug). Sized to the
     // actual capture zone (radius homeR), so the rug edge IS the scoring line. The
     // capture COUNT is shown in the HUD (flag icons), not on the board.
-    const rugModels = [];                       // for disposal
+    const rugModels = []; // for disposal
     function makeBase(pos, color) {
       const bg = new THREE.Group();
       bg.position.set(pos[0], 0, pos[1]);
-      const inx = C - pos[0], inz = C - pos[1];
+      const inx = C - pos[0],
+        inz = C - pos[1];
       const il = Math.hypot(inx, inz) || 1;
-      const ux = inx / il, uz = inz / il;       // toward the plaza centre
-      const rugMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_alb.png", true),
-        normalMap: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_nrm.png", false),
-        roughnessMap: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_rgh.png", false),
-        color,                                  // team tint (multiplies the albedo)
-        roughness: 0.92, metalness: 0.0,
-      }));
-      collada.loadAsync(encodeURI(OBJ + "Shiverian Rug/SouvenirSnow1.dae")).then((asset) => {
-        if (disposed) return;
-        const root = deskinObj(asset.scene);
-        root.traverse((o) => {
-          if (!o.isMesh) return;
-          o.material = rugMat;
-          o.receiveShadow = true;
-          track(o.geometry);
-        });
-        // footprint = the capture DIAMETER (2 * homeR), so the rug marks the zone
-        const wrap = fitObj(root, homeR * 2, false);
-        // if the export came in standing up, lay it flat on the sand
-        wrap.updateMatrixWorld(true);
-        const b = new THREE.Box3().setFromObject(wrap);
-        const s = b.getSize(new THREE.Vector3());
-        if (s.y > Math.max(s.x, s.z) * 0.6) wrap.rotation.x = -Math.PI / 2;
-        wrap.rotation.y = Math.atan2(ux, uz);            // point length at centre
-        wrap.position.y = 0.02;
-        bg.add(wrap);
-        rugModels.push(wrap);
-      }).catch(() => {});
+      const ux = inx / il,
+        uz = inz / il; // toward the plaza centre
+      const rugMat = track(
+        new THREE.MeshStandardMaterial({
+          map: objTex(OBJ + "Shiverian Rug/SouvenirSnow1Body_alb.png", true),
+          normalMap: objTex(
+            OBJ + "Shiverian Rug/SouvenirSnow1Body_nrm.png",
+            false,
+          ),
+          roughnessMap: objTex(
+            OBJ + "Shiverian Rug/SouvenirSnow1Body_rgh.png",
+            false,
+          ),
+          color, // team tint (multiplies the albedo)
+          roughness: 0.92,
+          metalness: 0.0,
+        }),
+      );
+      collada
+        .loadAsync(encodeURI(OBJ + "Shiverian Rug/SouvenirSnow1.dae"))
+        .then((asset) => {
+          if (disposed) return;
+          const root = deskinObj(asset.scene);
+          root.traverse((o) => {
+            if (!o.isMesh) return;
+            o.material = rugMat;
+            o.receiveShadow = true;
+            track(o.geometry);
+          });
+          // footprint = the capture DIAMETER (2 * homeR), so the rug marks the zone
+          const wrap = fitObj(root, homeR * 2, false);
+          // if the export came in standing up, lay it flat on the sand
+          wrap.updateMatrixWorld(true);
+          const b = new THREE.Box3().setFromObject(wrap);
+          const s = b.getSize(new THREE.Vector3());
+          if (s.y > Math.max(s.x, s.z) * 0.6) wrap.rotation.x = -Math.PI / 2;
+          wrap.rotation.y = Math.atan2(ux, uz); // point length at centre
+          wrap.position.y = 0.02;
+          bg.add(wrap);
+          rugModels.push(wrap);
+        })
+        .catch(() => {});
       const glow = new THREE.PointLight(color, 0.7, 6, 2);
       glow.position.set(0, 0.7, 0);
       bg.add(glow);
@@ -937,31 +996,40 @@ export const tostarena = {
     }
 
     // ---- breakable crates: the real FrailBox (deskinned), pooled by id ------
-    const crateMeshes = new Map();          // crate id -> Object3D
+    const crateMeshes = new Map(); // crate id -> Object3D
     let crateProtoObj = null;
     {
-      const crateMat = track(new THREE.MeshStandardMaterial({
-        map: objTex(CRATE_PATH + "FrailBoxBody00_alb.png", true),
-        normalMap: objTex(CRATE_PATH + "FrailBoxBody00_nrm.png", false),
-        roughnessMap: objTex(CRATE_PATH + "FrailBoxBody00_rgh.png", false),
-        roughness: 0.85, metalness: 0.0,
-      }));
-      collada.loadAsync(encodeURI(CRATE_PATH + "FrailBox.dae")).then((asset) => {
-        if (disposed) return;
-        const root = deskinObj(asset.scene);
-        root.traverse((o) => {
-          if (!o.isMesh) return;
-          o.castShadow = true;
-          o.receiveShadow = true;
-          o.material = crateMat;
-          track(o.geometry);
-        });
-        crateProtoObj = fitObj(root, 1.15, false);
-      }).catch(() => { crateProtoObj = null; });   // missing model -> crates don't draw
+      const crateMat = track(
+        new THREE.MeshStandardMaterial({
+          map: objTex(CRATE_PATH + "FrailBoxBody00_alb.png", true),
+          normalMap: objTex(CRATE_PATH + "FrailBoxBody00_nrm.png", false),
+          roughnessMap: objTex(CRATE_PATH + "FrailBoxBody00_rgh.png", false),
+          roughness: 0.85,
+          metalness: 0.0,
+        }),
+      );
+      collada
+        .loadAsync(encodeURI(CRATE_PATH + "FrailBox.dae"))
+        .then((asset) => {
+          if (disposed) return;
+          const root = deskinObj(asset.scene);
+          root.traverse((o) => {
+            if (!o.isMesh) return;
+            o.castShadow = true;
+            o.receiveShadow = true;
+            o.material = crateMat;
+            track(o.geometry);
+          });
+          crateProtoObj = fitObj(root, 1.15, false);
+        })
+        .catch(() => {
+          crateProtoObj = null;
+        }); // missing model -> crates don't draw
     }
     // a crate DROPS in from high out of frame, bounces once, then rests dead still
     // (fixed yaw, no spin, no bob) at its sim spot.
-    const CRATE_REST_Y = 0.05, CRATE_DROP_Y = 16;
+    const CRATE_REST_Y = 0.05,
+      CRATE_DROP_Y = 16;
     function syncCrates(frame, t, dt) {
       const active = new Set();
       for (const cr of frame?.crates || []) {
@@ -969,8 +1037,8 @@ export const tostarena = {
         let m = crateMeshes.get(cr.id);
         if (!m && crateProtoObj) {
           m = crateProtoObj.clone();
-          m.rotation.y = (cr.id * 1.37) % (Math.PI * 2);   // one fixed yaw; never spins
-          m.position.set(cr.pos[0], CRATE_DROP_Y, cr.pos[1]);  // start above the screen
+          m.rotation.y = (cr.id * 1.37) % (Math.PI * 2); // one fixed yaw; never spins
+          m.position.set(cr.pos[0], CRATE_DROP_Y, cr.pos[1]); // start above the screen
           m.userData.vy = 0;
           m.userData.landed = false;
           group.add(m);
@@ -980,11 +1048,12 @@ export const tostarena = {
           m.position.x = cr.pos[0];
           m.position.z = cr.pos[1];
           if (!m.userData.landed) {
-            m.userData.vy -= 34 * dt;                        // gravity fall
+            m.userData.vy -= 34 * dt; // gravity fall
             m.position.y += m.userData.vy * dt;
             if (m.position.y <= CRATE_REST_Y) {
               m.position.y = CRATE_REST_Y;
-              if (m.userData.vy < -6) {                      // one small bounce
+              if (m.userData.vy < -6) {
+                // one small bounce
                 m.userData.vy = -m.userData.vy * 0.26;
               } else {
                 m.userData.vy = 0;
@@ -992,13 +1061,13 @@ export const tostarena = {
               }
             }
           } else {
-            m.position.y = CRATE_REST_Y;                     // sits perfectly still
+            m.position.y = CRATE_REST_Y; // sits perfectly still
           }
         }
       }
       for (const [id, m] of crateMeshes) {
         if (active.has(id)) continue;
-        group.remove(m);                     // smashed -> the crate burst covers the FX
+        group.remove(m); // smashed -> the crate burst covers the FX
         crateMeshes.delete(id);
       }
     }
@@ -1006,40 +1075,58 @@ export const tostarena = {
     // ---- per-side cartoon STUN STARS: classic yellow 5-point "dizzy" stars that
     // circle over a stunned agent's head (a hand-drawn star sprite, not a blob) ---
     function makeStarTexture() {
-      const S = 96, cv = document.createElement("canvas");
+      const S = 96,
+        cv = document.createElement("canvas");
       cv.width = cv.height = S;
       const ctx = cv.getContext("2d");
-      const cx = S / 2, cy = S / 2, R = S * 0.4, r = R * 0.46;
+      const cx = S / 2,
+        cy = S / 2,
+        R = S * 0.4,
+        r = R * 0.46;
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const rad = i % 2 === 0 ? R : r;
         const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        const x = cx + Math.cos(a) * rad,
+          y = cy + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
       }
       ctx.closePath();
       const grd = ctx.createLinearGradient(0, cy - R, 0, cy + R);
-      grd.addColorStop(0, "#fff29a"); grd.addColorStop(1, "#ffb61e");
-      ctx.fillStyle = grd; ctx.fill();
-      ctx.lineJoin = "round"; ctx.lineWidth = S * 0.085;
-      ctx.strokeStyle = "#5a3a00"; ctx.stroke();            // bold cartoon outline
+      grd.addColorStop(0, "#fff29a");
+      grd.addColorStop(1, "#ffb61e");
+      ctx.fillStyle = grd;
+      ctx.fill();
+      ctx.lineJoin = "round";
+      ctx.lineWidth = S * 0.085;
+      ctx.strokeStyle = "#5a3a00";
+      ctx.stroke(); // bold cartoon outline
       const tex = trackTexture(new THREE.CanvasTexture(cv));
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     }
-    const starMat = track(new THREE.SpriteMaterial({
-      map: makeStarTexture(), transparent: true, depthWrite: false,
-      depthTest: false, fog: false,
-    }));
+    const starMat = track(
+      new THREE.SpriteMaterial({
+        map: makeStarTexture(),
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        fog: false,
+      }),
+    );
     const aura = {};
     for (const side of ["red", "blue"]) {
       const stars = new THREE.Group();
       for (let i = 0; i < 3; i++) {
-        const s = new THREE.Sprite(starMat);                // sprites share one material
+        const s = new THREE.Sprite(starMat); // sprites share one material
         s.scale.set(0.6, 0.6, 1);
         s.renderOrder = 11;
-        s.position.set(Math.cos((i / 3) * Math.PI * 2) * 0.55, 0,
-                       Math.sin((i / 3) * Math.PI * 2) * 0.55);
+        s.position.set(
+          Math.cos((i / 3) * Math.PI * 2) * 0.55,
+          0,
+          Math.sin((i / 3) * Math.PI * 2) * 0.55,
+        );
         stars.add(s);
       }
       stars.visible = false;
@@ -1055,17 +1142,26 @@ export const tostarena = {
       const g = new THREE.Group();
       const dome = new THREE.Mesh(
         track(new THREE.SphereGeometry(0.34, 16, 12)),
-        track(new THREE.MeshStandardMaterial({
-          color, roughness: 0.3, metalness: 0.1,
-          emissive: color, emissiveIntensity: 0.28,
-        })));
+        track(
+          new THREE.MeshStandardMaterial({
+            color,
+            roughness: 0.3,
+            metalness: 0.1,
+            emissive: color,
+            emissiveIntensity: 0.28,
+          }),
+        ),
+      );
       dome.scale.y = 0.82;
       dome.position.y = 0.04;
       dome.castShadow = true;
       g.add(dome);
       const rim = new THREE.Mesh(
         track(new THREE.TorusGeometry(0.3, 0.075, 8, 18)),
-        track(new THREE.MeshStandardMaterial({ color: 0xfff2d0, roughness: 0.5 })));
+        track(
+          new THREE.MeshStandardMaterial({ color: 0xfff2d0, roughness: 0.5 }),
+        ),
+      );
       rim.rotation.x = Math.PI / 2;
       g.add(rim);
       return g;
@@ -1083,7 +1179,7 @@ export const tostarena = {
           shellMeshes.set(s.id, m);
         }
         m.position.set(s.pos[0], 0.38, s.pos[1]);
-        m.rotation.y += dt * 15;                           // spin like a rolling shell
+        m.rotation.y += dt * 15; // spin like a rolling shell
       }
       for (const [id, m] of shellMeshes) {
         if (active.has(id)) continue;
@@ -1096,21 +1192,35 @@ export const tostarena = {
     // a dropped banana PEEL splayed OPEN on the ground: a small centre lump with
     // four tapered peel strips fanning outward, their tips curling up (Mario-Kart
     // style), not a closed crescent banana.
-    const peelMat = track(new THREE.MeshStandardMaterial({
-      color: 0xf5c518, roughness: 0.5, emissive: 0x3a2c00, emissiveIntensity: 0.16,
-    }));
-    const peelInnerMat = track(new THREE.MeshStandardMaterial({
-      color: 0xfff0b0, roughness: 0.6,
-    }));
+    const peelMat = track(
+      new THREE.MeshStandardMaterial({
+        color: 0xf5c518,
+        roughness: 0.5,
+        emissive: 0x3a2c00,
+        emissiveIntensity: 0.16,
+      }),
+    );
+    const peelInnerMat = track(
+      new THREE.MeshStandardMaterial({
+        color: 0xfff0b0,
+        roughness: 0.6,
+      }),
+    );
     function makeBanana() {
       const g = new THREE.Group();
-      const base = new THREE.Mesh(track(new THREE.SphereGeometry(0.12, 12, 10)), peelMat);
-      base.scale.set(1, 0.5, 1);                           // a small squashed lump only
+      const base = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.12, 12, 10)),
+        peelMat,
+      );
+      base.scale.set(1, 0.5, 1); // a small squashed lump only
       base.position.y = 0.06;
       base.castShadow = true;
       g.add(base);
       // the peel's centre rises to a POINT (the stem where the strips join), pointing up
-      const nub = new THREE.Mesh(track(new THREE.ConeGeometry(0.1, 0.42, 12)), peelMat);
+      const nub = new THREE.Mesh(
+        track(new THREE.ConeGeometry(0.1, 0.42, 12)),
+        peelMat,
+      );
       nub.position.y = 0.27;
       nub.castShadow = true;
       g.add(nub);
@@ -1118,12 +1228,13 @@ export const tostarena = {
       for (let i = 0; i < N; i++) {
         const pivot = new THREE.Group();
         pivot.position.y = 0.06;
-        pivot.rotation.y = (i / N) * Math.PI * 2 + 0.4;    // fan the strips around
+        pivot.rotation.y = (i / N) * Math.PI * 2 + 0.4; // fan the strips around
         const strip = new THREE.Mesh(
           track(new THREE.CylinderGeometry(0.035, 0.11, 0.5, 8)),
-          i % 2 ? peelInnerMat : peelMat);                 // alternate skin / pale inside
-        strip.position.set(0, 0, 0.24);                    // reach outward from the lump
-        strip.rotation.x = Math.PI / 2 - 0.32;             // lie flat, outer tip curling up
+          i % 2 ? peelInnerMat : peelMat,
+        ); // alternate skin / pale inside
+        strip.position.set(0, 0, 0.24); // reach outward from the lump
+        strip.rotation.x = Math.PI / 2 - 0.32; // lie flat, outer tip curling up
         strip.castShadow = true;
         pivot.add(strip);
         g.add(pivot);
@@ -1134,34 +1245,46 @@ export const tostarena = {
     // (city.js / fossilfalls.js), just skinned BLACK: a near-black pool with a
     // faint iridescent oily sheen instead of cartoon-turquoise water.
     function _oilCanvas() {
-      const S = 256, cv = document.createElement("canvas");
+      const S = 256,
+        cv = document.createElement("canvas");
       cv.width = cv.height = S;
-      const ctx = cv.getContext("2d"), img = ctx.createImageData(S, S), d = img.data;
-      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-        const u = x / S, v = y / S;
-        let n = 0.5 + 0.30 * Math.sin(2 * Math.PI * (u + v))
-          + 0.20 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
-        n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
-        // a slow rainbow sheen riding on the near-black base (oil-slick shimmer)
-        const sheen = 0.5 + 0.5 * Math.sin(2 * Math.PI * (u * 3 + v * 2) + n * 3.0);
-        const i = (y * S + x) * 4;
-        d[i]     = 6 + 20 * n + 16 * sheen;              // purple glints
-        d[i + 1] = 6 + 14 * n + 20 * (1 - sheen) * n;    // teal glints
-        d[i + 2] = 10 + 26 * n + 22 * sheen;
-        d[i + 3] = 255;
-      }
+      const ctx = cv.getContext("2d"),
+        img = ctx.createImageData(S, S),
+        d = img.data;
+      for (let y = 0; y < S; y++)
+        for (let x = 0; x < S; x++) {
+          const u = x / S,
+            v = y / S;
+          let n =
+            0.5 +
+            0.3 * Math.sin(2 * Math.PI * (u + v)) +
+            0.2 * Math.sin(2 * Math.PI * (2 * u - v) + 1.3);
+          n = Math.max(0, Math.min(1, 0.5 + (n - 0.5) * 0.7));
+          // a slow rainbow sheen riding on the near-black base (oil-slick shimmer)
+          const sheen =
+            0.5 + 0.5 * Math.sin(2 * Math.PI * (u * 3 + v * 2) + n * 3.0);
+          const i = (y * S + x) * 4;
+          d[i] = 6 + 20 * n + 16 * sheen; // purple glints
+          d[i + 1] = 6 + 14 * n + 20 * (1 - sheen) * n; // teal glints
+          d[i + 2] = 10 + 26 * n + 22 * sheen;
+          d[i + 3] = 255;
+        }
       ctx.putImageData(img, 0, 0);
       return cv;
     }
     function oilShape() {
       const s = new THREE.Shape();
-      const ph1 = Math.random() * 6.283, ph2 = Math.random() * 6.283;
-      const rr = 0.6;                                    // ~TRAP_R across
+      const ph1 = Math.random() * 6.283,
+        ph2 = Math.random() * 6.283;
+      const rr = 0.6; // ~TRAP_R across
       for (let i = 0, n = 72; i <= n; i++) {
         const th = (i / n) * Math.PI * 2;
-        const w = 1 + 0.08 * Math.sin(th * 3 + ph1) + 0.045 * Math.sin(th * 5 + ph2);
-        const x = Math.cos(th) * rr * w, y = Math.sin(th) * rr * w;
-        if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+        const w =
+          1 + 0.08 * Math.sin(th * 3 + ph1) + 0.045 * Math.sin(th * 5 + ph2);
+        const x = Math.cos(th) * rr * w,
+          y = Math.sin(th) * rr * w;
+        if (i === 0) s.moveTo(x, y);
+        else s.lineTo(x, y);
       }
       return s;
     }
@@ -1170,18 +1293,34 @@ export const tostarena = {
     oilTex.wrapS = oilTex.wrapT = THREE.RepeatWrapping;
     oilTex.repeat.set(1.4, 1.4);
     oilTex.anisotropy = maxAniso;
-    const oilMat = track(new THREE.MeshStandardMaterial({
-      color: 0xffffff, map: oilTex, transparent: true, opacity: 0.95,
-      roughness: 0.12, metalness: 0.55, emissive: 0x0a0a12, emissiveIntensity: 0.15,
-      depthWrite: false,
-    }));
+    const oilMat = track(
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: oilTex,
+        transparent: true,
+        opacity: 0.95,
+        roughness: 0.12,
+        metalness: 0.55,
+        emissive: 0x0a0a12,
+        emissiveIntensity: 0.15,
+        depthWrite: false,
+      }),
+    );
     function makeOil() {
       const g = new THREE.Group();
-      const slick = new THREE.Mesh(track(new THREE.ExtrudeGeometry(oilShape(), {
-        depth: 0.05, bevelEnabled: true, bevelThickness: 0.03,
-        bevelSize: 0.04, bevelSegments: 2,
-      })), oilMat);
-      slick.rotation.x = -Math.PI / 2;                   // lay the blob flat on the sand
+      const slick = new THREE.Mesh(
+        track(
+          new THREE.ExtrudeGeometry(oilShape(), {
+            depth: 0.05,
+            bevelEnabled: true,
+            bevelThickness: 0.03,
+            bevelSize: 0.04,
+            bevelSegments: 2,
+          }),
+        ),
+        oilMat,
+      );
+      slick.rotation.x = -Math.PI / 2; // lay the blob flat on the sand
       slick.position.y = 0.03;
       slick.renderOrder = 3;
       slick.receiveShadow = true;
@@ -1191,7 +1330,7 @@ export const tostarena = {
     const trapProto = { banana: makeBanana(), oil: makeOil() };
     const trapMeshes = new Map();
     function syncTraps(frame, t) {
-      oilTex.offset.x = t * 0.008;                        // slow living oily shimmer
+      oilTex.offset.x = t * 0.008; // slow living oily shimmer
       oilTex.offset.y = Math.sin(t * 0.2) * 0.03;
       const active = new Set();
       for (const tr of frame?.traps || []) {
@@ -1200,7 +1339,7 @@ export const tostarena = {
         if (!m) {
           m = (trapProto[tr.kind] || trapProto.banana).clone();
           m.position.set(tr.pos[0], 0, tr.pos[1]);
-          m.rotation.y = (tr.id * 1.7) % (Math.PI * 2);   // vary each peel / slick
+          m.rotation.y = (tr.id * 1.7) % (Math.PI * 2); // vary each peel / slick
           group.add(m);
           trapMeshes.set(tr.id, m);
         }
@@ -1220,31 +1359,50 @@ export const tostarena = {
     // edge; it FLOATS (bob + roll) and drifts a little to frame.ship.x, Bowser riding
     // along on the deck. Positioned per the user's dev-tool placement.
     const SHIP = { x: C, y: 2.5, z: -1.5, size: 12, ry: Math.PI / 2 };
-    const SHIP_DECK_Y = SHIP.y + 2.7;                      // Bowser's feet on the deck
-    const SHIP_DECK_Z = SHIP.z;                            // centred on the deck
-    const CARPET_LIFT = 0.05;                              // raise the deck carpet a hair
-    const shipState = { obj: null, curX: C };             // the ship group + smoothed x
-    const bowser = { obj: null, throwT: 99 };             // the Bowser model + lunge timer
+    const SHIP_DECK_Y = SHIP.y + 2.55; // Bowser's feet on the deck
+    const SHIP_DECK_Z = SHIP.z; // centred on the deck
+    // fine offsets for Bowser on the deck (flip a sign if a direction is backwards):
+    const BOWSER_OFFSET_X = -0.35; // - = viewer's LEFT
+    const BOWSER_OFFSET_Z = 1.0; // + = toward the camera (deck edge)
+    const CARPET_LIFT = 0.01; // raise the deck carpet a hair
+    const shipState = { obj: null, curX: C }; // the ship group + smoothed x
+    const bowser = { obj: null, throwT: 99 }; // the Bowser model + lunge timer
     // the airship, skinned with its OWN textures. Each DAE material name (…MT) maps to
     // its real Ship<X>_alb.png, so hull/sails/cloth/gold all show their true colours.
     {
       const AIRSHIP_DIR = OBJ + "Bowser's Airship/";
       // material-name (lower-case) -> albedo texture base + whether it's metallic
       const SHIP_TEX = {
-        metalmt: ["ShipMetal", 0.4], woodmt00: ["ShipWood00", 0], woodmt01: ["ShipWood01", 0],
-        goldmt00: ["ShipGold00", 0.85], goldmt01: ["ShipGold01", 0.85],
-        koopamt: ["ShipKoopaMetal", 0.6], framemt: ["ShipFrame", 0.4],
-        decoclothmt: ["ShipDecoCloth", 0], flagmt: ["ShipFlag", 0], sailmt: ["ShipSail", 0],
-        carpetmt00: ["ShipCarpet00", 0], carpetmt01: ["ShipCarpet01", 0], ropemt: ["ShipRope", 0],
-        moontankglass00mt: ["MoonTankGlass", 0.3], packunmt: ["PeachBouquetPackun", 0],
+        metalmt: ["ShipMetal", 0.4],
+        woodmt00: ["ShipWood00", 0],
+        woodmt01: ["ShipWood01", 0],
+        goldmt00: ["ShipGold00", 0.85],
+        goldmt01: ["ShipGold01", 0.85],
+        koopamt: ["ShipKoopaMetal", 0.6],
+        framemt: ["ShipFrame", 0.4],
+        decoclothmt: ["ShipDecoCloth", 0],
+        flagmt: ["ShipFlag", 0],
+        sailmt: ["ShipSail", 0],
+        carpetmt00: ["ShipCarpet00", 0],
+        carpetmt01: ["ShipCarpet01", 0],
+        ropemt: ["ShipRope", 0],
+        moontankglass00mt: ["MoonTankGlass", 0.3],
+        packunmt: ["PeachBouquetPackun", 0],
         tankmt: ["Tank", 0.3],
       };
-      const KEYS = Object.keys(SHIP_TEX).sort((a, b) => b.length - a.length);  // longest first
-      const shipTexCache = {}, shipMatCache = {};
+      const KEYS = Object.keys(SHIP_TEX).sort((a, b) => b.length - a.length); // longest first
+      const shipTexCache = {},
+        shipMatCache = {};
       const shipTex = (base) => {
         if (!shipTexCache[base]) {
-          const tex = trackTexture(texLoader.load(
-            encodeURI(AIRSHIP_DIR + base + "_alb.png"), undefined, undefined, () => {}));
+          const tex = trackTexture(
+            texLoader.load(
+              encodeURI(AIRSHIP_DIR + base + "_alb.png"),
+              undefined,
+              undefined,
+              () => {},
+            ),
+          );
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
           tex.anisotropy = maxAniso;
@@ -1257,64 +1415,91 @@ export const tostarena = {
         const key = KEYS.find((k) => n.includes(k)) || "metalmt";
         if (!shipMatCache[key]) {
           const [base, metal] = SHIP_TEX[key];
-          shipMatCache[key] = track(new THREE.MeshStandardMaterial({
-            map: shipTex(base), roughness: metal > 0.3 ? 0.4 : 0.8,
-            metalness: metal, side: THREE.DoubleSide }));
+          shipMatCache[key] = track(
+            new THREE.MeshStandardMaterial({
+              map: shipTex(base),
+              roughness: metal > 0.3 ? 0.4 : 0.8,
+              metalness: metal,
+              side: THREE.DoubleSide,
+            }),
+          );
         }
         return shipMatCache[key];
       };
-      collada.loadAsync(encodeURI(AIRSHIP_DIR + "KoopaShip.dae")).then((asset) => {
-        if (disposed) return;
-        const root = deskinObj(asset.scene);
-        const carpets = [];
-        root.traverse((o) => {
-          if (!o.isMesh) return;
-          track(o.geometry);
-          const mn = (Array.isArray(o.material) ? o.material[0] : o.material)?.name || "";
-          const combined = (mn + " " + (o.name || "")).toLowerCase();
-          o.material = shipMaterialFor(combined);
-          if (combined.includes("carpet")) carpets.push(o);   // lift these off the deck
-          o.castShadow = false;
-          o.receiveShadow = false;
-        });
-        const wrap = fitObj(root, SHIP.size, false);       // small
-        wrap.rotation.y = SHIP.ry;                         // 90deg: broadside to the board
-        wrap.position.set(SHIP.x, SHIP.y, SHIP.z);
-        // nudge the deck carpet up a hair (world units -> model units via the scale)
-        // so it sits ABOVE the planks instead of z-fighting into them
-        const s = wrap.scale.x || 1;
-        for (const cp of carpets) cp.position.y += CARPET_LIFT / s;
-        shipState.obj = wrap;
-        group.add(wrap);
-      }).catch(() => {});                                   // missing/huge model -> no ship
+      collada
+        .loadAsync(encodeURI(AIRSHIP_DIR + "KoopaShip.dae"))
+        .then((asset) => {
+          if (disposed) return;
+          const root = deskinObj(asset.scene);
+          const carpets = [];
+          root.traverse((o) => {
+            if (!o.isMesh) return;
+            track(o.geometry);
+            const mn =
+              (Array.isArray(o.material) ? o.material[0] : o.material)?.name ||
+              "";
+            const combined = (mn + " " + (o.name || "")).toLowerCase();
+            o.material = shipMaterialFor(combined);
+            if (combined.includes("carpet")) carpets.push(o); // lift these off the deck
+            o.castShadow = false;
+            o.receiveShadow = false;
+          });
+          const wrap = fitObj(root, SHIP.size, false); // small
+          wrap.rotation.y = SHIP.ry; // 90deg: broadside to the board
+          wrap.position.set(SHIP.x, SHIP.y, SHIP.z);
+          // nudge the deck carpet up a hair (world units -> model units via the scale)
+          // so it sits ABOVE the planks instead of z-fighting into them
+          const s = wrap.scale.x || 1;
+          for (const cp of carpets) cp.position.y += CARPET_LIFT / s;
+          shipState.obj = wrap;
+          group.add(wrap);
+        })
+        .catch(() => {}); // missing/huge model -> no ship
     }
     // Bowser himself (the real board character, idx 6), standing on the deck
-    loadBoardWalker(6).then((bw) => {
-      if (disposed || !bw?.group) return;
-      bw.group.scale.setScalar(1.5);
-      bw.group.position.set(SHIP.x, SHIP_DECK_Y, SHIP_DECK_Z);
-      bowser.obj = bw.group;
-      group.add(bw.group);
-    }).catch(() => {});
+    loadBoardWalker(6)
+      .then((bw) => {
+        if (disposed || !bw?.group) return;
+        bw.group.scale.setScalar(1.5);
+        bw.group.position.set(SHIP.x, SHIP_DECK_Y, SHIP_DECK_Z);
+        bowser.obj = bw.group;
+        group.add(bw.group);
+      })
+      .catch(() => {});
 
     // ---- the thrown objects (Bob-omb-like), pooled by id ---------------------
     function makeHazard(kind) {
       const g = new THREE.Group();
       const body = new THREE.Mesh(
         track(new THREE.SphereGeometry(0.42, 16, 12)),
-        track(new THREE.MeshStandardMaterial({
-          color: kind === 1 ? 0x39414d : 0x161619, roughness: 0.5, metalness: 0.5 })));
+        track(
+          new THREE.MeshStandardMaterial({
+            color: kind === 1 ? 0x39414d : 0x161619,
+            roughness: 0.5,
+            metalness: 0.5,
+          }),
+        ),
+      );
       body.castShadow = true;
       g.add(body);
       const fuse = new THREE.Mesh(
         track(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6)),
-        track(new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 })));
+        track(
+          new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 }),
+        ),
+      );
       fuse.position.y = 0.5;
       g.add(fuse);
       const spark = new THREE.Mesh(
         track(new THREE.SphereGeometry(0.08, 8, 6)),
-        track(new THREE.MeshStandardMaterial({
-          color: 0xffd873, emissive: 0xffa020, emissiveIntensity: 1.3 })));
+        track(
+          new THREE.MeshStandardMaterial({
+            color: 0xffd873,
+            emissive: 0xffa020,
+            emissiveIntensity: 1.3,
+          }),
+        ),
+      );
       spark.position.y = 0.66;
       g.add(spark);
       return g;
@@ -1331,7 +1516,7 @@ export const tostarena = {
           group.add(m);
           hazardMeshes.set(h.id, m);
         }
-        m.position.set(h.pos[0], 1.0, h.pos[1]);           // flies low over the board
+        m.position.set(h.pos[0], 1.0, h.pos[1]); // flies low over the board
         m.rotation.y += dt * 5;
         m.rotation.x += dt * 3;
       }
@@ -1346,9 +1531,9 @@ export const tostarena = {
       // Bowser rides along on the deck with the SAME motion.
       const targetX = frame?.ship ? frame.ship.x : C;
       shipState.curX += (targetX - shipState.curX) * (1 - Math.exp(-dt * 5));
-      const bobY = Math.sin(t * 0.9) * 0.3;                 // up-down float
-      const roll = Math.sin(t * 0.65) * 0.045;              // side roll
-      const pitch = Math.sin(t * 0.5 + 1.0) * 0.02;         // fore-aft pitch
+      const bobY = Math.sin(t * 0.9) * 0.3; // up-down float
+      const roll = Math.sin(t * 0.65) * 0.045; // side roll
+      const pitch = Math.sin(t * 0.5 + 1.0) * 0.02; // fore-aft pitch
       if (shipState.obj) {
         shipState.obj.position.set(shipState.curX, SHIP.y + bobY, SHIP.z);
         shipState.obj.rotation.set(pitch, SHIP.ry, roll);
@@ -1356,17 +1541,23 @@ export const tostarena = {
       if (bowser.obj) {
         bowser.throwT += dt;
         const lunge = Math.max(0, 1 - bowser.throwT / 0.35);
-        bowser.obj.position.set(shipState.curX, SHIP_DECK_Y + bobY,
-                                SHIP_DECK_Z + lunge * 0.5);
-        bowser.obj.rotation.set(lunge * 0.5 + pitch, 0, roll);   // rides the roll + throw lunge
+        bowser.obj.position.set(
+          shipState.curX + BOWSER_OFFSET_X,
+          SHIP_DECK_Y + bobY,
+          SHIP_DECK_Z + BOWSER_OFFSET_Z + lunge * 0.5,
+        );
+        bowser.obj.rotation.set(lunge * 0.5 + pitch, 0, roll); // rides the roll + throw lunge
       }
     }
 
     // ---- crate-break shards (wooden debris flung out when a crate is smashed)
     const shardGeo = track(new THREE.BoxGeometry(0.16, 0.16, 0.16));
-    const shardMat = track(new THREE.MeshStandardMaterial({
-      color: 0xba7a32, roughness: 0.85,
-    }));
+    const shardMat = track(
+      new THREE.MeshStandardMaterial({
+        color: 0xba7a32,
+        roughness: 0.85,
+      }),
+    );
     const shards = [];
     function spawnShards(x, z) {
       for (let i = 0; i < 11; i++) {
@@ -1374,9 +1565,16 @@ export const tostarena = {
         s.position.set(x, 0.35, z);
         const ang = Math.random() * Math.PI * 2;
         const sp = 2 + Math.random() * 3.5;
-        s.userData.v = [Math.cos(ang) * sp, 2.6 + Math.random() * 2.6,
-                        Math.sin(ang) * sp];
-        s.userData.rv = [Math.random() * 9, Math.random() * 9, Math.random() * 9];
+        s.userData.v = [
+          Math.cos(ang) * sp,
+          2.6 + Math.random() * 2.6,
+          Math.sin(ang) * sp,
+        ];
+        s.userData.rv = [
+          Math.random() * 9,
+          Math.random() * 9,
+          Math.random() * 9,
+        ];
         s.userData.life = 0;
         s.castShadow = true;
         group.add(s);
@@ -1387,19 +1585,25 @@ export const tostarena = {
       for (let i = shards.length - 1; i >= 0; i--) {
         const s = shards[i];
         const v = s.userData.v;
-        v[1] -= 13 * dt;                                   // gravity
+        v[1] -= 13 * dt; // gravity
         s.position.x += v[0] * dt;
         s.position.y += v[1] * dt;
         s.position.z += v[2] * dt;
-        if (s.position.y < 0.08) {                         // bounce + settle
+        if (s.position.y < 0.08) {
+          // bounce + settle
           s.position.y = 0.08;
-          v[0] *= 0.6; v[2] *= 0.6; v[1] *= -0.32;
+          v[0] *= 0.6;
+          v[2] *= 0.6;
+          v[1] *= -0.32;
         }
         s.rotation.x += s.userData.rv[0] * dt;
         s.rotation.y += s.userData.rv[1] * dt;
         s.rotation.z += s.userData.rv[2] * dt;
         s.userData.life += dt;
-        if (s.userData.life >= 0.75) { group.remove(s); shards.splice(i, 1); }
+        if (s.userData.life >= 0.75) {
+          group.remove(s);
+          shards.splice(i, 1);
+        }
       }
     }
 
@@ -1408,13 +1612,16 @@ export const tostarena = {
     // rival in (phase "reel"); here we just draw a real, densely-linked CHAIN from the
     // thrower to the head each frame - interlocked torus links (alternating 90deg),
     // not a few floating rings, with the black chomp ball at the head.
-    const chainMeshes = new Map();                         // chain id -> {g, links, head, ...}
-    const CHAIN_LINK_SPACING = 0.26, CHAIN_MAX_LINKS = 60;
+    const chainMeshes = new Map(); // chain id -> {g, links, head, ...}
+    const CHAIN_LINK_SPACING = 0.26,
+      CHAIN_MAX_LINKS = 60;
     const chainLinkGeo = track(new THREE.TorusGeometry(0.115, 0.05, 7, 12));
     function makeChain() {
       const g = new THREE.Group();
       const linkMat = new THREE.MeshStandardMaterial({
-        color: 0x3a3a3a, roughness: 0.4, metalness: 0.85,
+        color: 0x3a3a3a,
+        roughness: 0.4,
+        metalness: 0.85,
       });
       const links = [];
       for (let i = 0; i < CHAIN_MAX_LINKS; i++) {
@@ -1425,7 +1632,9 @@ export const tostarena = {
         links.push(l);
       }
       const headMat = new THREE.MeshStandardMaterial({
-        color: 0x161616, roughness: 0.35, metalness: 0.35,
+        color: 0x161616,
+        roughness: 0.35,
+        metalness: 0.35,
       });
       const headGeo = new THREE.SphereGeometry(0.44, 18, 14);
       const head = new THREE.Mesh(headGeo, headMat);
@@ -1445,22 +1654,34 @@ export const tostarena = {
       for (const ch of frame?.chains || []) {
         active.add(ch.id);
         let c = chainMeshes.get(ch.id);
-        if (!c) { c = makeChain(); chainMeshes.set(ch.id, c); }
-        const from = frame?.[ch.owner];                    // chain is anchored at the thrower
+        if (!c) {
+          c = makeChain();
+          chainMeshes.set(ch.id, c);
+        }
+        const from = frame?.[ch.owner]; // chain is anchored at the thrower
         const head = ch.head;
         if (!from || !head) continue;
-        const dx = head[0] - from[0], dz = head[1] - from[1];
+        const dx = head[0] - from[0],
+          dz = head[1] - from[1];
         const dist = Math.hypot(dx, dz);
         const yaw = Math.atan2(dx, dz);
-        const n = Math.max(2, Math.min(CHAIN_MAX_LINKS,
-          Math.round(dist / CHAIN_LINK_SPACING) + 1));
+        const n = Math.max(
+          2,
+          Math.min(CHAIN_MAX_LINKS, Math.round(dist / CHAIN_LINK_SPACING) + 1),
+        );
         for (let k = 0; k < c.links.length; k++) {
           const l = c.links[k];
-          if (k >= n) { l.visible = false; continue; }
+          if (k >= n) {
+            l.visible = false;
+            continue;
+          }
           const f = k / (n - 1);
           l.visible = true;
-          l.position.set(from[0] + dx * f, 0.8 + Math.sin(f * Math.PI) * 0.1,
-                         from[1] + dz * f);
+          l.position.set(
+            from[0] + dx * f,
+            0.8 + Math.sin(f * Math.PI) * 0.1,
+            from[1] + dz * f,
+          );
           // interlock: alternate a horizontal ring and a vertical ring facing the run
           if (k % 2) l.rotation.set(0, yaw + Math.PI / 2, 0);
           else l.rotation.set(Math.PI / 2, 0, 0);
@@ -1492,7 +1713,7 @@ export const tostarena = {
         flag.clothWrap.position.x += (tx - flag.clothWrap.position.x) * rate;
         flag.clothWrap.position.y += (ty - flag.clothWrap.position.y) * rate;
         flag.clothWrap.position.z += (tz - flag.clothWrap.position.z) * rate;
-        flag.clothWrap.rotation.z = held ? Math.sin(t * 3) * 0.12 : 0;  // lean while carried
+        flag.clothWrap.rotation.z = held ? Math.sin(t * 3) * 0.12 : 0; // lean while carried
       }
       // WIND on the cloth only (the FlagMT mesh): a vertex ripple growing from the
       // pole to the free edge; the BodyMT pole is untouched.
@@ -1501,9 +1722,9 @@ export const tostarena = {
         const pos = g.attributes.position;
         const b = flag.clothBase;
         const { normalAxis, lenAxis, lo, range } = flag.wave;
-        const amp = range * (held ? 0.06 : 0.045);         // flaps harder when carried
+        const amp = range * (held ? 0.06 : 0.045); // flaps harder when carried
         for (let i = 0; i < pos.count; i++) {
-          const along = (b[i * 3 + lenAxis] - lo) / range;  // 0 at pole .. 1 at edge
+          const along = (b[i * 3 + lenAxis] - lo) / range; // 0 at pole .. 1 at edge
           const disp = Math.sin(along * 5.0 - t * 7) * amp * along;
           pos.array[i * 3 + normalAxis] = b[i * 3 + normalAxis] + disp;
         }
@@ -1524,9 +1745,13 @@ export const tostarena = {
         a.stars.visible = (stun[side] || 0) > 0 && !!p;
         if (a.stars.visible) {
           a.stars.position.set(p[0], 2.35, p[1]);
-          a.stars.rotation.y += dt * 5.5;                  // whirl the dizzy ring
-          a.stars.children.forEach((s, i) =>              // + a little bob per star
-            (s.position.y = Math.sin(t * 6 + i * 2.1) * 0.12));
+          a.stars.rotation.y += dt * 5.5; // whirl the dizzy ring
+          a.stars.children.forEach(
+            (
+              s,
+              i, // + a little bob per star
+            ) => (s.position.y = Math.sin(t * 6 + i * 2.1) * 0.12),
+          );
         }
       }
 
@@ -1540,9 +1765,9 @@ export const tostarena = {
       for (const ev of frame?.ctfEvents || []) {
         if (!rememberEvent(ev.id)) continue;
         if (ev.type === "crate" && ev.pos) {
-          spawnShards(ev.pos[0], ev.pos[1]);              // the smash burst
+          spawnShards(ev.pos[0], ev.pos[1]); // the smash burst
         } else if (ev.type === "throw") {
-          bowser.throwT = 0;                              // Bowser lunges as he hurls
+          bowser.throwT = 0; // Bowser lunges as he hurls
         }
       }
       updateShards(dt);
@@ -1629,15 +1854,22 @@ export const tostarena = {
       hazardMeshes.clear();
       for (const s of shards) group.remove(s);
       shards.length = 0;
-      const disposeTree = (obj) => obj?.traverse?.((o) => {
-        if (!o.isMesh) return;
-        o.geometry?.dispose?.();
-        const ms = Array.isArray(o.material) ? o.material : [o.material];
-        for (const mm of ms) mm?.dispose?.();
-      });
-      if (crateProtoObj) { disposeTree(crateProtoObj); crateProtoObj = null; }
+      const disposeTree = (obj) =>
+        obj?.traverse?.((o) => {
+          if (!o.isMesh) return;
+          o.geometry?.dispose?.();
+          const ms = Array.isArray(o.material) ? o.material : [o.material];
+          for (const mm of ms) mm?.dispose?.();
+        });
+      if (crateProtoObj) {
+        disposeTree(crateProtoObj);
+        crateProtoObj = null;
+      }
       disposeTree(flag.poleWrap);
-      if (flag.clothWrap) { disposeTree(flag.clothWrap); flag.clothWrap = null; }
+      if (flag.clothWrap) {
+        disposeTree(flag.clothWrap);
+        flag.clothWrap = null;
+      }
       scene.remove(group);
       for (const o of trash) o.dispose?.();
     }
