@@ -16,7 +16,9 @@ if ! command -v git-lfs >/dev/null 2>&1; then
   tar -xzf /tmp/git-lfs.tar.gz -C /tmp
   export PATH="/tmp/git-lfs-${LFS_VER}:$PATH"
 fi
-git lfs install --local
+# --force: Render's clone already ships LFS hooks, and a plain install refuses
+# to overwrite an existing pre-push hook (exit 2, which kills the build)
+git lfs install --local --force
 git lfs pull
 
 pip install --upgrade pip
