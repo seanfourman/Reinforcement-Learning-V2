@@ -65,7 +65,7 @@ def trainer():
     daemon thread - that would silently freeze the sim forever while the server
     keeps serving a stale frame. So the loop body is guarded: log once and keep
     going (with a short backoff so a hard-looping error can't spin the CPU)."""
-    global _paused, _ff_remaining
+    global _ff_remaining               # _paused is only read here, so no global needed
     while _alive:
         try:
             # TURBO fast-forward: skip whole episodes as fast as the CPU allows, ignoring

@@ -22,7 +22,7 @@ import os
 import threading
 from collections import deque
 
-from env import (GridWorld, N_ACTIONS,
+from env import (GridWorld,
                  COIN_REWARD, BLOCK_REWARD, GHOST_LEN, FREEZE_LEN,
                  SLIP_PROB, R2_SLIP_PROB, R3_SLIP_PROB, STAR_REWARD,
                  CAGE_REWARD, CAGE_LEN)
@@ -1421,7 +1421,6 @@ class Match:
             need_agent_rebuild = False  # network shape changed (buffer / width)
             replan = False              # GLOBAL DP change: BOTH planners must re-solve
             replan_blue = False         # per-side (Blue's discount / speed): only Blue re-solves
-            r4_dyn = False              # Round-4 game-feel change (apply live to the env)
             r4_hearts_reset = False     # a heart-count change needs a fresh episode
             r2_mdp_reset = False        # changed Arena-2 transition/reward function
 
@@ -1507,16 +1506,12 @@ class Match:
             # ---- Round-4 game feel (World card; applied live to the arena) ----
             if "r4MissileSpeed" in p:
                 self.r4_missile_speed = max(2.0, min(10.0, float(p["r4MissileSpeed"])))
-                r4_dyn = True
             if "r4MissileHoming" in p:
                 self.r4_missile_homing = max(0.0, min(1.5, float(p["r4MissileHoming"])))
-                r4_dyn = True
             if "r4HitPenalty" in p:
                 self.r4_hit_penalty = max(-5.0, min(-0.1, float(p["r4HitPenalty"])))
-                r4_dyn = True
             if "r4Hearts" in p:
                 self.r4_hearts = max(1, min(9, int(p["r4Hearts"])))
-                r4_dyn = True
                 r4_hearts_reset = True
             if "r4ActionRepeat" in p:
                 self.r4_action_repeat = max(1, min(8, int(p["r4ActionRepeat"])))
@@ -2106,7 +2101,6 @@ class Match:
                 n_stars = getattr(env, "n_stars", 0)
                 star_mode = getattr(env, "star_mode", False)
                 n_floor = getattr(env, "n_cells", None)
-                n_pipes = len(getattr(env, "pipe_map", ()))
                 n_slip = len(getattr(env, "slip_cells", ()))
                 n_plants = len(getattr(env, "plant_cells", ()))
                 if star_mode:
