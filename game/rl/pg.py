@@ -10,9 +10,14 @@ Three variants, increasing sophistication (matches the "Policy Gradient" card):
                   push up the log-prob of each action in proportion to the (whitened)
                   return that followed it. No critic, so high variance - exactly the
                   card's framing.
-  Actor-Critic  - add a value head (the CRITIC). The actor is updated by the
-                  ADVANTAGE A = G - V(s) instead of the raw return, and the critic
-                  regresses V toward G. Same gradient idea, far lower variance.
+  Actor-Critic  - a TRUE bootstrapping critic (TD, not Monte-Carlo). It collects a
+                  short n-step rollout and forms the advantage A = R_nstep - V(s), where
+                  the critic BOOTSTRAPS the tail with r + gamma*V(s'), and it updates
+                  every few steps instead of once per whole episode. That bootstrapping
+                  is the actual point of "critic": it cuts variance and updates often,
+                  so it learns FAR faster than the Monte-Carlo REINFORCE. (The textbook
+                  distinction, Sutton & Barto 13.5 - REINFORCE-with-a-baseline is still
+                  Monte-Carlo and is NOT a real actor-critic; this one bootstraps.)
   PPO           - the modern workhorse. Collect a fixed-horizon rollout, estimate
                   advantages with GAE, then take several CLIPPED policy steps: the
                   probability ratio pi_new/pi_old is clamped to [1-eps, 1+eps] so one
@@ -250,30 +255,75 @@ class REINFORCE(PGAgent):
 
 
 class ActorCritic(PGAgent):
+    """A TRUE bootstrapping actor-critic (synchronous advantage AC / A2C-style) - the
+    genuine TD step between Monte-Carlo REINFORCE and PPO.
+
+    Instead of waiting for the whole episode (Monte-Carlo), it collects a short n-step
+    rollout of `horizon` transitions and lets the CRITIC bootstrap: the target for step
+    t is the n-step return R_t = r_t + gamma*r_{t+1} + ... + gamma^k * V(s_{t+k}) (V
+    fills in the value BEYOND the rollout), and the advantage is A_t = R_t - V(s_t).
+    That bootstrapping is what makes it a real critic (not just a baseline): it cuts the
+    variance and, crucially, updates every `horizon` steps regardless of how long the
+    episode is - so it is DECOUPLED from episode length and gets many updates where the
+    Monte-Carlo version got one. Truncation is handled correctly (a timeout is NOT a
+    terminal, so its tail is bootstrapped with V, not treated as zero).
+
+    Distinct from PPO: plain n-step returns (no GAE), one SINGLE gradient step per
+    rollout (no clipped multi-epoch reuse), a short horizon."""
+
     name = "Actor-Critic"
     has_critic = True
     value_coef = 0.5
+    horizon = 64           # rollout length; an update fires every `horizon` steps
+    lam = 0.95             # GAE lambda - trades bias for variance in the bootstrap
+
+    def learn_step(self, s, a, r, ns, na, done, next_mask=None):
+        # accumulate the rollout; fire an update once it reaches the horizon. `done` is
+        # the TRUE terminal flag (the match passes `terminated`, so a timeout is False).
+        self.S.append(np.asarray(s, dtype=np.float32))
+        self.A.append(int(a))
+        self.R.append(float(r))
+        self.Done.append(bool(done))
+        self.NS.append(np.asarray(ns, dtype=np.float32))
+        self.steps_seen += 1
+        if len(self.S) >= self.horizon:
+            self._update()
 
     def end_episode(self):
+        # flush the trailing partial rollout so the episode's tail is not lost
+        self._update()
+
+    def _update(self):
         if not self.S:
             return
-        # bootstrap the tail only if the episode was truncated (last step not terminal)
-        boot = 0.0
-        if not self.Done[-1]:
-            boot = self.state_value(self.NS[-1])
-        returns = self._returns(bootstrap=boot)
         S = torch.as_tensor(np.stack(self.S), device=self.device)
         A = torch.as_tensor(self.A, device=self.device).long()
-        G = torch.as_tensor(returns, device=self.device).float()
+        # advantages via GAE(lambda) off the CURRENT critic (bootstrapping the tail with
+        # V(last next-state); the nonterminal gate stops it crossing a real terminal).
+        with torch.no_grad():
+            _, V_all = self.net(S)
+            boot = self.state_value(self.NS[-1])
+        V_np = V_all.cpu().numpy()
+        T = len(self.R)
+        adv = np.zeros(T, dtype=np.float32)
+        gae = 0.0
+        for t in range(T - 1, -1, -1):
+            nonterminal = 0.0 if self.Done[t] else 1.0
+            next_v = boot if t == T - 1 else float(V_np[t + 1])
+            delta = self.R[t] + self.gamma * next_v * nonterminal - float(V_np[t])
+            gae = delta + self.gamma * self.lam * nonterminal * gae
+            adv[t] = gae
+        returns = adv + V_np                       # critic target = advantage + V
+        Adv = torch.as_tensor(adv, device=self.device)
+        Ret = torch.as_tensor(returns, device=self.device)
+        if Adv.numel() > 1:
+            Adv = (Adv - Adv.mean()) / (Adv.std() + 1e-8)
         logits, V = self.net(S)
         dist = Categorical(logits=logits)
         logp = dist.log_prob(A)
         ent = dist.entropy().mean()
-        adv = G - V.detach()                       # critic judges: advantage
-        if adv.numel() > 1:
-            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
-        ploss = -(logp * adv).mean() - self.entropy_coef * ent
-        vloss = nn.functional.smooth_l1_loss(V, G)  # critic regresses toward the return
+        ploss = -(logp * Adv).mean() - self.entropy_coef * ent
+        vloss = nn.functional.smooth_l1_loss(V, Ret)   # critic regresses toward the return
         loss = ploss + self.value_coef * vloss
         self.opt.zero_grad()
         loss.backward()

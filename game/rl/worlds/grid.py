@@ -42,7 +42,7 @@ class World:
                  spikes=None, plants=None, pipes=None,
                  red_stars=None, blue_stars=None,
                  hedge_cells=None, goombas=None, bridge=None,
-                 red_cage=None, blue_cage=None):
+                 red_cage=None, blue_cage=None, plate_puzzles=None):
         self.grid = grid
         self.H, self.W = len(grid), len(grid[0])
         self.theme = theme
@@ -95,6 +95,12 @@ class World:
         # taking it is a deliberate detour. Empty on every other round.
         self.red_cage = [tuple(c) for c in (red_cage or [])]
         self.blue_cage = [tuple(c) for c in (blue_cage or [])]
+        # Round-3 PRESSURE-PLATE puzzles (mirror pairs). Each is a {door, plate, boulder}:
+        # the DOOR is a carved secret-shortcut cell that stays SEALED until the BOULDER is
+        # pushed onto the PLATE, which holds it open for the rest of the episode.
+        self.plate_puzzles = [{"door": tuple(p["door"]), "plate": tuple(p["plate"]),
+                               "boulder": tuple(p["boulder"])}
+                              for p in (plate_puzzles or [])]
 
     def rows(self):
         return ["".join(r) for r in self.grid]
@@ -137,6 +143,9 @@ class World:
             # Round-3 cage pickups (per agent), rendered as freeze-coin icons.
             "redCage": [list(c) for c in self.red_cage],
             "blueCage": [list(c) for c in self.blue_cage],
+            # Round-3 pressure-plate puzzles: push a boulder onto a plate to open a secret door.
+            "platePuzzles": [{"door": list(p["door"]), "plate": list(p["plate"]),
+                              "boulder": list(p["boulder"])} for p in self.plate_puzzles],
         }
 
 

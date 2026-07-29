@@ -127,13 +127,14 @@ def test_solvable_both_spawns_reach_exit():
     assert w.escape[0] not in {w.red_spawn, w.blue_spawn}
 
 
-def test_state_is_cell_phase_rival_triple():
+def test_state_is_cell_phase_rival_door_tuple():
     e = GridWorld(seed=0, round_id=3)
     (sr, sb), _ = e.reset()
     assert e.goomba_mode and e.hazardous
-    assert len(sr) == 3 and len(sb) == 3                     # (cell, phase, rival_flag)
+    assert len(sr) == 4 and len(sb) == 4                     # (cell, phase, rival_flag, door_bit)
     assert 0 <= sr[1] < e._phase_period                      # patrol phase in range
     assert 0 <= sr[2] <= 5                                   # compact rival flag
+    assert sr[3] in (0, 1)                                   # pressure-plate door open/shut bit
 
 
 def test_goombas_patrol_deterministically():

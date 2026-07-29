@@ -39,6 +39,9 @@ PATROL_LEN = 3                    # cells per Goomba patrol - UNIFORM 3 (every g
 N_WET_PAIRS = 5                   # mirror pairs of WET (skid) cells spread ALL OVER the route
                                   # (variance so one racer can fall behind); a skid slides you
                                   # sideways. Spaced out; some sparse mazes fit fewer.
+N_PLATE_PAIRS = 1                 # mirror pairs of PRESSURE-PLATE puzzles: push a BOULDER onto
+                                  # a PLATE to open a SECRET-DOOR shortcut (held open the rest of
+                                  # the episode). 1/side keeps the door a single state bit (x2).
 
 
 MID = W // 2                     # 9: the left-right mirror axis (a wall column)
@@ -269,6 +272,89 @@ def _place_wet(grid, rng, path, avoid, n_pairs):
     return wet
 
 
+def _place_plate_puzzles(grid, rng, path, avoid, protect):
+    """PRESSURE-PLATE puzzle (one mirror pair). Two pieces per side:
+      (a) a DOOR = a WALL between two route cells FAR apart along the route; carving it is a
+          big shortcut, but the env keeps it SEALED until unlocked, so the base maze is
+          untouched and always solvable. A carve that pulls the route onto the ``protect``
+          cage is skipped.
+      (b) a straight PUSH-LANE off a route cell R: R -> boulder(R+d) -> plate(R+2d), both OFF
+          the route so the boulder never blocks the run. The agent stands on R and shoves the
+          boulder one cell onto the plate (a dead-end stop), which opens the door for good.
+    Everything is mirrored L<->R. Returns [] (reverting any tentative carve) if either piece
+    has no home on this maze. Mutates ``grid`` (carves the door on success)."""
+    idx = {P: i for i, P in enumerate(path)}
+    pathset = set(path)
+    taken0 = avoid | protect
+
+    # (1) PUSH-LANE candidates: a route cell R with a carvable BOULDER cell R+d (a wall spine)
+    # whose far side R+2d is an existing OFF-route passage (the PLATE). A 1-thick maze can't
+    # hold a natural straight 2-deep stub, so we carve the one boulder cell (a harmless dead-end
+    # pocket the boulder blocks until pushed). Collect them by route index (earliest first).
+    lanes = []
+    for R in path:
+        if not (0 < R[1] < MID) or R in taken0:
+            continue
+        for dr, dc in ORTHO:
+            BO = (R[0] + dr, R[1] + dc)
+            PL = (R[0] + 2 * dr, R[1] + 2 * dc)
+            if not (0 <= BO[0] < H and 0 <= BO[1] < W and 0 <= PL[0] < H and 0 <= PL[1] < W):
+                continue
+            if grid[BO[0]][BO[1]] != WALL:                      # boulder cell must be a carvable spine
+                continue
+            if not _open(grid, PL) or PL in pathset:            # plate = an existing OFF-route passage
+                continue
+            if not (0 < BO[1] < MID and 0 < PL[1] < MID):       # strictly left interior (mirrorable)
+                continue
+            quad = {BO, PL, (BO[0], W - 1 - BO[1]), (PL[0], W - 1 - PL[1])}
+            if quad & taken0:
+                continue
+            lanes.append((idx[R], BO, PL, quad))
+    if not lanes:
+        return []
+    lanes.sort(key=lambda L: L[0])                              # push as early on the route as we can
+
+    # (2) DOOR candidates: a WALL between two route cells FAR apart (a big shortcut), by gap.
+    door_cands = []
+    for r in range(1, H - 1):
+        for c in range(1, MID):
+            if grid[r][c] != WALL or (r, c) in avoid or (r, W - 1 - c) in avoid:
+                continue
+            for dr, dc in ((1, 0), (0, 1)):
+                n1, n2 = (r - dr, c - dc), (r + dr, c + dc)
+                if _open(grid, n1) and _open(grid, n2) and n1 in idx and n2 in idx:
+                    door_cands.append((abs(idx[n1] - idx[n2]), min(idx[n1], idx[n2]), (r, c)))
+                    break
+    door_cands.sort(reverse=True)
+
+    # (3) pair an early push-lane with a big-gap door whose entry is AHEAD of the push, so the
+    # door has opened by the time the racer reaches it. Carving the door must not reroute the
+    # shortest path onto the ``protect`` cage (keeps the cage a real detour).
+    for ridx, BO, PL, quad in lanes:
+        for gap, near_idx, B in door_cands:
+            if gap < 7:
+                break
+            if near_idx <= ridx + 1:                            # door must open AHEAD of the push
+                continue
+            Bm = (B[0], W - 1 - B[1])
+            if B in quad or Bm in quad:
+                continue
+            grid[B[0]][B[1]] = FLOOR
+            grid[Bm[0]][Bm[1]] = FLOOR
+            if protect & set(_path(grid, BLUE_SPAWN_POS, EXIT)):
+                grid[B[0]][B[1]] = WALL
+                grid[Bm[0]][Bm[1]] = WALL
+                continue
+            grid[BO[0]][BO[1]] = FLOOR                           # carve the boulder pocket + mirror
+            grid[BO[0]][W - 1 - BO[1]] = FLOOR
+            return [
+                {"door": B, "plate": PL, "boulder": BO},
+                {"door": Bm, "plate": (PL[0], W - 1 - PL[1]),
+                 "boulder": (BO[0], W - 1 - BO[1])},
+            ]
+    return []
+
+
 def generate(seed=None, **_):
     rng = random.Random(seed)
     grid = _carve_maze(rng)
@@ -298,12 +384,19 @@ def generate(seed=None, **_):
     blue_path = _path(grid, BLUE_SPAWN_POS, EXIT)     # recompute (cage carved nooks)
     wet = _place_wet(grid, rng, blue_path, wet_avoid, N_WET_PAIRS)
 
+    # PRESSURE-PLATE puzzle: a boulder-push opens a sealed shortcut door. Placed LAST so the
+    # goombas/cage/wet all sit on the pre-door route; the cage stays a real detour (protect).
+    puzzle_avoid = wet_avoid | {tuple(c) for c in wet}
+    protect = {c for c in (blue_cage, red_cage) if c}
+    plate_puzzles = _place_plate_puzzles(grid, rng, blue_path, puzzle_avoid, protect)
+
     world = World(
         grid, theme=THEME, round_id=ROUND_ID, title=TITLE, objective="cross",
         red_spawn=RED_SPAWN_POS, blue_spawn=BLUE_SPAWN_POS, escape=[EXIT],
         goombas=goombas, bridge=bridge, slip=wet,
         blue_cage=[blue_cage] if blue_cage else None,
         red_cage=[red_cage] if red_cage else None,
+        plate_puzzles=plate_puzzles,
     )
     validate(world)                              # the maze is connected: both spawns reach the exit
     return world

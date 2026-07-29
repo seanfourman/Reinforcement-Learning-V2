@@ -219,6 +219,19 @@ class GridWorld(gym.Env):
         bc = getattr(world, "blue_cage", []) or []
         self.cage_cell = {"red": tuple(rc[0]) if rc else None,
                           "blue": tuple(bc[0]) if bc else None}
+        # Round-3 PRESSURE-PLATE puzzles (mirror pair). The LEFT puzzle (door col < MID) is
+        # BLUE's, the right is RED's. Push YOUR boulder onto YOUR plate to unlock YOUR secret
+        # door (a sealed shortcut), held open the rest of the episode. Boulder position lives
+        # in the state as ONE bit (door open?), so the puzzle stays tabular-Markov.
+        self.puzzle = {"red": None, "blue": None}
+        for p in (getattr(world, "plate_puzzles", []) or []):
+            door, plate = tuple(p["door"]), tuple(p["plate"])
+            boulder = tuple(p["boulder"])
+            side = "blue" if door[1] < self.W // 2 else "red"
+            self.puzzle[side] = {"door": door, "plate": plate, "boulder_start": boulder}
+        self.boulder_pos = {a: (self.puzzle[a]["boulder_start"] if self.puzzle[a] else None)
+                            for a in ("red", "blue")}
+        self.door_open = {"red": False, "blue": False}
         self.goomba_mode = bool(self.goombas)
         # Round 3 exposes the extra STAY action so agents can wait out a patrol; every
         # other round keeps the 4 pure moves. Set here (after the world is known) so a
@@ -324,6 +337,10 @@ class GridWorld(gym.Env):
         # steps each is frozen inside a dropped cage (0 = free). Reset every episode.
         self.cage_taken = {"red": False, "blue": False}
         self.caged = {"red": 0, "blue": 0}
+        # Round-3 pressure-plate puzzles: boulder back to its start, doors sealed again.
+        self.boulder_pos = {a: (self.puzzle[a]["boulder_start"] if self.puzzle[a] else None)
+                            for a in ("red", "blue")}
+        self.door_open = {"red": False, "blue": False}
         # per-episode reward decomposition (terminal / shaping / other) per agent.
         # "shape" now carries collected-coin reward (0 on the skeleton rounds).
         self.ep_parts = {"red": {"terminal": 0.0, "shape": 0.0, "other": 0.0},
@@ -383,8 +400,9 @@ class GridWorld(gym.Env):
             return (idx, self.collect[agent], self.status[agent])
         if getattr(self, "star_mode", False):      # Round 2: cell x stars-collected mask
             return (idx, self.stars_collected[agent])
-        if getattr(self, "goomba_mode", False):    # Round 3: cell x patrol-phase x rival
-            return (idx, self.steps % self._phase_period, self._rival_flag(agent, cell))
+        if getattr(self, "goomba_mode", False):    # Round 3: cell x patrol-phase x rival x door
+            return (idx, self.steps % self._phase_period, self._rival_flag(agent, cell),
+                    1 if self.door_open.get(agent) else 0)
         return (idx,)
 
     def _rival_flag(self, agent, cell):
@@ -686,6 +704,21 @@ class GridWorld(gym.Env):
                             move = p1 if r < self.r3_slip_prob * 0.5 else p2
                             self._slipped[agent] = True
                     nxt = self._resolve(agent, old, move)  # walls block
+                    # PRESSURE-PLATE: shoving into YOUR boulder pushes it one cell onto the
+                    # plate, which unlocks YOUR secret door for the rest of the episode.
+                    bpos = self.boulder_pos.get(agent)
+                    if bpos is not None and nxt == bpos:
+                        pz = self.puzzle[agent]
+                        dr, dc = ACTIONS[move] if move in MOVE_ACTIONS else (0, 0)
+                        if move in MOVE_ACTIONS and (bpos[0] + dr, bpos[1] + dc) == pz["plate"]:
+                            self.boulder_pos[agent] = pz["plate"]   # seat it -> door opens (permanent)
+                            self.door_open[agent] = True
+                        else:
+                            nxt = old                               # the boulder won't budge
+                    # a SEALED secret door blocks entry until this agent's plate is pressed
+                    pz = self.puzzle.get(agent)
+                    if pz is not None and nxt == pz["door"] and not self.door_open[agent]:
+                        nxt = old
                     if not self._agent_done.get(rival, False) and nxt == self._pos(rival):
                         nxt = old                      # can't enter the live rival's cell (bridge block)
                 self._set_pos(agent, nxt)
@@ -900,6 +933,13 @@ class GridWorld(gym.Env):
                 cell = self.cage_cell.get(a)
                 snap[a + "Cage"] = ([list(cell)] if cell and not self.cage_taken[a] else [])
             snap["caged"] = {"red": int(self.caged["red"]), "blue": int(self.caged["blue"])}
+            # Pressure-plate puzzles: static door/plate cells + the live boulder positions and
+            # which doors are currently unlocked, so the theme can render the push + reveal.
+            snap["platePuzzles"] = [
+                {"side": a, "door": list(self.puzzle[a]["door"]),
+                 "plate": list(self.puzzle[a]["plate"]),
+                 "boulder": list(self.boulder_pos[a]), "open": bool(self.door_open[a])}
+                for a in ("red", "blue") if self.puzzle[a]]
         return snap
 
 
