@@ -473,6 +473,7 @@ export function initReplay(parent) {
       <div class="seg" id="rl-rep-model" role="group" aria-label="Replay model">
         <button data-a="blue" class="active" aria-pressed="true">Blue - top 30</button>
         <button data-a="red" aria-pressed="false">Red - top 30</button>
+        <button data-a="milestones" aria-pressed="false">Milestones</button>
       </div>
       <div id="rl-rep-list" class="replist" role="region" aria-label="Top episode replays"></div>
       <div id="rl-rep-detail" class="repdetail" role="region" aria-label="Selected replay details" hidden></div>
@@ -482,8 +483,9 @@ export function initReplay(parent) {
   const seg = $("#rl-rep-model");
   const listEl = $("#rl-rep-list");
   const detailEl = $("#rl-rep-detail");
-  let model = "blue"; // default: the player's own model (Blue), on the left
+  let model = "blue"; // "blue" | "red" | "milestones"  (default: your own model, on the left)
   let selEpisode = null; // immutable replay identity; rank changes as training runs
+  let selKey = null;     // milestone rows are identified by their event key, not episode
   let listRequest = 0;
   let replayRequest = 0;
 
@@ -497,6 +499,30 @@ export function initReplay(parent) {
   // terminal / shaping / step-cost split, the exploration ε it acted under, and how
   // the head-to-head went - not just the length in the list row.
   function renderDetail(r) {
+    if (r.agent === "milestones") {
+      const who = r.winner === "red" ? "Red" : "Blue";
+      const s = r.stats || null;
+      const rows = [
+        ["Milestone", r.label || "-"],
+        ["Model", who],
+        ["Episode", (r.episode || 0).toLocaleString()],
+        ["Steps", `${r.steps}`],
+      ];
+      if (s) {
+        if (Number.isFinite(s.return))
+          rows.push(["Return (total reward)", signed(s.return)]);
+        if (Number.isFinite(s.epsilon))
+          rows.push(["Exploration ε", s.epsilon.toFixed(2)]);
+      }
+      detailEl.innerHTML = rows
+        .map(
+          ([k, v]) =>
+            `<div class="rd-row"><span class="rd-k">${k}</span><b class="rd-v">${v}</b></div>`,
+        )
+        .join("");
+      detailEl.hidden = false;
+      return;
+    }
     const who = r.agent === "red" ? "Red" : "Blue";
     const s = r.stats || null;
     const rows = [
@@ -541,7 +567,27 @@ export function initReplay(parent) {
       if (request !== listRequest || requestedModel !== model) return;
       const items = r.items || [];
       if (!items.length) {
-        listEl.innerHTML = `<div class="empty">No winning runs yet for ${requestedModel === "red" ? "Red" : "Blue"}.</div>`;
+        listEl.innerHTML = `<div class="empty">${
+          requestedModel === "milestones"
+            ? "No milestones reached yet - keep training."
+            : `No winning runs yet for ${requestedModel === "red" ? "Red" : "Blue"}.`
+        }</div>`;
+        return;
+      }
+      if (requestedModel === "milestones") {
+        // one row per notable FIRST (mixed models), newest-first is the natural
+        // append order; show the event label + an agent-coloured dot.
+        listEl.innerHTML = items
+          .map(
+            (it) =>
+              `<button type="button" class="rrow ms${it.key === selKey ? " sel" : ""}" ` +
+              `data-rank="${it.rank}" data-episode="${it.episode}" data-key="${it.key}" ` +
+              `aria-label="${it.label}, ${it.steps} steps, episode ${it.episode}">` +
+              `<span class="mdot ${it.milestoneAgent === "red" ? "red" : "blue"}"></span>` +
+              `<span class="ml">${it.label}</span>` +
+              `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></button>`,
+          )
+          .join("");
         return;
       }
       listEl.innerHTML = items
@@ -564,29 +610,33 @@ export function initReplay(parent) {
     }
   }
 
-  async function loadTop(rank, episode) {
+  async function loadTop(rank, episode, key) {
     const requestedModel = model;
+    const isMs = requestedModel === "milestones";
     const request = ++replayRequest;
     // Cancel an older replay load immediately, rather than waiting for this
     // request to cross both the fetch and replayEnter pause boundary.
     const loadGeneration = window.RL?.replay?.reserveLoad?.();
     try {
-      const r = await (
-        await fetch(`/api/replay?which=top&agent=${requestedModel}&rank=${rank}&episode=${episode}`, {
-          cache: "no-store",
-        })
-      ).json();
+      const url = isMs
+        ? `/api/replay?which=top&agent=milestones&rank=${rank}`
+        : `/api/replay?which=top&agent=${requestedModel}&rank=${rank}&episode=${episode}`;
+      const r = await (await fetch(url, { cache: "no-store" })).json();
       if (request !== replayRequest || requestedModel !== model) return;
       if (!r.available) {
-        refreshList(); // rolled out of the top 30 - refresh
+        refreshList(); // rolled out of the list - refresh
         return;
       }
-      // hand the frames to the shared player, PAUSED (Playback takes over from here);
-      // pass the model so the Playback scrubber matches (red for Red runs)
+      // hand the frames to the shared player; pass the model so the Playback scrubber
+      // matches. A milestone carries its OWN model (r.winner: red for a Red event).
       const eps = r.replayFields?.epsilon;
-      const replayModel = r.agent === "red" ? "red" : requestedModel;
-      const label = `${replayModel === "red" ? "Red" : "Blue"} #${r.rank + 1} - ${r.steps} steps` +
-        (Number.isFinite(eps) ? ` · ε ${eps.toFixed(2)}` : "");
+      const replayModel = isMs
+        ? (r.winner === "red" ? "red" : "blue")
+        : (r.agent === "red" ? "red" : requestedModel);
+      const label = isMs
+        ? `${r.label}${Number.isFinite(r.stats?.epsilon) ? ` · ε ${r.stats.epsilon.toFixed(2)}` : ""}`
+        : `${replayModel === "red" ? "Red" : "Blue"} #${r.rank + 1} - ${r.steps} steps` +
+          (Number.isFinite(eps) ? ` · ε ${eps.toFixed(2)}` : "");
       const loaded = await window.RL?.replay?.load?.(
         r.frames || [],
         label,
@@ -596,10 +646,17 @@ export function initReplay(parent) {
         loadGeneration,
       );
       if (!loaded || request !== replayRequest || requestedModel !== model) return;
+      // Choosing a replay starts it playing right away at the fixed watchable pace
+      // (the Playback bar's on-entry hook sets REPLAY_VIEW_FPS = 5/s).
+      window.RL?.replay?.play?.();
       selEpisode = r.episode ?? episode;
+      selKey = isMs ? (r.key ?? key ?? null) : null;
       renderDetail(r);
       [...listEl.children].forEach((el) =>
-        el.classList.toggle("sel", +el.dataset.episode === selEpisode),
+        el.classList.toggle(
+          "sel",
+          isMs ? el.dataset.key === selKey : +el.dataset.episode === selEpisode,
+        ),
       );
     } catch (e) {
       /* ignore a failed fetch - the list stays as-is */
@@ -619,21 +676,23 @@ export function initReplay(parent) {
     window.RL?.replay?.reserveLoad?.();
     listEl.classList.toggle("red", model === "red"); // red model -> red row selection
     selEpisode = null;
+    selKey = null;
     clearDetail();
     refreshList();
   });
   listEl.addEventListener("click", (e) => {
     const row = e.target.closest(".rrow");
     if (!row) return;
-    loadTop(+row.dataset.rank, +row.dataset.episode);
+    loadTop(+row.dataset.rank, +row.dataset.episode, row.dataset.key);
   });
   // when the panel exits replay (Back to live / arena change), drop the highlight
   // AND re-pull the list: an arena change wipes the backend's per-round top-30, so the
   // browser must refresh immediately instead of showing the previous round's stale rows.
   window.addEventListener("rl-replay-state", (e) => {
     if (!e.detail?.active) {
-      if (selEpisode !== null) {
+      if (selEpisode !== null || selKey !== null) {
         selEpisode = null;
+        selKey = null;
         [...listEl.children].forEach((el) => el.classList.remove("sel"));
       }
       clearDetail();

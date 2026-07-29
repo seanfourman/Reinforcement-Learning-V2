@@ -25,6 +25,9 @@ const PEACH_ACTION_ORDER = [1, 0, 3, 2];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
 const sliderToSpeed = (v) => Math.round(Math.pow(15000, v / 100)); // 1/s (v=0) -> 15000/s (v=100)
+// A loaded replay always plays at THIS fixed, watchable pace, no matter how fast the
+// live-training slider is set (crank training to 15000/s, a replay still crawls at 5/s).
+const REPLAY_VIEW_FPS = 5;
 
 // per-level control scoping. DP planners (Value / Policy Iteration) plan with the
 // discount γ + a planning-speed knob, so the learning controls (α, ε) hide there.
@@ -111,6 +114,10 @@ export const GLOBAL_PARAMS = [
   { key: 'r4Hearts', label: 'Hearts (lives)', min: 1, max: 9, step: 1, sect: 'world', scope: 'r4', def: 3, desc: 'How many hits each character survives before the round ends. Changing this restarts the episode.', fmt: (v) => `${Math.round(v)}` },
   { key: 'r4HitPenalty', label: 'Hit penalty', min: -5, max: -0.1, step: 0.1, sect: 'world', scope: 'r4', def: -2, desc: 'Reward lost when a Bill takes one of your hearts. More negative = the model fears getting hit more.', fmt: (v) => (+v).toFixed(1) },
   { key: 'r4ActionRepeat', label: 'Action repeat', min: 1, max: 8, step: 1, sect: 'world', scope: 'r4', def: 4, desc: 'How many 0.02 s steps each chosen direction is held before the model may change it. 1 = decide every step (the greedy policy jitters); higher = the model commits to a direction, which stabilises both learning and dodging. 4 is the tuned default.', fmt: (v) => `${Math.round(v)}` },
+  // --- Round-5 game mechanics (Tostarena: Bowser's airship hazard) ---
+  { key: 'r5BowserCount', label: 'Bowser throw count', min: 0, max: 6, step: 1, sect: 'world', scope: 'r5', def: 1, desc: "How many objects Bowser's airship hurls at the board each throw. 0 turns the airship off; higher makes dodging a bigger part of the round.", fmt: (v) => `${Math.round(v)}` },
+  { key: 'r5BowserSpeed', label: 'Bowser throw speed', min: 1, max: 14, step: 0.5, sect: 'world', scope: 'r5', def: 6, desc: 'How fast the thrown objects fly across the board (units/s). Faster objects are harder to dodge.', fmt: (v) => (+v).toFixed(1) },
+  { key: 'r5AgentSight', label: 'Object sight range', min: 1, max: 20, step: 0.5, sect: 'world', scope: 'r5', def: 6, desc: 'How far ahead (metres) an agent senses an incoming thrown object in its observation. Larger = more warning to dodge.', fmt: (v) => (+v).toFixed(1) },
   // --- reproducibility ---
   { key: 'trainSeed', label: 'Random seed', min: -1, max: 1000, step: 1, sect: 'world', scope: 'always', def: -1, fmt: (v) => (v < 0 ? 'auto' : String(Math.round(v))) },
 ];
@@ -298,6 +305,22 @@ const STYLE = `
 #rl-panel .lockbtn.locked{background:#dc3e47;border-color:#dc3e47;color:#fff;} /* same red as the CPU model block: #d4141f at 82% over white */
 #rl-panel .lockbtn.locked:hover{background:#d4141f;border-color:#d4141f;color:#fff;}
 #rl-panel .lockbtn svg{width:18px;height:18px;display:block;}
+/* the ARENA-2 turbo: EXACTLY the CPU lock's top-right slot + swing-in (the lock is CPU-only,
+   the turbo is on your Blue model, so they never collide). A blue lightning that JUMPS the
+   training thousands of episodes into the future on click. Like the lock, it reserves header
+   space (via [data-turbo="on"]) so the round-result dots never slide under it. */
+#rl-panel .turbobtn{position:absolute;top:13px;right:14px;z-index:6;width:34px;height:34px;padding:0;
+  display:grid;place-items:center;border:1px solid #cdd8ee;border-radius:50%;background:#fff;color:#1f5fd0;cursor:pointer;
+  opacity:0;transform:translateX(64px) rotate(14deg);pointer-events:none;
+  transition:opacity .26s ease,transform .4s cubic-bezier(.34,1.42,.5,1),background .12s,color .12s,border-color .12s;}
+#rl-panel .turbobtn.show{opacity:1;transform:translateX(0) rotate(0);pointer-events:auto;}
+#rl-panel .turbobtn:hover{background:#eef3fc;border-color:#a9c2ee;}
+#rl-panel[data-turbo="on"] .hdr .harena{padding-right:42px;}   /* mirror the lock's reserve */
+/* mid-skip: solid blue + a soft pulse, clicks disabled until the jump finishes */
+#rl-panel .turbobtn.working{background:#1f5fd0;border-color:#1f5fd0;color:#fff;cursor:default;pointer-events:none;
+  animation:turboPulse 1s ease-in-out infinite;}
+@keyframes turboPulse{0%,100%{box-shadow:0 0 0 0 rgba(31,95,208,.36)}50%{box-shadow:0 0 0 6px rgba(31,95,208,0)}}
+#rl-panel .turbobtn svg{width:18px;height:18px;display:block;}
 /* locked learning sliders (CPU + locked) read grayed out; black shared sliders stay open */
 #rl-panel .ctl.learn{transition:opacity .15s;}
 #rl-panel .ctl.learn:has(input:disabled){opacity:.5;}
@@ -496,6 +519,11 @@ const STYLE = `
 #rl-panel .replist .rrow .st{font-variant-numeric:tabular-nums;font-weight:700;color:#1f1f21;}
 #rl-panel .replist .rrow .rt{color:#6b7280;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;}
 #rl-panel .replist .rrow .ep{margin-left:auto;color:#9a9da4;font-size:11px;font-variant-numeric:tabular-nums;}
+/* milestone rows: an agent-coloured dot + the event label (mixed models in one list) */
+#rl-panel .replist .rrow .mdot{width:9px;height:9px;border-radius:50%;flex:none;background:#1f5fd0;}
+#rl-panel .replist .rrow .mdot.red{background:#e60012;}
+#rl-panel .replist .rrow .ml{font-weight:700;color:#1f1f21;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#rl-panel .replist .rrow.ms.sel{background:#f1f3f6;box-shadow:inset 3px 0 0 #6b7280;}
 #rl-panel .replist .empty{padding:15px 12px;color:#9a9da4;font-size:12px;text-align:center;}
 
 /* selected-replay detail card: full stats for the picked run */
@@ -702,6 +730,7 @@ export function initPanel() {
     <div class="rl-body">
     <div class="hdr">
       <button class="lockbtn" type="button" aria-label="Unlock the CPU's values"></button>
+      <button class="turbobtn" type="button" aria-label="Turbo: fast-forward training"></button>
       <div class="harena"><b id="rl-arena">-</b><div class="rdots" id="rl-round"></div></div>
       <div class="mselect" role="group" aria-label="Model view">
         <span class="msel-wash" aria-hidden="true"></span>
@@ -808,6 +837,7 @@ export function initPanel() {
   const body = panel.querySelector('.rl-body');
   const playback = body.querySelector('#rl-sec-playback');
   const lockBtn = body.querySelector('.lockbtn');
+  const turboBtn = body.querySelector('.turbobtn');
   const hdrEl = body.querySelector('.hdr');
   initGraphs(body); // the player's graph sections
 
@@ -919,20 +949,56 @@ export function initPanel() {
     paintRange(speed);
   };
   const sendSpeed = () => window.RL.control({ cmd: 'speed', value: effSpeed() });
-  // a loaded replay plays at the CURRENT speed setting (mapped to a watchable fps)
-  const replayFps = () => Math.max(1, Math.min(60, effSpeed()));
+
+  // ---- Arena-2 TURBO: a blue lightning button that sits in the CPU lock's exact slot
+  // (top-right of the header). One click JUMPS training TURBO_SKIP episodes into the future
+  // instantly - no rendering, the server burns through them and reports progress. Shown only
+  // in Arena 2 (round index 1) on the Blue (your) model, so it never overlaps the CPU lock.
+  const TURBO_BOLT = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>';
+  const TURBO_SKIP = 10000;   // episodes to fast-forward per click
+  turboBtn.innerHTML = TURBO_BOLT;
+  let turboRound = -1, ffRemaining = 0, ffFiredAt = 0;
+  const updateTurboBtn = () => {
+    const show = turboRound === 1 && panel.dataset.model === 'your';
+    turboBtn.classList.toggle('show', show);
+    if (show) panel.dataset.turbo = 'on'; else delete panel.dataset.turbo; // reserve header space
+    const working = ffRemaining > 0;
+    turboBtn.classList.toggle('working', working);
+    const label = working
+      ? `Skipping ahead - ${ffRemaining.toLocaleString()} episodes to go`
+      : `Turbo: jump ${TURBO_SKIP.toLocaleString()} episodes into the future`;
+    turboBtn.title = label;
+    turboBtn.setAttribute('aria-label', label);
+  };
+  turboBtn.addEventListener('click', () => {
+    if (ffRemaining > 0) return;                 // already skipping
+    ffFiredAt = performance.now();
+    ffRemaining = TURBO_SKIP;                     // optimistic; the snapshot corrects it
+    updateTurboBtn();
+    window.RL.control({ cmd: 'fastForward', episodes: TURBO_SKIP });
+  });
+  // the snapshot poll drives the working state + re-enables the button when the jump ends
+  const setFfRemaining = (n) => {
+    const v = Math.max(0, n | 0);
+    // ignore a stale 0 for a beat after firing (the server may not have started the skip yet)
+    if (v === 0 && performance.now() - ffFiredAt < 1500) return;
+    if (v === ffRemaining) return;
+    ffRemaining = v;
+    updateTurboBtn();
+  };
+  // switching Blue <-> CPU only shows/hides the button (state is server-side)
+  window.addEventListener('rl-modelview', updateTurboBtn);
+
   const setSpeedRound = (roundIndex) => {
     const mul = roundIndex === 3 ? 5 : 1;   // R4's 0.02 s step needs 5x the raw rate
     if (mul === speedMul) return;
     speedMul = mul;
     showSpeed();
     sendSpeed();
-    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
   };
   speed.addEventListener('input', () => {
     showSpeed();
     sendSpeed();
-    if (window.RL.replay?.active?.()) window.RL.replay.setFps(replayFps());
   });
   showSpeed();
   sendSpeed();
@@ -980,7 +1046,7 @@ export function initPanel() {
     playBtn.style.background = on ? (red ? '#e60012' : '#1f5fd0') : '';
     if (on) {
       setMapContext(s.tomatoMask, s.nTomatoes, true);
-      if (!lastReplayActive) window.RL.replay?.setFps?.(replayFps()); // sync to current speed on entry
+      if (!lastReplayActive) window.RL.replay?.setFps?.(REPLAY_VIEW_FPS); // fixed watchable pace, not the training speed
       seekEl.style.setProperty('--fill', red ? '#e60012' : '#1f5fd0'); // scrubber matches the model
       seekEl.max = Math.max(0, (s.total || 1) - 1);
       if (document.activeElement !== seekEl) { seekEl.value = s.idx; paintRange(seekEl); } // don't fight a drag
@@ -1070,6 +1136,7 @@ export function initPanel() {
         case 'r2': return roundIndex === 1;       // Round-2 game mechanics (regioned maze: pipes + puddles)
         case 'r3': return roundIndex === 2;       // Round-3 game mechanics (Fossil Falls wet cells)
         case 'r4': return roundIndex === 3;       // Round-4 game feel (missiles / hearts / hit penalty)
+        case 'r5': return roundIndex === 4;       // Round-5 game feel (Bowser airship: throw count/speed/sight)
         default: return true;                     // 'always'
       }
     };
@@ -1212,7 +1279,10 @@ export function initPanel() {
       lastAlgoBlue = s.algoBlue; lastAlgoRed = s.algoRed; lastRoundIndex = ri;
       reShowRelevant();
       setSpeedRound(ri);   // R4 needs the 5x speed factor; others 1x
+      turboRound = ri;
+      updateTurboBtn();    // show the lightning only in Arena 2 on the Blue model
     }
+    setFfRemaining(s.ffRemaining || 0); // drive the turbo button's skip-in-progress state
     // 5 round-result dots: blue / red / draw(purple) for played rounds, grey otherwise,
     // with a ring on the round currently in progress.
     const roundResults = s.roundResults || [];

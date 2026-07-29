@@ -71,28 +71,39 @@
           captures: { red: 1, blue: 0 }, capturesToWin: 3,
           stun: { red: 0, blue: 1.0 },         // blue stunned -> cartoon dizzy stars
           weapons: { red: "green_shell", blue: "banana" },  // must NOT show an in-world badge now
-          crates: [{ id: 2, pos: [C - 6, C + 4], radius: 0.55 }],
+          crates: [{ id: 2, pos: [C + 4, C - 0.5], radius: 0.55 }],
           shells: [
-            { id: 1, owner: "red", kind: "green", pos: [C + 4.5, C - 3], vel: [0, 5], radius: 0.35 },
+            { id: 1, owner: "red", kind: "green", pos: [C + 5, C - 4], vel: [0, 5], radius: 0.35 },
           ],
           traps: [
-            { id: 1, owner: "red", kind: "banana", pos: [C + 4.5, C + 3.5], radius: 0.7 },
-            { id: 2, owner: "blue", kind: "oil", pos: [C - 4.5, C - 3.5], radius: 0.7 },
+            { id: 1, owner: "red", kind: "banana", pos: [C + 1.5, C + 3.5], radius: 0.7 },
+            { id: 2, owner: "blue", kind: "oil", pos: [C - 1.5, C + 2.5], radius: 0.7 },
+          ],
+          ship: { x: C + 3 * Math.sin(t * 0.7), z: -2 },
+          hazards: [
+            { id: 1, kind: 0, pos: [C + 2, C - 4 + (t % 2) * 3], vel: [0, 6], radius: 0.45 },
+            { id: 2, kind: 1, pos: [C - 3, C - 2 + (t % 2) * 3], vel: [0, 6], radius: 0.45 },
           ],
           ctfEvents: events,
         };
       }
 
       async function main() {
-        let world;
-        try {
-          const r = await fetch("/api/world", { cache: "no-store" });
-          world = (await r.json()).world;
-          say(`world ${world.theme} arena=${world.arena} ctf.weapons=${world.ctf?.weapons}`);
-        } catch (e) { say("world fetch failed: " + e.message); return; }
-        const A = world.arena || 26, C = A / 2;
-        camera.position.set(C, A * 0.78, A * 1.42);
-        camera.lookAt(new THREE.Vector3(C, 1, C));
+        // self-contained tostarena world so the preview never depends on the live
+        // server's current round (which drifts as matches run).
+        const world = {
+          theme: "tostarena", arena: 20,
+          ctf: {
+            flagSpawn: [10, 10], flagRadius: 0.75, crateRadius: 0.55,
+            weapons: ["chain", "red_shell", "green_shell", "banana", "oil"],
+            bases: { red: [17.5, 17.5], blue: [2.5, 2.5] }, homeRadius: 1.5,
+          },
+        };
+        say(`world ${world.theme} arena=${world.arena} ctf.weapons=${world.ctf.weapons}`);
+        const A = world.arena, C = A / 2;
+        // close on the airship to check its textures + Bowser on the deck
+        camera.position.set(C + 2, 6, C + 9);
+        camera.lookAt(new THREE.Vector3(C, 4, C - 2));
 
         let theme;
         try {

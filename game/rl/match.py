@@ -270,6 +270,12 @@ class Match:
         self.r4_hearts = None
         self.r4_hit_penalty = None
         self.r4_action_repeat = None       # None = the arena's own default (4)
+        # Round-5 Bowser-airship overrides (None = the arena's own default), live from
+        # the panel's World card: objects thrown per throw, their speed, and how far
+        # ahead the agents can see incoming objects.
+        self.r5_bowser_count = None
+        self.r5_bowser_speed = None
+        self.r5_agent_sight = None
         # DQN learners (continuous round 4). EVERY internal is PER-SIDE, so Blue and
         # Red each train fully independently (different brain AND different training
         # regime). batch/warmup/target-sync apply live; buffer/width/depth rebuild.
@@ -348,6 +354,11 @@ class Match:
                  hearts=self.r4_hearts, hit_penalty=self.r4_hit_penalty)
         if self.r4_action_repeat is not None and getattr(self.env, "missile_game", False):
             self.env.action_repeat = self.r4_action_repeat
+        setc = getattr(self.env, "set_ctf_dynamics", None)
+        if setc:                                # Round-5 Bowser-airship overrides
+            setc(bowser_throw_count=self.r5_bowser_count,
+                 bowser_obj_speed=self.r5_bowser_speed,
+                 agent_sight=self.r5_agent_sight)
         setd = getattr(self.env, "set_dynamics", None)
         if setd:
             return setd(slip_prob=self.slip_prob, ghost_len=self.ghost_len,
@@ -616,6 +627,11 @@ class Match:
         self._best_len = -1 if getattr(self.env, "missile_game", False) else 10 ** 9
         # the TOP_N winning episodes per model, ordered by the round's objective
         self._top = {"red": [], "blue": []}
+        # "First key events" milestone replays: the FIRST time each notable thing
+        # happens this round (first win, first goal reached, first death by each
+        # hazard). Append-only + first-occurrence, so a row's rank never shifts.
+        self._milestones = []
+        self._milestone_keys = set()
         # per-cell visit counts per side (the "where do they travel" heatmap)
         self.red_visits = [[0] * self.env.W for _ in range(self.env.H)]
         self.blue_visits = [[0] * self.env.W for _ in range(self.env.H)]
@@ -1037,6 +1053,7 @@ class Match:
             else:
                 lst.sort(key=lambda e: (e["stats"]["return"], -e["steps"]), reverse=True)
             del lst[TOP_N:]
+        self._capture_milestones(race, replay_sides, side_steps, truncated)
         recent = list(self.recent)
         n = len(recent) or 1
         self.hist.append({
@@ -1056,6 +1073,63 @@ class Match:
             "predQRed": round(self._dqn_field("red", "predQ"), 3),
             "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
         })
+
+    # cause string (from the recorded frame's <side>Dead) -> a human phrase
+    _DEATH_PHRASE = {
+        "plant": "eaten by a Piranha Plant",
+        "spike": "impaled on a spike trap",
+        "goomba": "caught by a Goomba",
+    }
+
+    def _capture_milestones(self, race, replay_sides, side_steps, truncated):
+        """Save a one-off replay the FIRST time each notable event happens this round:
+        first win, first time each model reaches the goal, and first death by each
+        hazard. Append-only + first-occurrence, so an existing row's rank never moves."""
+        names = {"red": "Red", "blue": "Blue"}
+        events = []  # (key, label, agent, steps) - steps indexes into self._frames
+        # first win (whoever reached the goal first)
+        if race in ("red", "blue"):
+            events.append((f"win_{race}", f"{names[race]}'s first win",
+                           race, side_steps.get(race, self.env.steps)))
+        # first time each side reaches the goal at all (even a 2nd-place finish)
+        for side in replay_sides:
+            events.append((f"goal_{side}", f"{names[side]} first reaches the goal",
+                           side, side_steps.get(side, self.env.steps)))
+        # first death by each hazard: scan the recorded frames for the death step + cause
+        for side in ("red", "blue"):
+            dk = side + "Dead"
+            for i, fr in enumerate(self._frames):
+                cause = fr.get(dk)
+                if cause:
+                    phrase = self._DEATH_PHRASE.get(cause, "killed by a hazard")
+                    events.append((f"death_{cause}_{side}",
+                                   f"{names[side]} first {phrase}", side, i))
+                    break
+        for key, label, agent, steps in events:
+            if key in self._milestone_keys:
+                continue
+            self._milestone_keys.add(key)
+            n = max(0, int(steps))
+            frames = self._frames[:n + 1] if n + 1 <= len(self._frames) else list(self._frames)
+            try:
+                fields = self._capture_replay_fields(agent)
+            except Exception:
+                fields = None
+            self._milestones.append({
+                "key": key, "label": label, "agent": agent,
+                "episode": self.episode, "steps": n,
+                "stats": {
+                    "return": round(float(self.ep_return.get(agent, 0.0)), 3),
+                    "epsilon": round(float(self.red_epsilon if agent == "red"
+                                           else self.epsilon), 3),
+                    "outcome": ("win" if race == agent
+                                else "lose" if race in ("red", "blue") else "draw"),
+                    "truncated": bool(truncated),
+                },
+                "frames": frames,
+                "policyFrames": self._replay_policy_frames(agent),
+                "replayFields": fields,
+            })
 
     def _replay_policy_frames(self, agent):
         """Compact HxW canonical policy history for a DP replay; empty for learners."""
@@ -1300,6 +1374,14 @@ class Match:
                 self.r4_action_repeat = max(1, min(8, int(p["r4ActionRepeat"])))
                 if getattr(self.env, "missile_game", False):
                     self.env.action_repeat = self.r4_action_repeat
+
+            # ---- Round-5 Bowser airship (World card; applied live to the arena) ----
+            if "r5BowserCount" in p:
+                self.r5_bowser_count = max(0, min(6, int(round(float(p["r5BowserCount"])))))
+            if "r5BowserSpeed" in p:
+                self.r5_bowser_speed = max(1.0, min(14.0, float(p["r5BowserSpeed"])))
+            if "r5AgentSight" in p:
+                self.r5_agent_sight = max(1.0, min(20.0, float(p["r5AgentSight"])))
 
             # ---- BLUE's DQN internals (per-side; Red's are in set_red_params) ----
             if "dqnBatch" in p:
@@ -2081,9 +2163,11 @@ class Match:
                     "5 held-weapon one-hot (chain / red shell / green shell / banana / "
                     "oil; all 0 = empty) + 1 rival-armed flag + "
                     "10 shell terms (2 nearest shells: present, relative x/z, velocity x/z) + "
-                    "8 trap terms (2 nearest traps: present, relative x/z, is-oil)"
+                    "8 trap terms (2 nearest traps: present, relative x/z, is-oil) + "
+                    "15 hazard terms (3 nearest thrown Bowser objects WITHIN sight: "
+                    "present, relative x/z, velocity x/z)"
                 )
-                # segmented breakdown (dims sum to obs_dim = 51) for the stacked bar
+                # segmented breakdown (dims sum to obs_dim = 66) for the stacked bar
                 state_groups = [
                     {"label": "Self", "dim": 4, "color": "#3f7fe0",
                      "detail": "your position x/z and velocity x/z"},
@@ -2103,18 +2187,23 @@ class Match:
                      "detail": "2 nearest shells (present, relative x/z, velocity x/z)"},
                     {"label": "Traps", "dim": 8, "count": 2, "each": 4, "color": "#6b8e23",
                      "detail": "2 nearest traps (present, relative x/z, is-oil)"},
+                    {"label": "Bowser objects", "dim": 15, "count": 3, "each": 5,
+                     "color": "#3aa76d",
+                     "detail": "3 nearest thrown objects within sight (present, rel x/z, "
+                               "velocity x/z) - so it can DODGE them"},
                 ]
                 observation = (
                     "Each agent sees ITSELF AND ITS RIVAL: its own position/velocity, the "
                     "rival's relative position/velocity, where the flag is and who holds "
                     "it, the direction to both bases, the status terms (carrying, the two "
                     "stun timers, capture lead), the two nearest crates, WHICH weapon it is "
-                    "holding (and whether the rival is armed), and the two nearest incoming "
-                    "shells and laid traps."
+                    "holding (and whether the rival is armed), the two nearest incoming "
+                    "shells and laid traps, and the nearest objects Bowser has thrown that "
+                    "are within its sight range (to dodge)."
                 )
                 observation_tuple = (
                     "(self, opponent, flag + holder, bases, status, crates, weapon, "
-                    "shells, traps)")
+                    "shells, traps, Bowser objects)")
                 opp_info = (
                     "FULLY VISIBLE - this is the whole point of the round. The rival's "
                     "relative position and velocity are in every observation, so a good "
@@ -2134,7 +2223,12 @@ class Match:
                     "action - Chain Chomp (yank the rival in + stun it), a homing Red shell "
                     "or a straight Green shell (both stun on hit; the green bounces off "
                     "walls), a Banana (a laid trap that stuns whoever drives over it) or "
-                    "an Oil slick (throws the rival backwards + briefly dazes it)."
+                    "an Oil slick (throws the rival backwards + briefly dazes it). "
+                    "Overhead, BOWSER'S AIRSHIP cruises the north edge and periodically "
+                    "HURLS objects at random board spots (never aimed at anyone); an object "
+                    "that flies into an agent stuns it, so both must DODGE. The number of "
+                    "objects thrown, their speed, and how far ahead the agents see them are "
+                    "all tunable from the World card."
                 )
                 rewards = [
                     ["Grab the loose flag", 0.15],
@@ -2146,6 +2240,7 @@ class Match:
                     ["Chain-yank the rival", 0.08],
                     ["Hit the rival with a shell", 0.30],
                     ["Snare the rival with a banana / oil", 0.25],
+                    ["Hit by a shell / trap / Bowser object (stunned)", -0.05],
                     ["Win the round (first to 3 captures)", 2.0],
                     ["Step", -0.002],
                 ]
@@ -2277,6 +2372,20 @@ class Match:
     def replay(self, which="last", agent=None, rank=0, episode=None):
         with self.lock:
             metric = "longest" if getattr(self.env, "missile_game", False) else "fastest"
+            if agent == "milestones":
+                # milestones are append-only, so the row rank is a stable identity
+                lst = self._milestones
+                if not (0 <= rank < len(lst)):
+                    return {"available": False}
+                ep = lst[rank]
+                return {"available": True, "which": "top", "agent": "milestones",
+                        "metric": "milestone", "rank": rank,
+                        "key": ep["key"], "label": ep["label"],
+                        "winner": ep["agent"], "steps": ep["steps"],
+                        "episode": ep["episode"], "frames": ep["frames"],
+                        "stats": ep.get("stats"),
+                        "policyFrames": ep.get("policyFrames", []),
+                        "replayFields": ep.get("replayFields")}
             if which == "top":
                 lst = self._top.get(agent, [])
                 if episode is not None:
@@ -2311,6 +2420,15 @@ class Match:
     def replays_index(self, agent):
         """Lightweight metadata (no frames) for the top-30 replay list per model."""
         with self.lock:
+            if agent == "milestones":
+                lst = self._milestones
+                return {"agent": "milestones", "count": len(lst), "metric": "milestone",
+                        "items": [{"rank": i, "key": e["key"], "label": e["label"],
+                                   "milestoneAgent": e["agent"], "steps": e["steps"],
+                                   "episode": e["episode"],
+                                   "return": (e.get("stats") or {}).get("return"),
+                                   "id": f"{self.round_id}:milestone:{e['episode']}:{e['key']}"}
+                                  for i, e in enumerate(lst)]}
             lst = self._top.get(agent, [])
             return {"agent": agent, "count": len(lst),
                     "metric": "longest" if getattr(self.env, "missile_game", False) else "reward",

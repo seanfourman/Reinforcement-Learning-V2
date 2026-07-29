@@ -49,6 +49,11 @@ _replay_restore_paused = None  # live pause state saved while a replay owns the 
 _alive = True
 _sync_hold_until = 0.0 # frontend world-load sync hold; independent of user pause
 SYNC_HOLD_FALLBACK = 30.0
+# Fast-forward ("turbo"): episodes still to skip AS FAST AS POSSIBLE, no rendering. The
+# trainer burns through them ignoring the speed throttle + pause; the frontend polls the
+# remaining count (surfaced in the snapshot) to show progress and re-enable the button.
+_ff_remaining = 0
+FF_MAX = 200000        # hard ceiling so a bad value can't wedge the trainer forever
 
 
 def trainer():
@@ -60,9 +65,27 @@ def trainer():
     daemon thread - that would silently freeze the sim forever while the server
     keeps serving a stale frame. So the loop body is guarded: log once and keep
     going (with a short backoff so a hard-looping error can't spin the CPU)."""
-    global _paused
+    global _paused, _ff_remaining
     while _alive:
         try:
+            # TURBO fast-forward: skip whole episodes as fast as the CPU allows, ignoring
+            # the speed throttle AND the pause. tick() acquires match.lock per call, so
+            # snapshot polls still interleave; we re-check state every burst. A burst that
+            # advances ZERO episodes (e.g. a "stop after N" target already hit) cancels the
+            # skip so it can't spin forever.
+            if _ff_remaining > 0:
+                burst_start = match.episode
+                for _ in range(5000):     # > any single episode's step budget on the skip rounds
+                    if not _alive:
+                        break
+                    match.tick()
+                    if match.episode - burst_start >= _ff_remaining:
+                        break
+                advanced = match.episode - burst_start
+                # zero episodes completed in a full burst => tick() is idling (a "stop
+                # after N" target is already reached): nothing to skip, so stop.
+                _ff_remaining = max(0, _ff_remaining - advanced) if advanced > 0 else 0
+                continue
             if _paused or time.monotonic() < _sync_hold_until:
                 time.sleep(0.03)
                 continue
@@ -110,7 +133,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if route == "/api/snapshot":
             snap = match.snapshot()
-            snap.setdefault("stats", {})["paused"] = _paused
+            st = snap.setdefault("stats", {})
+            st["paused"] = _paused
+            st["ffRemaining"] = _ff_remaining   # >0 while a turbo skip is in progress
             return self._json(snap)
         if route == "/api/world":
             # locked accessor: version + world read atomically (never torn apart by
@@ -202,9 +227,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"error": f"bad control value: {e}"}, 400)
 
     def _control(self, body):
-        global _speed, _paused, _replay_restore_paused, _sync_hold_until
+        global _speed, _paused, _replay_restore_paused, _sync_hold_until, _ff_remaining
         cmd = body.get("cmd")
         extra = {}
+        # any world / model / round change cancels a pending fast-forward skip
+        if cmd in ("regenerate", "reset", "resetTournament", "prevRound",
+                   "nextRound", "setRound", "loadouts"):
+            _ff_remaining = 0
         if cmd == "regenerate":
             match.regenerate(seed=body.get("seed"))
             _sync_hold_until = time.monotonic() + SYNC_HOLD_FALLBACK
@@ -233,6 +262,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 _replay_restore_paused = None
         elif cmd == "speed":
             _speed = max(1.0, min(15000.0, float(body.get("value", 60))))
+        elif cmd == "fastForward":
+            # jump N episodes into the future instantly (no rendering). The trainer picks
+            # this up and burns through them; the snapshot reports the remaining count.
+            n = int(float(body.get("episodes", 10000)))
+            _ff_remaining = max(0, min(FF_MAX, n))
+            extra["ffRemaining"] = _ff_remaining
         elif cmd == "sideAlgo":
             match.set_side_algo(body.get("side", "red"), body.get("value", "qlearning"))
         elif cmd == "setParams":

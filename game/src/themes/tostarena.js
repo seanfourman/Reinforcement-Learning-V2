@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
+import { loadBoardWalker } from "../boardchars.js";   // Bowser rides the airship (idx 6)
 
 const ASSETS = "./assets/models/tostarena/";
 
@@ -321,20 +322,9 @@ export const tostarena = {
     // Keep the playable sand surface clear; scene landmarks stay outside it.
 
     // ---- LANDMARKS ---------------------------------------------------------
-    // the Inverted Pyramid: the finish monument, hovering beyond the north rim,
-    // slowly turning like it does over Tostarena
+    // (The Inverted Pyramid backdrop was REMOVED - Bowser's Airship is the north
+    // landmark now.) `pyramid` stays null so its guarded update is a no-op.
     let pyramid = null;
-    placeObj("Pyramid000", C, -12, {
-      footprint: 15,
-      baseY: 8.5, // clears the big town blocks' rooftops below it
-      ry: 0.4,
-      onPlaced: (w) => {
-        // backdrop monument: at this size its shadow is a black lake on the
-        // desert, so it doesn't cast (same rule as the fossilfalls backdrop)
-        w.traverse((o) => (o.castShadow = false));
-        pyramid = { w, y: 8.5 };
-      },
-    });
 
     // (oasis pools + palms and the ruin-gate pillars were on-board props -
     // removed to keep the board clean; the checkpoints are still marked by the
@@ -545,7 +535,9 @@ export const tostarena = {
     }
     placeTownHalf("left");
     placeTownHalf("right");
-    placeTownHalf("top");
+    // the NORTH row of buildings is gone: Bowser's Airship (below) now owns the
+    // north edge, cruising over the open desert where the town block used to be.
+    // placeTownHalf("top");   // removed for the airship
 
     // streetlights at the plaza corners + benches along the edges, so the
     // kerb reads as a town square people actually use
@@ -967,6 +959,9 @@ export const tostarena = {
         crateProtoObj = fitObj(root, 1.15, false);
       }).catch(() => { crateProtoObj = null; });   // missing model -> crates don't draw
     }
+    // a crate DROPS in from high out of frame, bounces once, then rests dead still
+    // (fixed yaw, no spin, no bob) at its sim spot.
+    const CRATE_REST_Y = 0.05, CRATE_DROP_Y = 16;
     function syncCrates(frame, t, dt) {
       const active = new Set();
       for (const cr of frame?.crates || []) {
@@ -974,13 +969,31 @@ export const tostarena = {
         let m = crateMeshes.get(cr.id);
         if (!m && crateProtoObj) {
           m = crateProtoObj.clone();
-          m.rotation.y = (cr.id * 1.37) % (Math.PI * 2);
+          m.rotation.y = (cr.id * 1.37) % (Math.PI * 2);   // one fixed yaw; never spins
+          m.position.set(cr.pos[0], CRATE_DROP_Y, cr.pos[1]);  // start above the screen
+          m.userData.vy = 0;
+          m.userData.landed = false;
           group.add(m);
           crateMeshes.set(cr.id, m);
         }
         if (m) {
-          m.position.set(cr.pos[0], 0.05 + Math.sin(t * 2 + cr.id) * 0.05, cr.pos[1]);
-          m.rotation.y += dt * 0.35;
+          m.position.x = cr.pos[0];
+          m.position.z = cr.pos[1];
+          if (!m.userData.landed) {
+            m.userData.vy -= 34 * dt;                        // gravity fall
+            m.position.y += m.userData.vy * dt;
+            if (m.position.y <= CRATE_REST_Y) {
+              m.position.y = CRATE_REST_Y;
+              if (m.userData.vy < -6) {                      // one small bounce
+                m.userData.vy = -m.userData.vy * 0.26;
+              } else {
+                m.userData.vy = 0;
+                m.userData.landed = true;
+              }
+            }
+          } else {
+            m.position.y = CRATE_REST_Y;                     // sits perfectly still
+          }
         }
       }
       for (const [id, m] of crateMeshes) {
@@ -1080,16 +1093,41 @@ export const tostarena = {
     }
 
     // ---- laid traps: a banana peel or an oil slick lying on the sand --------
+    // a dropped banana PEEL splayed OPEN on the ground: a small centre lump with
+    // four tapered peel strips fanning outward, their tips curling up (Mario-Kart
+    // style), not a closed crescent banana.
+    const peelMat = track(new THREE.MeshStandardMaterial({
+      color: 0xf5c518, roughness: 0.5, emissive: 0x3a2c00, emissiveIntensity: 0.16,
+    }));
+    const peelInnerMat = track(new THREE.MeshStandardMaterial({
+      color: 0xfff0b0, roughness: 0.6,
+    }));
     function makeBanana() {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(
-        track(new THREE.TorusGeometry(0.26, 0.1, 8, 16, Math.PI * 1.15)),
-        track(new THREE.MeshStandardMaterial({
-          color: 0xffd23f, roughness: 0.5, emissive: 0x4a3a00, emissiveIntensity: 0.2,
-        })));
-      body.rotation.x = Math.PI / 2;
-      body.castShadow = true;
-      g.add(body);
+      const base = new THREE.Mesh(track(new THREE.SphereGeometry(0.12, 12, 10)), peelMat);
+      base.scale.set(1, 0.5, 1);                           // a small squashed lump only
+      base.position.y = 0.06;
+      base.castShadow = true;
+      g.add(base);
+      // the peel's centre rises to a POINT (the stem where the strips join), pointing up
+      const nub = new THREE.Mesh(track(new THREE.ConeGeometry(0.1, 0.42, 12)), peelMat);
+      nub.position.y = 0.27;
+      nub.castShadow = true;
+      g.add(nub);
+      const N = 4;
+      for (let i = 0; i < N; i++) {
+        const pivot = new THREE.Group();
+        pivot.position.y = 0.06;
+        pivot.rotation.y = (i / N) * Math.PI * 2 + 0.4;    // fan the strips around
+        const strip = new THREE.Mesh(
+          track(new THREE.CylinderGeometry(0.035, 0.11, 0.5, 8)),
+          i % 2 ? peelInnerMat : peelMat);                 // alternate skin / pale inside
+        strip.position.set(0, 0, 0.24);                    // reach outward from the lump
+        strip.rotation.x = Math.PI / 2 - 0.32;             // lie flat, outer tip curling up
+        strip.castShadow = true;
+        pivot.add(strip);
+        g.add(pivot);
+      }
       return g;
     }
     // oil slick = the SAME wobbly extruded PUDDLE blob the slippery cells use
@@ -1166,14 +1204,161 @@ export const tostarena = {
           group.add(m);
           trapMeshes.set(tr.id, m);
         }
-        if (tr.kind === "banana") {
-          m.position.y = 0.14 + Math.sin(t * 3 + tr.id) * 0.04;
-        }
       }
       for (const [id, m] of trapMeshes) {
         if (active.has(id)) continue;
         group.remove(m);
         trapMeshes.delete(id);
+      }
+    }
+
+    // ---- Bowser's Airship + the objects he HURLS at the board ----------------
+    // The ship hangs over the north edge (where the town's top row used to be).
+    // Bowser stands at its prow and slides side to side (driven by frame.ship.x),
+    // pausing to lob objects at random board spots (a "throw" event -> a lunge).
+    // ONE place to tune the ship + Bowser. Broadside (ry 90deg), low over the north
+    // edge; it FLOATS (bob + roll) and drifts a little to frame.ship.x, Bowser riding
+    // along on the deck. Positioned per the user's dev-tool placement.
+    const SHIP = { x: C, y: 2.5, z: -1.5, size: 12, ry: Math.PI / 2 };
+    const SHIP_DECK_Y = SHIP.y + 2.7;                      // Bowser's feet on the deck
+    const SHIP_DECK_Z = SHIP.z;                            // centred on the deck
+    const CARPET_LIFT = 0.05;                              // raise the deck carpet a hair
+    const shipState = { obj: null, curX: C };             // the ship group + smoothed x
+    const bowser = { obj: null, throwT: 99 };             // the Bowser model + lunge timer
+    // the airship, skinned with its OWN textures. Each DAE material name (…MT) maps to
+    // its real Ship<X>_alb.png, so hull/sails/cloth/gold all show their true colours.
+    {
+      const AIRSHIP_DIR = OBJ + "Bowser's Airship/";
+      // material-name (lower-case) -> albedo texture base + whether it's metallic
+      const SHIP_TEX = {
+        metalmt: ["ShipMetal", 0.4], woodmt00: ["ShipWood00", 0], woodmt01: ["ShipWood01", 0],
+        goldmt00: ["ShipGold00", 0.85], goldmt01: ["ShipGold01", 0.85],
+        koopamt: ["ShipKoopaMetal", 0.6], framemt: ["ShipFrame", 0.4],
+        decoclothmt: ["ShipDecoCloth", 0], flagmt: ["ShipFlag", 0], sailmt: ["ShipSail", 0],
+        carpetmt00: ["ShipCarpet00", 0], carpetmt01: ["ShipCarpet01", 0], ropemt: ["ShipRope", 0],
+        moontankglass00mt: ["MoonTankGlass", 0.3], packunmt: ["PeachBouquetPackun", 0],
+        tankmt: ["Tank", 0.3],
+      };
+      const KEYS = Object.keys(SHIP_TEX).sort((a, b) => b.length - a.length);  // longest first
+      const shipTexCache = {}, shipMatCache = {};
+      const shipTex = (base) => {
+        if (!shipTexCache[base]) {
+          const tex = trackTexture(texLoader.load(
+            encodeURI(AIRSHIP_DIR + base + "_alb.png"), undefined, undefined, () => {}));
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+          tex.anisotropy = maxAniso;
+          shipTexCache[base] = tex;
+        }
+        return shipTexCache[base];
+      };
+      const shipMaterialFor = (name) => {
+        const n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const key = KEYS.find((k) => n.includes(k)) || "metalmt";
+        if (!shipMatCache[key]) {
+          const [base, metal] = SHIP_TEX[key];
+          shipMatCache[key] = track(new THREE.MeshStandardMaterial({
+            map: shipTex(base), roughness: metal > 0.3 ? 0.4 : 0.8,
+            metalness: metal, side: THREE.DoubleSide }));
+        }
+        return shipMatCache[key];
+      };
+      collada.loadAsync(encodeURI(AIRSHIP_DIR + "KoopaShip.dae")).then((asset) => {
+        if (disposed) return;
+        const root = deskinObj(asset.scene);
+        const carpets = [];
+        root.traverse((o) => {
+          if (!o.isMesh) return;
+          track(o.geometry);
+          const mn = (Array.isArray(o.material) ? o.material[0] : o.material)?.name || "";
+          const combined = (mn + " " + (o.name || "")).toLowerCase();
+          o.material = shipMaterialFor(combined);
+          if (combined.includes("carpet")) carpets.push(o);   // lift these off the deck
+          o.castShadow = false;
+          o.receiveShadow = false;
+        });
+        const wrap = fitObj(root, SHIP.size, false);       // small
+        wrap.rotation.y = SHIP.ry;                         // 90deg: broadside to the board
+        wrap.position.set(SHIP.x, SHIP.y, SHIP.z);
+        // nudge the deck carpet up a hair (world units -> model units via the scale)
+        // so it sits ABOVE the planks instead of z-fighting into them
+        const s = wrap.scale.x || 1;
+        for (const cp of carpets) cp.position.y += CARPET_LIFT / s;
+        shipState.obj = wrap;
+        group.add(wrap);
+      }).catch(() => {});                                   // missing/huge model -> no ship
+    }
+    // Bowser himself (the real board character, idx 6), standing on the deck
+    loadBoardWalker(6).then((bw) => {
+      if (disposed || !bw?.group) return;
+      bw.group.scale.setScalar(1.5);
+      bw.group.position.set(SHIP.x, SHIP_DECK_Y, SHIP_DECK_Z);
+      bowser.obj = bw.group;
+      group.add(bw.group);
+    }).catch(() => {});
+
+    // ---- the thrown objects (Bob-omb-like), pooled by id ---------------------
+    function makeHazard(kind) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.42, 16, 12)),
+        track(new THREE.MeshStandardMaterial({
+          color: kind === 1 ? 0x39414d : 0x161619, roughness: 0.5, metalness: 0.5 })));
+      body.castShadow = true;
+      g.add(body);
+      const fuse = new THREE.Mesh(
+        track(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 6)),
+        track(new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.7 })));
+      fuse.position.y = 0.5;
+      g.add(fuse);
+      const spark = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.08, 8, 6)),
+        track(new THREE.MeshStandardMaterial({
+          color: 0xffd873, emissive: 0xffa020, emissiveIntensity: 1.3 })));
+      spark.position.y = 0.66;
+      g.add(spark);
+      return g;
+    }
+    const hazardProto = [makeHazard(0), makeHazard(1), makeHazard(2)];
+    const hazardMeshes = new Map();
+    function syncHazards(frame, dt) {
+      const active = new Set();
+      for (const h of frame?.hazards || []) {
+        active.add(h.id);
+        let m = hazardMeshes.get(h.id);
+        if (!m) {
+          m = hazardProto[(h.kind || 0) % 3].clone();
+          group.add(m);
+          hazardMeshes.set(h.id, m);
+        }
+        m.position.set(h.pos[0], 1.0, h.pos[1]);           // flies low over the board
+        m.rotation.y += dt * 5;
+        m.rotation.x += dt * 3;
+      }
+      for (const [id, m] of hazardMeshes) {
+        if (active.has(id)) continue;
+        group.remove(m);
+        hazardMeshes.delete(id);
+      }
+    }
+    function updateBowser(frame, t, dt) {
+      // the ship FLOATS (gentle bob + roll) and drifts a little to frame.ship.x;
+      // Bowser rides along on the deck with the SAME motion.
+      const targetX = frame?.ship ? frame.ship.x : C;
+      shipState.curX += (targetX - shipState.curX) * (1 - Math.exp(-dt * 5));
+      const bobY = Math.sin(t * 0.9) * 0.3;                 // up-down float
+      const roll = Math.sin(t * 0.65) * 0.045;              // side roll
+      const pitch = Math.sin(t * 0.5 + 1.0) * 0.02;         // fore-aft pitch
+      if (shipState.obj) {
+        shipState.obj.position.set(shipState.curX, SHIP.y + bobY, SHIP.z);
+        shipState.obj.rotation.set(pitch, SHIP.ry, roll);
+      }
+      if (bowser.obj) {
+        bowser.throwT += dt;
+        const lunge = Math.max(0, 1 - bowser.throwT / 0.35);
+        bowser.obj.position.set(shipState.curX, SHIP_DECK_Y + bobY,
+                                SHIP_DECK_Z + lunge * 0.5);
+        bowser.obj.rotation.set(lunge * 0.5 + pitch, 0, roll);   // rides the roll + throw lunge
       }
     }
 
@@ -1218,68 +1403,75 @@ export const tostarena = {
       }
     }
 
-    // ---- the Chain-Chomp REEL-IN (spawned on a "chain" event) --------------
-    // The chomp ball SHOOTS OUT from the puller to the rival over CHAIN_LAUNCH,
-    // then the chain (and the rival, dragged by the sim) retract together. Both
-    // endpoints track the LIVE snapshot positions each frame, so the yank reads as
-    // a real animation instead of an instant teleport.
-    const chainFx = [];
-    const CHAIN_LAUNCH = 0.16, CHAIN_FX_DUR = 0.75;
-    function spawnChain(pullerSide, victimSide) {
+    // ---- the Chain-Chomp, driven by the live snapshot's `chains` list -------
+    // The backend THROWS the chomp head out (phase "out") then latches + reels the
+    // rival in (phase "reel"); here we just draw a real, densely-linked CHAIN from the
+    // thrower to the head each frame - interlocked torus links (alternating 90deg),
+    // not a few floating rings, with the black chomp ball at the head.
+    const chainMeshes = new Map();                         // chain id -> {g, links, head, ...}
+    const CHAIN_LINK_SPACING = 0.26, CHAIN_MAX_LINKS = 60;
+    const chainLinkGeo = track(new THREE.TorusGeometry(0.115, 0.05, 7, 12));
+    function makeChain() {
       const g = new THREE.Group();
       const linkMat = new THREE.MeshStandardMaterial({
-        color: 0x2b2b2b, roughness: 0.45, metalness: 0.8, transparent: true,
+        color: 0x3a3a3a, roughness: 0.4, metalness: 0.85,
       });
       const links = [];
-      for (let i = 0; i < 8; i++) {
-        const l = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.045, 6, 10), linkMat);
-        l.rotation.x = i % 2 ? Math.PI / 2 : 0;
+      for (let i = 0; i < CHAIN_MAX_LINKS; i++) {
+        const l = new THREE.Mesh(chainLinkGeo, linkMat);
+        l.visible = false;
+        l.castShadow = true;
         g.add(l);
         links.push(l);
       }
       const headMat = new THREE.MeshStandardMaterial({
-        color: 0x141414, roughness: 0.35, metalness: 0.3, transparent: true,
+        color: 0x161616, roughness: 0.35, metalness: 0.35,
       });
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 18, 14), headMat);
+      const headGeo = new THREE.SphereGeometry(0.44, 18, 14);
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.castShadow = true;
       g.add(head);
       group.add(g);
-      chainFx.push({ g, links, head, linkMat, headMat,
-                     puller: pullerSide, victim: victimSide, t: 0, from: null, to: null });
+      return { g, links, head, linkMat, headMat, headGeo };
     }
-    function disposeChain(c) {
+    function disposeChainObj(c) {
       group.remove(c.g);
       c.linkMat.dispose();
       c.headMat.dispose();
-      for (const l of c.links) l.geometry.dispose();
-      c.head.geometry.dispose();
+      c.headGeo.dispose();
     }
-    function updateChains(dt, frame) {
-      for (let i = chainFx.length - 1; i >= 0; i--) {
-        const c = chainFx[i];
-        c.t += dt;
-        const pf = frame?.[c.puller], vf = frame?.[c.victim];
-        if (pf) c.from = [pf[0], pf[1]];                   // puller root (chain anchor)
-        if (vf) c.to = [vf[0], vf[1]];                     // the hooked rival (live)
-        const from = c.from || [0, 0], to = c.to || from;
-        const reach = Math.min(1, c.t / CHAIN_LAUNCH);     // chomp shoots out, then sticks
+    function syncChains(frame, dt) {
+      const active = new Set();
+      for (const ch of frame?.chains || []) {
+        active.add(ch.id);
+        let c = chainMeshes.get(ch.id);
+        if (!c) { c = makeChain(); chainMeshes.set(ch.id, c); }
+        const from = frame?.[ch.owner];                    // chain is anchored at the thrower
+        const head = ch.head;
+        if (!from || !head) continue;
+        const dx = head[0] - from[0], dz = head[1] - from[1];
+        const dist = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const n = Math.max(2, Math.min(CHAIN_MAX_LINKS,
+          Math.round(dist / CHAIN_LINK_SPACING) + 1));
         for (let k = 0; k < c.links.length; k++) {
-          const f = (k / (c.links.length - 1)) * reach;
-          c.links[k].position.set(
-            from[0] + (to[0] - from[0]) * f,
-            0.9 + Math.sin(f * Math.PI) * 0.15,
-            from[1] + (to[1] - from[1]) * f);
+          const l = c.links[k];
+          if (k >= n) { l.visible = false; continue; }
+          const f = k / (n - 1);
+          l.visible = true;
+          l.position.set(from[0] + dx * f, 0.8 + Math.sin(f * Math.PI) * 0.1,
+                         from[1] + dz * f);
+          // interlock: alternate a horizontal ring and a vertical ring facing the run
+          if (k % 2) l.rotation.set(0, yaw + Math.PI / 2, 0);
+          else l.rotation.set(Math.PI / 2, 0, 0);
         }
-        c.head.position.set(
-          from[0] + (to[0] - from[0]) * reach, 0.95,
-          from[1] + (to[1] - from[1]) * reach);
-        c.head.rotation.y += dt * 9;
-        const fade = Math.max(0, Math.min(1, (CHAIN_FX_DUR - c.t) / 0.18));
-        c.linkMat.opacity = fade;
-        c.headMat.opacity = fade;
-        if (c.t >= CHAIN_FX_DUR) {
-          disposeChain(c);
-          chainFx.splice(i, 1);
-        }
+        c.head.position.set(head[0], 0.85, head[1]);
+        c.head.rotation.y += dt * 8;
+      }
+      for (const [id, c] of chainMeshes) {
+        if (active.has(id)) continue;
+        disposeChainObj(c);
+        chainMeshes.delete(id);
       }
     }
 
@@ -1295,7 +1487,7 @@ export const tostarena = {
         const tx = held && carrier ? carrier[0] : home.x;
         const tz = held && carrier ? carrier[1] : home.z;
         // carried just above the character's head, not floating high in the air
-        const ty = held ? 1.25 + Math.sin(t * 5) * 0.1 : home.y;
+        const ty = held ? 0.9 + Math.sin(t * 5) * 0.08 : home.y;
         const rate = held ? 1 - Math.exp(-dt * 14) : 0.12;
         flag.clothWrap.position.x += (tx - flag.clothWrap.position.x) * rate;
         flag.clothWrap.position.y += (ty - flag.clothWrap.position.y) * rate;
@@ -1338,27 +1530,29 @@ export const tostarena = {
         }
       }
 
-      // crates, flying shells, laid traps + crate shards
+      // crates, flying shells, laid traps, thrown chains, Bowser + his objects
       syncCrates(frame, t, dt);
       syncShells(frame, t, dt);
       syncTraps(frame, t);
+      syncChains(frame, dt);
+      syncHazards(frame, dt);
+      updateBowser(frame, t, dt);
       for (const ev of frame?.ctfEvents || []) {
         if (!rememberEvent(ev.id)) continue;
-        if (ev.type === "chain" && ev.target) {
-          spawnChain(ev.side, ev.target);                 // reel-in FX follows live pos
-        } else if (ev.type === "crate" && ev.pos) {
+        if (ev.type === "crate" && ev.pos) {
           spawnShards(ev.pos[0], ev.pos[1]);              // the smash burst
+        } else if (ev.type === "throw") {
+          bowser.throwT = 0;                              // Bowser lunges as he hurls
         }
       }
-      updateChains(dt, frame);
       updateShards(dt);
     }
 
     function resetEffects(frameToSuppress = null) {
       seenEvents.clear();
       seenOrder.length = 0;
-      for (const c of chainFx) disposeChain(c);
-      chainFx.length = 0;
+      for (const [, c] of chainMeshes) disposeChainObj(c);
+      chainMeshes.clear();
       // clear transient weapon props so a new episode starts clean
       for (const s of shards) group.remove(s);
       shards.length = 0;
@@ -1366,6 +1560,8 @@ export const tostarena = {
       shellMeshes.clear();
       for (const [, m] of trapMeshes) group.remove(m);
       trapMeshes.clear();
+      for (const [, m] of hazardMeshes) group.remove(m);
+      hazardMeshes.clear();
       // absorb events already present in a restored frame so they don't re-fire
       for (const ev of frameToSuppress?.ctfEvents || []) rememberEvent(ev.id);
     }
@@ -1420,8 +1616,8 @@ export const tostarena = {
 
     function dispose() {
       disposed = true;
-      for (const c of chainFx) disposeChain(c);
-      chainFx.length = 0;
+      for (const [, c] of chainMeshes) disposeChainObj(c);
+      chainMeshes.clear();
       for (const [, m] of crateMeshes) group.remove(m);
       crateMeshes.clear();
       // remove the pooled weapon props (their shared geo/mat are freed via `trash`)
@@ -1429,6 +1625,8 @@ export const tostarena = {
       shellMeshes.clear();
       for (const [, m] of trapMeshes) group.remove(m);
       trapMeshes.clear();
+      for (const [, m] of hazardMeshes) group.remove(m);
+      hazardMeshes.clear();
       for (const s of shards) group.remove(s);
       shards.length = 0;
       const disposeTree = (obj) => obj?.traverse?.((o) => {

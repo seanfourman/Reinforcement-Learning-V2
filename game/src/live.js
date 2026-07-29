@@ -259,14 +259,19 @@ export function createLiveActors(scene, walkers) {
       red: { x: arenaSize - 3, z: arenaSize - 2.5 },
       blue: { x: 3, z: arenaSize - 2.5 },
     };
+    const ctf = world?.ctf || null;
     for (const side of ['red', 'blue']) {
-      const simSpawn = arrPoint(world?.spawns?.[side]) || defaultSpawns[side];
+      // Round-5 CTF: agents spawn on their own corner base and should START looking
+      // toward the centre flag (else they face a fixed default direction on spawn).
+      const simSpawn = arrPoint(ctf?.bases?.[side])
+        || arrPoint(world?.spawns?.[side]) || defaultSpawns[side];
       const sp = {
         x: simSpawn.x * arenaScale + arenaOffset.x,
         z: simSpawn.z * arenaScale + arenaOffset.z,
       };
       const firstTour = Array.isArray(world?.tours?.[side]) ? world.tours[side][0] : null;
-      const faceTarget = arenaPoint(firstTour) || arenaPoint(world?.goal);
+      const faceTarget = arenaPoint(ctf?.flagSpawn)
+        || arenaPoint(firstTour) || arenaPoint(world?.goal);
       rendered[side] = { ...sp };
       target[side] = { ...sp };
       heading[side] = headingTo(sp, faceTarget, Math.PI);
