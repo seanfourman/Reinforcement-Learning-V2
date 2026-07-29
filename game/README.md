@@ -25,6 +25,119 @@ You pick the two characters in the start menu: **Blue is you**, **Red is the CPU
 Red uses the CPU character's compatible algorithm; Blue uses your selected
 algorithm.
 
+## The five rooms - states, rewards, and the hyperparameters that solve them
+
+Every room is a small **escape room**: reach its single terminal (the goal / final
+capture) to advance. The reward always includes a **per-step time cost**, so a faster
+solution earns a higher return - solving quickly *is* the objective. Difficulty rises
+room to room (bigger state space, more actions, dynamic hazards). The "tuned" values
+below are the Blue defaults the app ships with (they solve each room reliably); every
+one is live-editable from the Control panel (`C`).
+
+### Room 1 - Peach's Castle (Dynamic Programming: Value Iteration vs Policy Iteration)
+
+Model **known**, so we *plan* with the Bellman equations instead of sampling.
+
+- **State (|S| = 23,488):** `(your tile x collected-mask x status)` = 225 board cells x
+  a 4-bit mask of which of your coins / Mystery Blocks you have claimed x an 8-value
+  power-up / frozen countdown. It is a genuine **stochastic MDP**: **ice tiles** slip
+  (30% chance a move deflects sideways) and Mystery Blocks give a random Ghost/Freeze
+  outcome, so the transition `P(s'|s,a)` is probabilistic and known to the planner.
+- **Actions (4):** North / South / West / East.
+- **Rewards:** step `-0.01`; coin `+0.2`; Mystery-Block bonus `+0.15`; reach the Power
+  Moon `+1.0`; lose `-1.0`.
+- **Terminal:** first to the Power Moon (a dead heat draws).
+- **Tuned params (DP has no alpha/epsilon):** discount **gamma = 0.98**, convergence
+  threshold **theta = 1e-5**, sweep cap **2000**, planning speed **0.6** Bellman sweeps
+  per tick, ice slip **30%**. VI and PI both converge to the same optimal V\*; the race
+  is which planner gets a usable partial policy first.
+
+### Room 2 - New Donk City (Monte-Carlo control: First-visit vs Every-visit)
+
+Model **unknown**; the agent learns only from **complete-episode returns** (no
+bootstrapping). A creative extra beyond the brief's SARSA/Q pair - Monte Carlo completes
+the Sutton and Barto progression, and SARSA and Q-Learning both appear next door in Room 3.
+
+- **State (|S| = 2,088):** `(your tile x 3-bit tomato mask)` = 261 reachable cells x
+  which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
+  return-to-goal depends on what you still need to collect). **Puddles** add a 12% skid.
+- **Actions (4):** North / South / West / East.
+- **Rewards:** step `-0.01`; collect a tomato (first time) `+0.35`; gather all 3 + reach
+  the goal `+1.0`; eaten in a plant zone `-1.0`.
+- **Terminal:** hold all 3 tomatoes, then reach the top goal.
+- **Tuned params:** **alpha = 0.19**, **gamma = 0.98**, epsilon **0.90 -> 0.05** decayed
+  over **7,200** episodes. MC needs *sustained* exploration because an update only lands
+  after a long full-course return - hence the long decay.
+
+### Room 3 - Fossil Falls (Temporal-Difference control: SARSA vs Q-Learning)
+
+Model **unknown**, learned online with **one-step TD** - **SARSA** (on-policy) races
+**Q-Learning** (off-policy) head-to-head, so the brief's Room-2 (SARSA) and Room-3
+(Q-Learning) requirements are both demonstrated here.
+
+- **State (|S| = 9,840):** `(your tile x Goomba patrol phase x rival flag x secret-door
+  flag)` = 205 cells x the 4-step patrol phase the Goombas cycle on x a compact
+  ahead/level/behind + cage-ready rival flag (6) x whether your pressure-plate door is
+  open. A **wet-cell skid** (tunable, ~20%) is the variance that lets a racer fall behind.
+- **Actions (5):** North / South / West / East / **Stay** (wait out a Goomba).
+- **Rewards:** step `-0.01`; reach the goal first `+1.0`; grab your cage (freeze the
+  rival) `+0.2`; caught by a Goomba `-1.0`; rival finishes first `-1.0`.
+- **Terminal:** first to the shared exit at top-centre.
+- **Tuned params:** **alpha = 0.20**, **gamma = 0.98**, epsilon **1.0 -> 0.05** over
+  **3,000** episodes.
+
+### Room 4 - Ruined Kingdom (Deep RL / function approximation: DQN vs Double-DQN)
+
+Model **unknown**, state **continuous**, so a neural network approximates Q. Built to
+the brief's spec: a **10 x 10 metre** room, a **0.02 s** decision step, and **discrete
+velocity** on each axis (`Vx, Vy in {-1, 0, 1}`, no momentum). Movement stability comes
+from **action-repeat** (a chosen heading is held for 4 steps) rather than momentum.
+
+- **State (55-vector):** 5 own kinematics (position x/z, velocity x/z, rim clearance) +
+  5 own effect timers (speed / shield / slow / freeze / post-hit mercy) + the 3 nearest
+  Banzai Bills x 8 (present, relative x/z, velocity x/z, aimed-at-me, time-to-impact,
+  predicted miss) + the 3 nearest pickups x 7 (present, relative x/z, 4-way type one-hot).
+- **Actions (9):** 8 compass directions + stay.
+- **Rewards:** stay alive `+0.2 / s`; dodge a Bill aimed at you `+0.15`; shift a closing
+  missile's projected miss `+/-0.25 / s`; lose a heart `-2.0`; rival loses its last heart
+  `+0.05`.
+- **Terminal:** each racer has 3 hearts; a hit costs one - last one standing wins.
+- **Tuned params:** learning rate **alpha = 0.30** (Adam lr), **gamma = 0.99**, epsilon
+  **1.0 -> 0.05** over **2,500** episodes; network **128 x 2**, minibatch **64**, replay
+  buffer **50,000**, **500**-step warmup, target-net sync every **500** steps, **3-step**
+  returns, **action-repeat 4**.
+
+### Room 5 - Dry Dry Desert (Policy Gradient: Actor-Critic vs PPO, also REINFORCE)
+
+Model **unknown**, and the policy itself is a network (policy-*based*, not value-based) -
+it **samples** its actions, so there is no epsilon; exploration comes from an **entropy
+bonus**. This is the brief's optional obstacle room: **Bowser's Airship** hurls dynamic
+objects the racers must **dodge**, and the observation exposes a **tunable sight range**
+(how many metres ahead, centre-to-centre, an incoming object is seen). A fresh random
+layout can be generated any time ("New world") to test the learned policy.
+
+- **State (66-vector):** 4 own kinematics + 4 opponent terms (rival relative pos/vel) +
+  5 flag terms (relative x/z + free / you-carry / rival-carries) + 4 base vectors +
+  4 status terms (carrying, both stun timers, capture lead) + 2 crates x3 + a 5-way
+  held-weapon one-hot + rival-armed flag + 2 shells x5 + 2 traps x4 + **3 thrown Bowser
+  objects x5 within the sight range** (present, relative x/z, velocity x/z) - so it can
+  dodge them.
+- **Actions (10):** 8 compass thrusts + coast + **USE** (fire the held weapon).
+- **Rewards:** grab the flag `+0.15`; steal it (tag) `+0.40`; lose it `-0.40`; capture at
+  your base `+1.0`; concede a capture `-0.30`; smash a crate `+0.10`; chain-yank `+0.08`;
+  shell hit `+0.30`; banana/oil snare `+0.25`; get stunned `-0.05`; win the round `+/-2.0`;
+  step `-0.002`.
+- **Terminal:** first to **3 captures** (else most captures at timeout).
+- **Tuned params:** learning rate **alpha = 0.20**, **gamma = 0.98**, entropy bonus
+  **0.01**, GAE **lambda = 0.95**, value-loss weight **0.5**, rollout **horizon** (64 for
+  Actor-Critic, 512 for PPO), PPO **clip = 0.2**, PPO **epochs = 4**, minibatch **128**,
+  network **128**. Decision step **0.05 s**; object sight range **6 m** (tunable).
+
+The CPU (Red) reads the same knobs, but its values come from the chosen character's
+**difficulty tier** (10 characters, easy -> hard): a weaker character learns slower
+(lower alpha), plans less far (lower gamma), and stays more random (higher epsilon, or
+higher entropy in Room 5); a stronger one converges fast and plays near-optimally.
+
 ## Run
 
 ```sh
