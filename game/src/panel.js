@@ -1021,7 +1021,9 @@ export function initPanel() {
   window.addEventListener('rl-modelview', updateTurboBtn);
 
   const setSpeedRound = (roundIndex) => {
-    const mul = roundIndex === 3 ? 5 : 1;   // R4's 0.02 s step needs 5x the raw rate
+    // continuous arenas run a finer tick than the 0.1 s reference, so their step rate
+    // is scaled up for the SAME on-screen pace: R4 (0.02 s) x5, R5 (0.05 s) x2.
+    const mul = roundIndex === 3 ? 5 : roundIndex === 4 ? 2 : 1;
     if (mul === speedMul) return;
     speedMul = mul;
     showSpeed();
