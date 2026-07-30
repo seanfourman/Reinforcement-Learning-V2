@@ -386,6 +386,7 @@ const STYLE = `
 /* key/value stats */
 #rl-panel .stat{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;
   padding:7px 0;border-bottom:1px solid #f0f1f3;}
+#rl-panel .stat[hidden]{display:none;}   /* [hidden] must beat the flex rule above */
 #rl-panel .stat:last-child{border-bottom:0;}
 #rl-panel .stat>span{color:#54565c;}
 #rl-panel .stat b{font-variant-numeric:tabular-nums;font-weight:700;}
