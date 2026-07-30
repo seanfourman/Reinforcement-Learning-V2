@@ -11,7 +11,9 @@ game that makes it a TEMPORAL-DIFFERENCE problem:
   * WET cells (shared ``slip`` cells) can skid a move sideways with
     ``r3_slip_prob`` - the variance that lets one racer fall behind;
   * an off-route CAGE pickup per side: grab YOURS to freeze the rival for
-    ``cage_len`` steps (a catch-up tool; the bonus is paid only when BEHIND);
+    ``cage_len`` steps (a catch-up tool; the bonus is paid only when BEHIND).
+    Only a racer that is still RUNNING can be caged - a dead or finished rival
+    is already frozen for good, and caging it would strand the cage on its body;
   * an optional PRESSURE-PLATE puzzle per side: shove your boulder onto your
     plate to open a sealed SECRET-DOOR shortcut for the rest of the episode.
 
@@ -200,7 +202,16 @@ class FossilFallsEnv(GridWorld):
         if (not frozen and nxt == self.cage_cell.get(agent)
                 and not self.cage_taken[agent]):
             self.cage_taken[agent] = True
-            self.caged[rival] = self.cage_len
+            # Only a racer that is STILL RUNNING can be caged. A dead or finished
+            # rival never steps again, so nothing would ever tick its counter down
+            # (the countdown lives in its own _advance_agent) and the dropped cage
+            # would sit on the body until the episode ended. Its death / arrival can
+            # also be happening THIS tick - it resolves before us in the move order
+            # and _agent_done is only set at the end of step() - so check that too.
+            rival_racing = not (self._agent_done.get(rival, False)
+                                or dead[rival] or self._goal_reached(rival))
+            if rival_racing:
+                self.caged[rival] = self.cage_len
             # Pay the shaping bonus ONLY when you are BEHIND (rival closer to
             # the exit = lower row), so the detour is learned as a CATCH-UP move, not an
             # always-grab. Grabbing while ahead earns nothing (and wastes steps).

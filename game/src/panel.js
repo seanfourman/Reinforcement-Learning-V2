@@ -921,8 +921,18 @@ const STYLE = `
 #rl-panel .tbtn:hover{background:#f0f1f3;border-color:#c4c8ce;}
 #rl-panel .tplay{width:54px;height:54px;border-radius:50%;border:none;background:#141518;color:#fff;}
 #rl-panel .tplay:hover{background:#2a2b30;}
-#rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;}
+/* the icon is NEVER the click target: it gets swapped when the state changes, and a
+   mousedown that landed on an <svg> which is then replaced leaves the browser with a
+   detached mousedown target - it fires no click at all, so the press is lost */
+#rl-panel .transport button svg{width:18px;height:18px;display:block;fill:currentColor;
+  pointer-events:none;}
 #rl-panel .tplay svg{width:21px;height:21px;}
+/* frozen by a world-load sync hold (round switch / reset / new world): nothing is
+   stepping even though training is not paused, so the button reads as WAITING
+   instead of pretending to run. Clicking still pauses/resumes normally. */
+#rl-panel .tplay.held{background:#5e626b;animation:heldPulse 1.1s ease-in-out infinite;}
+#rl-panel .tplay.held:hover{background:#6b6f79;}
+@keyframes heldPulse{0%,100%{opacity:.6}50%{opacity:.95}}
 /* sliders (speed + every hyperparameter) */
 #rl-panel .ctl{margin:0 0 13px;}
 #rl-panel .ctl:last-child{margin-bottom:0;}
@@ -1685,6 +1695,13 @@ export function initPanel() {
   );
 
   const $ = (id) => panel.querySelector(id);
+  // Write text ONLY when it changed. The snapshot poll runs ~30x/s and several of
+  // these nodes live INSIDE a clickable element (the model-selector buttons): an
+  // unconditional write replaces the text node, so a mousedown that landed on it is
+  // detached before mouseup and the browser then fires no click at all.
+  const setText = (el, v) => {
+    if (el && el.textContent !== v) el.textContent = v;
+  };
   const popcount = (value) => {
     let n = value | 0,
       count = 0;
@@ -1855,21 +1872,89 @@ export function initPanel() {
 
   // play/pause is DUAL-MODE: drives the loaded replay when there is one, else the live game
   const playBtn = $("#rl-play");
+  let playIcon = SVG.pause; // what the button currently renders (matches the markup)
+  // Swap the <svg> ONLY when it actually changes. This used to be an unconditional
+  // innerHTML write on EVERY snapshot (~30/s), which destroyed and rebuilt the icon
+  // under the cursor: a mousedown on it was detached before mouseup, the browser then
+  // fired no click at all, and the button "did nothing" - most presses land on the icon.
+  const setPlayIcon = (icon, label) => {
+    if (icon !== playIcon) {
+      playBtn.innerHTML = icon;
+      playIcon = icon;
+    }
+    if (playBtn.getAttribute("aria-label") !== label) {
+      playBtn.setAttribute("aria-label", label);
+      playBtn.title = label;
+    }
+  };
+  // A click OWNS the pause state until a snapshot is KNOWN to reflect it (see
+  // adoptServerPaused below); the icon reads this too, so declare it first.
+  const INTENT_MS = 1500; // safety net so a lost POST can't wedge the button
+  let pauseIntent = null,
+    pauseIntentUntil = 0,
+    intentSerial = 0,
+    ackSerial = -1; // controlSerial from OUR command's reply; -1 = not answered yet
+  // the server can freeze the trainer WITHOUT a user pause (the world-load sync hold
+  // after a round switch / reset / new world); the snapshot reports it as syncHeld.
+  let simHeld = false;
   const setLiveIcon = () => {
-    playBtn.innerHTML = paused ? SVG.play : SVG.pause;
-    playBtn.setAttribute(
-      "aria-label",
-      paused ? "Resume live training" : "Pause live training",
+    // never claim "held" while our own pause/play is still un-acknowledged: the sim
+    // legitimately isn't stepping yet, and flashing the grey pulse on every press
+    // would just be a different lie
+    const held = simHeld && !paused && pauseIntent === null;
+    playBtn.classList.toggle("held", held);
+    setPlayIcon(
+      paused ? SVG.play : SVG.pause,
+      held
+        ? "Loading the arena - training resumes in a moment"
+        : paused
+          ? "Resume live training"
+          : "Pause live training",
     );
   };
-  playBtn.addEventListener("click", () => {
-    if (window.RL.replay?.active?.())
-      window.RL.replay.toggle(); // icon updates via rl-replay-state
-    else {
-      paused = !paused;
-      window.RL.control({ cmd: paused ? "pause" : "play" });
-      setLiveIcon();
+  // The 30 Hz poll used to overwrite the pause state with a reply that was already in
+  // flight when the click fired (so it still carried the OLD value): the icon flipped
+  // back, and the next click re-sent the SAME command, which the server no-ops.
+  // Freshness is decided by the server's controlSerial (bumped per accepted command
+  // and echoed in every snapshot), not by comparing values - a pre-command snapshot
+  // can carry the value we asked for purely by coincidence.
+  const adoptServerPaused = (v, serial) => {
+    if (typeof v !== "boolean") return;
+    if (pauseIntent !== null) {
+      const reflectsUs =
+        ackSerial >= 0 && typeof serial === "number" && serial >= ackSerial;
+      // not provably newer than our command, and we haven't waited too long: keep ours
+      if (!reflectsUs && performance.now() < pauseIntentUntil) return;
+      pauseIntent = null; // the server's view is now the truth again
     }
+    paused = v;
+  };
+  playBtn.addEventListener("click", () => {
+    if (window.RL.replay?.active?.()) {
+      window.RL.replay.toggle(); // icon updates via rl-replay-state
+      return;
+    }
+    const want = !paused;
+    const serial = ++intentSerial; // a newer click always wins over an older reply
+    paused = want;
+    pauseIntent = want;
+    pauseIntentUntil = performance.now() + INTENT_MS;
+    ackSerial = -1; // an older click's ack must not authorise adopting a poll for this one
+    setLiveIcon();
+    // the reply reports the state the server actually applied plus the serial from
+    // which snapshots reflect it: trust that over the optimistic flip
+    Promise.resolve(window.RL.control({ cmd: want ? "pause" : "play" })).then(
+      (r) => {
+        if (serial !== intentSerial || !r || typeof r.paused !== "boolean") return;
+        pauseIntent = r.paused;
+        pauseIntentUntil = performance.now() + INTENT_MS;
+        ackSerial = typeof r.controlSerial === "number" ? r.controlSerial : -1;
+        if (paused !== r.paused) {
+          paused = r.paused;
+          setLiveIcon();
+        }
+      },
+    );
   });
   $("#rl-regen").addEventListener("click", () =>
     window.RL.control({ cmd: "regenerate" }),
@@ -1908,6 +1993,7 @@ export function initPanel() {
     repTag.classList.toggle("red", red);
     // live = gray (CSS default), blue replay = blue, red replay = red
     playBtn.style.background = on ? (red ? "#e60012" : "#1f5fd0") : "";
+    if (on) playBtn.classList.remove("held"); // the held pulse belongs to the live button
     if (on) {
       setMapContext(s.tomatoMask, s.nTomatoes, true);
       if (!lastReplayActive) setSpeedToReplayPace(); // moving into a replay: drop the slider to 5/s
@@ -1920,9 +2006,8 @@ export function initPanel() {
       } // don't fight a drag
       repInfo.textContent = s.label || "Replay";
       repFrame.textContent = s.total ? `${s.idx + 1}/${s.total}` : "";
-      playBtn.innerHTML = s.playing ? SVG.pause : SVG.play;
-      playBtn.setAttribute(
-        "aria-label",
+      setPlayIcon(
+        s.playing ? SVG.pause : SVG.play,
         s.playing ? "Pause replay" : "Play replay",
       );
     } else {
@@ -2152,8 +2237,16 @@ export function initPanel() {
   window.addEventListener("rl-snapshot", (e) => {
     const s = e.detail.stats;
     if (!s) return;
-    if (typeof s.paused === "boolean") paused = s.paused;
-    if (!window.RL.replay?.active?.()) setLiveIcon();
+    // A loaded replay owns the button and forced the server to pause: that temporary
+    // pause must never be adopted as the remembered LIVE state (exiting the replay
+    // restores the real one server-side, and the icon would then be inverted).
+    if (!window.RL.replay?.active?.()) {
+      // syncHeld names the reason; stepping is the ground truth (either way the
+      // board is standing still while the button claims training is running)
+      simHeld = !!s.syncHeld || s.stepping === false;
+      adoptServerPaused(s.paused, s.controlSerial);
+      setLiveIcon();
+    }
     if (!window.RL.replay?.active?.()) {
       const frame = e.detail.frame || {};
       const side = panel.dataset.model === "cpu" ? "red" : "blue";
@@ -2178,22 +2271,22 @@ export function initPanel() {
       const src = p.color === C_OURS ? modelParams : lastParams;
       setFromBackend(p, src?.[p.key]);
     }
-    $("#rl-mb").textContent = NAMES[s.algoBlue] || s.algoBlue || "-";
+    setText($("#rl-mb"), NAMES[s.algoBlue] || s.algoBlue || "-");
     const redNm = NAMES[s.algoRed] || s.algoRed || "";
     const level = Math.max(0, Math.min(CPU_NAMES.length - 1, s.cpuLevel ?? 0));
     const cpuName = CPU_NAMES[level] || "CPU";
     const cpuLabel = CPU_LEVEL_LABELS[level] || "";
     const tier = s.cpuTier ? `${cpuName} - ${cpuLabel}` : cpuName;
-    $("#rl-vs").textContent = redNm
-      ? `vs ${redNm}${tier ? ` - ${tier}` : ""}`
-      : tier
-        ? `vs ${tier}`
-        : "";
+    setText(
+      $("#rl-vs"),
+      redNm ? `vs ${redNm}${tier ? ` - ${tier}` : ""}` : tier ? `vs ${tier}` : "",
+    );
     // the CPU card in the header selector
-    $("#rl-cp-algo").textContent = redNm || "-";
-    $("#rl-cp-tier").textContent = s.cpuTier
-      ? `${cpuName} · Tier ${s.cpuTier} - ${cpuLabel}`
-      : cpuName;
+    setText($("#rl-cp-algo"), redNm || "-");
+    setText(
+      $("#rl-cp-tier"),
+      s.cpuTier ? `${cpuName} · Tier ${s.cpuTier} - ${cpuLabel}` : cpuName,
+    );
     const r = s.round || {};
     const ri = r.index ?? 0;
     if (

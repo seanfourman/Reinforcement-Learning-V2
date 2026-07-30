@@ -488,6 +488,17 @@ export function initReplay(parent) {
   let selKey = null;     // milestone rows are identified by their event key, not episode
   let listRequest = 0;
   let replayRequest = 0;
+  // The list re-pulls every 4 s and used to rewrite every row button each time, even
+  // when nothing changed. A rebuild that lands between a mousedown and a mouseup
+  // detaches the pressed row, and the browser then fires no click at all - the pick
+  // was silently lost. Compare against the last html WE generated (not the DOM's
+  // serialization, which differs in quoting) and only touch the DOM on a real change.
+  let listHTML = null;
+  const setList = (html) => {
+    if (html === listHTML) return;
+    listHTML = html;
+    listEl.innerHTML = html;
+  };
 
   const signed = (v) => (v >= 0 ? "+" : "") + Number(v).toFixed(2);
 
@@ -567,17 +578,17 @@ export function initReplay(parent) {
       if (request !== listRequest || requestedModel !== model) return;
       const items = r.items || [];
       if (!items.length) {
-        listEl.innerHTML = `<div class="empty">${
+        setList(`<div class="empty">${
           requestedModel === "milestones"
             ? "No milestones reached yet - keep training."
             : `No winning runs yet for ${requestedModel === "red" ? "Red" : "Blue"}.`
-        }</div>`;
+        }</div>`);
         return;
       }
       if (requestedModel === "milestones") {
         // one row per notable FIRST (mixed models), newest-first is the natural
         // append order; show the event label + an agent-coloured dot.
-        listEl.innerHTML = items
+        setList(items
           .map(
             (it) =>
               `<button type="button" class="rrow ms${it.key === selKey ? " sel" : ""}" ` +
@@ -587,10 +598,10 @@ export function initReplay(parent) {
               `<span class="ml">${it.label}</span>` +
               `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></button>`,
           )
-          .join("");
+          .join(""));
         return;
       }
-      listEl.innerHTML = items
+      setList(items
         .map(
           (it) =>
             `<button type="button" class="rrow${it.episode === selEpisode ? " sel" : ""}" ` +
@@ -603,10 +614,10 @@ export function initReplay(parent) {
               : "") +
             `<span class="ep">ep ${(it.episode || 0).toLocaleString()}</span></button>`,
         )
-        .join("");
+        .join(""));
     } catch (e) {
       if (request !== listRequest || requestedModel !== model) return;
-      listEl.innerHTML = '<div class="empty">List fetch failed.</div>';
+      setList('<div class="empty">List fetch failed.</div>');
     }
   }
 

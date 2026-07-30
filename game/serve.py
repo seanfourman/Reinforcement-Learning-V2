@@ -47,6 +47,11 @@ _speed = 60.0          # target sim steps per second (set via /api/control)
 _paused = False
 _replay_restore_paused = None  # live pause state saved while a replay owns the screen
 _alive = True
+# Bumped by every accepted /api/control. The reply carries the value, the snapshot
+# echoes it, so the frontend can tell whether a poll already reflects its own command
+# instead of guessing from the value (a snapshot computed a few ms BEFORE a pause
+# still reports the old state, and adopting it flipped the button back).
+_control_serial = 0
 _sync_hold_until = 0.0 # frontend world-load sync hold; independent of user pause
 SYNC_HOLD_FALLBACK = 30.0
 # Fast-forward ("turbo"): episodes still to skip AS FAST AS POSSIBLE, no rendering. The
@@ -167,6 +172,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             st = snap.setdefault("stats", {})
             st["paused"] = _paused
             st["ffRemaining"] = _ff_remaining   # >0 while a turbo skip is in progress
+            # The trainer also stops WITHOUT a user pause (the world-load sync hold after
+            # a round switch / reset) and runs flat out IGNORING the pause during a turbo
+            # skip. Report both, so the UI can show "held" instead of a play/pause state
+            # that disagrees with what the board is actually doing.
+            st["controlSerial"] = _control_serial
+            st["syncHeld"] = time.monotonic() < _sync_hold_until
+            st["stepping"] = _ff_remaining > 0 or (
+                not _paused and time.monotonic() >= _sync_hold_until)
             return self._json(snap)
         if route == "/api/world":
             # locked accessor: version + world read atomically (never torn apart by
@@ -259,6 +272,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _control(self, body):
         global _speed, _paused, _replay_restore_paused, _sync_hold_until, _ff_remaining
+        global _control_serial
         cmd = body.get("cmd")
         extra = {}
         # any world / model / round change cancels a pending fast-forward skip
@@ -331,7 +345,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _sync_hold_until = time.monotonic() + delay
         else:
             return {"error": f"unknown cmd {cmd!r}"}
+        # the command has been applied: from this serial on, every snapshot reflects it
+        _control_serial += 1
         return {"ok": True, "speed": _speed, "paused": _paused,
+                "controlSerial": _control_serial,
                 "worldVersion": match.world_version, "roundId": match.round_id,
                 "algoRed": match.algo_red, "algoBlue": match.algo_blue, **extra}
 
