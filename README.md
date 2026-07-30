@@ -45,7 +45,7 @@ Model **known**, so we _plan_ with the Bellman equations instead of sampling.
   countdown. It is a genuine **stochastic MDP**: **ice tiles** slip
   (30% chance a move deflects sideways) and Mystery Blocks give a random Ghost/Freeze
   outcome, so the transition `P(s'|s,a)` is probabilistic and known to the planner.
-- **Actions (4):** North / South / West / East.
+- **Actions (4):** Up / Down / Left / Right.
 - **Rewards:** step `-0.01`; coin `+0.2`; Mystery-Block bonus `+0.15`; reach the Power
   Moon `+1.0`; lose `-1.0`.
 - **Terminal:** first to the Power Moon (a dead heat draws).
@@ -101,7 +101,7 @@ the Sutton and Barto progression, and SARSA and Q-Learning both appear next door
 - **State (|S| ~ 2,100; seed-dependent, e.g. 2,088 on seed 1):** `(your tile x 3-bit
 tomato mask)` = ~260 reachable cells x which of your 3 tomatoes you already hold. The mask keeps the state **Markov** (the
   return-to-goal depends on what you still need to collect). **Puddles** add a 12% skid.
-- **Actions (4):** North / South / West / East.
+- **Actions (4):** Up / Down / Left / Right.
 - **Rewards:** step `-0.01`; collect a tomato (first time) `+0.35`; gather all 3 + reach
   the goal `+1.0`; eaten in a plant zone `-1.0`.
 - **Terminal:** hold all 3 tomatoes, then reach the top goal.
@@ -160,7 +160,7 @@ Model **unknown**, learned online with **one-step TD** - **SARSA** (on-policy) r
   `(your tile x Goomba patrol phase x rival flag x secret-door flag)` = ~205 cells x the
   patrol phase the Goombas cycle on (4 at the defaults) x a compact ahead/level/behind +
   cage-ready rival flag (6) x whether your pressure-plate door is open. A **wet-cell skid** (tunable, ~20%) is the variance that lets a racer fall behind.
-- **Actions (5):** North / South / West / East / **Stay** (wait out a Goomba).
+- **Actions (5):** Up / Down / Left / Right / **Stay** (wait out a Goomba).
 - **Rewards:** step `-0.01`; reach the goal first `+1.0`; grab your cage (freeze the
   rival) `+0.2`; caught by a Goomba `-1.0`; rival finishes first `-1.0`.
 - **Terminal:** first to the shared exit at top-centre.
@@ -216,7 +216,7 @@ from **action-repeat** (a chosen heading is held for 4 steps) rather than moment
   5 own effect timers (speed / shield / slow / freeze / post-hit mercy) + the 3 nearest
   Banzai Bills x 8 (present, relative x/z, velocity x/z, aimed-at-me, time-to-impact,
   predicted miss) + the 3 nearest pickups x 7 (present, relative x/z, 4-way type one-hot).
-- **Actions (9):** 8 compass directions + stay.
+- **Actions (9):** 8 directions (incl. diagonals) + stay.
 - **Rewards:** stay alive `+0.2 / s`; dodge a Bill aimed at you `+0.15`; shift a closing
   missile's projected miss `+/-0.25 / s`; lose a heart `-2.0`; rival loses its last heart
   `+0.05`.
@@ -281,7 +281,7 @@ layout can be generated any time ("New world") to test the learned policy.
   held-weapon one-hot + rival-armed flag + 2 shells x5 + 2 traps x4 + **3 thrown Bowser
   objects x5 within the sight range** (present, relative x/z, velocity x/z) - so it can
   dodge them.
-- **Actions (10):** 8 compass thrusts + coast + **USE** (fire the held weapon).
+- **Actions (10):** 8 thrust directions + coast + **USE** (fire the held weapon).
 - **Rewards:** grab the flag `+0.15`; steal it (tag) `+0.40`; lose it `-0.40`; capture at
   your base `+1.0`; concede a capture `-0.30`; smash a crate `+0.10`; chain-yank `+0.08`;
   shell hit `+0.30`; banana/oil snare `+0.25`; get stunned `-0.05`; win the round `+/-2.0`;

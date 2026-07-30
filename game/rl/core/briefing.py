@@ -38,8 +38,12 @@ class BriefingMixin:
             )
             if not arena and getattr(env, "rich", False):
                 # Round 1's real game: a stochastic maze with optional coins + Mystery Blocks
-                actions = ["North", "South", "West", "East"]
-                nbits = env._n_coins["blue"] + len(env.block_cells["blue"])
+                actions = ["Up", "Down", "Left", "Right"]
+                # coins and Mystery Blocks are counted separately for the wording (the
+                # collected mask is one bit per item, so nbits is still their sum)
+                n_coins = env._n_coins["blue"]
+                n_blocks = len(env.block_cells["blue"])
+                nbits = n_coins + n_blocks
                 # floor cells carry all statuses; interior wall cells (ghost-only) carry
                 # just the positive ghost statuses (see dp._enumerate_states)
                 n_floor = env.n_cells
@@ -54,8 +58,10 @@ class BriefingMixin:
                      "detail": "the square of the castle floor you are standing on",
                      "color": "#3f7fe0"},
                     {"label": "Collected", "n": 1 << nbits,
-                     "detail": f"every combination of which of your {nbits} coins and "
-                               f"Mystery Blocks you have already taken",
+                     "detail": f"every combination of which of your {n_coins} "
+                               f"coin{'' if n_coins == 1 else 's'} and {n_blocks} "
+                               f"Mystery Block{'' if n_blocks == 1 else 's'} you have "
+                               f"already taken",
                      "color": "#8b5cf6"},
                     {"label": "Status", "n": gl + fl + 1,
                      "detail": f"normal, Ghost (up to {gl} tiles left) or Frozen "
@@ -87,7 +93,7 @@ class BriefingMixin:
                 slip_prob = sp
             elif not arena and getattr(env, "hazardous", False) and not getattr(env, "goomba_mode", False):
                 # Round 2 (New Donk City): the collect-three-tomatoes MC tour.
-                actions = ["North", "South", "West", "East"]
+                actions = ["Up", "Down", "Left", "Right"]
                 n_stars = getattr(env, "n_stars", 0)
                 star_mode = getattr(env, "star_mode", False)
                 n_floor = getattr(env, "n_cells", None)
@@ -192,7 +198,7 @@ class BriefingMixin:
                 # Round 3 (Fossil Falls): a MIRROR-SYMMETRIC maze race. Both racers start in
                 # opposite bottom corners and hunt the shared top-centre exit; 6 Goombas patrol
                 # as sentries. A 5th action, STAY, lets a racer wait a beat to time the Goombas.
-                actions = ["North", "South", "West", "East", "Stay"]
+                actions = ["Up", "Down", "Left", "Right", "Stay"]
                 has_puzzle = bool(getattr(env, "puzzle", {}) and any(env.puzzle.values()))
                 door_n = 2 if has_puzzle else 1
                 state_desc = (
@@ -261,7 +267,7 @@ class BriefingMixin:
                 )
             elif not arena:
                 # skeleton grid rounds: a bare navigate-to-goal ("cross") race
-                actions = ["North", "South", "West", "East"]
+                actions = ["Up", "Down", "Left", "Right"]
                 state_desc = "which tile you stand on - nothing else"
                 state_size = getattr(env, "n_cells", None)
                 if state_size:
@@ -280,7 +286,7 @@ class BriefingMixin:
                 rewards = [["Step", -0.01], ["Win (reach the Power Moon)", 1.0], ["Lose", -1.0]]
                 win = "First to reach the Power Moon wins; a simultaneous arrival is a draw."
             elif getattr(env, "missile_game", False):
-                actions = ["8 compass directions + stay (9)"]
+                actions = ["8 directions (incl. diagonals) + stay (9)"]
                 state_size = None
                 sees_opp = False
                 state_desc = (f"a continuous {env.obs_dim}-vector: everything the flyer "
@@ -321,7 +327,7 @@ class BriefingMixin:
                     "chosen every 0.02 s, with NO momentum. The chosen direction is HELD for "
                     f"{repeat} steps (action-repeat) so the policy commits to a heading instead "
                     "of flip-flopping. Inside a circular tower, Banzai Bills enter from the "
-                    "north and home in, exploding on a character or the rim. The barrage "
+                    "top and home in, exploding on a character or the rim. The barrage "
                     "escalates with survival time: 1 Bill at the start, 2 from 100 steps, 3 "
                     f"from 200 (capped at 3). Each character has {hearts} HEARTS - a hit costs "
                     "a heart and grants a brief mercy-invulnerability in place (no respawn); "
@@ -366,7 +372,7 @@ class BriefingMixin:
                     "the same instant is a draw)."
                 )
             elif getattr(env, "ctf_game", False):
-                actions = ["8 compass thrusts + coast + USE weapon (10)"]
+                actions = ["8 thrust directions + coast + USE weapon (10)"]
                 state_size = None
                 sees_opp = True
                 state_desc = (f"a continuous {env.obs_dim}-vector: everything the agent "
@@ -428,7 +434,7 @@ class BriefingMixin:
                     "or a straight Green shell (both stun on hit; the green bounces off "
                     "walls), a Banana (a laid trap that stuns whoever drives over it) or "
                     "an Oil slick (throws the rival backwards + briefly dazes it). "
-                    "Overhead, BOWSER'S AIRSHIP cruises the north edge and periodically "
+                    "Overhead, BOWSER'S AIRSHIP cruises the top edge and periodically "
                     "HURLS objects at random board spots (never aimed at anyone); an object "
                     "that flies into an agent stuns it, so both must DODGE. The number of "
                     "objects thrown, their speed, and how far ahead the agents see them are "
@@ -453,7 +459,7 @@ class BriefingMixin:
                     "whoever has captured more wins (equal captures is a draw)."
                 )
             else:
-                actions = ["8 compass thrusts + coast (9)"]
+                actions = ["8 thrust directions + coast (9)"]
                 state_size = None
                 sees_opp = False
                 state_desc = ("a continuous 6-vector: position, velocity and the offset "

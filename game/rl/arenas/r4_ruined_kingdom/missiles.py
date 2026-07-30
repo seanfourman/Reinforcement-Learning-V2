@@ -2,7 +2,7 @@
 
 Split out of ``arena.py`` purely by size and concern; ``MissileArena`` mixes
 this class in, so every method runs on the arena instance. Bills enter through
-the tower's north opening, curve toward a target with a capped turn rate (so a
+the tower's top opening, curve toward a target with a capped turn rate (so a
 well-timed juke always makes a single Bill overshoot), and explode on a
 character, the rim, or a 12-second safety fuse. Impacts are resolved in exact
 EVENT-TIME order using the engine's swept-circle geometry, so a same-step

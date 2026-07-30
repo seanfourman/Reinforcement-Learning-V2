@@ -49,7 +49,7 @@ class InspectionMixin:
                     "mode": "policy", "ghostArrows": ghost}
 
     def _ghost_wall_arrows(self, agent):
-        """The greedy phase-direction (N/S/W/E) on each interior WALL cell for the
+        """The greedy phase-direction (Up/Down/Left/Right) on each interior WALL cell for the
         agent's CURRENT ghost state - i.e. which way it would keep phasing from there."""
         a = self._agent(agent)
         pos_cells = getattr(self.env, "pos_cells", None)
@@ -284,7 +284,7 @@ class InspectionMixin:
         """Fraction of comparable learned cells where the two greedy policies agree.
 
         Symmetric race boards compare Red at (r,c) with Blue at its reflected tile,
-        including the West/East action reflection. Comparing raw coordinates made
+        including the Left/Right action reflection. Comparing raw coordinates made
         mirror-correct Arena-2 policies look unrelated.
 
         ``applicable`` separates "this round has no tile grid to compare" (the
@@ -338,7 +338,7 @@ class InspectionMixin:
     def q_grid(self, agent):
         """Per-action Q for EVERY tile (the 'numbers on tiles' value overlay), in the
         agent's current context: [qN, qS, qW, qE], or None on walls / unlearned
-        cells. Action order matches env.ACTIONS (North, South, West, East)."""
+        cells. Action order matches env.ACTIONS (Up, Down, Left, Right)."""
         with self.lock:
             if self.env.objective == "arena":
                 return self._blank_grid(agent, mode="q")

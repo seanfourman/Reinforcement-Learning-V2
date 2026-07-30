@@ -164,11 +164,14 @@ class TelemetryMixin:
         n = len(ro) or 1
         return {k: round(ro.count(k) / n, 3) for k in ("red", "blue", "draw", "timeout")}
 
-    # The continuous arena's 9 thrust actions (see continuous.DIRS): 8 compass
-    # directions + coast. Shown as real directions, never bare 0..8 indices.
-    _ARENA_LABELS = ["N", "S", "W", "E", "NW", "NE", "SW", "SE", "Stay"]
-    _ARENA_LABELS_FULL = ["North", "South", "West", "East", "North-West",
-                          "North-East", "South-West", "South-East", "Stay (coast)"]
+    # The continuous arena's 9 thrust actions (see continuous.DIRS): 8 directions
+    # + coast. Shown as real directions, never bare 0..8 indices. Names are
+    # SCREEN-relative (Up/Down/Left/Right) - what the player actually sees - not
+    # compass bearings; the arena camera is unflipped, so up == -z.
+    _ARENA_LABELS = ["Up", "Down", "Left", "Right", "Up-L", "Up-R",
+                     "Down-L", "Down-R", "Stay"]
+    _ARENA_LABELS_FULL = ["Up", "Down", "Left", "Right", "Up-Left",
+                          "Up-Right", "Down-Left", "Down-Right", "Stay (coast)"]
 
     def _action_labels(self, full=False):
         if self.env.n_actions == 9 and getattr(self.env, "objective", "") == "arena":
@@ -179,16 +182,17 @@ class TelemetryMixin:
             base.append("Use weapon" if full else "Use")
             return base
         if self.env.n_actions == 5:     # Round 3: the 4 moves + a STAY (wait out a Goomba)
-            return (["North", "South", "West", "East", "Wait"] if full
-                    else ["N", "S", "W", "E", "Wait"])
+            return ["Up", "Down", "Left", "Right", "Wait"]
         if self.env.n_actions != 4:
             return [str(i) for i in range(self.env.n_actions)]
         # Peach's camera views the board from the opposite side. Keep the learner's
         # stable action indices, but expose directions as the player sees them:
-        # row -1 is screen-down, row +1 screen-up, col -1 right, col +1 left.
+        # row -1 is screen-down, row +1 screen-up, col -1 right, col +1 left. Now
+        # that the names ARE screen directions, this swap is what keeps "Up" meaning
+        # up on the flipped board.
         if self.round_id == 1:
-            return ["South", "North", "East", "West"] if full else ["S", "N", "E", "W"]
-        return ["North", "South", "West", "East"] if full else ["N", "S", "W", "E"]
+            return ["Down", "Up", "Right", "Left"]
+        return ["Up", "Down", "Left", "Right"]
 
     def action_dist(self):
         """Normalized action-frequency histogram per side (is the policy balanced?)."""

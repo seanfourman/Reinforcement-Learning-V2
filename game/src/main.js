@@ -642,7 +642,7 @@ async function poll() {
         const requestedGeneration = heatGeneration;
         const requestedReplayGeneration = replayGeneration;
         // "value" asks for the PER-ACTION Q grid (mode=q), not the scalar V(s) grid:
-        // the overlay draws four numbers (N/S/W/E) on every tile, and needs `best`
+        // the overlay draws four numbers (up/down/left/right) on every tile, and needs `best`
         // to bold the masked greedy action.
         const m =
           requestedMode === "value"
@@ -872,7 +872,7 @@ const replay = {
       best: field.policy?.[r]?.[c],
       ties,
       mask: allowed,
-      labels: ["North", "South", "West", "East"],
+      labels: ["Up", "Down", "Left", "Right"],
       replay: true,
     };
   },

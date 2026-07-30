@@ -10,7 +10,8 @@ Each grid round's GENERATOR lives in its arena package
 (``arenas/<round>/world.py``) and returns a ``World`` built from these
 primitives; ``core/registry.py`` maps round ids to those modules.
 
-Coordinates are (row, col), row 0 = NORTH (escape), row H-1 = SOUTH (spawns).
+Coordinates are (row, col), row 0 = the TOP of the screen (escape), row H-1 =
+the BOTTOM (spawns).
 """
 
 SIZE = 20

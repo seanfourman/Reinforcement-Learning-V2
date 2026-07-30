@@ -1,7 +1,7 @@
 """Round 4's arena mechanics: the Banzai Bill survival duel.
 
 On the shared continuous engine's circular tower, Banzai Bills enter through
-the north opening, curve toward a target, and explode on a character or the
+the top opening, curve toward a target, and explode on a character or the
 rim. Agents earn reward for every moment survived, for dodging Bills aimed at
 them, and lose a HEART on a hit (with a brief mercy-invulnerability window);
 the survivor wins when the rival runs out of hearts. Collectible pickups

@@ -429,8 +429,8 @@ function drawVSurface(canvas, grid) {
   ctx.font = "700 10px system-ui, sans-serif";
   ctx.textAlign = "center";
   // The diagnostic is rotated with Peach's camera, so its visual top is the
-  // player-facing North even though it corresponds to increasing matrix rows.
-  ctx.fillText("N", cw / 2, Math.max(10, oy - 8));
+  // player-facing UP even though it corresponds to increasing matrix rows.
+  ctx.fillText("Up", cw / 2, Math.max(10, oy - 8));
   return true;
 }
 
@@ -1111,7 +1111,7 @@ export function initDiag(parent) {
     const ad = s.actionDist;
     if (ad && ad.labels) {
       const peach = s.round?.index === 0;
-      const labels = peach ? ["N", "S", "W", "E"] : ad.labels;
+      const labels = peach ? ["Up", "Down", "Left", "Right"] : ad.labels;
       const order = peach ? [1, 0, 3, 2] : labels.map((_, i) => i);
       q("#rl-act-body").innerHTML = order
         .map(
@@ -1412,7 +1412,7 @@ export function initBriefing(parent) {
         (s.rewardNote ? `<p class="note">${s.rewardNote}</p>` : "");
 
       // ---- GAME: goal hero + storyboard rows + move keycaps + fact tiles ----
-      const glyph = { North: "↑", South: "↓", West: "←", East: "→", Stay: "•" };
+      const glyph = { Up: "↑", Down: "↓", Left: "←", Right: "→", Stay: "•" };
       const acts = s.actions || [];
       const movesVisual =
         acts.length && acts.every((a) => glyph[a])

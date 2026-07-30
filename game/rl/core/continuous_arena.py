@@ -26,7 +26,7 @@ Interface mirrors the grid engine so the tournament can drive either:
     obs, reward, done, truncated, info = step(a_red, a_blue)   # info['winner']
     frame = snapshot()
 
-Coords match the JS world: x = column and z = row; north is small z.
+Coords match the JS world: x = column and z = row; screen-up is small z.
 """
 
 import math
@@ -43,7 +43,7 @@ GOAL_R = 1.4          # race capture radius
 AGENT_R = 0.55
 MAX_STEPS = 300       # race cap: an optimal run is ~86 steps, so this is ample
 
-# 8 compass thrust directions + coast (index 8). (dx, dz); -z = north (toward goal)
+# 8 thrust directions + coast (index 8). (dx, dz); -z = screen-up (toward goal)
 DIRS = [
     (0.0, -1.0), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0),
     (-0.7071, -0.7071), (0.7071, -0.7071), (-0.7071, 0.7071), (0.7071, 0.7071),

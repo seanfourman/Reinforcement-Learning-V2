@@ -15,7 +15,7 @@ WEAPON into a 1-slot inventory, fired later with the USE action:
     banana       a trap laid behind you; stuns whoever drives over it
     oil          a trap that throws the rival backwards and briefly dazes it
 
-Overhead, BOWSER'S AIRSHIP cruises the north edge and periodically hurls
+Overhead, BOWSER'S AIRSHIP cruises the top edge and periodically hurls
 objects at RANDOM board spots (never aimed at an agent); the blast stuns
 anyone close, so both agents must dodge. All object speeds are in units/second
 (dt-independent).
@@ -361,7 +361,7 @@ class CtfWeaponsMixin:
 
     # ---- Bowser's airship --------------------------------------------------
     def _advance_bowser(self, reward):
-        """Bowser's airship cruises the north edge and, every `bowser_interval`,
+        """Bowser's airship cruises the top edge and, every `bowser_interval`,
         HURLS `bowser_throw_count` objects at RANDOM board spots (NOT aimed at an agent).
         A thrown object flies straight at `bowser_obj_speed`; whichever agent it flies
         into is stunned (agents must DODGE), then it despawns. Objects also expire off

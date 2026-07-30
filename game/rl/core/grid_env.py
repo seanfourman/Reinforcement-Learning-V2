@@ -36,7 +36,8 @@ from gymnasium import spaces
 
 from core.worldgen import WALL
 
-# --- actions: N, S, W, E ----------------------------------------------------
+# --- actions: Up, Down, Left, Right (screen-relative names; 0=row-1, 1=row+1,
+# 2=col-1, 3=col+1) --------------------------------------------------------
 ACTIONS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 N_ACTIONS = len(ACTIONS)
 MOVE_ACTIONS = (0, 1, 2, 3)
@@ -44,8 +45,8 @@ MOVE_ACTIONS = (0, 1, 2, 3)
 # MOVE_ACTIONS, so every resolver already treats it as "hold position" - it just
 # lets an agent wait a tick for a patrol to clear. Only exposed when goomba_mode is on.
 STAY = N_ACTIONS                 # action index 4
-# the two PERPENDICULAR actions an intended move can slip to on ice (N/S slip
-# sideways to W/E, W/E slip to N/S) - used to build the stochastic slip transitions.
+# the two PERPENDICULAR actions an intended move can slip to on ice (Up/Down slip
+# sideways to Left/Right, and vice versa) - builds the stochastic slip transitions.
 PERP = {0: (2, 3), 1: (2, 3), 2: (0, 1), 3: (0, 1)}
 
 # --- rewards ("cross": step cost + win/lose terminal) -------------------------

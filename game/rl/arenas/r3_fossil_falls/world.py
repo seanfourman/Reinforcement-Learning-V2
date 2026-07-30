@@ -13,7 +13,8 @@ the one EXIT on the top edge, dead centre. A few Goombas patrol straight corrido
 as moving hazards (stepping onto one is death). The maze is FIXED for a round and
 reshuffles only on "New World", so tabular SARSA / Q-Learning learn the fixed layout.
 
-Coordinates are (row, col), row 0 = NORTH (exit), row H-1 = SOUTH (spawns).
+Coordinates are (row, col), row 0 = the TOP of the screen (exit), row H-1 =
+the BOTTOM (spawns).
 """
 
 import random

@@ -18,9 +18,12 @@ export const NAMES = {
   dqn: 'DQN', double_dqn: 'Double-DQN', dueling_dqn: 'Dueling-DQN',
   reinforce: 'REINFORCE', actor_critic: 'Actor-Critic', ppo: 'PPO',
 };
-const ACTION_NAMES = ['North', 'South', 'West', 'East'];
+// SCREEN-relative names (what the player sees), in the backend's action-index
+// order: 0 = row-1, 1 = row+1, 2 = col-1, 3 = col+1.
+const ACTION_NAMES = ['Up', 'Down', 'Left', 'Right'];
 // Peach's Castle is viewed from the opposite side of the matrix. Present the
-// conventional N/S/W/E order while reading the matching backend indices.
+// Up/Down/Left/Right rows in that fixed screen order while reading the matching
+// (swapped) backend indices - this is what keeps "Up" pointing up there.
 const PEACH_ACTION_ORDER = [1, 0, 3, 2];
 
 // slider 0..100 <-> steps/sec on a log scale (2 .. 15000)
@@ -400,7 +403,9 @@ const STYLE = `
 /* action-distribution rows: a label + a Red mini-bar over a Blue mini-bar */
 #rl-panel .actlist{display:flex;flex-direction:column;gap:8px;}
 #rl-panel .actrow{display:flex;align-items:center;gap:9px;}
-#rl-panel .actrow .al{width:34px;flex:none;font-size:11.5px;font-weight:700;color:#54565c;}
+/* 52px, not 34: the labels are words now (Up/Down/Left/Right, Down-L on arenas),
+   not single compass letters */
+#rl-panel .actrow .al{width:52px;flex:none;font-size:11.5px;font-weight:700;color:#54565c;}
 #rl-panel .actrow .ab{flex:1;height:7px;border-radius:4px;background:#eceef1;overflow:hidden;position:relative;}
 #rl-panel .actrow .ab+.ab{margin-top:0;}
 #rl-panel .actrow .ab i{display:block;height:100%;transition:width .3s;}

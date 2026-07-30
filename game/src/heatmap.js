@@ -4,7 +4,7 @@ import { cellToWorld, getCell, getOffset } from './layout.js';
 
 // Two ground overlays for a model's learning:
 //   * Visits  - a colour heatmap (BLUE = least stepped on, RED = most), one quad per tile.
-//   * Value   - the per-action Q-values RENDERED AS NUMBERS on each tile (N/S/W/E), drawn
+//   * Value   - the per-action Q-values RENDERED AS NUMBERS on each tile (Up/Down/Left/Right), drawn
 //               onto a single canvas texture mapped over the grid.
 // Only one is visible at a time. Fed by /api/values (mode=visits | mode=q).
 
@@ -233,7 +233,7 @@ export function createHeatmap(scene) {
   }
 
   // draw one number at (x,y). On a flipped board the whole texture is seen
-  // upside-down, so spin the GLYPH 180 about its anchor - it keeps its N/S/W/E
+  // upside-down, so spin the GLYPH 180 about its anchor - it keeps its up/down/left/right
   // slot (greedy stays toward the goal) but reads upright.
   function putText(txt, x, y) {
     if (flip) {

@@ -36,7 +36,7 @@ def _validate_design(world, design):
     if _component_count(blocked) != 3:
         raise ValueError("the two dividers and generated maze must form exactly three sections")
     if any(r in (0, CITY_SIZE - 1) for r, _ in divider_cells):
-        raise ValueError("a divider touched the north or south board edge")
+        raise ValueError("a divider touched the top or bottom board edge")
     if world.red_stars != [_mirror(cell) for cell in world.blue_stars]:
         raise ValueError("the racers' tomatoes are not mirrored")
     if len(world.blue_stars) != 3:
