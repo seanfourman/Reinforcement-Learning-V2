@@ -40,6 +40,17 @@ export const DP_ALGOS = new Set(['value_iteration', 'policy_iteration']);
 export const DQN_ALGOS = new Set(['dqn', 'double_dqn', 'dueling_dqn']);
 export const PG_ALGOS = new Set(['reinforce', 'actor_critic', 'ppo']);
 
+// Round 2 drops both racers MID-COURSE on 3 of every 10 episodes - Monte-Carlo
+// exploring starts, so the post-pickup Q slices (which a bottom spawn almost never
+// reaches) keep getting visited. Mirrors match_loop._new_episode: stage 3/4/5 hands
+// over 1/2/3 tomatoes and starts in the lower / mid / upper park. Without a live
+// label a mid-park spawn with tomatoes already lit just reads as a bug.
+const CURRICULUM_STAGES = {
+  3: '1 tomato already held, random start in the lower park.',
+  4: '2 tomatoes already held, random start in the mid park.',
+  5: 'All 3 tomatoes already held, random start in the upper park.',
+};
+
 // transport icons: centred SVGs that take the button's colour via currentColor
 const SVG = {
   prev: '<svg viewBox="0 0 24 24"><path d="M6 5h2.2v14H6z"/><path d="M18 5 8.5 12 18 19z"/></svg>',
@@ -393,6 +404,18 @@ const STYLE = `
 #rl-panel .stat:last-child{border-bottom:0;}
 #rl-panel .stat>span{color:#54565c;}
 #rl-panel .stat b{font-variant-numeric:tabular-nums;font-weight:700;}
+
+/* live "this episode is an exploring start, not a race" badge (Round 2 MC) */
+#rl-panel .currbadge{display:flex;align-items:flex-start;gap:9px;margin:0 0 9px;
+  padding:8px 10px;border-radius:8px;background:#f5f1fd;border:1px solid #e3d9fa;}
+#rl-panel .currbadge[hidden]{display:none;}   /* [hidden] must beat the flex rule */
+#rl-panel .currbadge i{flex:none;width:8px;height:8px;border-radius:50%;
+  background:#7c4dd0;margin-top:4px;}
+#rl-panel .currbadge div{min-width:0;}
+#rl-panel .currbadge b{display:block;font-size:10.5px;font-weight:700;letter-spacing:.7px;
+  text-transform:uppercase;color:#5b3fa6;}
+#rl-panel .currbadge span{display:block;margin-top:2px;font-size:11px;line-height:1.4;
+  color:#6b6376;}
 
 /* contest bar */
 #rl-panel .bar{height:10px;border-radius:0;background:#eceef1;overflow:hidden;display:flex;margin:0 0 11px;}
@@ -925,6 +948,14 @@ export function initPanel() {
     </section>
     <section id="rl-sec-training" class="qk">
       <h2>Training</h2>
+      <div class="currbadge" id="rl-curr-live" hidden aria-live="polite">
+        <i aria-hidden="true"></i>
+        <div>
+          <b>Section start &middot; training only</b>
+          <span id="rl-curr-live-txt"></span>
+          <span>Kept out of the scoreboard, replays and averages.</span>
+        </div>
+      </div>
       <div class="stat"><span>Episode</span><b id="rl-ep">0</b></div>
       <div class="stat" id="rl-curriculum" hidden><span>Full-course / section starts</span><b id="rl-curriculum-val">0 / 0</b></div>
       <div class="stat" id="rl-training-eps"><span>Exploration ε</span><b id="rl-eps">1.00</b></div>
@@ -1470,6 +1501,15 @@ export function initPanel() {
         `Reached ${tgt.toLocaleString()} episodes. Training has stopped; the models now play with their trained policies.`;
       donePin.hidden = !trainDone;
       panel.classList.toggle('has-train-done', trainDone);
+    }
+    // stage 0 = a genuine bottom-spawn race; 3/4/5 = an exploring start (see
+    // CURRICULUM_STAGES). The server already ships this on every frame.
+    const stage = s.curriculumStage || 0;
+    const currLive = $('#rl-curr-live');
+    if (currLive) {
+      const label = CURRICULUM_STAGES[stage];
+      currLive.hidden = !label;
+      if (label) $('#rl-curr-live-txt').textContent = label;
     }
     const curriculum = s.curriculumEpisodes || 0;
     $('#rl-curriculum').hidden = curriculum <= 0 && ri !== 1;

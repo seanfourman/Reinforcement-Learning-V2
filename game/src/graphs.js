@@ -1230,6 +1230,7 @@ const BICONS = {
   coin: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6" fill="#fff" fill-opacity=".35"/><rect x="10.7" y="7.5" width="2.6" height="9" rx="1.3" fill="#fff" fill-opacity=".8"/></svg>',
   block: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M9 9.5a3 3 0 1 1 3.6 2.94c-.6.15-.6.56-.6 1.06"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 14.9 8.6 21.5 9.5l-4.8 4.6 1.2 6.6L12 17.6 6.1 20.7l1.2-6.6L2.5 9.5l6.6-.9z"/></svg>',
+  tomato: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14.5" r="7" fill="currentColor" fill-opacity=".18"/><path d="M12 7.5V5"/><path d="M12 7.5C10.5 6 8.8 5.6 7.2 6.1c.3 1.6 1.5 2.8 3.1 3.2M12 7.5c1.5-1.5 3.2-1.9 4.8-1.4-.3 1.6-1.5 2.8-3.1 3.2"/></svg>',
   cage: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M5 20V9a7 7 0 0 1 14 0v11"/><path d="M9 20V9M15 20V9M12 20V4.2"/></svg>',
   plant: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-6"/><path d="M8 8a4 4 0 0 1 8 0v1.5a4 4 0 0 1-8 0z"/><path d="M8.5 8.6 7 7.4M15.5 8.6 17 7.4M8.5 9.6 7 10.4M15.5 9.6 17 10.4"/><path d="M12 16c-3 0-4-2-4-2M12 16c3 0 4-2 4-2"/></svg>',
   spike: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 20 8 8l4 12zM12 20 16 8l4 12z" fill-opacity=".85"/><rect x="2" y="20" width="20" height="2" rx="1"/></svg>',
@@ -1264,11 +1265,11 @@ const BESTIARY = {
   },
   2: {
     items: [
-      { ic: "star", tone: "good", name: "Star", desc: "The goal. Collect all of your stars to win the race through the park." },
+      { ic: "tomato", tone: "good", name: "Tomato", desc: "Three of them are spread across the park, and each pays a one-time bonus the first time you take it. Every racer has its own mirror set." },
+      { ic: "star", tone: "good", name: "Shine", desc: "The goal at the end of the park. It stays LOCKED until you hold all three tomatoes - only then does reaching it win the race." },
     ],
     foes: [
       { ic: "plant", tone: "bad", name: "Piranha Plant", desc: "Its zone is instant death: wander into the tiles around a plant and you are out of the race until the next episode." },
-      { ic: "spike", tone: "bad", name: "Spike Trap", desc: "Stepping on a spike is instant death, same as a plant. Route around them." },
       { ic: "pipe", tone: "info", name: "Warp Pipe", desc: "Diving into a pipe teleports you across the board - a shortcut you must learn to use." },
       { ic: "water", tone: "bad", name: "Puddle", desc: "A move made while standing on a puddle can skid sideways. Adds risk to tight paths." },
     ],
@@ -1312,8 +1313,8 @@ const STORY = {
     ] },
   2: { goal: "Collect all 3 tomatoes, then reach the goal first.",
     beats: [
-      ["star", "Three tomatoes are spread across the city park - grab them all."],
-      ["plant", "Piranha Plants and spikes are instant death: one wrong step and you are out for the round."],
+      ["tomato", "Three tomatoes are spread across the city park - grab them all."],
+      ["plant", "A Piranha Plant's zone is instant death: one wrong step and you are out for the round."],
       ["pipe", "Warp Pipes teleport you across the board - learn which shortcut to take."],
       ["water", "Puddles can skid your move off course."],
       ["brain", "The two learners have NO map - they figure it all out by playing thousands of full games."],
@@ -1427,7 +1428,7 @@ export function initBriefing(parent) {
         ? story.beats
             .map(([ic, t]) => {
               const tn = /^(plant|spike|goomba|bill|cannon|water)$/.test(ic) ? "bad"
-                : /^(coin|star|cage|flag|bolt)$/.test(ic) ? "good" : "info";
+                : /^(coin|star|tomato|cage|flag|bolt)$/.test(ic) ? "good" : "info";
               return `<div class="bf-beat"><span class="bf-beat-ic ${tn}">${BICONS[ic] || ""}</span><p>${t}</p></div>`;
             })
             .join("")
