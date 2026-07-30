@@ -641,9 +641,12 @@ async function poll() {
         const requestedMode = heatMode;
         const requestedGeneration = heatGeneration;
         const requestedReplayGeneration = replayGeneration;
+        // "value" asks for the PER-ACTION Q grid (mode=q), not the scalar V(s) grid:
+        // the overlay draws four numbers (N/S/W/E) on every tile, and needs `best`
+        // to bold the masked greedy action.
         const m =
           requestedMode === "value"
-            ? "value"
+            ? "q"
             : requestedMode === "policy"
               ? "policy"
               : "visits";
@@ -663,7 +666,8 @@ async function poll() {
         )
           return;
         if (v.grid) {
-          if (requestedMode === "value") { heatmap.setGrid(v.grid); heatmap.setGhostArrows([]); }
+          // arrows + greedy value-number are coloured to match the viewed agent (heatAgent)
+          if (requestedMode === "value") { heatmap.setNumbers(v.grid, v.best, requestedAgent); heatmap.setGhostArrows([]); }
           // policy: floor arrows on the ground + raised ghost arrows on the walls (only
           // present while the agent is phasing, so they appear/vanish with the power-up)
           else if (requestedMode === "policy") { heatmap.setPolicy(v.grid, requestedAgent); heatmap.setGhostArrows(v.ghostArrows, requestedAgent); }
@@ -834,13 +838,12 @@ const replay = {
       heatmap.showPolicy();
       return true;
     }
-    if (heatMode === "value" && (field?.value || field?.q)) {
-      const values = field.value || field.q.map((row) =>
-        row.map((q) => q ? Math.max(...q) : null)
-      );
-      heatmap.setGrid(values);
+    if (heatMode === "value" && field?.q) {
+      // the frozen field stores the full per-action Q, so a replay shows the SAME
+      // four numbers per tile as the live map (field.policy = masked greedy action)
+      heatmap.setNumbers(field.q, field.policy, this.agent);
       heatmap.setGhostArrows([]);
-      heatmap.showColors();
+      heatmap.showNumbers();
       return true;
     }
     if (heatMode === "visits") {
@@ -1043,7 +1046,7 @@ window.RL = {
     else if (replayActive && replay.renderOverlay()) {}
     else if (replayActive) heatmap.hide();
     else if (arenaMode) heatmap.showArena(heatMode);
-    else if (heatMode === "value") heatmap.showColors();
+    else if (heatMode === "value") heatmap.showNumbers();
     else if (heatMode === "policy") heatmap.showPolicy();
     else heatmap.showColors();
     // broadcast so the two panels stay mutually exclusive (one overlay)
