@@ -292,21 +292,62 @@ class BriefingMixin:
                 state_desc = (f"a continuous {env.obs_dim}-vector: everything the flyer "
                               "senses, refreshed every step - see the breakdown below")
                 # a VISUAL segmented breakdown of the vector (dims sum to obs_dim),
-                # rendered as a stacked bar + legend
+                # rendered as a stacked bar + legend. ``fields`` names the numbers
+                # ONE BY ONE, in the exact order _missile_observe appends them (for a
+                # repeated group it describes ONE slot); keep the two in sync.
                 state_groups = [
                     {"label": "Self", "dim": 5, "color": "#3f7fe0",
                      "detail": "where it is, how fast it is moving, and the room left "
-                               "before the arena rim"},
+                               "before the arena rim",
+                     "fields": [
+                         "x position, measured from the arena centre "
+                         "(0 = dead centre, ±1 = the rim)",
+                         "z position, same scale",
+                         "speed along x, as a share of top speed (-1 .. +1)",
+                         "speed along z, same scale",
+                         "room left before the rim (1 = dead centre, 0 = touching it)",
+                     ]},
                     {"label": "Effects", "dim": 5, "color": "#22a39f",
                      "detail": "the time left on each effect: Speed, Shield, Slow, Freeze, "
-                               "and the brief mercy after a hit"},
+                               "and the brief mercy after a hit",
+                     "fields": [
+                         "Speed boost left (1 = just picked up, 0 = not active)",
+                         "Shield left, same scale",
+                         "Slow left, same scale",
+                         "Freeze left, same scale",
+                         "mercy invulnerability left after a hit, same scale",
+                     ]},
                     {"label": "Missiles", "dim": 24, "count": 3, "each": 8, "color": "#e0563f",
                      "detail": "the 3 closest Bills, soonest first: where each is, how it "
                                "moves, whether it hunts YOU, how soon it arrives, and how "
-                               "far it would miss"},
+                               "far it would miss",
+                     "eachLabel": "per Bill",
+                     "fields": [
+                         "is this slot filled? (1 = a Bill is here; 0 = empty, and the "
+                         "other 7 numbers are all 0)",
+                         "how far it sits from you along x (its x minus yours)",
+                         "how far it sits from you along z",
+                         "its speed along x, as a share of top Bill speed",
+                         "its speed along z, same scale",
+                         "who it hunts (+1 = YOU, -1 = the rival)",
+                         "how soon it arrives (0 = impact now, 1 = two seconds away, or "
+                         "not closing at all)",
+                         "how far it would miss by (0 = dead on you, 1 = misses by 3 "
+                         "units or more)",
+                     ]},
                     {"label": "Pickups", "dim": 21, "count": 3, "each": 7, "color": "#8b5cf6",
                      "detail": "the 3 closest pickups: where each is and which of the 4 "
-                               "types it is"},
+                               "types it is",
+                     "eachLabel": "per pickup",
+                     "fields": [
+                         "is this slot filled? (1 = a pickup is here, 0 = empty)",
+                         "how far it sits from you along x",
+                         "how far it sits from you along z",
+                         "is it Speed? (1 or 0)",
+                         "is it Shield? (1 or 0)",
+                         "is it Slow? (1 or 0)",
+                         "is it Freeze? (1 or 0)",
+                     ]},
                 ]
                 observation = (
                     "The flyer senses only its own bubble of the arena: its own motion, its "
@@ -377,32 +418,108 @@ class BriefingMixin:
                 sees_opp = True
                 state_desc = (f"a continuous {env.obs_dim}-vector: everything the agent "
                               "senses, refreshed every step - see the breakdown below")
-                # segmented breakdown (dims sum to obs_dim) for the stacked bar
+                # segmented breakdown (dims sum to obs_dim) for the stacked bar.
+                # ``fields`` names the numbers ONE BY ONE, in the exact order
+                # _observe_ctf appends them (for a repeated group it describes ONE
+                # slot); keep the two in sync. Every relative offset below is
+                # "theirs minus yours", divided by the arena width.
                 state_groups = [
                     {"label": "Self", "dim": 4, "color": "#3f7fe0",
-                     "detail": "where you are and how fast you are moving"},
+                     "detail": "where you are and how fast you are moving",
+                     "fields": [
+                         "your x on the board (0 = one edge, 1 = the other)",
+                         "your z, same scale",
+                         "your speed along x, as a share of top speed (-1 .. +1)",
+                         "your speed along z, same scale",
+                     ]},
                     {"label": "Opponent", "dim": 4, "color": "#e0563f",
-                     "detail": "where the RIVAL is relative to you, and how fast it is moving"},
+                     "detail": "where the RIVAL is relative to you, and how fast it is moving",
+                     "fields": [
+                         "how far the rival sits from you along x",
+                         "how far it sits from you along z",
+                         "its speed along x, as a share of top speed",
+                         "its speed along z, same scale",
+                     ]},
                     {"label": "Flag", "dim": 5, "color": "#f5c542",
-                     "detail": "where the flag is, and who has it: free / you / the rival"},
+                     "detail": "where the flag is, and who has it: free / you / the rival",
+                     "fields": [
+                         "how far the flag is from you along x",
+                         "how far it is from you along z",
+                         "is it loose on the board? (1 or 0)",
+                         "are YOU carrying it? (1 or 0)",
+                         "is the RIVAL carrying it? (1 or 0)",
+                     ]},
                     {"label": "Bases", "dim": 4, "color": "#22a39f",
-                     "detail": "the direction to YOUR base and to the rival's"},
+                     "detail": "the direction to YOUR base and to the rival's",
+                     "fields": [
+                         "how far YOUR base is from you along x",
+                         "how far YOUR base is from you along z",
+                         "how far the RIVAL's base is from you along x",
+                         "how far the RIVAL's base is from you along z",
+                     ]},
                     {"label": "Status", "dim": 4, "color": "#8b5cf6",
-                     "detail": "carrying the flag?, both stun timers, and who leads on captures"},
+                     "detail": "carrying the flag?, both stun timers, and who leads on captures",
+                     "fields": [
+                         "are you carrying the flag? (1 or 0; repeated here so the "
+                         "carry / chase switch is unmissable)",
+                         "how long YOU stay stunned (1 = just hit, 0 = free to move)",
+                         "how long the RIVAL stays stunned, same scale",
+                         "the capture lead (+1 = you need one more to win, -1 = the "
+                         "rival does)",
+                     ]},
                     {"label": "Crates", "dim": 6, "count": 2, "each": 3, "color": "#c98a3a",
-                     "detail": "the 2 nearest weapon crates and where they are"},
+                     "detail": "the 2 nearest weapon crates and where they are",
+                     "eachLabel": "per crate",
+                     "fields": [
+                         "is this slot filled? (1 = a crate is here; 0 = empty, and the "
+                         "other 2 numbers are 0)",
+                         "how far it sits from you along x",
+                         "how far it sits from you along z",
+                     ]},
                     {"label": "Weapon", "dim": 6, "color": "#d94f8a",
                      "detail": "which weapon you are holding (if any), and whether the "
-                               "rival is armed"},
+                               "rival is armed",
+                     "fields": [
+                         "holding a Chain Chomp? (1 or 0)",
+                         "holding a red shell? (1 or 0)",
+                         "holding a green shell? (1 or 0)",
+                         "holding a banana? (1 or 0)",
+                         "holding oil? (1 or 0; all five 0 = your slot is empty)",
+                         "is the RIVAL holding something? (1 or 0)",
+                     ]},
                     {"label": "Shells", "dim": 10, "count": 2, "each": 5, "color": "#e07b3f",
                      "detail": "the 2 nearest shells in flight: where each is and where "
-                               "it is heading"},
+                               "it is heading",
+                     "eachLabel": "per shell",
+                     "fields": [
+                         "is this slot filled? (1 = a shell is in flight here, 0 = empty)",
+                         "how far it sits from you along x",
+                         "how far it sits from you along z",
+                         "its speed along x, as a share of shell speed",
+                         "its speed along z, same scale",
+                     ]},
                     {"label": "Traps", "dim": 8, "count": 2, "each": 4, "color": "#6b8e23",
-                     "detail": "the 2 nearest laid traps: where each is and whether it is oil"},
+                     "detail": "the 2 nearest laid traps: where each is and whether it is oil",
+                     "eachLabel": "per trap",
+                     "fields": [
+                         "is this slot filled? (1 = a trap is here, 0 = empty)",
+                         "how far it sits from you along x",
+                         "how far it sits from you along z",
+                         "which kind (1 = oil slick, 0 = banana)",
+                     ]},
                     {"label": "Bowser objects", "dim": 15, "count": 3, "each": 5,
                      "color": "#3aa76d",
                      "detail": "the 3 nearest falling objects within sight, so it can "
-                               "DODGE them"},
+                               "DODGE them",
+                     "eachLabel": "per object",
+                     "fields": [
+                         "is this slot filled? (1 = an object is in range, 0 = empty; "
+                         "anything further than the sight radius never shows up)",
+                         "how far it sits from you along x",
+                         "how far it sits from you along z",
+                         "its speed along x, as a share of throw speed",
+                         "its speed along z, same scale",
+                     ]},
                 ]
                 observation = (
                     "The agent sees the whole duel: itself, the rival, the flag and who "

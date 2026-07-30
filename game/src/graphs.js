@@ -1521,11 +1521,24 @@ export function initBriefing(parent) {
             .join("") +
           `</div>` +
           groups
-            .map((g) =>
-              `<div class="st-li"><span class="st-dot" style="background:${g.color}"></span>` +
-              `<span class="st-lab">${g.label}</span>` +
-              `<span class="st-n">${g.count ? `${g.count}×${g.each} = ${g.dim}` : g.dim}</span>` +
-              `<span class="st-det">${g.detail}</span></div>`)
+            .map((g) => {
+              // NAME every number, not just the group: without this the card says
+              // "Missiles 3x8 = 24" and leaves you guessing what the 8 are.
+              const fields = Array.isArray(g.fields) ? g.fields : [];
+              const each = g.count ? `${g.each} numbers ${g.eachLabel || "each"}` : `${g.dim} numbers`;
+              const list = fields.length
+                ? `<details class="st-fx"><summary>what the ${each} are</summary>` +
+                  `<ol class="st-f">${fields.map((f) => `<li>${f}</li>`).join("")}</ol>` +
+                  (g.count
+                    ? `<p class="st-fn">Repeated ${g.count}x, one block per slot. An empty slot is all zeros.</p>`
+                    : "") +
+                  `</details>`
+                : "";
+              return `<div class="st-li"><span class="st-dot" style="background:${g.color}"></span>` +
+                `<span class="st-lab">${g.label}</span>` +
+                `<span class="st-n">${g.count ? `${g.count}×${g.each} = ${g.dim}` : g.dim}</span>` +
+                `<span class="st-det">${g.detail}</span>${list}</div>`;
+            })
             .join("");
         totalStrip =
           `<div class="st-total"><div class="st-row1"><span class="st-num">${gTotal}</span>` +

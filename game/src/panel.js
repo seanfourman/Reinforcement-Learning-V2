@@ -1125,6 +1125,22 @@ const STYLE = `
 #rl-panel #rl-brief .st-n{font-size:9.5px;font-weight:800;color:#8a8d94;font-variant-numeric:tabular-nums;
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;background:#f0f1f4;border-radius:6px;padding:2px 6px;}
 #rl-panel #rl-brief .st-det{grid-column:2/-1;font-size:11px;color:#71747c;line-height:1.5;}
+/* the per-number breakdown inside one legend row (collapsed by default, so the
+   card stays scannable but no number is left unexplained) */
+#rl-panel #rl-brief .st-fx{grid-column:2/-1;margin:5px 0 0;}
+#rl-panel #rl-brief .st-fx summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;
+  font-size:10px;font-weight:800;letter-spacing:.2px;color:#8a8d94;}
+#rl-panel #rl-brief .st-fx summary::-webkit-details-marker{display:none;}
+#rl-panel #rl-brief .st-fx summary::before{content:"";width:5px;height:5px;flex:none;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:rotate(-45deg);transition:transform .15s ease;}
+#rl-panel #rl-brief .st-fx[open] summary::before{transform:rotate(45deg);}
+#rl-panel #rl-brief .st-fx summary:hover{color:#5c5f66;}
+#rl-panel #rl-brief .st-f{margin:7px 0 0;padding:0 0 0 20px;list-style:decimal;
+  font-size:10.5px;line-height:1.5;color:#71747c;}
+#rl-panel #rl-brief .st-f li{margin:2px 0;padding-left:2px;}
+#rl-panel #rl-brief .st-f li::marker{color:#b7bac1;font-weight:800;font-variant-numeric:tabular-nums;}
+#rl-panel #rl-brief .st-fn{margin:6px 0 0;font-size:10px;line-height:1.5;color:#9a9da4;}
 /* the total strip: |S| or the vector size, plus why it matters */
 #rl-panel #rl-brief .st-total{margin:12px 0 0;padding:13px 15px;border:1px solid #e9ebef;border-radius:12px;background:#f6f7f9;}
 #rl-panel #rl-brief .st-row1{display:flex;align-items:baseline;gap:8px;}
