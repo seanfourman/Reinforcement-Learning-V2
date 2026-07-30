@@ -286,10 +286,16 @@ class InspectionMixin:
         Symmetric race boards compare Red at (r,c) with Blue at its reflected tile,
         including the West/East action reflection. Comparing raw coordinates made
         mirror-correct Arena-2 policies look unrelated.
+
+        ``applicable`` separates "this round has no tile grid to compare" (the
+        continuous arenas - the card is meaningless there and stays hidden) from
+        "a grid round that has nothing comparable YET" (every tile still a policy
+        tie, or a just-reset planner). The latter is a WARMING-UP state, so the
+        card can stay put instead of popping in and out mid-run.
         """
         with self.lock:
             if self.env.objective == "arena":
-                return {"available": False}
+                return {"available": False, "applicable": False}
             rg = self.policy_grid("red")["grid"]
             bg = self.policy_grid("blue")["grid"]
             world = getattr(self.env, "world", None)
@@ -311,9 +317,11 @@ class InspectionMixin:
                         ra == mirror_action.get(ba, ba) if mirrored else ra == ba
                     )
             if not cells:
-                return {"available": False}
-            return {"available": True, "cells": cells, "agree": same,
-                    "rate": round(same / cells, 3), "mirrored": mirrored}
+                return {"available": False, "applicable": True, "cells": 0,
+                        "agree": 0, "rate": 0.0, "mirrored": mirrored}
+            return {"available": True, "applicable": True, "cells": cells,
+                    "agree": same, "rate": round(same / cells, 3),
+                    "mirrored": mirrored}
 
     def visit_grid(self, agent):
         """Per-cell visit counts for the agent (the 'where do they travel' heatmap).

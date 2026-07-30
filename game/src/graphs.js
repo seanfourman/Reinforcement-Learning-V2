@@ -1950,18 +1950,24 @@ export function initPolicyDiff(parent) {
       <div class="stat"><span id="rl-pa-label">Blue &amp; Red greedy match</span><b id="rl-pa-rate">-</b></div>
       <!-- neutral (black) fill, not the Blue-model .b class: this bar is about BOTH agents agreeing -->
       <div class="bar" style="margin-top:9px;"><i id="rl-pa-bar" style="background:#141518;"></i></div>
+      <p class="note" id="rl-pa-note" hidden>No tile can be compared yet: a tile counts only once BOTH models have a single clearly-best move there. Fresh (or just re-planned) values leave every move tied, so the count starts at zero and grows as value spreads out from the goal.</p>
     </section>`,
   );
   const sec = parent.querySelector("#rl-polagree");
   const label = parent.querySelector("#rl-pa-label");
   const rate = parent.querySelector("#rl-pa-rate");
   const bar = parent.querySelector("#rl-pa-bar");
+  const note = parent.querySelector("#rl-pa-note");
   async function refresh() {
     try {
       const d = await (
         await fetch("/api/polagree", { cache: "no-store" })
       ).json();
-      if (!d.available) {
+      // the continuous arenas have no tile grid at all - nothing to compare, so the
+      // card stays hidden there. A grid round with zero comparable tiles is only
+      // WARMING UP: keep the card in place (a card that pops in and out mid-run just
+      // reads as a glitch) and say why it is empty.
+      if (d.applicable === false) {
         sec.hidden = true;
         return;
       }
@@ -1969,8 +1975,12 @@ export function initPolicyDiff(parent) {
       label.textContent = d.mirrored
         ? "Mirrored greedy-policy match"
         : "Blue & Red greedy match";
-      rate.textContent = `${(100 * d.rate).toFixed(0)}%  (${d.agree}/${d.cells})`;
-      bar.style.width = (100 * d.rate).toFixed(0) + "%";
+      note.hidden = d.available;
+      rate.style.color = d.available ? "" : "#a2a5ac";
+      rate.textContent = d.available
+        ? `${(100 * d.rate).toFixed(0)}%  (${d.agree}/${d.cells})`
+        : "Warming up";
+      bar.style.width = d.available ? (100 * d.rate).toFixed(0) + "%" : "0%";
     } catch (e) {
       /* warming up */
     }
