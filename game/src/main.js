@@ -803,8 +803,11 @@ const replay = {
   _field() {
     if (!this.modelFields || !this.frames.length) return null;
     const f = this.frames[this.idx] || {};
-    const mask = f[this.agent + "Stars"] || 0;
-    return this.modelFields.masks?.[String(mask)] || null;
+    const masks = this.modelFields.masks || {};
+    // Arena 2 froze one field per collected-tomato mask, so it tracks the frame;
+    // every other round froze a single "default" field for the whole run.
+    const mask = f[this.agent + "Stars"];
+    return (mask != null ? masks[String(mask)] : null) || masks.default || null;
   },
   _visitGrid() {
     if (!this.modelFields || !this.frames.length) return null;

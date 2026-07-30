@@ -334,31 +334,46 @@ class ReplayMixin:
         return out
 
     def _capture_replay_fields(self, agent):
-        """Freeze Arena-2 Q/value/policy fields before MC learns from the run.
+        """Freeze the Q/value/policy field(s) that CHOSE this run, before the model
+        moves on. This is the historical model behind the replay; future training
+        must not alter it, so the replay browser's maps stay truthful.
 
-        A replay frame carries the collected-tomato mask, so store one field for
-        every mask visited during this episode. This is the historical model that
-        selected the replay's actions; future training must not alter it.
+        Round 2's frames carry the collected-tomato mask and the field changes a lot
+        with it, so that round stores one field PER MASK visited and the frontend
+        picks by frame. Every other grid round stores ONE field under "default":
+        the model as it stood at the end of the run - exactly what the live map
+        would have shown then. Without this the replay had no field at all, so
+        Value / Policy / Visits all went blank on rounds 1 and 3.
         """
-        if not getattr(self.env, "star_mode", False):
-            return None
+        if getattr(self.env, "objective", "") == "arena":
+            return None            # continuous rounds have no per-cell grid field
         learner = self._agent(agent)
-        star_key = agent + "Stars"
-        masks = sorted({int(frame.get(star_key, 0)) for frame in self._frames})
+        star_mode = bool(getattr(self.env, "star_mode", False))
+        if star_mode:
+            star_key = agent + "Stars"
+            keys = sorted({int(frame.get(star_key, 0)) for frame in self._frames})
+        else:
+            keys = [None]          # a single frozen field, keyed "default"
         fields = {}
         floor = [list(cell) for cell in self.env.floor_cells]
-        for star_mask in masks:
+        for star_mask in keys:
             q_grid = [[None] * self.env.W for _ in range(self.env.H)]
             value_grid = [[None] * self.env.W for _ in range(self.env.H)]
             policy = [[None] * self.env.W for _ in range(self.env.H)]
             effective = [[None] * self.env.W for _ in range(self.env.H)]
             for (r, c), idx in self.env.cell_index.items():
-                state = (idx, star_mask)
+                if star_mask is None:
+                    # the round's own state factors in the CURRENT context, the same
+                    # projection the live value map uses (env.full_state)
+                    state = self.env.full_state(agent, (r, c))
+                    allowed = self.env.effective_actions(agent, (r, c))
+                else:
+                    state = (idx, star_mask)
+                    allowed = self.env.effective_actions(
+                        agent, (r, c), star_mask=star_mask)
                 if learner.state_value(state) is None:
                     continue
                 q = learner.q_values(state)
-                allowed = self.env.effective_actions(
-                    agent, (r, c), star_mask=star_mask)
                 valid = [
                     action for action in range(len(q)) if allowed[action]
                 ] or list(range(len(q)))
@@ -368,7 +383,7 @@ class ReplayMixin:
                 )
                 policy[r][c] = _unique_argmax(q, valid)
                 effective[r][c] = [bool(value) for value in allowed]
-            fields[str(star_mask)] = {
+            fields["default" if star_mask is None else str(star_mask)] = {
                 "q": q_grid,
                 "value": value_grid,
                 "policy": policy,
@@ -379,7 +394,7 @@ class ReplayMixin:
             "W": self.env.W,
             "floor": floor,
             "masks": fields,
-            "epsilon": round(float(learner.epsilon), 4),
+            "epsilon": round(float(getattr(learner, "epsilon", 0.0) or 0.0), 4),
         }
 
     def _ceremony_frame(self, side):
