@@ -1080,10 +1080,24 @@ export function initDiag(parent) {
       <div class="stat"><span>Adam lr</span><b id="rl-dqn-lr">-</b></div>
       <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Gradient norm (pre-clip)</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-gnorm"></canvas></div>
       <div class="chart"><div class="ct"><h3>Predicted Q - overestimation</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-predq"></canvas></div>
+    </section>
+    <section id="rl-pg" hidden>
+      <h2>Policy-gradient diagnostics</h2>
+      <p class="hint">The DQN panel's counterpart. A policy round has no replay buffer, no
+        target net and no Q at all, so the numbers that matter here are different ones.</p>
+      <div class="stat"><span>Rollout</span><b id="rl-pg-roll">-</b></div>
+      <div class="bar" style="margin:7px 0 11px;"><i class="b" id="rl-pg-rollbar"></i></div>
+      <div class="stat"><span>Updates</span><b id="rl-pg-upd">-</b></div>
+      <div class="stat"><span>Steps seen</span><b id="rl-pg-ts">-</b></div>
+      <div class="stat"><span>Critic</span><b id="rl-pg-critic">-</b></div>
+      <div class="stat"><span>Adam lr</span><b id="rl-pg-lr">-</b></div>
+      <div class="chart" style="margin-top:12px;"><div class="ct"><h3>Policy entropy - exploration</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-ent"></canvas></div>
+      <div class="chart"><div class="ct"><h3>Value loss - the critic learning</h3><span class="lg"><i style="background:#1f5fd0"></i>Blue<i style="background:#e60012"></i>Red</span></div><canvas id="rl-ch-vloss"></canvas></div>
     </section>`,
   );
   const q = (s) => parent.querySelector(s);
   const dqnSec = q("#rl-dqn");
+  const pgSec = q("#rl-pg");
   const chGnorm = makeChart(q("#rl-ch-gnorm"), {
     series: [
       { key: "gnormRed", color: RED },
@@ -1098,9 +1112,25 @@ export function initDiag(parent) {
     ],
     fmt: (v) => v.toFixed(2),
   });
+  const chEnt = makeChart(q("#rl-ch-ent"), {
+    series: [
+      { key: "entRed", color: RED },
+      { key: "entBlue", color: BLUE },
+    ],
+    fmt: (v) => v.toFixed(2),
+  });
+  const chVLoss = makeChart(q("#rl-ch-vloss"), {
+    series: [
+      { key: "vlossRed", color: RED },
+      { key: "vlossBlue", color: BLUE },
+    ],
+    fmt: (v) => v.toFixed(3),
+  });
   window.addEventListener("resize", () => {
     chGnorm.resize();
     chPredQ.resize();
+    chEnt.resize();
+    chVLoss.resize();
   });
   const pct = (x) => (100 * x).toFixed(1) + "%";
 
@@ -1147,15 +1177,41 @@ export function initDiag(parent) {
     } else {
       dqnSec.hidden = true;
     }
+    // The policy round's own panel. Deliberately NOT the DQN one with blanks:
+    // a replay buffer / target sync / predicted Q simply do not exist here.
+    if (d && d.isPG) {
+      pgSec.hidden = false;
+      const horizon = d.horizon || 0;
+      q("#rl-pg-roll").textContent = horizon
+        ? `${d.pending} / ${horizon} steps - update in ${horizon - d.pending}`
+        : `${d.pending} steps - updates at the episode end`;
+      q("#rl-pg-rollbar").style.width = horizon
+        ? pct(Math.min(1, d.pending / horizon))
+        : "0%";
+      q("#rl-pg-upd").textContent = (d.updates || 0).toLocaleString();
+      q("#rl-pg-ts").textContent = (d.trainSteps || 0).toLocaleString();
+      q("#rl-pg-critic").textContent = d.hasCritic
+        ? `yes - ${d.algo} learns V(s)`
+        : `none - ${d.algo} uses the raw return`;
+      q("#rl-pg-lr").textContent = d.lr;
+    } else {
+      pgSec.hidden = true;
+    }
   });
   async function refresh() {
-    if (dqnSec.hidden) return;
+    if (dqnSec.hidden && pgSec.hidden) return;
     try {
       const h = await (
         await fetch("/api/history", { cache: "no-store" })
       ).json();
-      chGnorm.draw(h.points);
-      chPredQ.draw(h.points);
+      if (!dqnSec.hidden) {
+        chGnorm.draw(h.points);
+        chPredQ.draw(h.points);
+      }
+      if (!pgSec.hidden) {
+        chEnt.draw(h.points);
+        chVLoss.draw(h.points);
+      }
     } catch (e) {
       /* warming up */
     }
@@ -1398,22 +1454,29 @@ export function initBriefing(parent) {
         0.001,
         ...rvals.map(([, v]) => (typeof v === "number" ? Math.abs(v) : 0)),
       );
+      // an optional THIRD element on a reward is a one-line explanation, shown as
+      // a grey sub-line under that row (for a rule its label cannot carry alone)
       const rewardRows = rvals
-        .map(([k, v]) => {
+        .map(([k, v, why]) => {
+          let row;
           if (typeof v !== "number") {
-            return (
+            row =
               `<div class="rw-row str"><span class="rw-k">${k}</span>` +
-              `<b class="rw-val str">${v}</b></div>`
-            );
+              `<b class="rw-val str">${v}</b></div>`;
+          } else {
+            const cls = v >= 0 ? "pos" : "neg";
+            const w = Math.max(6, (Math.abs(v) / maxMag) * 100);
+            // fixed-width bar + value columns (label flexes), so every bar starts
+            // at the SAME x across rows regardless of how long the number is.
+            row =
+              `<div class="rw-row"><span class="rw-k">${k}</span>` +
+              `<span class="rw-track"><span class="rw-fill ${cls}" style="width:${w}%"></span></span>` +
+              `<b class="rw-val ${cls}">${v > 0 ? "+" : ""}${v}</b></div>`;
           }
-          const cls = v >= 0 ? "pos" : "neg";
-          const w = Math.max(6, (Math.abs(v) / maxMag) * 100);
-          // fixed-width bar + value columns (label flexes), so every bar starts
-          // at the SAME x across rows regardless of how long the number is.
           return (
-            `<div class="rw-row"><span class="rw-k">${k}</span>` +
-            `<span class="rw-track"><span class="rw-fill ${cls}" style="width:${w}%"></span></span>` +
-            `<b class="rw-val ${cls}">${v > 0 ? "+" : ""}${v}</b></div>`
+            `<div class="rw-item">${row}` +
+            (why ? `<p class="rw-why">${why}</p>` : "") +
+            `</div>`
           );
         })
         .join("");

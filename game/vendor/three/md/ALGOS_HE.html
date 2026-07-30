@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>חמישה שלבים, שלושה עשר אלגוריתמים</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 14mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0; font-family: Arial, "Segoe UI", sans-serif; font-size: 11.5pt;
+    line-height: 1.75; color: #1c1e22; background: #fff;
+  }
+  code, .ltr { font-family: "Courier New", Consolas, monospace; font-size: .93em; font-weight: 700;
+               direction: ltr; unicode-bidi: isolate; }
+
+  /* ---------- cover ---------- */
+  .cover { text-align: center; padding: 34mm 0 0; page-break-after: always; }
+  .cover .kicker { font-size: 10pt; font-weight: 700; letter-spacing: 2px; color: #6b6e76; text-transform: uppercase; }
+  .cover h1 { margin: 12px 0 6px; font-size: 30pt; font-weight: 700; color: #14161a; line-height: 1.3; }
+  .cover .sub { font-size: 13pt; color: #4f525a; margin: 0 0 26px; }
+  .cover .rule { width: 62px; height: 4px; background: #14161a; border-radius: 2px; margin: 0 auto 26px; }
+  .map { display: inline-block; text-align: right; border: 1px solid #e4e7ec; border-radius: 12px; padding: 18px 24px; background: #fafbfc; }
+  .map div { font-size: 11.5pt; color: #3a3d44; padding: 5px 0; }
+  .map b { color: #14161a; }
+  .map .n { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 6px;
+            background: #14161a; color: #fff; font-size: 10pt; font-weight: 700; margin-left: 10px; }
+  .cover .foot { margin-top: 30mm; font-size: 10pt; color: #7e828a; }
+
+  /* ---------- structure ---------- */
+  h2 {
+    margin: 0 0 4px; font-size: 16pt; font-weight: 700; color: #14161a;
+    padding-bottom: 7px; border-bottom: 2px solid #14161a;
+  }
+  .stage { margin: 0 0 20px; }
+  .stage + .stage { margin-top: 24px; }
+  /* a heading (and its lead-in note) must never be stranded at the foot of a page */
+  h2, .stage-note { page-break-after: avoid; }
+  .stage-note { margin: 8px 0 15px; font-size: 10.5pt; color: #4f525a; }
+
+  .algo { page-break-inside: avoid; margin: 0 0 15px; padding: 13px 15px 14px;
+          border: 1px solid #e6e9ee; border-right: 4px solid var(--c, #14161a); border-radius: 10px; background: #fcfdfe; }
+  .algo h3 { margin: 0 0 3px; font-size: 13pt; font-weight: 700; color: #14161a; }
+  .algo .tag { font-size: 9pt; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+               color: var(--c, #14161a); margin-bottom: 7px; }
+  .algo p { margin: 0; font-size: 11.5pt; line-height: 1.75; text-align: justify; }
+  .algo p + p { margin-top: 7px; }
+  b { font-weight: 700; color: #000; }
+
+  /* Formula strip. Two LTR expressions with a Hebrew connector between them read
+     ambiguously in an RTL paragraph, so every rule is stacked one per row instead. */
+  .rule-line { margin: 9px 0 0; padding: 9px 12px; background: #f2f4f7; border-radius: 7px;
+               font-size: 10.5pt; text-align: center; }
+  .rl-row { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+  .rl-row + .rl-row { margin-top: 6px; padding-top: 6px; border-top: 1px solid #dfe3ea; }
+  .rl-lbl { flex: none; min-width: 52px; text-align: left; font-size: 9.5pt; font-weight: 700;
+            color: #6b6e76; }
+  .rl-row code { direction: ltr; unicode-bidi: isolate; }
+  .file { margin: 8px 0 0; font-size: 9.5pt; color: #7e828a; }
+
+  .thread { margin: 22px 0 0; padding: 16px 18px; border: 1.5px solid #14161a; border-radius: 12px; background: #fafbfc;
+            page-break-inside: avoid; }
+  .thread h3 { margin: 0 0 9px; font-size: 13pt; font-weight: 700; }
+  .thread ol { margin: 0; padding-right: 20px; font-size: 11.5pt; line-height: 1.85; }
+  .thread li { padding-right: 3px; }
+  .thread li::marker { font-weight: 700; color: #6b6e76; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <div class="kicker">למידה עם חיזוקים &middot; פרויקט גמר</div>
+  <h1>חמישה שלבים,<br>שלושה עשר אלגוריתמים</h1>
+  <p class="sub">מה כל אחד עושה, ובמה בדיוק הוא שונה מהשכן שלו</p>
+  <div class="rule"></div>
+  <div class="map">
+    <div><span class="n">1</span> <b>תכנות דינמי</b> &nbsp;Value Iteration &middot; Policy Iteration</div>
+    <div><span class="n">2</span> <b>מונטה קרלו</b> &nbsp;Every&#8209;visit &middot; First&#8209;visit</div>
+    <div><span class="n">3</span> <b>הפרש זמני</b> &nbsp;Q&#8209;Learning &middot; SARSA &middot; Expected&#8209;SARSA</div>
+    <div><span class="n">4</span> <b>עמוק מבוסס ערך</b> &nbsp;DQN &middot; Double &middot; Dueling</div>
+    <div><span class="n">5</span> <b>מדרון מדיניות</b> &nbsp;REINFORCE &middot; Actor&#8209;Critic &middot; PPO</div>
+  </div>
+  <div class="foot">Rival Minds &middot; מסמך התמצאות והכנה להגנה</div>
+</section>
+
+<!-- ============================ STAGE 1 ============================ -->
+<section class="stage">
+  <h2>שלב 1 &middot; תכנות דינמי</h2>
+  <p class="stage-note">המודל ידוע מראש, ולכן אף אחד לא לומד מניסיון. שניהם פשוט מחשבים, והמהיר יותר מנצח.</p>
+
+  <div class="algo" style="--c:#3f7fe0">
+    <div class="tag">Value Iteration</div>
+    <h3>איטרציית ערך</h3>
+    <p>מניח שאתה יודע מראש את <code>P(s'|s,a)</code>, ולכן לא צריך לשחק בכלל אלא רק לחשב. כל סריקה מפעילה את גיבוי בלמן האופטימלי על כל מצב, כלומר "ההערכה החדשה של המצב היא התוחלת של הפעולה הכי טובה ממנו". המדיניות לא נשמרת בכלל, היא פשוט נקראת חמדנית מ&#8209;<code>V</code> אחרי כל סריקה.</p>
+    <p>אצלנו הגיבוי <b>סינכרוני</b>: קוראים מ&#8209;<code>V</code> הישן וכותבים לטבלה חדשה. זה מה שיוצר את הגל הוויזואלי, כי הערך מתפשט טבעת אחת לכל סריקה מהמטרה החוצה.</p>
+    <p class="rule-line"><code>V(s) &larr; max<sub>a</sub> &Sigma; P(s'|s,a) [ r + &gamma;V(s') ]</code></p>
+    <p class="file">arenas/r1_peach_castle/value_iteration.py</p>
+  </div>
+
+  <div class="algo" style="--c:#3f7fe0">
+    <div class="tag">Policy Iteration</div>
+    <h3>איטרציית מדיניות</h3>
+    <p>מפריד את מה ש&#8209;VI מיזג לשני שלבים. <b>הערכה</b>: קח את המדיניות הנוכחית וחשב כמה היא שווה, בלי <code>max</code>, פשוט לפי הפעולה שהמדיניות בוחרת. <b>שיפור</b>: עכשיו כשאתה יודע כמה היא שווה, החלף בכל מצב לפעולה החמדנית. חזור.</p>
+    <p>אצלנו זו גרסה <b>קטומה</b>: <code>EVAL_SWEEPS = 8</code>, כלומר שמונה סריקות הערכה ואז שיפור, במקום להריץ הערכה עד התכנסות מלאה שדורשת מאות סריקות ב&#8209;<code>&gamma;=0.98</code>. שווה לדעת: <code>EVAL_SWEEPS=1</code> <b>הוא</b> בדיוק Value Iteration, ולכן השניים הם שני קצוות של אותו ציר.</p>
+    <div class="rule-line">
+      <div class="rl-row"><span class="rl-lbl">הערכה</span><code>V(s) &larr; &Sigma; P(s'|s,&pi;(s)) [ r + &gamma;V(s') ]</code></div>
+      <div class="rl-row"><span class="rl-lbl">שיפור</span><code>&pi;(s) &larr; argmax<sub>a</sub> Q(s,a)</code></div>
+    </div>
+    <p class="file">arenas/r1_peach_castle/policy_iteration.py</p>
+  </div>
+</section>
+
+<!-- ============================ STAGE 2 ============================ -->
+<section class="stage">
+  <h2>שלב 2 &middot; מונטה קרלו</h2>
+  <p class="stage-note">אין מודל. לומדים מניסיון בלבד, אבל שום דבר לא מתעדכן עד שהאפיזודה נגמרת.</p>
+
+  <div class="algo" style="--c:#22a39f">
+    <div class="tag">Every-visit MC</div>
+    <h3>מונטה קרלו, כל ביקור</h3>
+    <p>ההפך הגמור מתכנות דינמי: אין מודל, אין ידע מוקדם, רק ניסיון. תוך כדי האפיזודה <code>learn_step</code> <b>רק מקליט</b> ולא מעדכן כלום. כשהאפיזודה נגמרת רצים אחורה על המסלול, מחשבים את התשואה האמיתית, ומושכים כל <code>Q(s,a)</code> לכיוונה.</p>
+    <p>"כל ביקור" פירושו שמעדכנים ב<b>כל</b> הופעה של הזוג <code>(s,a)</code> באפיזודה, גם אם דרכת על אותה משבצת חמש פעמים. פרט מהקוד: <code>STEP_SCALE = 0.25</code>, כי צעד מלא מרעיד את <code>Q</code> יותר מדי כשהיעד הוא תשואה שלמה ולא מטרת TD של צעד אחד.</p>
+    <div class="rule-line">
+      <div class="rl-row"><span class="rl-lbl">תשואה</span><code>G &larr; r + &gamma;G</code></div>
+      <div class="rl-row"><span class="rl-lbl">עדכון</span><code>Q(s,a) &larr; Q(s,a) + &alpha;[ G - Q(s,a) ]</code></div>
+    </div>
+    <p class="file">arenas/r2_new_donk_city/monte_carlo.py</p>
+  </div>
+
+  <div class="algo" style="--c:#22a39f">
+    <div class="tag">First-visit MC</div>
+    <h3>מונטה קרלו, ביקור ראשון</h3>
+    <p>זהה לחלוטין חוץ משורה אחת: מעדכנים רק ב<b>הופעה הראשונה</b> של כל זוג <code>(s,a)</code> באפיזודה. הנימוק התיאורטי הוא שכל עדכון הוא אז אומדן <b>בלתי מוטה</b> של התשואה מהזוג הזה, בעוד שהחזרות ב&#8209;every&#8209;visit מתואמות זו לזו בתוך אותה אפיזודה.</p>
+    <p>בפועל שניהם מתכנסים, וזה בדיוק הניגוד הקלאסי מהספר שהשלב נועד להראות.</p>
+    <p class="file">arenas/r2_new_donk_city/first_visit_mc.py</p>
+  </div>
+</section>
+
+<!-- ============================ STAGE 3 ============================ -->
+<section class="stage">
+  <h2>שלב 3 &middot; הפרש זמני</h2>
+  <p class="stage-note">לא מחכים לסוף. אחרי צעד אחד כבר מעדכנים, על ידי ניחוש שמסתמך על הניחוש הקודם.</p>
+
+  <div class="algo" style="--c:#e0563f">
+    <div class="tag">Q-Learning &middot; off-policy</div>
+    <h3>למידת Q</h3>
+    <p>לא מחכה לסוף. אחרי צעד אחד הוא כבר מעדכן, והיעד שלו משתמש ב&#8209;<code>max</code>: הוא שואל "מה הערך של הפעולה <b>הכי טובה</b> מהמצב הבא", בלי קשר למה שהמדיניות תעשה בפועל.</p>
+    <p>זה מה שהופך אותו ל<b>מחוץ&#8209;למדיניות</b>: הוא מתנהג <code>&epsilon;</code>&#8209;חמדני אבל לומד את המדיניות החמדנית הטהורה. תוצאה מעשית: הוא ילמד את המסלול הקצר גם אם הוא צמוד לגומבה, כי הוא לא מתמחר את הסיכון שהוא עצמו יחליק לשם בגלל <code>&epsilon;</code>.</p>
+    <p class="rule-line"><code>target = r + &gamma; &middot; max<sub>a'</sub> Q(ns, a')</code></p>
+    <p class="file">arenas/r3_fossil_falls/qlearning.py</p>
+  </div>
+
+  <div class="algo" style="--c:#e0563f">
+    <div class="tag">SARSA &middot; on-policy</div>
+    <h3>סארסה</h3>
+    <p>משנה בדיוק תו אחד ביעד: במקום <code>max</code> הוא לוקח את <code>Q</code> של הפעולה ש<b>באמת</b> תיבחר הלאה. זו <b>על&#8209;המדיניות</b>: הוא לומד את הערך של המדיניות שהוא מריץ, כולל טעויות החקירה שלה.</p>
+    <p>לכן ליד סכנה הוא לומד ערכים פחדניים יותר ובוחר מסלול בטוח יותר, כי בממוצע <code>&epsilon;</code> מהפעמים הוא כן יידרס. אצלנו ההבדל בין שני הקבצים האלה הוא ממש שורה אחת, וזו ההדגמה החזקה ביותר של הניגוד.</p>
+    <p class="rule-line"><code>target = r + &gamma; &middot; Q(ns, na)</code></p>
+    <p class="file">arenas/r3_fossil_falls/sarsa.py</p>
+  </div>
+
+  <div class="algo" style="--c:#e0563f">
+    <div class="tag">Expected-SARSA</div>
+    <h3>סארסה מצופה</h3>
+    <p>יושב באמצע. במקום לדגום פעולה אחת (SARSA, רועש) או לקחת <code>max</code> (Q&#8209;Learning, אופטימי ומוטה), הוא לוקח את ה<b>תוחלת</b> תחת המדיניות הנוכחית.</p>
+    <p>אותו עדכון בתוחלת כמו SARSA, אבל בלי שונות הדגימה של הפעולה הבאה, ולכן מתכנס חלק יותר באותו גודל צעד.</p>
+    <p class="rule-line"><code>E[Q(ns,&middot;)] = (1-&epsilon;) &middot; max<sub>a</sub> Q(ns,a) + &epsilon; &middot; mean<sub>a</sub> Q(ns,a)</code></p>
+    <p class="file">arenas/r3_fossil_falls/expected_sarsa.py</p>
+  </div>
+</section>
+
+<!-- ============================ STAGE 4 ============================ -->
+<section class="stage">
+  <h2>שלב 4 &middot; עמוק מבוסס ערך</h2>
+  <p class="stage-note">המצב רציף ואי אפשר להחזיק טבלה, אז רשת נוירונים מקרבת את פונקציית הערך.</p>
+
+  <div class="algo" style="--c:#8b5cf6">
+    <div class="tag">DQN</div>
+    <h3>רשת Q עמוקה</h3>
+    <p>זהו Q&#8209;Learning כשהמצב רציף. במקום מילון יש רשת של <code>55 &rarr; 128 &rarr; 128 &rarr; 9</code> שמנבאת את כל תשעת ערכי ה&#8209;<code>Q</code> בבת אחת.</p>
+    <p>שלושת המייצבים הקלאסיים כולם שם: <b>מאגר שחזור</b> של 50,000 מעברים, שדגימה אקראית של 64 מתוכו שוברת את הקורלציה בין צעדים עוקבים; <b>רשת מטרה</b>, עותק קפוא שמסתנכרן כל 500 צעדים כדי שהיעד לא יזוז תוך כדי שרודפים אחריו; ו<b>חיתוך גרדיאנט</b>. אצלנו יש גם <code>n_step = 3</code>, כלומר שלושה תגמולים מקופלים ליעד אחד, כך שהעונש על פגיעה מתפשט אחורה שלושה צעדים בבת אחת במקום אחד.</p>
+    <p class="file">arenas/r4_ruined_kingdom/dqn.py</p>
+  </div>
+
+  <div class="algo" style="--c:#8b5cf6">
+    <div class="tag">Double-DQN</div>
+    <h3>DQN כפול</h3>
+    <p>משנה רק את היעד. הבעיה ב&#8209;DQN רגיל: אותה רשת רועשת גם <b>בוחרת</b> את הפעולה הבאה וגם <b>מדרגת</b> אותה, אז כל פעולה שהרעש במקרה העריך גבוה מדי מנצחת את ה&#8209;<code>max</code>, וההערכות מנופחות שיטתית.</p>
+    <p>הפתרון הוא לפצל את התפקידים: הרשת <b>המקוונת</b> בוחרת, רשת <b>המטרה</b> מדרגת. אצלנו <code>q_pred_ema</code> עוקב בדיוק אחרי הגודל הזה, אז אפשר להראות את פער ההערכה בין השניים בגרף חי.</p>
+    <p class="rule-line"><code>target = r + &gamma; &middot; Q<sub>target</sub>( ns , argmax<sub>a'</sub> Q<sub>online</sub>(ns,a') )</code></p>
+    <p class="file">arenas/r4_ruined_kingdom/double_dqn.py</p>
+  </div>
+
+  <div class="algo" style="--c:#8b5cf6">
+    <div class="tag">Dueling-DQN</div>
+    <h3>DQN מפוצל</h3>
+    <p>משנה רק את <b>המבנה</b>, לא את חוק העדכון. הגזע מתפצל לשני ראשים: <code>V(s)</code> שאומר כמה טוב המצב בכלל, ו&#8209;<code>A(s,a)</code> שאומר כמה כל פעולה עדיפה.</p>
+    <p>הרעיון: בסופת טילים רוב הערך הוא "איפה אתה עומד" ולא "לאיזה צד תזוז", אז עדיף לתת לרשת ללמוד את זה ישירות. חיסור הממוצע הכרחי, כי בלעדיו הפיצול ל&#8209;<code>V</code> ו&#8209;<code>A</code> מוגדר רק עד כדי קבוע והאימון נהיה לא יציב.</p>
+    <p class="rule-line"><code>Q(s,a) = V(s) + A(s,a) - mean<sub>a</sub> A(s,a)</code></p>
+    <p class="file">arenas/r4_ruined_kingdom/dueling_dqn.py</p>
+  </div>
+</section>
+
+<!-- ============================ STAGE 5 ============================ -->
+<section class="stage">
+  <h2>שלב 5 &middot; מדרון מדיניות</h2>
+  <p class="stage-note">מפסיקים ללמוד ערכים ולומדים את ההתנהגות עצמה. דגימה מההתפלגות היא הפעולה, וגם החקירה.</p>
+
+  <div class="algo" style="--c:#d94f8a">
+    <div class="tag">REINFORCE</div>
+    <h3>מדרון מדיניות מונטה קרלו</h3>
+    <p>זונח את <code>Q</code> לגמרי. הרשת פולטת התפלגות על הפעולות, ודגימה ממנה <b>היא</b> הפעולה. זו גם החקירה, אין <code>&epsilon;</code> בכלל. אחרי אפיזודה שלמה מעלים את הלוג&#8209;הסתברות של כל פעולה ביחס לתשואה שבאה אחריה.</p>
+    <p>אין מבקר ואין bootstrapping, אז הגרדיאנט <b>בלתי מוטה אבל בעל שונות עצומה</b>, ואפיזודה אחת ברת מזל מטלטלת את כל העדכון. הריכוך היחיד אצלנו הוא הלבנת התשואות, חיסור ממוצע וחלוקה בסטיית תקן, ובונוס אנטרופיה נגד קריסה מוקדמת למדיניות דטרמיניסטית.</p>
+    <p class="rule-line"><code>loss = -mean<sub>t</sub> [ log &pi;(a<sub>t</sub>|s<sub>t</sub>) &middot; G<sub>t</sub> ] - &beta;H</code></p>
+    <p class="file">arenas/r5_tostarena/reinforce.py</p>
+  </div>
+
+  <div class="algo" style="--c:#d94f8a">
+    <div class="tag">Actor-Critic</div>
+    <h3>שחקן ומבקר</h3>
+    <p>מתקן בדיוק את השונות הזו. <b>שחקן</b> בוחר פעולות ו<b>מבקר</b> מעריך <code>V(s)</code>, כך שכל פעולה נשפטת מול <b>הציפייה</b> ולא מול התשואה הגולמית. כלומר "האם זה יצא טוב יותר ממה שציפיתי מהמצב הזה".</p>
+    <p>קריטי: המבקר <b>מבצע bootstrapping</b>, משלים את הזנב מעבר לחלון עם <code>V</code>, ולכן העדכון קורה כל <code>horizon = 64</code> צעדים ולא כל אפיזודה. זו ההערה החשובה מהקוד: REINFORCE&#8209;עם&#8209;בסיס הוא עדיין מונטה קרלו ו<b>אינו</b> Actor&#8209;Critic אמיתי. מה שהופך אותו לכזה הוא ה&#8209;bootstrapping (סאטון וברטו, 13.5).</p>
+    <div class="rule-line">
+      <div class="rl-row"><span class="rl-lbl">מטרה</span><code>R<sub>t</sub> = r<sub>t</sub> + &gamma;r<sub>t+1</sub> + ... + &gamma;<sup>k</sup>V(s<sub>t+k</sub>)</code></div>
+      <div class="rl-row"><span class="rl-lbl">יתרון</span><code>A<sub>t</sub> = R<sub>t</sub> - V(s<sub>t</sub>)</code></div>
+    </div>
+    <p class="file">arenas/r5_tostarena/actor_critic.py</p>
+  </div>
+
+  <div class="algo" style="--c:#d94f8a">
+    <div class="tag">PPO</div>
+    <h3>אופטימיזציית מדיניות פרוקסימלית</h3>
+    <p>מוסיף את מה ששני הקודמים חסרים: <b>שימוש חוזר בטוח בנתונים</b>. שניהם זורקים כל דגימה אחרי צעד גרדיאנט אחד, וזה בזבזני. PPO אוסף rollout של 512 צעדים ורץ עליו <b>ארבעה מחזורים</b> במיני&#8209;אצוות של 128.</p>
+    <p>אבל שימוש חוזר מסוכן, כי אחרי העדכון הראשון המדיניות כבר לא זו שאספה את הנתונים. הפתרון הוא <b>חיתוך יחס ההסתברויות</b> לטווח <code>[0.8, 1.2]</code>: ברגע שהמדיניות החדשה התרחקה מספיק מהישנה, הגרדיאנט של אותה דגימה <b>נכבה</b>, כך שאף אצווה לא יכולה לדחוף את המדיניות מעבר לצוק. בנוסף GAE עם <code>&lambda;=0.95</code> לאיזון הטיה מול שונות באומדן היתרון.</p>
+    <p class="rule-line"><code>loss = -min( ratio &middot; A , clamp(ratio, 1-&epsilon;, 1+&epsilon;) &middot; A )</code></p>
+    <p class="file">arenas/r5_tostarena/ppo.py</p>
+  </div>
+</section>
+
+<section class="thread">
+  <h3>החוט המקשר, במשפט לכל שלב</h3>
+  <ol>
+    <li>יודע את המודל, ולכן <b>מחשב</b> במקום לנסות.</li>
+    <li>לא יודע ולכן <b>מנסה</b>, אבל לומד רק כשהאפיזודה נגמרת.</li>
+    <li>לומד <b>בכל צעד</b>, על ידי ניחוש שמסתמך על הניחוש הקודם.</li>
+    <li>מחליף את הטבלה ב<b>רשת</b> כשהמצב רציף ואי אפשר לספור מצבים.</li>
+    <li>מפסיק ללמוד ערכים ולומד את <b>ההתנהגות</b> עצמה.</li>
+  </ol>
+</section>
+
+</body>
+</html>

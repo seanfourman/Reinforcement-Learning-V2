@@ -138,8 +138,9 @@ class TelemetryMixin:
         return f() if f else 0.0
 
     def _dqn_field(self, side, key):
-        # DQN-only fields (gradNorm/predQ); PG agents expose a different diag shape
-        # (policyLoss/entropy), so missing keys read as 0.0 instead of crashing.
+        # One accessor for every deep-agent diag scalar. DQN exposes gradNorm/predQ,
+        # PG exposes entropy/policyLoss/valueLoss; a key the running family does not
+        # publish (and every tabular/DP round) reads 0.0 instead of crashing.
         d = getattr(self._agent(side), "diag", None)
         return d().get(key, 0.0) if d else 0.0
 

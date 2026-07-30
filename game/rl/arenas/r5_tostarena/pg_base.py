@@ -175,6 +175,10 @@ class PGAgent:
             "updates": self.updates,
             "trainSteps": self.steps_seen,
             "pending": len(self.S),
+            # The rollout length an update fires on (PPO 512, Actor-Critic 64).
+            # REINFORCE has none: it updates on the episode boundary, so 0 tells
+            # the dashboard to show the pending count without a progress bar.
+            "horizon": int(getattr(self, "horizon", 0)),
             "lr": round(self._lr(self._alpha), 6),
         }
 

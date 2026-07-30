@@ -402,8 +402,12 @@ class BriefingMixin:
                 rewards = [
                     ["Stay alive", "+0.2 / second"],
                     ["Dodge a Bill aimed at you (it expires without a hit)", 0.15],
-                    ["Change a closing missile's projected miss distance",
-                     "up to +/-0.25 / second"],
+                    # an optional THIRD element is a one-line explanation under the
+                    # row; only this rule needs one (the others read as they are)
+                    ["Move so an incoming Bill will miss you by more (or less)",
+                     "up to +/-0.25 / second",
+                     "How far the Bill would fly past you if nobody changed course. "
+                     "Widen that gap and you are paid, narrow it and you are fined."],
                     ["Lose a heart (hit by a Banzai Bill)", -2.0],
                     ["Rival loses their last heart (you win)", 0.05],
                 ]

@@ -1163,7 +1163,11 @@ const STYLE = `
 #rl-panel #rl-brief .rw-leg .pos{background:#1f9d55;}
 #rl-panel #rl-brief .rw-leg .neg{background:#d9534f;}
 #rl-panel #rl-brief .rw-row{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:11.5px;}
-#rl-panel #rl-brief .rw-row+.rw-row{border-top:1px solid #f2f3f5;}
+/* the separator lives on the WRAPPER: a row may be followed by its explanation
+   line, which would otherwise break the row+row adjacency and drop the rule */
+#rl-panel #rl-brief .rw-item+.rw-item{border-top:1px solid #f2f3f5;}
+#rl-panel #rl-brief .rw-why{margin:-3px 0 8px;padding-right:56px;font-size:10.5px;
+  line-height:1.5;color:#8a8d94;}
 #rl-panel #rl-brief .rw-k{flex:1 1 auto;min-width:0;color:#4b4d53;line-height:1.4;}
 #rl-panel #rl-brief .rw-track{flex:0 0 92px;height:6px;border-radius:4px;background:#eef0f3;overflow:hidden;}
 #rl-panel #rl-brief .rw-fill{display:block;height:100%;border-radius:4px;}
@@ -1356,7 +1360,7 @@ const N_GROUPS = [
   [
     "inside",
     "Inside the AI",
-    ["rl-sec-value", "rl-polagree", "rl-dp", "rl-va", "rl-dqn", "rl-actdist"],
+    ["rl-sec-value", "rl-polagree", "rl-dp", "rl-va", "rl-dqn", "rl-pg", "rl-actdist"],
     "Peek at what your AI has actually learned.",
     "Inside",
   ],

@@ -163,6 +163,13 @@ class ReplayMixin:
             "gnormBlue": round(self._dqn_field("blue", "gradNorm"), 3),
             "predQRed": round(self._dqn_field("red", "predQ"), 3),
             "predQBlue": round(self._dqn_field("blue", "predQ"), 3),
+            # Round 5's policy-gradient counterparts. Entropy is the PG round's
+            # exploration signal (there is no epsilon), and the value loss only
+            # moves for the critic-carrying variants. Both read 0.0 elsewhere.
+            "entRed": round(self._dqn_field("red", "entropy"), 4),
+            "entBlue": round(self._dqn_field("blue", "entropy"), 4),
+            "vlossRed": round(self._dqn_field("red", "valueLoss"), 4),
+            "vlossBlue": round(self._dqn_field("blue", "valueLoss"), 4),
         })
 
     # cause string (from the recorded frame's <side>Dead) -> a human phrase
