@@ -4,7 +4,8 @@ import { cellToWorld, getCell, getOffset } from './layout.js';
 
 // Two ground overlays for a model's learning:
 //   * Visits  - a colour heatmap (BLUE = least stepped on, RED = most), one quad per tile.
-//   * Value   - the per-action Q-values RENDERED AS NUMBERS on each tile (Up/Down/Left/Right), drawn
+//   * Value   - the per-action Q-values RENDERED AS NUMBERS on each tile (Up/Down/Left/Right
+//               around the edges, plus Round 3's STAY in the middle), drawn
 //               onto a single canvas texture mapped over the grid.
 // Only one is visible at a time. Fed by /api/values (mode=visits | mode=q).
 
@@ -74,6 +75,16 @@ export function createHeatmap(scene) {
   };
   const farrows = mkArrows();   // floor policy (on the ground, occluded by walls)
   const garrows = mkArrows();   // ghost policy raised above the walls (only while phasing)
+  // Round 3's 5th action (STAY) is NOT a direction: a cell whose greedy action is Wait
+  // gets a RING - "hold this tile" - instead of an arrow. Without it those cells fell
+  // through `YAW[act] || 0`, and yaw 0 is EAST, so every wait cell drew a confident
+  // arrow pointing RIGHT (a third of the learned tiles, early in training).
+  const waitGeo = new THREE.RingGeometry(0.11, 0.2, 24);
+  waitGeo.rotateX(-Math.PI / 2);                     // lay flat on the floor
+  const fwaits = new THREE.InstancedMesh(waitGeo, arrowMat, PMAX);
+  fwaits.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  fwaits.frustumCulled = false; fwaits.visible = false; fwaits.count = 0;
+  scene.add(fwaits);
   function _setTeam(agent) { if (TEAM[agent] != null) arrowMat.color.setHex(TEAM[agent]); }
   function _placeArrows(mesh, cells, y) {
     const s = 0.82 * getCell();  // a bit smaller
@@ -260,10 +271,13 @@ export function createHeatmap(scene) {
     cctx.textAlign = 'center';
     cctx.textBaseline = 'middle';
     cctx.lineJoin = 'round';
-    // dirs: 0=N (top), 1=S (bottom), 2=W (left), 3=E (right). DARK only (no bright
-    // fills/halos) so the scene's bloom pass leaves it alone; a thin dark outline
-    // keeps it crisp on the light floor without glowing.
-    const off = [[0, -th * 0.30], [0, th * 0.30], [-tw * 0.31, 0], [tw * 0.31, 0]];
+    // dirs: 0=N (top), 1=S (bottom), 2=W (left), 3=E (right), and Round 3's 5th
+    // action - STAY ("Wait") - in the tile CENTRE, since waiting is not a direction.
+    // Rounds with only 4 actions send a 4-long q and never reach the centre slot.
+    // DARK only (no bright fills/halos) so the scene's bloom pass leaves it alone; a
+    // thin dark outline keeps it crisp on the light floor without glowing.
+    const off = [[0, -th * 0.30], [0, th * 0.30], [-tw * 0.31, 0], [tw * 0.31, 0],
+                 [0, 0]];
     for (let r = 0; r < H; r++) {
       for (let c = 0; c < W; c++) {
         const q = grid[r] && grid[r][c];
@@ -273,7 +287,7 @@ export function createHeatmap(scene) {
         // fall back to a raw argmax only if it wasn't provided (older cache)
         const brow = bestGrid && bestGrid[r];
         const best = (brow && brow[c] != null) ? brow[c] : bestAction(q);
-        for (let d = 0; d < 4; d++) {
+        for (let d = 0; d < Math.min(q.length, off.length); d++) {
           const x = cx + off[d][0], y = cy + off[d][1];
           cctx.font = `${d === best ? '800 ' : '600 '}${f}px system-ui,Arial,sans-serif`;
           cctx.lineWidth = Math.max(2, f * 0.2);
@@ -290,16 +304,19 @@ export function createHeatmap(scene) {
   // grid[r][c] = 0=N,1=S,2=W,3=E, or null. Fed by /api/values?mode=policy.
   function setPolicy(grid, agent) {
     _setTeam(agent);
-    // floor policy as the SAME 3D arrows as the ghost/wall arrows, laid low on the ground
-    const cells = [];
+    // floor policy as the SAME 3D arrows as the ghost/wall arrows, laid low on the ground;
+    // any non-directional action (R3's STAY) is split off to the wait rings instead
+    const cells = [], waits = [];
     for (let r = 0; r < grid.length; r++) {
       const row = grid[r] || [];
       for (let c = 0; c < row.length; c++) {
         const a = row[c];
-        if (a !== null && a !== undefined) cells.push([r, c, a]);
+        if (a === null || a === undefined) continue;
+        (a < 4 ? cells : waits).push([r, c, a]);
       }
     }
     _placeArrows(farrows, cells, 0.1);
+    _placeArrows(fwaits, waits, 0.1);   // a ring is rotationally symmetric, so the yaw is moot
   }
 
   return {
@@ -309,17 +326,18 @@ export function createHeatmap(scene) {
     setFlip,
     setArenaField,
     setGhostArrows,
-    showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
-    showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
-    showPolicy() { farrows.visible = farrows.count > 0; numPlane.visible = false; mesh.visible = false; amesh.visible = false; },
+    showColors() { mesh.visible = true; numPlane.visible = false; amesh.visible = false; farrows.visible = false; fwaits.visible = false; setGhostArrows([]); },
+    showNumbers() { numPlane.visible = true; mesh.visible = false; amesh.visible = false; farrows.visible = false; fwaits.visible = false; setGhostArrows([]); },
+    showPolicy() { farrows.visible = farrows.count > 0; fwaits.visible = fwaits.count > 0; numPlane.visible = false; mesh.visible = false; amesh.visible = false; },
     showArena(mode = 'value') {
       amesh.visible = mode !== 'policy';
       farrows.visible = mode === 'policy' && farrows.count > 0;
+      fwaits.visible = false;            // the continuous arenas have no wait action
       mesh.visible = false;
       numPlane.visible = false;
       setGhostArrows([]);
     },
-    hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; farrows.visible = false; setGhostArrows([]); },
-    get visible() { return mesh.visible || numPlane.visible || amesh.visible || farrows.visible; },
+    hide() { mesh.visible = false; numPlane.visible = false; amesh.visible = false; farrows.visible = false; fwaits.visible = false; setGhostArrows([]); },
+    get visible() { return mesh.visible || numPlane.visible || amesh.visible || farrows.visible || fwaits.visible; },
   };
 }

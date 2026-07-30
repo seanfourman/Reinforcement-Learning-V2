@@ -338,7 +338,9 @@ class InspectionMixin:
     def q_grid(self, agent):
         """Per-action Q for EVERY tile (the 'numbers on tiles' value overlay), in the
         agent's current context: [qN, qS, qW, qE], or None on walls / unlearned
-        cells. Action order matches env.ACTIONS (Up, Down, Left, Right)."""
+        cells. Action order matches env.ACTIONS (Up, Down, Left, Right), plus any
+        action the round appends after them - Round 3's STAY is a 5th entry, which
+        the overlay draws in the middle of the tile."""
         with self.lock:
             if self.env.objective == "arena":
                 return self._blank_grid(agent, mode="q")

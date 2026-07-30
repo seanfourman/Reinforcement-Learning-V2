@@ -642,8 +642,8 @@ async function poll() {
         const requestedGeneration = heatGeneration;
         const requestedReplayGeneration = replayGeneration;
         // "value" asks for the PER-ACTION Q grid (mode=q), not the scalar V(s) grid:
-        // the overlay draws four numbers (up/down/left/right) on every tile, and needs `best`
-        // to bold the masked greedy action.
+        // the overlay draws one number per action on every tile (up/down/left/right, plus
+        // R3's STAY in the centre), and needs `best` to bold the masked greedy action.
         const m =
           requestedMode === "value"
             ? "q"
@@ -872,7 +872,11 @@ const replay = {
       best: field.policy?.[r]?.[c],
       ties,
       mask: allowed,
-      labels: ["Up", "Down", "Left", "Right"],
+      // Round 3 records a 5th action (STAY); name it so the inspector's extra row
+      // reads "Wait" instead of a bare index
+      labels: q.length > 4
+        ? ["Up", "Down", "Left", "Right", "Wait"]
+        : ["Up", "Down", "Left", "Right"],
       replay: true,
     };
   },

@@ -2396,8 +2396,15 @@ export function initPanel() {
     const ties = Array.isArray(d.ties) ? d.ties : [];
     const mask = d.mask || null;
     const actionNames = ACTION_NAMES;
-    const actionOrder =
-      lastRoundIndex === 0 ? PEACH_ACTION_ORDER : [0, 1, 2, 3];
+    // the 4 directions in this round's screen order, then any EXTRA action the round
+    // adds after them (Round 3's index 4 = STAY), named from the payload's labels
+    const extras = [];
+    for (let i = 4; i < d.q.length; i++) extras.push(i);
+    const actionOrder = (
+      lastRoundIndex === 0 ? PEACH_ACTION_ORDER : [0, 1, 2, 3]
+    ).concat(extras);
+    const nameOf = (i, displayIndex) =>
+      displayIndex < 4 ? actionNames[displayIndex] : d.labels?.[i] || `Action ${i}`;
     $("#rl-qinspect").innerHTML =
       `<div class="hint">Tile (${d.cell[0]}, ${d.cell[1]}) - ${d.agent === "red" ? "Red" : "Blue"}</div>` +
       actionOrder
@@ -2406,7 +2413,7 @@ export function initPanel() {
           const blk = mask && !mask[i];
           const mark =
             i === best ? " ★" : best == null && ties.includes(i) ? " ◇" : "";
-          return `<div class="qrow${blk ? " blk" : ""}"><span>${actionNames[displayIndex]}${mark}${blk ? ' <span class="blktag">blocked</span>' : ""}</span>
+          return `<div class="qrow${blk ? " blk" : ""}"><span>${nameOf(i, displayIndex)}${mark}${blk ? ' <span class="blktag">blocked</span>' : ""}</span>
           <span class="qbar"><i style="left:${((Math.min(q, 0) - lo) / span) * 100}%;
             width:${(Math.abs(q) / span) * 100}%"></i></span>
           <span>${q.toFixed(2)}</span></div>`;
