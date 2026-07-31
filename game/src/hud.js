@@ -136,10 +136,12 @@ const STYLE = `
 #rl-hud-warn .hw-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
   background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
   color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
-/* "quit to the main menu" confirm (ESC, or clicking the ESC hint). Sits ABOVE the
-   control panel (58) but UNDER the iris (60), so the wipe that carries us back to
-   the menu covers it. */
-#rl-quit{position:fixed;inset:0;z-index:59;display:grid;place-items:center;
+/* "quit to the main menu" confirm (ESC, or clicking the ESC hint). TOP of the
+   in-game stack: above the control panel (58) and above all three transition
+   layers - the iris (60), its click shield (65) and the level-name card (66) -
+   so a round change mid-question can never paint over the card you are answering.
+   (The start menu's own layers sit higher still, but this can't open while it's up.) */
+#rl-quit{position:fixed;inset:0;z-index:70;display:grid;place-items:center;
   background:rgba(8,10,16,.5);opacity:0;pointer-events:none;transition:opacity .18s;
   font-family:"Segoe UI",system-ui,sans-serif;}
 #rl-quit.show{opacity:1;pointer-events:auto;}

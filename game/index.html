@@ -18,6 +18,9 @@
         height: 100%;
         background: #1a1c2c;
         font-family: "Segoe UI", system-ui, sans-serif;
+        /* the touch tap flash is its own property (it fires on tap, not on :focus),
+           so it cannot live in the focus rule below */
+        -webkit-tap-highlight-color: transparent;
       }
       #app { position: fixed; inset: 0; }
       canvas { display: block; }
@@ -25,6 +28,22 @@
         -webkit-user-select: none;
         -moz-user-select: none;
         user-select: none;
+      }
+      /* No focus ring ANYWHERE. Every module injects its own <style> into <head> at
+         runtime, so they all land later in the cascade than this file AND out-specify
+         `*:focus`; !important is what makes this win, since author-important is
+         decided before specificity or document order. Kept as ONE selector (not a
+         `*:focus,*:focus-visible` group): :focus-visible is a strict subset of :focus,
+         so grouping buys nothing and an engine that does not know :focus-visible
+         would throw the whole group away. */
+      *:focus {
+        outline: none !important;
+      }
+      /* legacy Firefox (<52) drew an inner dotted button border that is NOT an
+         outline, so outline:none never removed it. A no-op on modern browsers. */
+      ::-moz-focus-inner {
+        border: 0 !important;
+        padding: 0 !important;
       }
       /* Mario-style boot loader: a plain white screen with a spinning Mario-cap
          sprite (ripped from Odyssey's screen transitions). It is pure CSS, so it
