@@ -947,8 +947,17 @@ const STYLE = `
 #rl-panel .ff-card b{font-size:15px;letter-spacing:.3px;color:#1f1f21;}
 #rl-panel .ff-card .ff-n{font-size:12.5px;color:#6b7280;font-variant-numeric:tabular-nums;}
 /* locked learning sliders (CPU + locked) read grayed out; black shared sliders stay open */
-#rl-panel .ctl.learn{transition:opacity .15s;}
+#rl-panel .ctl.learn{transition:opacity .15s,filter .15s;}
 #rl-panel .ctl.learn:has(input:disabled){opacity:.5;}
+/* ...and while YOU are playing they are not merely locked, they are inert: the
+   model is benched and learning nothing, so they lose their colour entirely and
+   the tab that holds them (Tune = every per-side knob) dims with them. */
+#rl-panel[data-model="you"] .ctl.learn:has(input:disabled){filter:grayscale(1);}
+#rl-panel[data-model="you"] #rl-tab-tune{opacity:.45;}
+#rl-panel .benchnote{display:none;margin:0 0 13px;padding:9px 11px;border-radius:8px;
+  background:#fdf3d7;border:1px solid #eedca8;color:#6b5518;
+  font-size:12px;font-weight:700;line-height:1.45;}
+#rl-panel[data-model="you"] .benchnote{display:block;}
 #rl-panel input[type=range]:disabled{cursor:default;}
 #rl-panel input[type=range]:disabled::-webkit-slider-thumb{background:#eef0f3;cursor:default;}
 #rl-panel input[type=range]:disabled::-moz-range-thumb{background:#eef0f3;cursor:default;}
@@ -1625,6 +1634,9 @@ export function initPanel() {
     </section>
     <section id="rl-sec-hyper" class="qk">
       <h2><span id="rl-ple-model">Your model</span> parameters</h2>
+      <p class="benchnote">You are playing this round yourself, so your model is
+        benched and learning nothing. These knobs do nothing until you hand the
+        controls back to it.</p>
       ${tuneParams.map(ctlHTML).join("")}
     </section>
     <section id="rl-sec-shared">
@@ -2220,7 +2232,13 @@ export function initPanel() {
       if (p.color === C_OURS) setFromBackend(p, src[p.key]);
   };
   const applyLock = () => {
-    const disable = panel.dataset.model === "cpu" && cpuLocked;
+    // .ctl.learn is exactly the per-side learning knobs (tuneParams = every
+    // C_OURS param; every other group is explicitly not C_OURS). They are dead
+    // in two cases: the CPU model while locked, and while YOU are playing - a
+    // benched model does not learn, so alpha/gamma/epsilon change nothing.
+    const disable =
+      (panel.dataset.model === "cpu" && cpuLocked) ||
+      panel.dataset.model === "you";
     panel.querySelectorAll(".ctl.learn input[type=range]").forEach((el) => {
       el.disabled = disable;
     });
