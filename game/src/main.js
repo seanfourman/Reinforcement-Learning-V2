@@ -1069,6 +1069,10 @@ window.RL.panels = {
   toggle() { document.getElementById("rl-panel")?.classList.toggle("open"); },
   close() { document.getElementById("rl-panel")?.classList.remove("open"); },
 };
+// quit the run from inside the game (the HUD's ESC hint / its confirm card) - the
+// SAME path the final standings' Play Again takes, so it resets the tournament and
+// re-opens the start menu under the iris.
+window.RL.exitToMenu = () => returnToStartMenu();
 
 initPanel(); // builds the single control panel (the model selector handles the CPU view)
 

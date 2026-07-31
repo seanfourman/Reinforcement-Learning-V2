@@ -100,6 +100,9 @@ const STYLE = `
   box-sizing:border-box;padding:0 8px;border-radius:8px;background:#fff;color:#1a1a1a;font-weight:800;
   font-size:14px;box-shadow:0 1px 3px rgba(0,0,0,.22);}
 #rl-keys .txt{font-weight:800;font-size:14.5px;letter-spacing:.2px;text-shadow:0 1px 2px rgba(0,0,0,.38);}
+/* ESC is 3 letters, so shrink the type instead of letting the badge grow - it stays
+   the SAME 30x30 square as the single-letter C / R / T keys beside it */
+#rl-keys .kh.menu .key{width:30px;min-width:0;padding:0;font-size:10.5px;letter-spacing:.2px;}
 #rl-keys .kh:hover{opacity:.85;}
 #rl-keys .kh.finish .txt{min-width:96px;}
 #rl-keys .kh.finish.armed .txt{color:#dfe7ff;}
@@ -133,6 +136,28 @@ const STYLE = `
 #rl-hud-warn .hw-ico{flex:none;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;
   background:radial-gradient(circle at 38% 32%,#ffe27a,#f6b21b);border:2px solid #3a1410;
   color:#3a1410;font-weight:900;font-size:15px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.18);}
+/* "quit to the main menu" confirm (ESC, or clicking the ESC hint). Sits ABOVE the
+   control panel (58) but UNDER the iris (60), so the wipe that carries us back to
+   the menu covers it. */
+#rl-quit{position:fixed;inset:0;z-index:59;display:grid;place-items:center;
+  background:rgba(8,10,16,.5);opacity:0;pointer-events:none;transition:opacity .18s;
+  font-family:"Segoe UI",system-ui,sans-serif;}
+#rl-quit.show{opacity:1;pointer-events:auto;}
+#rl-quit .q-card{width:min(430px,88vw);padding:22px 24px 20px;text-align:center;background:#fff;
+  border:3px solid #101114;border-radius:12px;box-shadow:0 6px 0 #101114,0 24px 44px rgba(0,0,0,.45);
+  transform:translateY(14px) scale(.94);transition:transform .22s cubic-bezier(.16,1.18,.25,1);}
+#rl-quit.show .q-card{transform:translateY(0) scale(1);}
+#rl-quit .q-ttl{margin:0;font-family:"SuperMario256","Arial Black",sans-serif;font-size:26px;
+  letter-spacing:.5px;color:#1f1f21;}
+#rl-quit .q-sub{margin:13px 0 0;font-size:14.5px;font-weight:700;line-height:1.45;color:#575a62;}
+#rl-quit .q-actions{display:flex;justify-content:center;gap:12px;margin-top:20px;}
+#rl-quit button{border:2.5px solid #000;border-radius:999px;padding:10px 20px;cursor:pointer;font:inherit;
+  font-size:15px;font-weight:900;box-shadow:0 4px 0 #000;transition:background .12s;}
+#rl-quit button:active{transform:translateY(2px);box-shadow:0 2px 0 #000;}
+#rl-quit .q-no{background:#ffd23f;color:#1a1207;}
+#rl-quit .q-no:hover{background:#ffdf74;}
+#rl-quit .q-yes{background:#1f1f21;color:#fff;}
+#rl-quit .q-yes:hover{background:#33353a;}
 /* Arena-4 lives / Arena-2 tomato progress: the SAME row and position on the
    OUTER side of each portrait. Arena 4 draws hearts; Arena 2 draws tomatoes. */
 .fb-hearts{display:none;gap:6px;margin:0 13px;}
@@ -195,6 +220,7 @@ export function initHud() {
   const keys = document.createElement("div");
   keys.id = "rl-keys";
   keys.innerHTML =
+    `<div class="kh menu" data-act="menu"><span class="key">ESC</span><span class="txt">Menu</span></div>` +
     `<div class="kh" data-act="controls"><span class="key">C</span><span class="txt">Controls</span></div>` +
     `<div class="kh" data-act="reset"><span class="key">R</span><span class="txt">Reset</span></div>` +
     `<div class="kh finish" id="rl-finish-key" data-act="terminate"><span class="key">T</span><span class="txt" id="rl-finish-txt">Terminate</span></div>`;
@@ -227,6 +253,48 @@ export function initHud() {
     }, 2600);
   }
 
+  // ---- back to the main menu (ESC, or clicking the ESC hint) ----
+  // Leaving RESETS the tournament (main.js returnToStartMenu), and ESC is an easy
+  // key to hit by accident, so it asks first instead of binning the run silently.
+  const quit = document.createElement("div");
+  quit.id = "rl-quit";
+  quit.innerHTML =
+    `<div class="q-card"><h2 class="q-ttl">Quit to Main Menu?</h2>` +
+    `<p class="q-sub">The tournament resets: the current score and everything both models have learned are lost.</p>` +
+    `<div class="q-actions"><button class="q-no" type="button">Keep Playing</button>` +
+    `<button class="q-yes" type="button">Main Menu</button></div></div>`;
+  document.body.appendChild(quit);
+  const quitOpen = () => quit.classList.contains("show");
+  const openQuit = () => quit.classList.add("show");
+  const closeQuit = () => quit.classList.remove("show");
+  quit.querySelector(".q-no").addEventListener("click", closeQuit);
+  quit.querySelector(".q-yes").addEventListener("click", () => {
+    closeQuit(); // the iris covers the screen next - nothing may linger over the menu
+    window.RL?.exitToMenu?.();
+  });
+  quit.addEventListener("click", (e) => {
+    if (e.target === quit) closeQuit(); // click the scrim = cancel
+  });
+  // ESC opens it, but only when nothing else owns the key: the start menu hides this
+  // hint row (it has its own ESC/Back), an open control panel closes on ESC (panel.js),
+  // a zoomed chart releases its zoom (graphs.js, which stops the event before us), and
+  // the final standings screen has its own Play Again button.
+  const escTaken = () =>
+    getComputedStyle(keys).display === "none" ||
+    !!document.getElementById("rl-panel")?.classList.contains("open") ||
+    !!document.getElementById("rl-final")?.classList.contains("show");
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (quitOpen()) {
+      e.preventDefault();
+      closeQuit();
+      return;
+    }
+    if (escTaken() || /input|select|textarea/i.test(e.target.tagName)) return;
+    e.preventDefault();
+    openQuit();
+  });
+
   // the current round's result: 'blue' | 'red' | 'draw' | null (unresolved). Kept in
   // sync from every snapshot so pressing T knows whether the stage is already decided.
   let latestResult = null;
@@ -245,7 +313,8 @@ export function initHud() {
     const kh = e.target.closest(".kh");
     if (!kh) return;
     const act = kh.dataset.act;
-    if (act === "controls") window.RL?.panels?.toggle?.();
+    if (act === "menu") openQuit();
+    else if (act === "controls") window.RL?.panels?.toggle?.();
     else if (act === "reset") window.RL?.control?.({ cmd: "reset" });
     else if (act === "terminate") terminateStage();
   });
