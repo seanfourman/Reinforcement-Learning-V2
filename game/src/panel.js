@@ -764,12 +764,52 @@ const STYLE = `
    the reaching edge is pinned straight to the panel edge (right:-2px / left:-2px overshoot,
    clipped by #rl-panel's overflow-x:hidden) with no transform sub-pixel rounding. The inner
    edge sits on centre; animating left+right keeps a constant width, so it still slides. */
-#rl-panel .hdr .msel-wash{position:absolute;z-index:0;top:0;bottom:0;left:-2px;right:50%;pointer-events:none;
+#rl-panel .hdr .msel-wash{position:absolute;z-index:0;top:0;bottom:0;left:-2px;right:calc(50% + 9px);pointer-events:none;
   background:var(--hue);border-radius:0;opacity:.82;
   transition:left .34s cubic-bezier(.4,.75,.2,1),right .34s cubic-bezier(.4,.75,.2,1);}
-#rl-panel[data-model="cpu"] .hdr .msel-wash{left:50%;right:-2px;}
-#rl-panel .hdr .msel{flex:1;min-width:0;text-align:left;border:0;border-radius:0;background:transparent;
-  position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:13px 16px;cursor:pointer;transition:opacity .2s;}
+/* THREE slots, only TWO ever open: Your model | CPU model | YOU. The one that is
+   swapped out collapses to an 18px tongue at its panel edge - YOU peeks on the
+   right until you take over, then your model peeks on the left instead. The wash
+   still slides, so its insets are written per state (T = the 18px tongue):
+     open pair -> each open slot is (W-18)/2 = 50% - 9px wide. */
+#rl-panel[data-model="cpu"] .hdr .msel-wash{left:calc(50% - 15px);right:30px;}
+#rl-panel[data-model="your"] .hdr .msel-wash{left:-2px;right:calc(50% + 15px);}
+#rl-panel[data-model="you"] .hdr .msel-wash{left:calc(50% + 15px);right:-2px;}
+#rl-panel .hdr .msel{flex:1 1 0;min-width:0;text-align:left;border:0;border-radius:0;background:transparent;
+  position:relative;z-index:1;display:flex;flex-direction:column;justify-content:center;padding:13px 16px;cursor:pointer;
+  transition:opacity .2s,flex-grow .34s cubic-bezier(.4,.75,.2,1),flex-basis .34s cubic-bezier(.4,.75,.2,1),padding .34s cubic-bezier(.4,.75,.2,1);}
+/* The collapsed slot is a solid LABELLED tab down the panel edge, not an abstract
+   dot: gold "PLAY" = take the controls, blue "MODEL" = give them back. Full
+   strength (it is a live button, not a dimmed inactive column). */
+#rl-panel[data-model="you"] .hdr .msel.your,
+#rl-panel:not([data-model="you"]) .hdr .msel.you{flex:0 0 30px;padding:0;opacity:1;}
+#rl-panel .hdr .msel > .msel-tab{display:none;position:absolute;inset:0;align-items:center;
+  justify-content:center;font-style:normal;transition:filter .17s;}
+/* letters stacked UPRIGHT (P over L over A over Y), not a rotated word:
+   text-orientation:upright keeps each Latin glyph the right way up inside the
+   vertical writing mode, and letter-spacing becomes the gap BETWEEN the rows.
+   Upright glyphs advance by the FULL em box (~1.4x the font size), so 5 stacked
+   letters need ~9px type to clear the band height - MODEL overflows at 10px. */
+#rl-panel .hdr .msel > .msel-tab span{writing-mode:vertical-rl;text-orientation:upright;
+  font-size:9px;font-weight:900;letter-spacing:.5px;line-height:1;}
+#rl-panel[data-model="you"] .hdr .msel.your > :not(.msel-tab),
+#rl-panel:not([data-model="you"]) .hdr .msel.you > :not(.msel-tab){display:none;}
+#rl-panel[data-model="you"] .hdr .msel.your > .msel-tab,
+#rl-panel:not([data-model="you"]) .hdr .msel.you > .msel-tab{display:flex;}
+#rl-panel .hdr .msel.you > .msel-tab{background:linear-gradient(180deg,#f5c02a,#d99a05);color:#3d2b00;}
+#rl-panel .hdr .msel.your > .msel-tab{background:linear-gradient(180deg,#3f7ee0,#1f5fd0);color:#fff;}
+/* the tab holds its size on hover; it only brightens, so nothing shifts */
+#rl-panel .hdr .msel:hover > .msel-tab{filter:brightness(1.07);}
+/* YOU drives the panel gold, the same way the CPU model drives it red. Gold is
+   too light to carry the white text the blue/red bands use, so the open YOU band
+   inverts to near-black instead - which is also what makes it read as gold. */
+#rl-panel[data-model="you"]{--hue:#d99a05;}
+#rl-panel[data-model="you"] .hdr .msel.you.active .msel-n,
+#rl-panel[data-model="you"] .hdr .msel.you.active .msel-k{color:#3d2b00;}
+#rl-panel[data-model="you"] .hdr .msel.you.active .msel-s{color:rgba(61,43,0,.82);}
+#rl-panel[data-model="you"] .rl-tab.active{color:#b57c00;}
+#rl-panel[data-model="you"] .rl-tab-hl::before{background:radial-gradient(72% 118% at 50% 100%,rgba(217,154,5,.16),rgba(217,154,5,0) 70%);}
+#rl-panel[data-model="you"] .rl-tab-hl::after{background:#d99a05;}
 #rl-panel .hdr .msel.active{background:transparent;color:inherit;border-color:transparent;} /* neutralise the global button.active dark fill/white text */
 #rl-panel .hdr .msel:not(.active){opacity:.45;}
 #rl-panel .hdr .msel:not(.active):hover{opacity:.75;}
@@ -1541,11 +1581,19 @@ export function initPanel() {
           <span class="msel-k">Your model</span>
           <b class="msel-n" id="rl-mb">-</b>
           <em class="msel-s" id="rl-vs"></em>
+          <i class="msel-tab"><span>MODEL</span></i>
         </button>
         <button type="button" class="msel cpu" data-view="cpu" aria-pressed="false">
           <span class="msel-k">CPU model</span>
           <b class="msel-n" id="rl-cp-algo">-</b>
           <em class="msel-s" id="rl-cp-tier"></em>
+        </button>
+        <button type="button" class="msel you" data-view="you" aria-pressed="false"
+          title="Play this round yourself">
+          <span class="msel-k">Playing</span>
+          <b class="msel-n">YOU</b>
+          <em class="msel-s">Keyboard - your model sits out</em>
+          <i class="msel-tab"><span>PLAY</span></i>
         </button>
       </div>
     </div>
@@ -1706,8 +1754,18 @@ export function initPanel() {
     if (!changed) return;
     applyModel(m);
   };
+  // The YOU slot is not just a view: picking it hands Blue to the keyboard, and
+  // picking either model hands it back. The server is still the source of truth -
+  // the snapshot below re-syncs the selector from whatever it reports, so the
+  // start menu's own setting and this selector can never disagree.
   msels.forEach((b) =>
-    b.addEventListener("click", () => setModel(b.dataset.view)),
+    b.addEventListener("click", () => {
+      const view = b.dataset.view;
+      const wasYou = panel.dataset.model === "you";
+      setModel(view);
+      if ((view === "you") !== wasYou)
+        window.RL?.control?.({ cmd: "humanMode", value: view === "you" });
+    }),
   );
 
   const $ = (id) => panel.querySelector(id);
@@ -1978,6 +2036,15 @@ export function initPanel() {
   $("#rl-reset").addEventListener("click", () =>
     window.RL.control({ cmd: "reset" }),
   );
+
+  // ---- keep the YOU slot in step with the server ----
+  // Whoever flipped it (this selector, or the start menu before the run began),
+  // the snapshot decides which slot is open. Guarded: setModel would otherwise
+  // re-run the whole model swap 30x a second.
+  const syncHuman = (on) => {
+    if (on === (panel.dataset.model === "you")) return;
+    setModel(on ? "you" : "your");
+  };
 
   // ---- replay controls: revealed in Playback while a recorded run is loaded ----
   const repTag = $("#rl-rep-tag"),
@@ -2253,6 +2320,7 @@ export function initPanel() {
   window.addEventListener("rl-snapshot", (e) => {
     const s = e.detail.stats;
     if (!s) return;
+    if (s.human) syncHuman(!!s.human.on);
     // A loaded replay owns the button and forced the server to pause: that temporary
     // pause must never be adopted as the remembered LIVE state (exiting the replay
     // restores the real one server-side, and the icon would then be inverted).

@@ -650,10 +650,13 @@ export function createStartMenu({
   if (actors?.group) actors.group.visible = false;
   heatmap?.hide?.();
 
-  // hide the game HUD (Blue/Red/round), the control panel + its tab, and the edge
-  // vignette so the menu is clean. All restored in dispose().
+  // hide the game HUD (Blue/Red/round), the control panel + its tab, the player's
+  // key hints and the edge vignette so the menu is clean. All restored in
+  // dispose(). rl-human MUST be in here: the poll stops while the menu is up, so
+  // no snapshot can arrive to retract it on its own.
   const hiddenEls = [];
-  for (const id of ["rl-hud", "rl-panel", "rl-cpanel", "rl-tab", "rl-keys"]) {
+  for (const id of ["rl-hud", "rl-panel", "rl-cpanel", "rl-tab", "rl-keys",
+                    "rl-human"]) {
     const el = document.getElementById(id);
     if (el) {
       hiddenEls.push([el, el.style.display]);

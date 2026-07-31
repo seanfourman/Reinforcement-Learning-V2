@@ -61,6 +61,21 @@ _ff_remaining = 0
 FF_MAX = 200000        # hard ceiling so a bad value can't wedge the trainer forever
 
 
+def _human_pace():
+    """Steps/sec that make the CURRENT round playable by a person.
+
+    A continuous arena has to run in REAL TIME or its physics feel wrong, so we
+    pace it at 1/dt (50/s on Round 4's 0.02 s step, 20/s on Round 5's 0.05 s).
+    The grid rounds are one tile per step, so they get a brisk walking pace
+    instead of the training loop's 60+ steps a second. The speed slider still
+    works from there - this only picks the starting pace."""
+    env = match.env
+    dt = float(getattr(env, "dt", 0) or 0)
+    if getattr(env, "objective", "") == "arena" and dt > 0:
+        return max(1.0, min(120.0, 1.0 / dt))
+    return 6.0
+
+
 def trainer():
     """Drive the match at the requested speed. Slow = watch the walk; fast = many
     episodes fly by and the heatmap fills in. Batches at high speed so the HTTP
@@ -313,6 +328,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             n = int(float(body.get("episodes", 10000)))
             _ff_remaining = max(0, min(FF_MAX, n))
             extra["ffRemaining"] = _ff_remaining
+        elif cmd == "humanMode":
+            on = match.set_human(body.get("value", True))
+            extra["human"] = on
+            if on:
+                # a person cannot play a paused board running at training speed
+                _paused = False
+                _replay_restore_paused = None
+                _speed = _human_pace()
+        elif cmd == "humanAction":
+            # the key currently held (None = released). Sticky until the next post.
+            extra["humanAction"] = match.set_human_action(body.get("value"))
         elif cmd == "sideAlgo":
             match.set_side_algo(body.get("side", "red"), body.get("value", "qlearning"))
         elif cmd == "setParams":
@@ -345,6 +371,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _sync_hold_until = time.monotonic() + delay
         else:
             return {"error": f"unknown cmd {cmd!r}"}
+        # each arena needs its own playable pace (a grid tile-step vs a 0.02 s
+        # physics step), so re-pick it whenever the round changes under a player
+        if match.human and cmd in ("prevRound", "nextRound", "setRound",
+                                   "resetTournament"):
+            _speed = _human_pace()
         # the command has been applied: from this serial on, every snapshot reflects it
         _control_serial += 1
         return {"ok": True, "speed": _speed, "paused": _paused,

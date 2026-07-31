@@ -86,6 +86,18 @@ class MatchLoopMixin:
         fn = getattr(self.env, "effective_actions", None)
         return fn(agent) if fn else None
 
+    def _human_blue_action(self):
+        """Blue's action for THIS step when a person is playing.
+
+        The browser posts only on key change, so the held action is sticky, and
+        letting go stands still (coast in a continuous arena, hold position on
+        the grid) rather than drifting on in the last direction."""
+        a = self.human_action
+        if a is not None and (0 <= a < self.env.n_actions
+                              or a == self._stay_action()):
+            return a
+        return self._stay_action()
+
     def _new_episode(self):
         self._apply_epsilon()
         # Round 4 learns against an episode curriculum rather than immediately
@@ -103,7 +115,10 @@ class MatchLoopMixin:
         # the env's own commit window so decision boundaries stay aligned.
         self._ar_pending = {"red": None, "blue": None}
         self._ar_count = {"red": 0, "blue": 0}
-        if self.round_id == 2 and getattr(self.env, "star_mode", False):
+        # ...but NOT while a person is playing: those exploring starts drop the
+        # racers into random mid-course cells with tomatoes already collected,
+        # which is a Monte Carlo training device, not a game anyone can play.
+        if self.round_id == 2 and getattr(self.env, "star_mode", False) and not self.human:
             # Exploring starts are the standard way to make long-horizon Monte
             # Carlo control visit later state/action pairs. Collecting a tomato
             # changes the state mask, so the route FROM each tomato belongs to a
@@ -167,7 +182,13 @@ class MatchLoopMixin:
                 if pos in self.env.cell_index:
                     vis[pos[0]][pos[1]] += 1
         self.a_red = self.red.policy_action(self.s_red, self._amask("red"))
-        self.a_blue = self.blue.policy_action(self.s_blue, self._amask("blue"))
+        # Skip Blue's policy entirely while a human plays: asking a tabular agent
+        # for an action INSERTS an all-zero row for that state, so a discarded
+        # query would keep inflating its "states learned" count all game.
+        self.a_blue = (
+            self._human_blue_action() if self.human
+            else self.blue.policy_action(self.s_blue, self._amask("blue"))
+        )
         if self.round_id == 2 and getattr(self, "_curriculum_stage", 0) >= 3:
             # Exploring-start episodes force the first action as well as the
             # state. Subsequent actions follow the normal ε-greedy MC policy.
@@ -190,6 +211,10 @@ class MatchLoopMixin:
             # honour a training-length target: idle once we've run the requested episodes
             if self.target_episodes is not None and self.episode >= self.target_episodes:
                 return False
+            if self.human:
+                # read the keys as LATE as possible - at the moment we step, not
+                # one step earlier when the previous tick chose the next action
+                self.a_blue = self._human_blue_action()
             obs, reward, done, truncated, info = self.env.step(self.a_red, self.a_blue)
             ns_red, ns_blue = obs
             # the effective-action mask AT THE NEXT STATE (env positions are already
@@ -209,7 +234,8 @@ class MatchLoopMixin:
             )
             na_blue = (
                 self.blue.policy_action(ns_blue, nmask_blue)
-                if not done and not agent_done.get("blue", False) else 0
+                if not self.human and not done
+                and not agent_done.get("blue", False) else 0
             )
 
             # a max-steps TIMEOUT is truncation, not a true terminal: the next state is
@@ -247,8 +273,11 @@ class MatchLoopMixin:
 
             _learn("red", self.red, self.s_red, xa_red, reward["red"], ns_red, na_red,
                    nmask_red, active_before.get("red", True), red_terminal)
-            _learn("blue", self.blue, self.s_blue, xa_blue, reward["blue"], ns_blue, na_blue,
-                   nmask_blue, active_before.get("blue", True), blue_terminal)
+            # A human at the controls does NOT train Blue's model: these are a
+            # person's moves, not samples from the algorithm the player chose.
+            if not self.human:
+                _learn("blue", self.blue, self.s_blue, xa_blue, reward["blue"], ns_blue,
+                       na_blue, nmask_blue, active_before.get("blue", True), blue_terminal)
 
             self.ep_return["red"] += reward["red"]
             self.ep_return["blue"] += reward["blue"]
@@ -302,7 +331,11 @@ class MatchLoopMixin:
                 # continues, so both complete trajectories are valid MC samples.
                 # At a timeout an unresolved trajectory is a finite-horizon sample.
                 self.red.end_episode()
-                self.blue.end_episode()
+                if not self.human:
+                    # Monte Carlo flushes its whole trajectory here, so a human
+                    # round must skip this too or the episode we just played by
+                    # hand gets learned from anyway.
+                    self.blue.end_episode()
                 w = info["winner"] or "draw"
                 full_course = bool(getattr(self, "_full_course_episode", True))
                 if full_course:

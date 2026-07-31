@@ -12,6 +12,7 @@ import { initHud } from "./hud.js";
 import { createAwardCeremony } from "./award.js";
 import { createTransition } from "./transition.js";
 import { createStartMenu, getCpuTier, getCpuLevel, getCpuAlgos, getPlayerAlgos } from "./startmenu.js";
+import { initHuman } from "./human.js";
 import { createLoadScreen } from "./loadscreen.js";
 import { loadBoardWalkers } from "./boardchars.js";
 import { initDevBar } from "./devbar.js";
@@ -168,6 +169,7 @@ let lastWorldJson = null; // most recently (re)built world - for the entry name 
 let menu = null; // start menu (cabin background); gates the game boot
 
 const hud = initHud(); // Blue top-left / Red top-right score + round banner
+const human = initHuman(); // keyboard control of Blue when you play it yourself
 const transition = createTransition(); // video-game curtain between arenas
 const awardCeremony = createAwardCeremony({
   onDone: () => control({ cmd: "nextRound" }),
@@ -225,6 +227,7 @@ function rebuildWorld(worldJson) {
   // stop() also cancels a replay whose fetch/replayEnter request is in flight.
   window.RL?.replay?.stop?.(); // a new arena invalidates any loaded replay -> back to live
   lastWorldJson = worldJson;
+  human.setWorld(worldJson); // this round's camera decides which way "up" is
   const key = worldJson.theme;
   const rowsKey = gridWorldKey(worldJson); // arena rounds have no rows
   const theme = getTheme(key);
@@ -435,6 +438,9 @@ function seedEventSerials(stats) {
 function applyStats(snap) {
   latestStats = snap.stats;
   latestLiveFrame = snap.frame;
+  // the camera's WASD/arrow pan belongs to the PLAYER while they drive Blue,
+  // otherwise every step drags the view along with the character
+  rig.setPanKeys?.(!snap.stats?.human?.on);
   // while a replay is playing, the SCENE (actors + themeScene, which reads
   // latestFrame) shows the recorded frames - don't clobber it with live frames.
   // The HUD / panels below still get the live stats (training keeps running).
@@ -459,6 +465,7 @@ async function returnToStartMenu() {
   holdUI = true;
   closeTrainingPanels();
   heatmap.hide();
+  human.retract(); // the key hints belong to the match, not the menu
   window.RL?.replay?.stop?.(); // clear any loaded replay (also sets replayActive=false)
 
   try {
@@ -1087,6 +1094,11 @@ async function startFromMenu() {
   // resetTournament overwrite the selected character's Arena-2 profile.
   await control({ cmd: "loadouts", cpu: getCpuAlgos(), player: getPlayerAlgos() });
   await control({ cmd: "resetTournament" });
+  // Every tournament STARTS as model vs model; you take over from the panel's
+  // gold YOU slot whenever you feel like it. Sent explicitly (rather than left
+  // alone) so quitting mid-game and starting again can't drop you straight back
+  // into the driver's seat - resetTournament does not clear it on its own.
+  await control({ cmd: "humanMode", value: false });
   await control({
     cmd: "cpuTier",
     value: getCpuTier(),

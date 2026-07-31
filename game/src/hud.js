@@ -510,7 +510,11 @@ export function initHud() {
     const total = Math.max(1, r.total ?? 1);
     $("#fb-round-i").textContent = (r.index ?? 0) + 1;
     $("#fb-round-t").textContent = total;
-    $("#fb-algo-blue").textContent = r.labelBlue || s.algoBlue || "";
+    // while you play Blue yourself, the tag names YOU, not the algorithm that
+    // would have been driving (it is benched, and not learning, for the duration)
+    $("#fb-algo-blue").textContent = s.human?.on
+      ? "YOU"
+      : r.labelBlue || s.algoBlue || "";
     $("#fb-algo-red").textContent = r.labelRed || s.algoRed || "";
     // bars = each side's RECENT win share; the rAF loop eases the fill toward this smoothly
     const rr = s.recentRate || {};

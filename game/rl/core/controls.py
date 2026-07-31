@@ -30,6 +30,66 @@ def _int_or_none(v, lo=0, hi=10 ** 9):
 class ControlsMixin:
     """Panel parameter controls + their read-back views."""
 
+    # ------------------------------------------------------------ human play
+    def set_human(self, on):
+        """Hand Blue over to a person (or back to its algorithm).
+
+        Only the SOURCE of Blue's action changes. The round, the world, Red and
+        every statistic keep working exactly as they do in a machine-vs-machine
+        run, so a human-played round is still scored with T like any other."""
+        with self.lock:
+            self.human = bool(on)
+            self.human_action = None
+            return self.human
+
+    def set_human_action(self, action):
+        """Set the action the player currently holds (None once they let go).
+
+        Sticky by design: the browser posts on key CHANGE only, and every tick
+        until the next change reuses this value."""
+        with self.lock:
+            if action is None:
+                self.human_action = None
+                return None
+            try:
+                a = int(action)
+            except (TypeError, ValueError):
+                return self.human_action
+            if not (0 <= a < self.env.n_actions or a == self._stay_action()):
+                return self.human_action
+            self.human_action = a
+            if a != self._stay_action():
+                self._human_last = a
+            return a
+
+    def _stay_action(self):
+        """The 'hold position' action for the current round.
+
+        Continuous arenas coast at index 8. On the grid it is always index 4:
+        Round 3 DECLARES it (n_actions=5) so its agents can time a Goomba patrol,
+        but the engine treats any action outside MOVE_ACTIONS as hold-position in
+        every resolver, so it is equally valid to hand a standing player on the
+        4-way rounds. Nothing indexes a length-4 array with it (the action
+        histogram bounds-checks), it is simply 'do not move'."""
+        if getattr(self.env, "objective", "") == "arena":
+            return 8                      # coast (thrust nothing)
+        return 4
+
+    def human_view(self):
+        """What the browser needs to drive Blue: which input model this round
+        uses, how many actions it has, and whether a person is currently on the
+        sticks."""
+        arena = getattr(self.env, "objective", "") == "arena"
+        return {
+            "on": bool(self.human),
+            "kind": "arena" if arena else "grid",
+            "nActions": int(self.env.n_actions),
+            "stay": self._stay_action(),
+            # Round 5's 10th action fires the held weapon; nothing else has one
+            "useAction": 9 if getattr(self.env, "ctf_game", False) else None,
+            "action": self.human_action,
+        }
+
     def set_params(self, p):
         """Update tunable settings live from the panel. Three tiers:
           * per-side LEARNING (alpha / gamma / epsilon schedule) -> OUR model, Blue;

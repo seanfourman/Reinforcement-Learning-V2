@@ -99,17 +99,24 @@ export function createCameraRig(camera, dom) {
   );
 
   // --- keyboard pan -----------------------------------------------------------
+  // WASD / the arrows pan the view while you SPECTATE, but they are also the
+  // player's movement keys - so when a human takes over Blue the rig gives them
+  // up (main.js calls setPanKeys off) and the same press no longer drags the
+  // camera along with the character. Mouse drag + wheel keep working either way.
   const keys = new Set();
+  let panKeys = true;
   window.addEventListener('keydown', (e) => keys.add(e.code));
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
 
   function update(dt) {
     const speed = dist * 0.65 * dt * fs();
-    if (keys.has('KeyW') || keys.has('ArrowUp')) goal.z -= speed;
-    if (keys.has('KeyS') || keys.has('ArrowDown')) goal.z += speed;
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) goal.x -= speed;
-    if (keys.has('KeyD') || keys.has('ArrowRight')) goal.x += speed;
+    if (panKeys) {
+      if (keys.has('KeyW') || keys.has('ArrowUp')) goal.z -= speed;
+      if (keys.has('KeyS') || keys.has('ArrowDown')) goal.z += speed;
+      if (keys.has('KeyA') || keys.has('ArrowLeft')) goal.x -= speed;
+      if (keys.has('KeyD') || keys.has('ArrowRight')) goal.x += speed;
+    }
     clampGoal();
 
     const k = 1 - Math.exp(-dt * 9);
@@ -121,5 +128,17 @@ export function createCameraRig(camera, dom) {
 
   setView();
 
-  return { update, target, setView };
+  return {
+    update,
+    target,
+    setView,
+    setPanKeys(on) {
+      const next = !!on;
+      if (next === panKeys) return;
+      panKeys = next;
+      // drop anything held at the moment of the handover, so a key that was
+      // already down cannot keep panning (or resume panning) behind the change
+      keys.clear();
+    },
+  };
 }

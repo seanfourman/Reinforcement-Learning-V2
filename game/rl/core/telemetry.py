@@ -44,6 +44,7 @@ class TelemetryMixin:
                 "qStates": {"red": self.red.learned_count(),
                             "blue": self.blue.learned_count()},
                 "params": self.params(),
+                "human": self.human_view(),
                 "redParams": self.red_view(),
                 "redEpsilon": round(self.red_epsilon, 3),
                 "targetEpisodes": self.target_episodes or 0,

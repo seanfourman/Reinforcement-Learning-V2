@@ -162,6 +162,15 @@ class Match(MatchLoopMixin, ReplayMixin, CheckpointMixin, ControlsMixin,
         # in set_round, and only if the algorithm fits the round's env kind.
         self.cpu_algos = {}
         self.player_algos = {}
+        # ---- human takeover -------------------------------------------------
+        # A PERSON can drive Blue from the browser instead of Blue's algorithm.
+        # Blue's action then comes from `human_action` (the key currently held,
+        # pushed by /api/control humanAction) and Blue stops learning: a human is
+        # not a policy, and feeding its trajectories to the tabular/deep learner
+        # would corrupt the model the player picked. Red trains on as usual.
+        self.human = False
+        self.human_action = None    # latest held action (None = nothing held)
+        self._human_last = 0        # last real move, for coasting on a 4-action grid
         self.algo_red, self.algo_blue = self._round_matchup(round_id)
         self._build_agents()
         self._reset_stats()
